@@ -1,7 +1,7 @@
 From 9be5b70e1a747c2fe34cddc0d0324f1b0f06ae23 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:07:41 +0900
-Subject: [PATCH 22/31] Unified: default names of new objects in the user's
+Subject: [PATCH 22/32] Unified: default names of new objects in the user's
  language
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
