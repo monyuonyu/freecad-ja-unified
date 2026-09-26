@@ -1,0 +1,81 @@
+From 3020fd1ceab10305b9b248463143c97328958e82 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:16:07 +0900
+Subject: [PATCH 04/11] Part: accept shapes in Part.export() and fail instead
+ of writing an empty file
+
+Part.export([Part.makeBox(1, 2, 3)], "a.step") silently skipped the shape
+and wrote a STEP file without any geometry. Accept Part.Shape items as
+well as document objects, warn about items that are neither, and raise
+ValueError when nothing could be exported. Mention in the docstring that
+names are not kept and point to Import.export() for that.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/AppPartPy.cpp | 28 ++++++++++++++++++++++++++--
+ 1 file changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Part/App/AppPartPy.cpp b/src/Mod/Part/App/AppPartPy.cpp
+index 2beba7a7f..a25848227 100644
+--- a/src/Mod/Part/App/AppPartPy.cpp
++++ b/src/Mod/Part/App/AppPartPy.cpp
+@@ -483,7 +483,9 @@ public:
+         add_varargs_method(
+             "export",
+             &Module::exporter,
+-            "export(list,string) -- Export a list of objects into a single file."
++            "export(list,string) -- Export a list of objects or shapes into a single file.\n"
++            "All shapes are merged into one compound: names and colors are not kept.\n"
++            "Use Import.export() to write a STEP assembly with object names."
+         );
+         add_varargs_method("read", &Module::read, "read(string) -- Load the file and return the shape.");
+         add_varargs_method(
+@@ -949,6 +951,7 @@ private:
+         TopoDS_Compound comp;
+         builder.MakeCompound(comp);
+ 
++        int count = 0;
+         Py::Sequence list(object);
+         for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
+             PyObject* item = (*it).ptr();
+@@ -960,15 +963,36 @@ private:
+                     const TopoDS_Shape& shape = part->Shape.getValue();
+                     if (!shape.IsNull()) {
+                         builder.Add(comp, shape);
++                        count++;
+                     }
+                 }
+                 else {
+-                    Base::Console().message(
++                    Base::Console().warning(
+                         "'{}' is not a shape, export will be ignored.\n",
+                         obj->Label.getValue()
+                     );
+                 }
+             }
++            else if (PyObject_TypeCheck(item, &(TopoShapePy::Type))) {
++                // Plain shapes (e.g. Part.makeBox()) used to be skipped silently,
++                // producing an empty file
++                const TopoDS_Shape& shape
++                    = static_cast<TopoShapePy*>(item)->getTopoShapePtr()->getShape();
++                if (!shape.IsNull()) {
++                    builder.Add(comp, shape);
++                    count++;
++                }
++            }
++            else {
++                Base::Console().warning(
++                    "export: ignoring '{}', which is neither a document object nor a shape.\n",
++                    Py_TYPE(item)->tp_name
++                );
++            }
++        }
++
++        if (count == 0) {
++            throw Py::ValueError("export: nothing to export, no non-empty shape was given");
+         }
+ 
+         TopoShape shape(comp);
+-- 
+2.43.0
+

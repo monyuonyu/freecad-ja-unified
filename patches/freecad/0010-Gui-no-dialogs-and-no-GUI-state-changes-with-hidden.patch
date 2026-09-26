@@ -1,0 +1,66 @@
+From 8bae0425f6e8c05f22e41f04080ed7eb931e5323 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 00:08:18 +0900
+Subject: [PATCH 10/11] Gui: no dialogs and no GUI state changes with --hidden
+
+- Skip the version migration dialog when the main window is hidden. On
+  the first start of a new version with settings of an older version, it
+  was shown modally on the invisible screen and a scripted
+  'FreeCAD --hidden script.py' blocked forever. The question is asked on
+  the next normal start instead.
+- Do not add files processed with a hidden main window to the recent
+  files list, do not change the file dialog's working directory and do
+  not save the hidden window's layout, so scripted runs leave the
+  interactive user's GUI settings alone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/MainWindow.cpp     | 8 ++++++--
+ src/Gui/StartupProcess.cpp | 5 +++++
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/MainWindow.cpp b/src/Gui/MainWindow.cpp
+index 8d6057689..c2f2d0d12 100644
+--- a/src/Gui/MainWindow.cpp
++++ b/src/Gui/MainWindow.cpp
+@@ -1889,7 +1889,9 @@ void MainWindow::delayedStartup()
+         const std::list<std::string> files = App::Application::getCmdLineFiles();
+         const std::list<std::string> processed = App::Application::processFiles(files);
+         allFilesProcessed = processed.size() == files.size();
+-        for (const auto& file : processed) {
++        // Scripts run with a hidden main window are not "recently used files" of the
++        // interactive user, and must not change the file dialog's working directory
++        for (const auto& file : Application::hiddenMainWindow() ? std::list<std::string>() : processed) {
+             QString filename = QString::fromUtf8(file.c_str(), file.size());
+             FileDialog::setWorkingDirectory(filename);
+             QFileInfo fi(filename);
+@@ -2258,7 +2260,9 @@ void MainWindowP::restoreWindowState(const QByteArray& windowState)
+ 
+ void MainWindow::saveWindowSettings(bool canDelay)
+ {
+-    if (isRestoringWindowState()) {
++    // A hidden main window (scripted use) has no layout worth keeping; saving it would
++    // overwrite the layout of the user's interactive sessions
++    if (isRestoringWindowState() || Application::hiddenMainWindow()) {
+         return;
+     }
+ 
+diff --git a/src/Gui/StartupProcess.cpp b/src/Gui/StartupProcess.cpp
+index 4f87ca63a..9ca63dbb4 100644
+--- a/src/Gui/StartupProcess.cpp
++++ b/src/Gui/StartupProcess.cpp
+@@ -609,6 +609,11 @@ void StartupPostProcess::checkParameters()
+ 
+ void StartupPostProcess::checkVersionMigration() const
+ {
++    // With a hidden main window (scripted, headless use) nobody can answer the modal
++    // dialog, and the run would block forever. Ask on the next normal start instead.
++    if (Application::hiddenMainWindow()) {
++        return;
++    }
+     auto migrator = new Dialog::DlgVersionMigrator(mainWindow);
+     migrator->exec();
+     migrator->deleteLater();
+-- 
+2.43.0
+

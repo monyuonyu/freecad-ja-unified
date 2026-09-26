@@ -1,0 +1,308 @@
+From ca29bc16dc87615a3f644a022ab5fd0e4eaa111b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:13:30 +0900
+Subject: [PATCH 01/11] Core: make FreeCADCmd behave like the Python executable
+ when running scripts
+
+- Run a .py file exactly once as __main__. It was imported as a module first
+  and, if that raised, executed a second time, so failing scripts ran twice
+  and 'if __name__ == "__main__":' blocks never ran.
+- Exit with a non-zero code when a command line file fails or does not
+  exist (was always 0), including --output export failures.
+- Print the full Python traceback for script errors, not only the message.
+- sys.exit() / sys.exit(None) exit with 0 (was 1); sys.exit("msg") prints
+  the message to stderr.
+- sys.argv is [script, args...] where args follow '--' or '--pass', so
+  'FreeCADCmd script.py -- a b' works like 'python script.py a b'.
+- Do not print the banner when running files non-interactively.
+- Flush Python's stdout/stderr before exit() so output printed right
+  before an error or sys.exit() is not lost.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp  | 110 +++++++++++++++++++++++++++++++--------
+ src/Base/Interpreter.cpp |  11 +++-
+ src/Main/MainCmd.cpp     |  30 ++++++++++-
+ 3 files changed, 127 insertions(+), 24 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 2a5d604dd..c0962c1e2 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2409,6 +2409,9 @@ void Application::initTypes()
+ 
+ namespace {
+ 
++// Arguments following '--' on the command line; they are handed to scripts via sys.argv
++std::vector<std::string> dashDashArgs;
++
+ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::program_options::variables_map& vm)
+ {
+     // Declare a group of options that will be
+@@ -2488,6 +2491,11 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     std::vector<std::string> args;
+     bool merge=false;
+     for (int i=1; i<ac; i++) {
++        // Everything after '--' is passed to the script in sys.argv, like 'python a.py x y'
++        if (strcmp(av[i], "--") == 0) {
++            dashDashArgs.assign(av + i + 1, av + ac);
++            break;
++        }
+         if (merge) {
+             merge = false;
+             args.back() += "=";
+@@ -2623,6 +2631,16 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         mConfig["DisabledAddons"] = temp;
+     }
+ 
++    std::vector<std::string> scriptArgs;
++    if (vm.contains("pass")) {
++        scriptArgs = vm["pass"].as< std::vector<std::string> >();
++    }
++    scriptArgs.insert(scriptArgs.end(), dashDashArgs.begin(), dashDashArgs.end());
++    mConfig["ScriptArgCount"] = std::to_string(scriptArgs.size());
++    for (std::size_t i = 0; i < scriptArgs.size(); i++) {
++        mConfig["ScriptArg" + std::to_string(i)] = scriptArgs[i];
++    }
++
+     if (vm.contains("input-file")) {
+         auto  files(vm["input-file"].as< std::vector<std::string> >());
+         int OpenFileCount=0;
+@@ -2870,7 +2888,12 @@ void Application::initConfig(int argc, char ** argv)
+     App::installTranslationQtBridge();
+ 
+     // Banner ===========================================================
+-    if (mConfig["RunMode"] != "Cmd" && !(vm.contains("verbose") && vm.contains("version"))) {
++    // Running a script non-interactively ('FreeCADCmd script.py'): keep stdout clean
++    // for the script's own output, like the Python executable does.
++    const bool runsFilesNonInteractively =
++        mConfig["RunMode"] == "Exit" && std::atoi(mConfig["OpenFileCount"].c_str()) > 0;
++    if (mConfig["RunMode"] != "Cmd" && !runsFilesNonInteractively
++        && !(vm.contains("verbose") && vm.contains("version"))) {
+         // Remove banner if FreeCAD is invoked via the -c command as regular
+         // Python interpreter
+         if (mConfig["Verbose"] != "Strict")
+@@ -3077,6 +3100,23 @@ std::list<std::string> Application::getCmdLineFiles()
+     return files;
+ }
+ 
++namespace {
++// Make sys.argv look like it does for 'python script.py arg1 arg2': the script path
++// followed by the arguments given after '--' or '--pass'.
++void setScriptArgv(const std::string& script)
++{
++    auto& cfg = Application::Config();
++    const int count = std::atoi(cfg["ScriptArgCount"].c_str());
++    Base::PyGILStateLocker lock;
++    Py::List argv;
++    argv.append(Py::String(script));
++    for (int i = 0; i < count; i++) {
++        argv.append(Py::String(cfg["ScriptArg" + std::to_string(i)]));
++    }
++    PySys_SetObject("argv", argv.ptr());
++}
++}  // namespace
++
+ std::list<std::string> Application::processFiles(const std::list<std::string>& files)
+ {
+     std::list<std::string> processed;
+@@ -3096,6 +3136,11 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+ 
+         Base::Console().log("Init:     Processing file: {}\n",file.filePath());
+ 
++        if (!file.exists()) {
++            Base::Console().error("No such file: {}\n", file.filePath());
++            continue;
++        }
++
+         try {
+             if (file.hasExtension("fcstd") || file.hasExtension("fcbak")
+                 || file.hasExtension("std")) {
+@@ -3104,20 +3149,19 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+                 processed.push_back(it);
+             }
+             else if (file.hasExtension("fcscript") || file.hasExtension("fcmacro")) {
++                setScriptArgv(file.filePath());
+                 Base::Interpreter().runFile(file.filePath().c_str(), true);
+                 processed.push_back(it);
+             }
+             else if (file.hasExtension("py")) {
+-                try {
+-                    Base::Interpreter().addPythonPath(file.dirPath().c_str());
+-                    Base::Interpreter().loadModule(file.fileNamePure().c_str());
+-                    processed.push_back(it);
+-                }
+-                catch (const Base::PyException&) {
+-                    // if loading the module does not work, try just running the script (run in __main__)
+-                    Base::Interpreter().runFile(file.filePath().c_str(),true);
+-                    processed.push_back(it);
+-                }
++                // Run the script exactly once as __main__, like the Python executable does.
++                // It used to be imported as a module first and, if that raised, executed a
++                // second time with runFile(), so a failing script ran twice and
++                // 'if __name__ == "__main__":' blocks never ran.
++                Base::Interpreter().addPythonPath(file.dirPath().c_str());
++                setScriptArgv(file.filePath());
++                Base::Interpreter().runFile(file.filePath().c_str(), true);
++                processed.push_back(it);
+             }
+             else {
+                 std::vector<std::string> mods = GetApplication().getImportModules(file.extension());
+@@ -3140,6 +3184,16 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+         catch (const Base::SystemExitException&) {
+             throw; // re-throw to main() function
+         }
++        catch (const Base::PyException& e) {
++            // Print the full Python traceback, not only the message, and the exception type
++            // as Python does ("ValueError", not "<class 'ValueError'>")
++            std::string type = e.getErrorType();
++            if (type.starts_with("<class '") && type.ends_with("'>")) {
++                type = type.substr(8, type.size() - 10);
++            }
++            Base::Console().error("Exception while processing file: {}\n{}{}: {}\n",
++                                  file.filePath(), e.getStackTrace(), type, e.what());
++        }
+         catch (const Base::Exception& e) {
+             Base::Console().error("Exception while processing file: {} [{}]\n", file.filePath(), e.what());
+         }
+@@ -3154,19 +3208,25 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+ void Application::processCmdLineFiles()
+ {
+     const std::list<std::string> files = getCmdLineFiles();
+-    const std::list<std::string> processed = processFiles(files);
++    std::list<std::string> failed;
+ 
+-    if (files.empty()) {
+-        if (mConfig["RunMode"] == "Exit")
+-            mConfig["RunMode"] = "Cmd";
+-    }
+-    else if (processed.empty() && files.size() == 1 && mConfig["RunMode"] == "Cmd") {
++    if (files.size() == 1 && mConfig["RunMode"] == "Cmd" && !Base::FileInfo(files.front()).exists()) {
+         // In case we are in console mode and the argument is not a file but Python code
+         // then execute it. This is to behave like the standard Python executable.
+-        const Base::FileInfo file(files.front());
+-        if (!file.exists()) {
+-            Base::Interpreter().runString(files.front().c_str());
+-            mConfig["RunMode"] = "Exit";
++        Base::Interpreter().runString(files.front().c_str());
++        mConfig["RunMode"] = "Exit";
++    }
++    else {
++        const std::list<std::string> processed = processFiles(files);
++        if (files.empty()) {
++            if (mConfig["RunMode"] == "Exit")
++                mConfig["RunMode"] = "Cmd";
++        }
++        for (const auto& file : files) {
++            if (std::find(processed.begin(), processed.end(), file) != processed.end()) {
++                continue;
++            }
++            failed.push_back(file);
+         }
+     }
+ 
+@@ -3196,6 +3256,14 @@ void Application::processCmdLineFiles()
+             Base::Console().error("Unknown exception while saving to file: {} \n", output);
+         }
+     }
++
++    // When running non-interactively, a file that could not be processed must not end
++    // in exit code 0, otherwise scripts and CI cannot detect the failure.
++    if (!failed.empty() && mConfig["RunMode"] == "Exit") {
++        Base::PyGILStateLocker lock;
++        PyErr_SetObject(PyExc_SystemExit, Py::Long(1).ptr());
++        throw Base::SystemExitException();
++    }
+ }
+ 
+ void Application::runApplication()
+diff --git a/src/Base/Interpreter.cpp b/src/Base/Interpreter.cpp
+index b82b4f2d1..e8c542f7a 100644
+--- a/src/Base/Interpreter.cpp
++++ b/src/Base/Interpreter.cpp
+@@ -205,12 +205,19 @@ SystemExitException::SystemExitException()
+ 
+     if (value) {
+         code = PyObject_GetAttrString(value, "code");
+-        if (code && value != Py_None) {
++        if (code) {
+             Py_DECREF(value);
+             value = code;
+         }
++        else {
++            PyErr_Clear();
++        }
+ 
+-        if (PyLong_Check(value)) {
++        if (value == Py_None) {
++            // sys.exit() and sys.exit(None) mean success, as in Python
++            errCode = 0;
++        }
++        else if (PyLong_Check(value)) {
+             errCode = PyLong_AsLong(value);
+         }
+         else {
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 3a7262561..262b14d97 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -32,6 +32,7 @@
+ 
+ #include <cstdio>
+ #include <format>
++#include <iostream>
+ #include <ostream>
+ #include <QString>
+ 
+@@ -54,6 +55,24 @@ const auto sBanner = std::format(
+     Base::FCVersionInfo::CopyrightYear()
+ );
+ 
++// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
++// (e.g. print() output right before an exception or sys.exit()) would be lost.
++static void flushPythonStreams()
++{
++    if (!Py_IsInitialized()) {
++        return;
++    }
++    Base::PyGILStateLocker lock;
++    for (const char* name : {"stdout", "stderr"}) {
++        PyObject* stream = PySys_GetObject(name);  // borrowed
++        if (stream && stream != Py_None) {
++            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
++            Py_XDECREF(result);
++        }
++    }
++    PyErr_Clear();
++}
++
+ int main(int argc, char** argv)
+ {
+     // Make sure that we use '.' as decimal point
+@@ -142,13 +161,22 @@ int main(int argc, char** argv)
+         Application::runApplication();
+     }
+     catch (const Base::SystemExitException& e) {
+-        exit(e.getExitCode());
++        flushPythonStreams();
++        // sys.exit("message") prints the message to stderr, as Python does
++        const std::string prefix = "System exit: ";
++        const std::string msg = e.what();
++        if (msg.starts_with(prefix)) {
++            std::cerr << msg.substr(prefix.size()) << std::endl;
++        }
++        exit(static_cast<int>(e.getExitCode()));
+     }
+     catch (const Base::Exception& e) {
++        flushPythonStreams();
+         e.reportException();
+         exit(1);
+     }
+     catch (...) {
++        flushPythonStreams();
+         Console().error("Application unexpectedly terminated\n");
+         exit(1);
+     }
+-- 
+2.43.0
+

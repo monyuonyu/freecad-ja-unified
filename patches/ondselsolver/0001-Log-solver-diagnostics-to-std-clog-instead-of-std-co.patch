@@ -1,0 +1,77 @@
+From f2ce88cbdde645ed881d3e36cf29a8d76a4c157b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 00:14:38 +0900
+Subject: [PATCH] Log solver diagnostics to std::clog instead of std::cout
+
+The solver runs inside FreeCAD, where stdout belongs to user scripts;
+opening an assembly with FreeCADCmd printed 'MbD: Assembling system.',
+'MbD: Convergence = ...' and 'Time = ...' into the script's output and
+broke machine-readable output.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ OndselSolver/ASMTAssembly.cpp   | 2 +-
+ OndselSolver/ASMTItem.cpp       | 4 +++-
+ OndselSolver/CADSystem.cpp      | 4 +++-
+ OndselSolver/ExternalSystem.cpp | 4 +++-
+ 4 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/OndselSolver/ASMTAssembly.cpp b/OndselSolver/ASMTAssembly.cpp
+index 27e9054..1e69326 100644
+--- a/OndselSolver/ASMTAssembly.cpp
++++ b/OndselSolver/ASMTAssembly.cpp
+@@ -1556,7 +1556,7 @@ void MbD::ASMTAssembly::updateFromMbD()
+     ASMTSpatialContainer::updateFromMbD();
+     auto time = asmtTime->getValue();
+     times->push_back(time);
+-    std::cout << "Time = " << time << std::endl;
++    std::clog << "Time = " << time << std::endl;  // diagnostics: keep stdout clean
+     for (auto& part : *parts) {
+         part->updateFromMbD();
+     }
+diff --git a/OndselSolver/ASMTItem.cpp b/OndselSolver/ASMTItem.cpp
+index b9f808e..77618cb 100644
+--- a/OndselSolver/ASMTItem.cpp
++++ b/OndselSolver/ASMTItem.cpp
+@@ -306,5 +306,7 @@ void MbD::ASMTItem::storeOnTimeSeries(std::ofstream&)
+ 
+ void MbD::ASMTItem::logString(const std::string& str)
+ {
+-	std::cout << str << std::endl;
++	// Diagnostics go to std::clog, not std::cout: the solver runs inside FreeCAD, whose
++	// stdout belongs to user scripts (e.g. machine-readable output of FreeCADCmd).
++	std::clog << str << std::endl;
+ }
+diff --git a/OndselSolver/CADSystem.cpp b/OndselSolver/CADSystem.cpp
+index d3652ae..737a9fa 100644
+--- a/OndselSolver/CADSystem.cpp
++++ b/OndselSolver/CADSystem.cpp
+@@ -42,7 +42,9 @@ void CADSystem::outputFor(AnalysisType)
+ 
+ void CADSystem::logString(const std::string& str)
+ {
+-	std::cout << str << std::endl;
++	// Diagnostics go to std::clog, not std::cout: the solver runs inside FreeCAD, whose
++	// stdout belongs to user scripts (e.g. machine-readable output of FreeCADCmd).
++	std::clog << str << std::endl;
+ }
+ 
+ void CADSystem::logString(double)
+diff --git a/OndselSolver/ExternalSystem.cpp b/OndselSolver/ExternalSystem.cpp
+index ea9e34a..7e5f17b 100644
+--- a/OndselSolver/ExternalSystem.cpp
++++ b/OndselSolver/ExternalSystem.cpp
+@@ -73,7 +73,9 @@ void MbD::ExternalSystem::outputFor(AnalysisType type)
+ 
+ void MbD::ExternalSystem::logString(const std::string& str)
+ {
+-	std::cout << str << std::endl;
++	// Diagnostics go to std::clog, not std::cout: the solver runs inside FreeCAD, whose
++	// stdout belongs to user scripts (e.g. machine-readable output of FreeCADCmd).
++	std::clog << str << std::endl;
+ }
+ 
+ void MbD::ExternalSystem::logString(double)
+-- 
+2.43.0
+

@@ -1,0 +1,66 @@
+From e0955d4ffeb93dac7a00d52e4de54399cf86b692 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:15:13 +0900
+Subject: [PATCH 03/11] Part: keep OCCT info/trace messages out of stdout
+
+OCCT's default Message_PrinterOStream writes to std::cout and was left in
+place when the OCCTMessagePrinter was added, so every OCCT message was
+printed twice, and informational output such as the STEP writer's
+transfer statistics ended up in the stdout of every script that exports
+a STEP file. Remove the default printer and send Info/Trace messages to
+the log; warnings and errors are unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/AppPart.cpp            | 5 +++++
+ src/Mod/Part/App/OCCTMessagePrinter.cpp | 7 +++++--
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Part/App/AppPart.cpp b/src/Mod/Part/App/AppPart.cpp
+index cbf56bf8d..eb8993fc9 100644
+--- a/src/Mod/Part/App/AppPart.cpp
++++ b/src/Mod/Part/App/AppPart.cpp
+@@ -29,6 +29,7 @@
+ #include <Standard_Version.hxx>
+ #include <Message.hxx>
+ #include <Message_Messenger.hxx>
++#include <Message_PrinterOStream.hxx>
+ 
+ #include <FCConfig.h>
+ 
+@@ -618,6 +619,10 @@ PyMOD_INIT_FUNC(Part)
+     Base::registerServiceImplementation<App::CustomAttributeProvider>(new ShapeAttributeProvider);
+     Base::registerServiceImplementation<App::PseudoShapeProvider>(new PartPseudoShapeProvider);
+ 
++    // Route OCCT messages through FreeCAD's console only. OCCT's default printer writes
++    // straight to std::cout, so without removing it every message (e.g. the STEP
++    // writer's transfer statistics) was printed twice and mixed into a script's stdout.
++    Message::DefaultMessenger()->RemovePrinters(STANDARD_TYPE(Message_PrinterOStream));
+     Handle(OCCTMessagePrinter) printer = new OCCTMessagePrinter();
+     printer->SetTraceLevel(Message_Trace);
+     Message::DefaultMessenger()->AddPrinter(printer);
+diff --git a/src/Mod/Part/App/OCCTMessagePrinter.cpp b/src/Mod/Part/App/OCCTMessagePrinter.cpp
+index 39c51de7a..3d15b8f4a 100644
+--- a/src/Mod/Part/App/OCCTMessagePrinter.cpp
++++ b/src/Mod/Part/App/OCCTMessagePrinter.cpp
+@@ -41,12 +41,15 @@ void OCCTMessagePrinter::send(const TCollection_AsciiString& message, const Mess
+         case Message_Warning:
+             Base::Console().warning("OCCT: {}\n", txt);
+             break;
++        // Informational and trace output (e.g. transfer statistics of every STEP export)
++        // is diagnostics: send it to the log so it does not end up in the output of
++        // scripts. It is visible in the report view when logging is enabled.
+         case Message_Info:
+-            Base::Console().message("OCCT: {}\n", txt);
++            Base::Console().log("OCCT: {}\n", txt);
+             break;
+         case Message_Trace:
+         default:
+-            Base::Console().message("OCCT(trace): {}\n", txt);
++            Base::Console().log("OCCT(trace): {}\n", txt);
+             break;
+     }
+ }
+-- 
+2.43.0
+

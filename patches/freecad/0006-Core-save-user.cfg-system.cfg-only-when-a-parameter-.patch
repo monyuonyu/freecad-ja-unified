@@ -1,0 +1,73 @@
+From 93e3b8fdb05e6de6fd5bb9f184e0c39b0505e82a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:21:45 +0900
+Subject: [PATCH 06/11] Core: save user.cfg/system.cfg only when a parameter
+ changed
+
+Every run, including 'FreeCADCmd -c pass', rewrote both parameter files
+on exit. Besides touching the user's configuration for no reason, this
+made concurrent command line runs overwrite each other: of 16 parallel
+runs that each set one value, only 7 values survived. Track changes via
+signalParamChanged and save a parameter file on exit only if it was
+modified or did not exist yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 0f2f8d0b4..9d490734b 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -1995,13 +1995,22 @@ void Application::cleanupUnits()
+     }
+ }
+ 
++namespace {
++// Whether the system/user parameters were modified since they were loaded. Saving
++// only modified parameters keeps runs that do not change any setting (most command
++// line and scripted runs) from rewriting user.cfg/system.cfg, which also made
++// concurrent runs overwrite each other's changes.
++bool sysParamModified = false;
++bool userParamModified = false;
++}  // namespace
++
+ void Application::destruct()
+ {
+     // saving system parameter
+     if (_pcSysParamMngr->IgnoreSave()) {
+         Base::Console().warning("Discard system parameter\n");
+     }
+-    else {
++    else if (sysParamModified) {
+         Base::Console().log("Saving system parameter...\n");
+         _pcSysParamMngr->SaveDocument();
+         Base::Console().log("Saving system parameter...done\n");
+@@ -2010,7 +2019,7 @@ void Application::destruct()
+     if (_pcUserParamMngr->IgnoreSave()) {
+         Base::Console().warning("Discard user parameter\n");
+     }
+-    else {
++    else if (userParamModified) {
+         Base::Console().log("Saving user parameter...\n");
+         _pcUserParamMngr->SaveDocument();
+         Base::Console().log("Saving user parameter...done\n");
+@@ -3456,6 +3465,14 @@ void Application::LoadParameters()
+                               e.what(), mConfig["UserParameter"]);
+         _pcUserParamMngr->CreateDocument();
+     }
++
++    // A parameter file that does not exist yet is written on exit, as before
++    sysParamModified = !Base::FileInfo(mConfig["SystemParameter"]).exists();
++    userParamModified = !Base::FileInfo(mConfig["UserParameter"]).exists();
++    _pcSysParamMngr->signalParamChanged.connect(
++        [](ParameterGrp*, ParameterGrp::ParamType, const char*, const char*) { sysParamModified = true; });
++    _pcUserParamMngr->signalParamChanged.connect(
++        [](ParameterGrp*, ParameterGrp::ParamType, const char*, const char*) { userParamModified = true; });
+ }
+ 
+ const char* Application::getUserParameterTemplatePath()
+-- 
+2.43.0
+

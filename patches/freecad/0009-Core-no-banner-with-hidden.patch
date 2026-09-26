@@ -1,0 +1,32 @@
+From f37891396ea4f7582d670bdf07143d4842cd4e16 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:51:17 +0900
+Subject: [PATCH 09/11] Core: no banner with --hidden
+
+A hidden main window means scripted use, so keep the output clean like
+when FreeCADCmd runs a file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 3827c7f1a..c1f19934c 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2924,8 +2924,9 @@ void Application::initConfig(int argc, char ** argv)
+     // Banner ===========================================================
+     // Running a script non-interactively ('FreeCADCmd script.py'): keep stdout clean
+     // for the script's own output, like the Python executable does.
+-    const bool runsFilesNonInteractively = mConfig["RunMode"] == "Exit"
+-        && (std::atoi(mConfig["OpenFileCount"].c_str()) > 0 || !stdinIsTerminal());
++    const bool runsFilesNonInteractively = (mConfig["RunMode"] == "Exit"
++        && (std::atoi(mConfig["OpenFileCount"].c_str()) > 0 || !stdinIsTerminal()))
++        || vm.contains("hidden");
+     if (mConfig["RunMode"] != "Cmd" && !runsFilesNonInteractively
+         && !(vm.contains("verbose") && vm.contains("version"))) {
+         // Remove banner if FreeCAD is invoked via the -c command as regular
+-- 
+2.43.0
+

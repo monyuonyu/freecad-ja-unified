@@ -1,0 +1,147 @@
+From 5abc650eec157d2a762c82161589a2be1c0f7607 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:18:49 +0900
+Subject: [PATCH 05/11] Core: run a script piped into FreeCADCmd as one script
+
+'FreeCADCmd < script.py' fed the input line by line to the interactive
+console: prompts and the banner were mixed into the output, a blank line
+was required after every block, and errors ended with exit code 0.
+When stdin is not a terminal and no file is given, compile the whole
+input as '<stdin>' and run it in __main__ like the Python executable
+does, with sys.argv == ['-', ...] and a non-zero exit code on errors.
+Interactive use from a terminal is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp | 74 +++++++++++++++++++++++++++++++++++------
+ 1 file changed, 64 insertions(+), 10 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index c0962c1e2..0f2f8d0b4 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -50,12 +50,16 @@
+ # include <algorithm>
+ # include <iostream>
+ # include <map>
++# include <sstream>
+ # include <tuple>
+ # include <vector>
+ 
+ #ifdef FC_OS_WIN32
+ # include <Shlobj.h>
+ # include <codecvt>
++# include <io.h>
++#else
++# include <unistd.h>
+ #endif
+ 
+ #if defined(FC_OS_BSD)
+@@ -2409,6 +2413,15 @@ void Application::initTypes()
+ 
+ namespace {
+ 
++bool stdinIsTerminal()
++{
++#ifdef FC_OS_WIN32
++    return _isatty(_fileno(stdin)) != 0;
++#else
++    return isatty(fileno(stdin)) != 0;
++#endif
++}
++
+ // Arguments following '--' on the command line; they are handed to scripts via sys.argv
+ std::vector<std::string> dashDashArgs;
+ 
+@@ -2890,8 +2903,8 @@ void Application::initConfig(int argc, char ** argv)
+     // Banner ===========================================================
+     // Running a script non-interactively ('FreeCADCmd script.py'): keep stdout clean
+     // for the script's own output, like the Python executable does.
+-    const bool runsFilesNonInteractively =
+-        mConfig["RunMode"] == "Exit" && std::atoi(mConfig["OpenFileCount"].c_str()) > 0;
++    const bool runsFilesNonInteractively = mConfig["RunMode"] == "Exit"
++        && (std::atoi(mConfig["OpenFileCount"].c_str()) > 0 || !stdinIsTerminal());
+     if (mConfig["RunMode"] != "Cmd" && !runsFilesNonInteractively
+         && !(vm.contains("verbose") && vm.contains("version"))) {
+         // Remove banner if FreeCAD is invoked via the -c command as regular
+@@ -3101,6 +3114,38 @@ std::list<std::string> Application::getCmdLineFiles()
+ }
+ 
+ namespace {
++// Report a Python error the way the Python executable does: full traceback and
++// "ValueError: message" (not "<class 'ValueError'>: message")
++void reportScriptError(const std::string& source, const Base::PyException& e)
++{
++    std::string type = e.getErrorType();
++    if (type.starts_with("<class '") && type.ends_with("'>")) {
++        type = type.substr(8, type.size() - 10);
++    }
++    Base::Console().error("Exception while processing file: {}\n{}{}: {}\n",
++                          source, e.getStackTrace(), type, e.what());
++}
++
++// Run source read from stdin in __main__, reporting errors like runFile() does
++void runStdinScript(const std::string& source)
++{
++    Base::PyGILStateLocker lock;
++    PyObject* code = Py_CompileString(source.c_str(), "<stdin>", Py_file_input);
++    if (code) {
++        PyObject* dict = PyModule_GetDict(PyImport_AddModule("__main__"));  // borrowed
++        PyObject* result = PyEval_EvalCode(code, dict, dict);
++        Py_DECREF(code);
++        if (result) {
++            Py_DECREF(result);
++            return;
++        }
++    }
++    if (PyErr_ExceptionMatches(PyExc_SystemExit)) {
++        throw Base::SystemExitException();
++    }
++    throw Base::PyException();
++}
++
+ // Make sys.argv look like it does for 'python script.py arg1 arg2': the script path
+ // followed by the arguments given after '--' or '--pass'.
+ void setScriptArgv(const std::string& script)
+@@ -3185,14 +3230,7 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+             throw; // re-throw to main() function
+         }
+         catch (const Base::PyException& e) {
+-            // Print the full Python traceback, not only the message, and the exception type
+-            // as Python does ("ValueError", not "<class 'ValueError'>")
+-            std::string type = e.getErrorType();
+-            if (type.starts_with("<class '") && type.ends_with("'>")) {
+-                type = type.substr(8, type.size() - 10);
+-            }
+-            Base::Console().error("Exception while processing file: {}\n{}{}: {}\n",
+-                                  file.filePath(), e.getStackTrace(), type, e.what());
++            reportScriptError(file.filePath(), e);
+         }
+         catch (const Base::Exception& e) {
+             Base::Console().error("Exception while processing file: {} [{}]\n", file.filePath(), e.what());
+@@ -3216,6 +3254,22 @@ void Application::processCmdLineFiles()
+         Base::Interpreter().runString(files.front().c_str());
+         mConfig["RunMode"] = "Exit";
+     }
++    else if (files.empty() && mConfig["RunMode"] == "Exit" && !stdinIsTerminal()) {
++        // 'FreeCADCmd < script.py' or 'cat script.py | FreeCADCmd': run the input as one
++        // script like the Python executable does, instead of feeding it line by line to
++        // the interactive console (prompts in the output, blank lines required after
++        // blocks, and exit code 0 on errors).
++        std::stringstream script;
++        script << std::cin.rdbuf();
++        setScriptArgv("-");
++        try {
++            runStdinScript(script.str());
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("<stdin>", e);
++            failed.emplace_back("<stdin>");
++        }
++    }
+     else {
+         const std::list<std::string> processed = processFiles(files);
+         if (files.empty()) {
+-- 
+2.43.0
+

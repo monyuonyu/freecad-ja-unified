@@ -1,0 +1,175 @@
+From f39222844357e4922030148c6293770367d7c43f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:13:30 +0900
+Subject: [PATCH 02/11] Gui: make '--hidden' usable for scripted, headless runs
+
+- Return exit code 1 when a command line file fails with a hidden main
+  window, instead of always 0.
+- Disable navigation animations while the main window is hidden, so
+  viewIsometric(); fitAll(); saveImage() saves the final view instead of a
+  half-turned camera.
+- Keep print() on the terminal when the main window is hidden instead of
+  redirecting it into the (invisible) report view.
+- Flush Python's stdout/stderr before exit().
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/MainWindow.cpp     | 15 ++++++++++++---
+ src/Gui/ReportView.cpp     |  5 +++--
+ src/Gui/View3DSettings.cpp |  8 +++++++-
+ src/Main/MainGui.cpp       | 28 ++++++++++++++++++++++++++--
+ 4 files changed, 48 insertions(+), 8 deletions(-)
+
+diff --git a/src/Gui/MainWindow.cpp b/src/Gui/MainWindow.cpp
+index 4c1fb5176..8d6057689 100644
+--- a/src/Gui/MainWindow.cpp
++++ b/src/Gui/MainWindow.cpp
+@@ -1884,10 +1884,12 @@ void MainWindow::delayedStartup()
+     }
+ 
+     // processing all command line files
++    bool allFilesProcessed = true;
+     try {
+-        std::list<std::string> files = App::Application::getCmdLineFiles();
+-        files = App::Application::processFiles(files);
+-        for (const auto& file : files) {
++        const std::list<std::string> files = App::Application::getCmdLineFiles();
++        const std::list<std::string> processed = App::Application::processFiles(files);
++        allFilesProcessed = processed.size() == files.size();
++        for (const auto& file : processed) {
+             QString filename = QString::fromUtf8(file.c_str(), file.size());
+             FileDialog::setWorkingDirectory(filename);
+             QFileInfo fi(filename);
+@@ -1895,11 +1897,18 @@ void MainWindow::delayedStartup()
+         }
+     }
+     catch (const Base::SystemExitException&) {
++        QApplication::quit();
+         throw;
+     }
+ 
+     if (Application::hiddenMainWindow()) {
+         QApplication::quit();
++        if (!allFilesProcessed) {
++            // Scripted use: report the failure through the exit code
++            Base::PyGILStateLocker lock;
++            PyErr_SetObject(PyExc_SystemExit, Py::Long(1).ptr());
++            throw Base::SystemExitException();
++        }
+         return;
+     }
+ 
+diff --git a/src/Gui/ReportView.cpp b/src/Gui/ReportView.cpp
+index f1cdc5bdc..c4cb58b90 100644
+--- a/src/Gui/ReportView.cpp
++++ b/src/Gui/ReportView.cpp
+@@ -935,13 +935,14 @@ void ReportOutput::OnChange(Base::Subject<const char*>& rCaller, const char* sRe
+         setTabStopDistance(width);
+     }
+     else if (strcmp(sReason, "RedirectPythonOutput") == 0) {
+-        bool checked = rclGrp.GetBool(sReason, true);
++        // With a hidden main window nobody can read the report view: keep print() on the terminal
++        bool checked = rclGrp.GetBool(sReason, true) && !Application::hiddenMainWindow();
+         if (checked != d->redirected_stdout) {
+             onToggleRedirectPythonStdout();
+         }
+     }
+     else if (strcmp(sReason, "RedirectPythonErrors") == 0) {
+-        bool checked = rclGrp.GetBool(sReason, true);
++        bool checked = rclGrp.GetBool(sReason, true) && !Application::hiddenMainWindow();
+         if (checked != d->redirected_stderr) {
+             onToggleRedirectPythonStderr();
+         }
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index 584839fb3..a1ed887d3 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -34,6 +34,7 @@
+ #include "Navigation/NavigationStyle.h"
+ #include "Selection/SelectionColors.h"
+ #include "SoFCSelectionAction.h"
++#include "Application.h"
+ #include "View3DSettings.h"
+ #include "View3DInventorViewer.h"
+ 
+@@ -380,7 +381,12 @@ void View3DSettings::OnChange(ParameterGrp::SubjectType& rCaller, ParameterGrp::
+     }
+     else if (strcmp(Reason, "UseNavigationAnimations") == 0) {
+         for (auto _viewer : _viewers) {
+-            _viewer->setAnimationEnabled(rGrp.GetBool("UseNavigationAnimations", true));
++            // Nobody watches animations when the main window is hidden (scripted,
++            // headless use). They would only make camera changes asynchronous, so
++            // fitAll() and saveImage() right after viewIsometric() see a half-turned camera.
++            _viewer->setAnimationEnabled(
++                rGrp.GetBool("UseNavigationAnimations", true) && !Application::hiddenMainWindow()
++            );
+         }
+     }
+     else if (strcmp(Reason, "UseSpinningAnimations") == 0) {
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index 00975ed7b..543304e4e 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -92,6 +92,24 @@ private:
+     FILE* file;
+ };
+ 
++// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
++// (e.g. print() output right before an exception or sys.exit()) would be lost.
++static void flushPythonStreams()
++{
++    if (!Py_IsInitialized()) {
++        return;
++    }
++    Base::PyGILStateLocker lock;
++    for (const char* name : {"stdout", "stderr"}) {
++        PyObject* stream = PySys_GetObject(name);  // borrowed
++        if (stream && stream != Py_None) {
++            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
++            Py_XDECREF(result);
++        }
++    }
++    PyErr_Clear();
++}
++
+ static bool inGuiMode()
+ {
+     // if console option is set then run in cmd mode
+@@ -263,8 +281,10 @@ int main(int argc, char** argv)
+ 
+         Gui::Application::initApplication();
+ 
+-        // Only if 'RunMode' is set to 'Gui' do the replacement
+-        if (App::Application::Config()["RunMode"] == "Gui") {
++        // Only if 'RunMode' is set to 'Gui' do the replacement. With a hidden main window
++        // (--hidden, scripted use) keep Python's stdout/stderr on the terminal.
++        if (App::Application::Config()["RunMode"] == "Gui"
++            && !Gui::Application::hiddenMainWindow()) {
+             Base::Interpreter().replaceStdOutput();
+         }
+     }
+@@ -347,17 +367,21 @@ int main(int argc, char** argv)
+         }
+     }
+     catch (const Base::SystemExitException& e) {
++        flushPythonStreams();
+         exit(e.getExitCode());
+     }
+     catch (const Base::Exception& e) {
++        flushPythonStreams();
+         e.reportException();
+         exit(1);
+     }
+     catch (const std::exception& e) {
++        flushPythonStreams();
+         Base::Console().error("Application unexpectedly terminated: {}\n", e.what());
+         exit(1);
+     }
+     catch (...) {
++        flushPythonStreams();
+         Base::Console().error("Application unexpectedly terminated\n");
+         exit(1);
+     }
+-- 
+2.43.0
+

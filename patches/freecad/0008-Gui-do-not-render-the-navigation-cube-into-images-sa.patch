@@ -1,0 +1,36 @@
+From 3f8b50c3b208981bf66f677b7c432701b96c92a0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:49:51 +0900
+Subject: [PATCH 08/11] Gui: do not render the navigation cube into images
+ saved with saveImage()
+
+View3DInventorPy::saveImage() called savePicture() with the default
+LiveInteractive render intent, so images saved from Python contained the
+navigation cube, the axis cross and other on-screen decorations, unlike
+Std_ViewScreenShot. Use RasterCapture like the screenshot command.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/View3DPy.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/View3DPy.cpp b/src/Gui/View3DPy.cpp
+index 16b5b7555..477c510fd 100644
+--- a/src/Gui/View3DPy.cpp
++++ b/src/Gui/View3DPy.cpp
+@@ -1033,7 +1033,11 @@ Py::Object View3DInventorPy::saveImage(const Py::Tuple& args)
+     }
+ 
+     QImage img;
+-    getView3DInventorPtr()->getViewer()->savePicture(w, h, s, bg, img);
++    // Like Std_ViewScreenShot: a saved image must not contain the navigation cube, axis
++    // cross and other on-screen decorations
++    getView3DInventorPtr()->getViewer()->savePicture(
++        w, h, s, bg, img, View3DInventorViewer::RenderIntent::RasterCapture
++    );
+ 
+     SoFCOffscreenRenderer& renderer = SoFCOffscreenRenderer::instance();
+     SoCamera* cam = getView3DInventorPtr()->getViewer()->getSoRenderManager()->getCamera();
+-- 
+2.43.0
+

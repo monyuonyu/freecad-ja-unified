@@ -1,0 +1,116 @@
+From 8b3a7b2b4ed44618bd6358324d10a376c99d6d8e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 26 Sep 2026 23:24:09 +0900
+Subject: [PATCH 07/11] Core: document command line usage in --help and check
+ --output exports
+
+- --help shows the name the program was started with (e.g. FreeCADCmd),
+  how files are processed, '--' for script arguments, examples and the
+  exit status.
+- --output (now also -o) and --hidden were hidden options although they
+  are useful for scripted use; list them with a description.
+- --output failures now end with exit code 1: unsupported format, no open
+  document (with a clear message instead of an AttributeError on
+  App.ActiveDocument), and exporters that only print an error without
+  writing the file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp | 42 +++++++++++++++++++++++++++++++++++------
+ 1 file changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 9d490734b..3827c7f1a 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2470,7 +2470,9 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("disable-addon", boost::program_options::value< std::vector<std::string> >()->composing(),"Disable a given addon.")
+     ("single-instance", "Allow to run a single instance of the application")
+     ("safe-mode", "Force enable safe mode")
+-    ("pass", boost::program_options::value< std::vector<std::string> >()->multitoken(), "Ignores the following arguments and pass them through to be used by a script")
++    ("pass", boost::program_options::value< std::vector<std::string> >()->multitoken(), "Ignores the following arguments and pass them through to be used by a script (same as '--')")
++    ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
++    ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
+     ;
+ 
+ 
+@@ -2479,8 +2481,6 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     boost::program_options::options_description hidden("Hidden options");
+     hidden.add_options()
+     ("input-file", boost::program_options::value< std::vector<std::string> >(), "input file")
+-    ("output",     boost::program_options::value<std::string>(),"output file")
+-    ("hidden",                                             "don't show the main window")
+     // this are to ignore for the window system (QApplication)
+     ("style",      boost::program_options::value< std::string >(), "set the application GUI style")
+     ("stylesheet", boost::program_options::value< std::string >(), "set the application stylesheet")
+@@ -2575,10 +2575,22 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     }
+ 
+     if (vm.contains("help")) {
++        // Show the name the program was started with (e.g. FreeCADCmd), not only "FreeCAD"
++        const std::string prog = ac > 0 ? Base::FileInfo(av[0]).fileName() : exe;
+         std::stringstream str;
+         str << exe << '\n' << '\n';
+         str << "For a detailed description see https://www.freecad.org/wiki/Start_up_and_Configuration" << '\n'<<'\n';
+-        str << "Usage: " << exe << " [options] File1 File2 ..." << '\n' << '\n';
++        str << "Usage: " << prog << " [options] [file ...] [-- script arguments]" << '\n' << '\n';
++        str << "Files are processed in order: Python scripts (.py, .FCMacro) are run as __main__,\n"
++               "documents (.FCStd) are opened and other formats are imported.\n"
++               "Arguments after '--' are passed to scripts in sys.argv.\n\n";
++        str << "Examples:\n"
++               "  " << prog << " script.py -- a b         run a script, sys.argv == ['script.py', 'a', 'b']\n"
++               "  " << prog << " < script.py              run a script read from standard input\n"
++               "  " << prog << " -c \"print(1 + 1)\"        run Python code\n"
++               "  " << prog << " part.step -o part.stl    convert a file\n\n";
++        str << "Exit status: 0 on success, 1 if a file could not be processed or a script\n"
++               "raised an exception, or the value passed to sys.exit().\n\n";
+         str << visible << '\n';
+         throw Base::ProgramInformation(str.str());
+     }
+@@ -3300,16 +3312,31 @@ void Application::processCmdLineFiles()
+         output = Base::Tools::escapeEncodeFilename(output);
+ 
+         const Base::FileInfo fi(output);
++        // Some exporters only print an error and return, so check that the file was
++        // actually written (created or modified) before reporting success
++        const fs::path target(it->second);
++        std::error_code ec;
++        const bool existedBefore = fs::exists(target, ec);
++        const auto timeBefore = existedBefore ? fs::last_write_time(target, ec) : fs::file_time_type {};
++        bool exported = false;
+         try {
+             const std::vector<std::string> mods = GetApplication().getExportModules(fi.extension());
+-            if (!mods.empty()) {
++            if (!GetApplication().getActiveDocument()) {
++                Base::Console().error("Cannot export to {}: no document is open\n", it->second);
++            }
++            else if (!mods.empty()) {
+                 Base::Interpreter().loadModule(mods.front().c_str());
+                 Base::Interpreter().runStringArg("import %s",mods.front().c_str());
+                 Base::Interpreter().runStringArg("%s.export(App.ActiveDocument.Objects, '%s')"
+                     ,mods.front().c_str(),output.c_str());
++                exported = fs::exists(target, ec)
++                    && (!existedBefore || fs::last_write_time(target, ec) != timeBefore);
++                if (!exported) {
++                    Base::Console().error("Export failed: {} was not written\n", it->second);
++                }
+             }
+             else {
+-                Base::Console().warning("File format not supported: {} \n", output);
++                Base::Console().error("File format not supported: {} \n", output);
+             }
+         }
+         catch (const Base::Exception& e) {
+@@ -3318,6 +3345,9 @@ void Application::processCmdLineFiles()
+         catch (...) {
+             Base::Console().error("Unknown exception while saving to file: {} \n", output);
+         }
++        if (!exported) {
++            failed.push_back(it->second);
++        }
+     }
+ 
+     // When running non-interactively, a file that could not be processed must not end
+-- 
+2.43.0
+
