@@ -1,0 +1,45 @@
+From 695748f47becb9415980a658283b507b7853ae42 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 07:58:07 +0900
+Subject: [PATCH 34/47] Gui: no CJK mnemonic suffix in toolbar button texts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Chinese, Japanese and Korean menu texts carry the mnemonic as a suffix,
+e.g. "変換(&F)". Qt drops only the '&' for buttons, so a toolbar showing
+texts displayed "変換(F)". Set the icon text without the suffix.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Action.cpp | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/Gui/Action.cpp b/src/Gui/Action.cpp
+index 8e694e4cb..d7b800160 100644
+--- a/src/Gui/Action.cpp
++++ b/src/Gui/Action.cpp
+@@ -209,6 +209,20 @@ QString Action::statusTip() const
+ void Action::setText(const QString& text)
+ {
+     _action->setText(text);
++    // Menu texts in Chinese, Japanese and Korean carry the mnemonic as a suffix, e.g.
++    // "変換(&F)". Qt only drops the '&' for buttons, which would show "変換(F)": leave the
++    // suffix out of the button text as well
++    static const QRegularExpression cjkMnemonic(QStringLiteral("\\s*\\(&[^)]\\)"));
++    if (text.contains(cjkMnemonic)) {
++        QString iconText = text;
++        iconText.remove(cjkMnemonic);
++        iconText.remove(QLatin1Char('&'));
++        iconText.remove(QRegularExpression(QStringLiteral("(\\.\\.\\.|\u2026)$")));
++        _action->setIconText(iconText.trimmed());
++    }
++    else {
++        _action->setIconText(QString());
++    }
+     if (_title.isEmpty()) {
+         setToolTip(_tooltip);
+     }
+-- 
+2.43.0
+

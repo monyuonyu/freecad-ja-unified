@@ -1,0 +1,115 @@
+From dc8cff9032af9772299b0ef503f283c5573f9750 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:01:40 +0900
+Subject: [PATCH 36/47] Unified: new sketch at the start of the model toolbar,
+ snap to grid by default
+
+The model toolbar now reads from left to right as the work goes: new
+sketch, then the tools that turn it into a solid. In the integrated
+environment sketch points snap to nearby grid points unless the user
+turned it off, so drawing by mouse gives round dimensions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/Gui/Command.cpp                       |  5 ++++-
+ src/Mod/Sketcher/Gui/SnapManager.cpp                   |  8 +++++++-
+ src/Mod/Sketcher/Gui/Workbench.cpp                     |  1 -
+ .../Unified/Gui/Resources/translations/Unified_ja.ts   |  4 ----
+ src/Mod/Unified/Gui/Workbench.cpp                      | 10 ++++------
+ 5 files changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/src/Mod/Sketcher/Gui/Command.cpp b/src/Mod/Sketcher/Gui/Command.cpp
+index 181349b12..316b187c4 100644
+--- a/src/Mod/Sketcher/Gui/Command.cpp
++++ b/src/Mod/Sketcher/Gui/Command.cpp
+@@ -1489,7 +1489,10 @@ void GridSpaceAction::updateWidget()
+         updateCheckBoxFromProperty(gridAutoSpacing, sketchView->GridAuto);
+ 
+         ParameterGrp::handle hGrp = getParameterPath();
+-        updateCheckBox(snapToGrid, hGrp->GetBool("SnapToGrid", false));
++        updateCheckBox(
++            snapToGrid,
++            hGrp->GetBool("SnapToGrid", App::Application::Config().contains("SingleWorkbench"))
++        );
+ 
+         gridSizeBox->setValue(sketchView->GridSize.getValue());
+     }
+diff --git a/src/Mod/Sketcher/Gui/SnapManager.cpp b/src/Mod/Sketcher/Gui/SnapManager.cpp
+index 5cb80d9da..9e3e23051 100644
+--- a/src/Mod/Sketcher/Gui/SnapManager.cpp
++++ b/src/Mod/Sketcher/Gui/SnapManager.cpp
+@@ -24,6 +24,7 @@
+ 
+ #include <QApplication>
+ 
++#include <App/Application.h>
+ #include <Base/Tools.h>
+ #include <Mod/Sketcher/App/SketchObject.h>
+ 
+@@ -103,7 +104,12 @@ void SnapManager::ParameterObserver::updateSnapToGridParameter(const std::string
+ {
+     ParameterGrp::handle hGrp = getParameterGrpHandle();
+ 
+-    client.snapToGridRequested = hGrp->GetBool(parametername.c_str(), false);
++    // Snapping to the grid is on by default in the integrated working environment: points
++    // near a grid point land on it, which gives round dimensions when drawing by mouse
++    client.snapToGridRequested = hGrp->GetBool(
++        parametername.c_str(),
++        App::Application::Config().contains("SingleWorkbench")
++    );
+ }
+ 
+ void SnapManager::ParameterObserver::updateSnapAngleParameter(const std::string& parametername)
+diff --git a/src/Mod/Sketcher/Gui/Workbench.cpp b/src/Mod/Sketcher/Gui/Workbench.cpp
+index c80330dc1..53668c9e9 100644
+--- a/src/Mod/Sketcher/Gui/Workbench.cpp
++++ b/src/Mod/Sketcher/Gui/Workbench.cpp
+@@ -175,7 +175,6 @@ inline const QStringList nonEditModeToolbarNames()
+     return QStringList {
+         QStringLiteral("Structure"),
+         QStringLiteral("Sketcher"),
+-        QStringLiteral("Unified Sketch"),
+         QStringLiteral("Unified Model"),
+         QStringLiteral("Unified Parts"),
+         QStringLiteral("Unified Check")
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index f63511771..18ef59e67 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -47,10 +47,6 @@
+         <source>Sketcher Tools</source>
+         <translation>スケッチの道具</translation>
+     </message>
+-    <message>
+-        <source>Unified Sketch</source>
+-        <translation>スケッチ</translation>
+-    </message>
+     <message>
+         <source>Unified Model</source>
+         <translation>形</translation>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 5eb6a11d2..7bc1d718d 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -221,14 +221,12 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+         }
+     }
+ 
+-    // The main flow: draw a sketch, turn it into a solid, refine it
+-    auto sketch = new Gui::ToolBarItem(root);
+-    sketch->setCommand("Unified Sketch");
+-    *sketch << "PartDesign_NewSketch";
+-
++    // The main flow from left to right: draw a sketch, turn it into a solid, refine it
+     auto model = new Gui::ToolBarItem(root);
+     model->setCommand("Unified Model");
+-    *model << "PartDesign_Pad"
++    *model << "PartDesign_NewSketch"
++           << "Separator"
++           << "PartDesign_Pad"
+            << "PartDesign_Pocket"
+            << "PartDesign_Revolution"
+            << "PartDesign_Hole"
+-- 
+2.43.0
+

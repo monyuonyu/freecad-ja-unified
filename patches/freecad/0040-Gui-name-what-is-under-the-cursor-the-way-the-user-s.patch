@@ -1,0 +1,104 @@
+From d6470e682f52618625f5bfc8ee219ca1eaf24248 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:15:54 +0900
+Subject: [PATCH 40/47] Gui: name what is under the cursor the way the user
+ sees it
+
+In the integrated environment the status bar shows the label from the
+tree and the kind of element in the user's language (e.g. "Pad, face 6")
+instead of "Preselected: Unnamed.Body.Pad.Face6".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts  | 23 ++++++++++++++++++
+ src/Gui/Selection/Selection.cpp | 42 +++++++++++++++++++++++++++++++++
+ 2 files changed, 65 insertions(+)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index db15f2a89..f77a10317 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -15151,4 +15151,27 @@ treated as shortcut key sequence 'F, F'.</source>
+       <translation>新しいパラメーター…</translation>
+     </message>
+   </context>
++  <context>
++    <name>Gui::SelectionSingleton</name>
++    <message>
++      <location filename="../Selection/Selection.cpp" line="1100"/>
++      <source>face %1</source>
++      <translation>面 %1</translation>
++    </message>
++    <message>
++      <location filename="../Selection/Selection.cpp" line="1103"/>
++      <source>edge %1</source>
++      <translation>辺 %1</translation>
++    </message>
++    <message>
++      <location filename="../Selection/Selection.cpp" line="1106"/>
++      <source>vertex %1</source>
++      <translation>頂点 %1</translation>
++    </message>
++    <message>
++      <location filename="../Selection/Selection.cpp" line="1109"/>
++      <source>%1, %2</source>
++      <translation>%1 の %2</translation>
++    </message>
++  </context>
+ </TS>
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index 43fb64be4..c4d057237 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -1081,6 +1081,48 @@ QString getPreselectionInfo(
+ 
+     int numberDecimals = std::min(6, static_cast<int>(Base::UnitsApi::getDecimals()));
+ 
++    // In the integrated working environment: the name shown in the tree and the kind of
++    // element in the user's language, e.g. "Pad, face 6 (x, y, z)", instead of the internal
++    // names used by scripts
++    if (App::Application::Config().contains("SingleWorkbench")) {
++        App::Document* doc = App::GetApplication().getDocument(documentName);
++        App::DocumentObject* obj = doc ? doc->getObject(objectName) : nullptr;
++        const char* element = nullptr;
++        App::DocumentObject* leaf = obj ? obj->resolve(subElementName, nullptr, nullptr, &element)
++                                        : nullptr;
++        if (leaf) {
++            QString what = QString::fromUtf8(leaf->Label.getValue());
++            std::string elementName = element ? element : "";
++            auto digits = elementName.find_first_of("0123456789");
++            std::string kind = elementName.substr(0, digits);
++            QString number = digits == std::string::npos
++                ? QString()
++                : QString::fromStdString(elementName.substr(digits));
++            QString kindText;
++            if (kind == "Face") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "face %1").arg(number);
++            }
++            else if (kind == "Edge") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "edge %1").arg(number);
++            }
++            else if (kind == "Vertex") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "vertex %1").arg(number);
++            }
++            if (!kindText.isEmpty()) {
++                what = QApplication::translate("Gui::SelectionSingleton", "%1, %2")
++                           .arg(what, kindText);
++            }
++            return QStringLiteral("%1 (%2 %3, %4 %5, %6 %7)")
++                .arg(what)
++                .arg(QString::number(pts[0].first, 'f', numberDecimals))
++                .arg(QString::fromStdString(pts[0].second))
++                .arg(QString::number(pts[1].first, 'f', numberDecimals))
++                .arg(QString::fromStdString(pts[1].second))
++                .arg(QString::number(pts[2].first, 'f', numberDecimals))
++                .arg(QString::fromStdString(pts[2].second));
++        }
++    }
++
+     QString message = QStringLiteral("Preselected: %1.%2.%3 (%4 %5, %6 %7, %8 %9)")
+                           .arg(QString::fromUtf8(documentName))
+                           .arg(QString::fromUtf8(objectName))
+-- 
+2.43.0
+

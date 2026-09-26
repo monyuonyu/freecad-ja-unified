@@ -1,0 +1,659 @@
+From ab55650c7912209afebef8fa9534a29e5b3cd7b1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:13:47 +0900
+Subject: [PATCH 39/47] Translations: task panel titles as "settings", fix a
+ broken Japanese term
+
+Japanese task panel titles read "... settings" instead of the katakana
+"parameters", taper and preview texts use plain words, and the generic
+feature failure message is easier to read. An earlier bulk replacement
+of "feature" had broken the Japanese word for Defeaturing; it is now
+called "removing faces".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Part_ja.ts     |   4 +-
+ .../Resources/translations/PartDesign_ja.ts   | 118 +++++++++---------
+ .../Gui/Resources/translations/Sketcher_ja.ts |  36 +++---
+ 3 files changed, 79 insertions(+), 79 deletions(-)
+
+diff --git a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+index 9ce9d39f7..5d29bd4da 100644
+--- a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
++++ b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+@@ -1555,7 +1555,7 @@
+     <message>
+       <location filename="../../CommandSimple.cpp" line="462"/>
+       <source>Defeaturing</source>
+-      <translation>デ形リング</translation>
++      <translation>面の除去</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="463"/>
+@@ -2230,7 +2230,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="475"/>
+       <source>Defeaturing</source>
+-      <translation>デ形リング</translation>
++      <translation>面の除去</translation>
+     </message>
+     <message>
+       <location filename="../../ShapeFromMesh.cpp" line="76"/>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 1cca78d19..cfd3bd1f0 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -1452,92 +1452,92 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="99"/>
+       <source>Subtractive Box Parameters</source>
+-      <translation>減算直方体パラメーター</translation>
++      <translation>減算直方体の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="100"/>
+       <source>Additive Box Parameters</source>
+-      <translation>加算直方体パラメーター</translation>
++      <translation>加算直方体の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="102"/>
+       <source>Subtractive Cylinder Parameters</source>
+-      <translation>減算円柱パラメーター</translation>
++      <translation>減算円柱の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="103"/>
+       <source>Additive Cylinder Parameters</source>
+-      <translation>加算円柱パラメーター</translation>
++      <translation>加算円柱の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="105"/>
+       <source>Subtractive Sphere Parameters</source>
+-      <translation>減算球パラメーター</translation>
++      <translation>減算球の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="106"/>
+       <source>Additive Sphere Parameters</source>
+-      <translation>加算球パラメーター</translation>
++      <translation>加算球の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="108"/>
+       <source>Subtractive Cone Parameters</source>
+-      <translation>減算円錐パラメーター</translation>
++      <translation>減算円錐の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="109"/>
+       <source>Additive Cone Parameters</source>
+-      <translation>加算円錐パラメーター</translation>
++      <translation>加算円錐の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="111"/>
+       <source>Subtractive Ellipsoid Parameters</source>
+-      <translation>減算楕円体パラメーター</translation>
++      <translation>減算楕円体の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="112"/>
+       <source>Additive Ellipsoid Parameters</source>
+-      <translation>加算楕円体パラメーター</translation>
++      <translation>加算楕円体の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="114"/>
+       <source>Subtractive Torus Parameters</source>
+-      <translation>減算トーラスパラメーター</translation>
++      <translation>減算トーラスの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="115"/>
+       <source>Additive Torus Parameters</source>
+-      <translation>加算トーラスパラメーター</translation>
++      <translation>加算トーラスの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="117"/>
+       <source>Subtractive Prism Parameters</source>
+-      <translation>減算角柱パラメーター</translation>
++      <translation>減算角柱の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="118"/>
+       <source>Additive Prism Parameters</source>
+-      <translation>加算角柱パラメーター</translation>
++      <translation>加算角柱の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="120"/>
+       <source>Subtractive Wedge Parameters</source>
+-      <translation>減算ウェッジパラメーター</translation>
++      <translation>減算ウェッジの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="121"/>
+       <source>Additive Wedge Parameters</source>
+-      <translation>加算ウェッジパラメーター</translation>
++      <translation>加算ウェッジの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="124"/>
+       <source>Subtractive Primitive Parameters</source>
+-      <translation>減算プリミティブパラメーター</translation>
++      <translation>減算プリミティブの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="125"/>
+       <source>Additive Primitive Parameters</source>
+-      <translation>加算プリミティブパラメーター</translation>
++      <translation>加算プリミティブの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.cpp" line="1044"/>
+@@ -2122,12 +2122,12 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskHelixParameters.cpp" line="71"/>
+       <source>Subtractive Helix Parameters</source>
+-      <translation>減算らせんパラメーター</translation>
++      <translation>減算らせんの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.cpp" line="72"/>
+       <source>Additive Helix Parameters</source>
+-      <translation>加算らせんパラメーター</translation>
++      <translation>加算らせんの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.cpp" line="245"/>
+@@ -2174,7 +2174,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskHoleParameters.cpp" line="65"/>
+       <source>Hole Parameters</source>
+-      <translation>穴パラメーター</translation>
++      <translation>穴の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHoleParameters.cpp" line="75"/>
+@@ -2367,12 +2367,12 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskLoftParameters.cpp" line="65"/>
+       <source>Subtractive Loft Parameters</source>
+-      <translation>減算ロフトパラメーター</translation>
++      <translation>減算ロフトの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLoftParameters.cpp" line="66"/>
+       <source>Additive Loft Parameters</source>
+-      <translation>加算ロフトパラメーター</translation>
++      <translation>加算ロフトの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLoftParameters.cpp" line="96"/>
+@@ -2460,7 +2460,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskPadParameters.cpp" line="40"/>
+       <source>Pad Parameters</source>
+-      <translation>押し出しパラメーター</translation>
++      <translation>押し出しの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadParameters.cpp" line="42"/>
+@@ -2674,7 +2674,7 @@ measured along the specified direction</source>
+       <location filename="../../TaskPadPocketParameters.ui" line="200"/>
+       <location filename="../../TaskPadPocketParameters.ui" line="429"/>
+       <source>Angle to taper the extrusion</source>
+-      <translation>押し出しテーパー角度</translation>
++      <translation>押し出しを先細りにする角度</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="128"/>
+@@ -2685,7 +2685,7 @@ measured along the specified direction</source>
+       <location filename="../../TaskPadPocketParameters.ui" line="203"/>
+       <location filename="../../TaskPadPocketParameters.ui" line="432"/>
+       <source>Taper angle</source>
+-      <translation>テーパー角度</translation>
++      <translation>先細りの角度</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="256"/>
+@@ -2873,12 +2873,12 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskPipeParameters.cpp" line="77"/>
+       <source>Subtractive Pipe Parameters</source>
+-      <translation>減算パイプパラメーター</translation>
++      <translation>減算パイプの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPipeParameters.cpp" line="78"/>
+       <source>Additive Pipe Parameters</source>
+-      <translation>加算パイプパラメーター</translation>
++      <translation>加算パイプの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPipeParameters.cpp" line="113"/>
+@@ -2959,7 +2959,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskPocketParameters.cpp" line="40"/>
+       <source>Pocket Parameters</source>
+-      <translation>切り抜きパラメーター</translation>
++      <translation>切り抜きの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPocketParameters.cpp" line="43"/>
+@@ -3250,7 +3250,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskShapeBinder.cpp" line="61"/>
+       <source>Shape Binder Parameters</source>
+-      <translation>シェイプバインダーパラメーター</translation>
++      <translation>シェイプバインダーの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBinder.cpp" line="139"/>
+@@ -3612,7 +3612,7 @@ measured along the specified direction</source>
+       <location filename="../../Command.cpp" line="2088"/>
+       <location filename="../../Command.cpp" line="2099"/>
+       <source>Defeaturing works only on faces</source>
+-      <translation>デ形リングは面に対してのみ動作します</translation>
++      <translation>面の除去は面に対してのみ動作します</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2321"/>
+@@ -4106,7 +4106,7 @@ Although you will be able to migrate any moment later with 'Part Design -&gt; Mi
+     <message>
+       <location filename="../../ViewProviderDefeaturing.cpp" line="39"/>
+       <source>Edit Defeaturing</source>
+-      <translation>デ形リングを編集</translation>
++      <translation>面の除去を編集</translation>
+     </message>
+   </context>
+   <context>
+@@ -4114,7 +4114,7 @@ Although you will be able to migrate any moment later with 'Part Design -&gt; Mi
+     <message>
+       <location filename="../../../SprocketFeature.ui" line="14"/>
+       <source>Sprocket Parameters</source>
+-      <translation>スプロケットパラメーター</translation>
++      <translation>スプロケットの設定</translation>
+     </message>
+     <message>
+       <location filename="../../../SprocketFeature.ui" line="26"/>
+@@ -4447,7 +4447,7 @@ Only available for holes without thread</source>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="20"/>
+       <source>Hole Parameters</source>
+-      <translation>穴パラメーター</translation>
++      <translation>穴の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="38"/>
+@@ -4609,7 +4609,7 @@ account for the depth of blind holes</source>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="721"/>
+       <source>Tapered</source>
+-      <translation>テーパー</translation>
++      <translation>先細り</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="734"/>
+@@ -5507,12 +5507,12 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../../App/FeatureDefeaturing.cpp" line="75"/>
+       <source>Defeaturing failed: result is null</source>
+-      <translation>デ形リングに失敗しました: 結果はnullです</translation>
++      <translation>面の除去に失敗しました: 結果はnullです</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureDefeaturing.cpp" line="84"/>
+       <source>Defeaturing did not produce a single solid</source>
+-      <translation>デ形リングは単一のソリッドを生成しませんでした</translation>
++      <translation>面の除去は単一のソリッドを生成しませんでした</translation>
+     </message>
+     <message>
+       <source>Cannot project the axis because the profile is not planar</source>
+@@ -5559,7 +5559,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../TaskPreviewParameters.ui" line="27"/>
+       <source>Show preview overlay</source>
+-      <translation>プレビューオーバーレイを表示</translation>
++      <translation>プレビューを重ねて表示</translation>
+     </message>
+     <message>
+       <location filename="../../TaskFeatureParameters.cpp" line="52"/>
+@@ -5718,7 +5718,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../TaskRevolutionParameters.cpp" line="1098"/>
+       <source>Revolution Parameters</source>
+-      <translation>回転押し出しパラメーター</translation>
++      <translation>回転押し出しの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5726,7 +5726,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../TaskRevolutionParameters.cpp" line="1108"/>
+       <source>Groove Parameters</source>
+-      <translation>回転切り抜きパラメーター</translation>
++      <translation>回転切り抜きの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5750,7 +5750,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderChamfer.h" line="44"/>
+       <source>Chamfer Parameters</source>
+-      <translation>面取りパラメーター</translation>
++      <translation>面取りの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5758,22 +5758,22 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderDatum.cpp" line="115"/>
+       <source>Datum Plane Parameters</source>
+-      <translation>データム平面パラメーター</translation>
++      <translation>データム平面の設定</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderDatum.cpp" line="120"/>
+       <source>Datum Line Parameters</source>
+-      <translation>データム線パラメーター</translation>
++      <translation>データム線の設定</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderDatum.cpp" line="125"/>
+       <source>Datum Point Parameters</source>
+-      <translation>データム点パラメーター</translation>
++      <translation>データム点の設定</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderDatum.cpp" line="130"/>
+       <source>Local Coordinate System Parameters</source>
+-      <translation>ローカル座標系パラメーター</translation>
++      <translation>ローカル座標系の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5781,7 +5781,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderDraft.h" line="45"/>
+       <source>Draft Parameters</source>
+-      <translation>抜き勾配パラメーター</translation>
++      <translation>抜き勾配の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5789,7 +5789,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderFillet.h" line="44"/>
+       <source>Fillet Parameters</source>
+-      <translation>丸めパラメーター</translation>
++      <translation>丸めの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5797,7 +5797,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderLinearPattern.h" line="41"/>
+       <source>Linear Pattern Parameters</source>
+-      <translation>直線配列パラメーター</translation>
++      <translation>直線配列の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5805,7 +5805,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderMirrored.h" line="41"/>
+       <source>Mirror Parameters</source>
+-      <translation>鏡像パラメーター</translation>
++      <translation>鏡像の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5813,7 +5813,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderMultiTransform.h" line="41"/>
+       <source>Multi-Transform Parameters</source>
+-      <translation>マルチ変換パラメーター</translation>
++      <translation>マルチ変換の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5821,7 +5821,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderPolarPattern.h" line="41"/>
+       <source>Polar Pattern Parameters</source>
+-      <translation>円周配列パラメーター</translation>
++      <translation>円周配列の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5829,7 +5829,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderScaled.h" line="41"/>
+       <source>Scale Parameters</source>
+-      <translation>拡大縮小パラメーター</translation>
++      <translation>拡大縮小の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5837,7 +5837,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderThickness.h" line="44"/>
+       <source>Thickness Parameters</source>
+-      <translation>厚みパラメーター</translation>
++      <translation>厚みの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5894,7 +5894,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../TaskDefeaturingParameters.cpp" line="118"/>
+       <source>Empty defeaturing created</source>
+-      <translation>空のデ形リングが作成されました</translation>
++      <translation>空の面の除去が作成されました</translation>
+     </message>
+   </context>
+   <context>
+@@ -5902,7 +5902,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../ViewProviderDefeaturing.h" line="40"/>
+       <source>Defeaturing Parameters</source>
+-      <translation>デ形リング・パラメーター</translation>
++      <translation>面の除去の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -5923,7 +5923,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../Command.cpp" line="2118"/>
+       <source>Defeaturing</source>
+-      <translation>デ形リング</translation>
++      <translation>面の除去</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2119"/>
+@@ -5951,9 +5951,9 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+       <source>The feature could not be created with the given parameters.
+ The geometry may be invalid or the parameters may be incompatible.
+ Adjust the parameters and try again.</source>
+-      <translation>指定されたパラメーターで形を作成できませんでした。
+-ジオメトリーが無効であるか、パラメーターがおかしい可能性があります。
+-パラメーターを調整し再度実行してください。</translation>
++      <translation>この値では形を作れませんでした。
++形が壊れているか、値の組み合わせが合っていない可能性があります。
++値を直してもう一度試してください。</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index 939a213a6..8ec30efac 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -1959,7 +1959,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="1056"/>
+       <source>Polyline Parameters</source>
+-      <translation>ポリラインパラメーター</translation>
++      <translation>ポリラインの設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerText.h" line="91"/>
+@@ -3066,7 +3066,7 @@ Requires to re-enter edit mode to take effect.</source>
+     <message>
+       <location filename="../../SketcherSettings.ui" line="336"/>
+       <source>Tool Parameters</source>
+-      <translation>ツールパラメーター</translation>
++      <translation>ツールの設定</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettings.ui" line="342"/>
+@@ -7599,7 +7599,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="435"/>
+       <source>Arc Parameters</source>
+-      <translation>円弧パラメーター</translation>
++      <translation>円弧の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -7701,7 +7701,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="304"/>
+       <source>Arc Slot Parameters</source>
+-      <translation>円弧状の長円形のパラメーター</translation>
++      <translation>円弧状の長円形の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -7756,7 +7756,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="521"/>
+       <source>B-Spline Parameters</source>
+-      <translation>B-スプラインパラメーター</translation>
++      <translation>B-スプラインの設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -7803,7 +7803,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="326"/>
+       <source>Circle Parameters</source>
+-      <translation>円パラメーター</translation>
++      <translation>円の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -7846,7 +7846,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="340"/>
+       <source>Ellipse Parameters</source>
+-      <translation>楕円パラメーター</translation>
++      <translation>楕円の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -7888,7 +7888,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="364"/>
+       <source>Fillet/Chamfer Parameters</source>
+-      <translation>丸め/面取りパラメーター</translation>
++      <translation>丸め/面取りの設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="434"/>
+@@ -7921,7 +7921,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerLine.h" line="226"/>
+       <source>Line Parameters</source>
+-      <translation>線パラメーター</translation>
++      <translation>線の設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLine.h" line="293"/>
+@@ -7971,7 +7971,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerOffset.h" line="189"/>
+       <source>Offset Parameters</source>
+-      <translation>オフセットパラメーター</translation>
++      <translation>オフセットの設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerOffset.h" line="207"/>
+@@ -7994,7 +7994,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerPolygon.h" line="218"/>
+       <source>Polygon Parameters</source>
+-      <translation>多角形パラメーター</translation>
++      <translation>多角形の設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerPolygon.h" line="289"/>
+@@ -8086,7 +8086,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="804"/>
+       <source>Rectangle Parameters</source>
+-      <translation>長方形パラメーター</translation>
++      <translation>長方形の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -8118,7 +8118,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerRotate.h" line="285"/>
+       <source>Rotate Parameters</source>
+-      <translation>回転パラメーター</translation>
++      <translation>回転の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -8136,7 +8136,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerScale.h" line="247"/>
+       <source>Scale Parameters</source>
+-      <translation>拡大縮小パラメーター</translation>
++      <translation>拡大縮小の設定</translation>
+     </message>
+   </context>
+   <context>
+@@ -8171,7 +8171,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="202"/>
+       <source>Symmetry Parameters</source>
+-      <translation>対称パラメーター</translation>
++      <translation>対称の設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="232"/>
+@@ -8185,7 +8185,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerTranslate.h" line="202"/>
+       <source>Translate Parameters</source>
+-      <translation>平行移動パラメーター</translation>
++      <translation>平行移動の設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerTranslate.h" line="513"/>
+@@ -8223,7 +8223,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerTrimming.h" line="251"/>
+       <source>Trimming Parameters</source>
+-      <translation>トリム・パラメーター</translation>
++      <translation>トリムの設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerTrimming.h" line="270"/>
+@@ -8276,7 +8276,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../TaskSketcherTool.cpp" line="45"/>
+       <source>Tool Parameters</source>
+-      <translation>ツールパラメーター</translation>
++      <translation>ツールの設定</translation>
+     </message>
+   </context>
+   <context>
+-- 
+2.43.0
+

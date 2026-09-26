@@ -1,0 +1,255 @@
+From 3521267d122fcc1166b21d410c853b64844f1dd3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:33:29 +0900
+Subject: [PATCH 47/47] PartDesign: size a new linear pattern after what it
+ repeats; clearer pattern texts
+
+A new linear pattern used a fixed length of 100 mm, which put the copy of
+a small part far outside the view. It now starts at twice the size of the
+repeated feature, rounded up to 1, 2 or 5 times a power of ten. In
+Japanese, "Direction 2" was translated as "Section 2"; this and the
+other texts of the pattern panels are corrected or made plainer.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Part_ja.ts     | 10 ++---
+ src/Mod/PartDesign/Gui/Command.cpp            | 41 ++++++++++++++++++-
+ .../Resources/translations/PartDesign_ja.ts   | 24 +++++------
+ .../translations/UnifiedProperties_ja.ts      |  2 +-
+ 4 files changed, 58 insertions(+), 19 deletions(-)
+
+diff --git a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+index 5d29bd4da..78e6a9ee6 100644
+--- a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
++++ b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+@@ -7634,7 +7634,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="29"/>
+       <source>Direction 2</source>
+-      <translation>セクション 2</translation>
++      <translation>2 つ目の方向</translation>
+     </message>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="36"/>
+@@ -7644,7 +7644,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="50"/>
+       <source>Reverse the direction of the pattern.</source>
+-      <translation>パターンの方向を反転</translation>
++      <translation>並べる向きを逆にする</translation>
+     </message>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="68"/>
+@@ -7654,7 +7654,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="76"/>
+       <source>Extent</source>
+-      <translation>範囲</translation>
++      <translation>全体の長さ</translation>
+     </message>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="81"/>
+@@ -7670,12 +7670,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="141"/>
+       <source>Add spacing to create spacing patterns.</source>
+-      <translation>間隔パターンを作成するための間隔を追加します。</translation>
++      <translation>間隔を足して、間隔が違う並べ方にする</translation>
+     </message>
+     <message>
+       <location filename="../../PatternParametersWidget.ui" line="158"/>
+       <source>Occurrences</source>
+-      <translation>回数</translation>
++      <translation>個数</translation>
+     </message>
+     <message>
+       <location filename="../../PatternParametersWidget.cpp" line="79"/>
+diff --git a/src/Mod/PartDesign/Gui/Command.cpp b/src/Mod/PartDesign/Gui/Command.cpp
+index 27da6556a..c73b2dd7c 100644
+--- a/src/Mod/PartDesign/Gui/Command.cpp
++++ b/src/Mod/PartDesign/Gui/Command.cpp
+@@ -23,9 +23,13 @@
+  ***************************************************************************/
+ 
+ 
++#include <algorithm>
++#include <cmath>
++
+ #include <BRep_Tool.hxx>
+ #include <BRepAdaptor_Surface.hxx>
+ #include <GeomLib_IsPlanarSurface.hxx>
++#include <Precision.hxx>
+ #include <QMessageBox>
+ #include <TopExp_Explorer.hxx>
+ #include <TopLoc_Location.hxx>
+@@ -48,6 +52,7 @@
+ #include <Gui/Selection/SelectionObject.h>
+ #include <Mod/Sketcher/App/SketchObject.h>
+ #include <Mod/PartDesign/App/Body.h>
++#include <Mod/PartDesign/App/FeatureAddSub.h>
+ #include <Mod/PartDesign/App/FeatureBoolean.h>
+ #include <Mod/PartDesign/App/FeatureGroove.h>
+ #include <Mod/PartDesign/App/FeatureMultiTransform.h>
+@@ -2406,6 +2411,40 @@ bool CmdPartDesignMirrored::isActive()
+ //===========================================================================
+ // PartDesign_LinearPattern
+ //===========================================================================
++namespace
++{
++// A first distance for a new linear pattern: twice the size of what is repeated, rounded up to
++// 1, 2 or 5 times a power of ten, so that the copy appears next to the original. A fixed
++// 100 mm put the copy of a small part far outside the view.
++double defaultPatternLength(const std::vector<App::DocumentObject*>& features)
++{
++    Base::BoundBox3d box;
++    for (App::DocumentObject* feature : features) {
++        if (auto* addSub = dynamic_cast<PartDesign::FeatureAddSub*>(feature)) {
++            box.Add(addSub->AddSubShape.getBoundingBox());
++        }
++        else if (auto* part = dynamic_cast<Part::Feature*>(feature)) {
++            box.Add(part->Shape.getBoundingBox());
++        }
++    }
++    if (!box.IsValid()) {
++        return 100.0;
++    }
++    double size = std::max({box.LengthX(), box.LengthY(), box.LengthZ()});
++    if (size <= Precision::Confusion()) {
++        return 100.0;
++    }
++    double wanted = 2.0 * size;
++    double power = std::pow(10.0, std::floor(std::log10(wanted)));
++    for (double step : {1.0, 2.0, 5.0, 10.0}) {
++        if (step * power >= wanted - Precision::Confusion()) {
++            return step * power;
++        }
++    }
++    return 10.0 * power;
++}
++}  // namespace
++
+ DEF_STD_CMD_A(CmdPartDesignLinearPattern)
+ 
+ CmdPartDesignLinearPattern::CmdPartDesignLinearPattern()
+@@ -2463,7 +2502,7 @@ void CmdPartDesignLinearPattern::activated(int iMsg)
+                         << Gui::Command::getObjectCmd(pcActiveBody->getOrigin()->getY()) << ",[''])"
+                 );
+             }
+-            FCMD_OBJ_CMD(Feat, "Length = 100");
++            FCMD_OBJ_CMD(Feat, "Length = " << defaultPatternLength(features));
+             FCMD_OBJ_CMD(Feat, "Occurrences = 2");
+ 
+             finishTransformed(cmd, Feat);
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 8f4f8a519..329b1f5ad 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -2011,19 +2011,19 @@ If zero, it is equal to Radius2</source>
+       <location filename="../../TaskHelixParameters.ui" line="48"/>
+       <location filename="../../TaskHelixParameters.cpp" line="259"/>
+       <source>Base X-axis</source>
+-      <translation>ベースX軸</translation>
++      <translation>X 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.ui" line="53"/>
+       <location filename="../../TaskHelixParameters.cpp" line="260"/>
+       <source>Base Y-axis</source>
+-      <translation>ベースY軸</translation>
++      <translation>Y 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.ui" line="58"/>
+       <location filename="../../TaskHelixParameters.cpp" line="261"/>
+       <source>Base Z-axis</source>
+-      <translation>ベースZ軸</translation>
++      <translation>Z 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.ui" line="63"/>
+@@ -3029,7 +3029,7 @@ measured along the specified direction</source>
+       <location filename="../../TaskRevolutionParameters.ui" line="131"/>
+       <location filename="../../TaskRevolutionParameters.cpp" line="307"/>
+       <source>Base X-axis</source>
+-      <translation>ベースX軸</translation>
++      <translation>X 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRevolutionParameters.ui" line="22"/>
+@@ -3068,13 +3068,13 @@ measured along the specified direction</source>
+       <location filename="../../TaskRevolutionParameters.ui" line="136"/>
+       <location filename="../../TaskRevolutionParameters.cpp" line="308"/>
+       <source>Base Y-axis</source>
+-      <translation>ベースY軸</translation>
++      <translation>Y 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRevolutionParameters.ui" line="141"/>
+       <location filename="../../TaskRevolutionParameters.cpp" line="309"/>
+       <source>Base Z-axis</source>
+-      <translation>ベースZ軸</translation>
++      <translation>Z 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRevolutionParameters.ui" line="146"/>
+@@ -3394,17 +3394,17 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskTransformedParameters.cpp" line="414"/>
+       <source>Base X-axis</source>
+-      <translation>ベースX軸</translation>
++      <translation>X 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTransformedParameters.cpp" line="415"/>
+       <source>Base Y-axis</source>
+-      <translation>ベースY軸</translation>
++      <translation>Y 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTransformedParameters.cpp" line="416"/>
+       <source>Base Z-axis</source>
+-      <translation>ベースZ軸</translation>
++      <translation>Z 軸</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTransformedParameters.cpp" line="450"/>
+@@ -3430,12 +3430,12 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskTransformedParameters.ui" line="35"/>
+       <source>Transform body</source>
+-      <translation>部品を変換</translation>
++      <translation>部品全体を対象にする</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTransformedParameters.ui" line="48"/>
+       <source>Transform tool shapes</source>
+-      <translation>ツールシェイプを変換</translation>
++      <translation>選んだ形だけを対象にする</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTransformedParameters.ui" line="78"/>
+@@ -5860,7 +5860,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../TaskPatternParameters.cpp" line="148"/>
+       <source>Direction 2</source>
+-      <translation>セクション 2</translation>
++      <translation>2 つ目の方向</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPatternParameters.cpp" line="272"/>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+index 06f203242..aa0463d85 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+@@ -5124,7 +5124,7 @@ by negative value of 'Over Tolerance'</source>
+     </message>
+     <message>
+         <source>Extent</source>
+-        <translation>範囲</translation>
++        <translation>全体の長さ</translation>
+     </message>
+     <message>
+         <source>Extrusion</source>
+-- 
+2.43.0
+

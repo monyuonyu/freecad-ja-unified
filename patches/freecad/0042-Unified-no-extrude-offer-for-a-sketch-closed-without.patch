@@ -1,0 +1,30 @@
+From 535d76fcb69a2b689b4b0dffdf18e8e426b999a2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:19:35 +0900
+Subject: [PATCH 42/47] Unified: no extrude offer for a sketch closed without
+ drawing anything
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 4fa131cf1..4a5ccd98d 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -104,6 +104,11 @@ void ContextBar::onEditClosed(const App::DocumentObject* obj)
+     if (!obj || !obj->isAttachedToDocument() || !isDerivedFrom(obj, "Sketcher::SketchObject")) {
+         return;
+     }
++    // Nothing drawn (e.g. closed right away): nothing to make a solid from
++    auto* geometry = dynamic_cast<App::PropertyLists*>(obj->getPropertyByName("Geometry"));
++    if (!geometry || geometry->getSize() == 0) {
++        return;
++    }
+     // Only a sketch that no feature uses yet: the natural next step is to make it a solid
+     for (const App::DocumentObject* user : obj->getInList()) {
+         if (isDerivedFrom(user, "PartDesign::Feature")) {
+-- 
+2.43.0
+

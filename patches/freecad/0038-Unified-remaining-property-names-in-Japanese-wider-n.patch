@@ -1,0 +1,122 @@
+From 14f14dad598d5b1421e5d3b53d3b6d0438362c99 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:12:02 +0900
+Subject: [PATCH 38/47] Unified: remaining property names in Japanese, wider
+ name column
+
+A scan of the properties of all PartDesign features, sketches, datums and
+containers found a few names, groups and descriptions without a Japanese
+text (e.g. the attachment offset of a sketch). The name column of the
+property editor starts wider in the integrated environment so that
+Japanese names fit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp     |  8 ++-
+ .../translations/UnifiedProperties_ja.ts      | 58 ++++++++++++++++++-
+ 2 files changed, 64 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index cd86c1258..bd6820369 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -110,7 +110,13 @@ PropertyEditor::PropertyEditor(QWidget* parent)
+     auto hGrp = App::GetApplication().GetParameterGroupByPath(
+         "User parameter:BaseApp/Preferences/DockWindows/PropertyView"
+     );
+-    int firstColumnSize = hGrp->GetInt("FirstColumnSize", 0);
++    // Japanese property names such as "取り付けの方式" do not fit into Qt's default width of
++    // the name column: start wider in the integrated environment (a width set by the user is
++    // kept as before)
++    int firstColumnSize = hGrp->GetInt(
++        "FirstColumnSize",
++        App::Application::Config().contains("SingleWorkbench") ? 130 : 0
++    );
+     if (firstColumnSize != 0) {
+         header()->resizeSection(0, firstColumnSize);
+     }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+index bb219a1e2..06f203242 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+@@ -1981,7 +1981,7 @@
+     </message>
+     <message>
+         <source>Boolean</source>
+-        <translation>結合</translation>
++        <translation>合成</translation>
+     </message>
+     <message>
+         <source>Box</source>
+@@ -4767,6 +4767,50 @@ by negative value of 'Over Tolerance'</source>
+         <source>Zmin of the wedge</source>
+         <translation>くさびの Z の最小</translation>
+     </message>
++    <message>
++        <source>Attachment Offset</source>
++        <translation>取り付けのオフセット</translation>
++    </message>
++    <message>
++        <source>Map Reversed</source>
++        <translation>裏返す</translation>
++    </message>
++    <message>
++        <source>Display</source>
++        <translation>表示</translation>
++    </message>
++    <message>
++        <source>Use Binder Style</source>
++        <translation>参照の見た目にする</translation>
++    </message>
++    <message>
++        <source>Show Label</source>
++        <translation>名前を表示</translation>
++    </message>
++    <message>
++        <source>Zoom</source>
++        <translation>拡大率</translation>
++    </message>
++    <message>
++        <source>SketchBased</source>
++        <translation>スケッチから</translation>
++    </message>
++    <message>
++        <source>PolarPattern</source>
++        <translation>円周配列</translation>
++    </message>
++    <message>
++        <source>Datum</source>
++        <translation>基準</translation>
++    </message>
++    <message>
++        <source>Extra placement to apply in addition to attachment (in local coordinates)</source>
++        <translation>取り付けに加えて当てる配置（部品の中の座標で）</translation>
++    </message>
++    <message>
++        <source>Reverse Z-direction (flip sketch upside down)</source>
++        <translation>Z の向きを逆にする（スケッチを裏返す）</translation>
++    </message>
+ </context>
+ <context>
+     <name>App::PropertyEnumeration</name>
+@@ -5722,5 +5766,17 @@ by negative value of 'Over Tolerance'</source>
+         <source>pitch-turns-angle</source>
+         <translation>ピッチ・巻き数・角度</translation>
+     </message>
++    <message>
++        <source>Result</source>
++        <translation>結果</translation>
++    </message>
++    <message>
++        <source>Tools</source>
++        <translation>道具</translation>
++    </message>
++    <message>
++        <source>Group</source>
++        <translation>グループ</translation>
++    </message>
+ </context>
+ </TS>
+-- 
+2.43.0
+

@@ -1,0 +1,153 @@
+From 82a89bc50bbbbc679aaffcb016ca7dff0a409c52 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:26:08 +0900
+Subject: [PATCH 45/47] Translations: clearer Japanese names in the File and
+ Edit menus
+
+"Revert" had the same Japanese name as "Undo"; it now says "back to
+the saved state". The file commands speak of files instead of
+"documents" like the start page, "Transform" says what it does (move
+and turn), matching the context bar, and duplicating is just "duplicate".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                | 26 +++++++++----------
+ .../Resources/translations/PartDesign_ja.ts   |  2 +-
+ .../Gui/Resources/translations/Unified_ja.ts  |  2 +-
+ 3 files changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index f77a10317..83f9dc396 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -9531,12 +9531,12 @@ the current copy will be lost.
+     <message>
+       <location filename="../CommandDoc.cpp" line="655"/>
+       <source>&amp;Merge Document</source>
+-      <translation>ドキュメントを統合(&amp;M)</translation>
++      <translation>ほかのファイルを取り込む(&amp;M)</translation>
+     </message>
+     <message>
+       <location filename="../CommandDoc.cpp" line="657"/>
+       <source>Merges another FreeCAD document into the active one</source>
+-      <translation>別のFreeCADドキュメントをアクティブなドキュメントに統合</translation>
++      <translation>ほかの FreeCAD ファイルの中身を、今のファイルに取り込む</translation>
+     </message>
+   </context>
+   <context>
+@@ -9550,12 +9550,12 @@ the current copy will be lost.
+     <message>
+       <location filename="../CommandDoc.cpp" line="793"/>
+       <source>&amp;New Document</source>
+-      <translation>新規ドキュメント(&amp;N)</translation>
++      <translation>新しいファイル(&amp;N)</translation>
+     </message>
+     <message>
+       <location filename="../CommandDoc.cpp" line="794"/>
+       <source>Creates a new empty document</source>
+-      <translation>新しい空のドキュメントを作成</translation>
++      <translation>新しい空のファイルを作る</translation>
+     </message>
+   </context>
+   <context>
+@@ -9651,12 +9651,12 @@ the current copy will be lost.
+     <message>
+       <location filename="../CommandDoc.cpp" line="995"/>
+       <source>Rever&amp;t</source>
+-      <translation>元に戻す(&amp;T)</translation>
++      <translation>保存した時点に戻す(&amp;T)</translation>
+     </message>
+     <message>
+       <location filename="../CommandDoc.cpp" line="996"/>
+       <source>Reverts to the saved version of this file</source>
+-      <translation>このファイルの保存したバージョンに戻ります</translation>
++      <translation>変更を捨てて、最後に保存した状態に戻す</translation>
+     </message>
+   </context>
+   <context>
+@@ -9682,7 +9682,7 @@ the current copy will be lost.
+     <message>
+       <location filename="../CommandDoc.cpp" line="935"/>
+       <source>Saves all open documents</source>
+-      <translation>開いているすべてのドキュメントを保存</translation>
++      <translation>開いているすべてのファイルを保存</translation>
+     </message>
+   </context>
+   <context>
+@@ -12396,12 +12396,12 @@ the region are non-opaque.</source>
+     <message>
+       <location filename="../CommandDoc.cpp" line="2019"/>
+       <source>Trans&amp;form</source>
+-      <translation>変換(&amp;F)</translation>
++      <translation>動かす・回す(&amp;F)</translation>
+     </message>
+     <message>
+       <location filename="../CommandDoc.cpp" line="2020"/>
+       <source>Transforms the selected object in the 3D view</source>
+-      <translation>3Dビューで選択されたオブジェクトを変換</translation>
++      <translation>選んだものを 3D ビューの中で、つまんで動かしたり回したりする</translation>
+     </message>
+   </context>
+   <context>
+@@ -13053,7 +13053,7 @@ the region are non-opaque.</source>
+     <message>
+       <location filename="../CommandDoc.cpp" line="903"/>
+       <source>Saves a copy of the active document under a new file name</source>
+-      <translation>アクティブなドキュメントのコピーを新しいファイル名で保存</translation>
++      <translation>今のファイルのコピーを別の名前で保存</translation>
+     </message>
+   </context>
+   <context>
+@@ -13079,12 +13079,12 @@ the region are non-opaque.</source>
+     <message>
+       <location filename="../CommandDoc.cpp" line="1037"/>
+       <source>Doc&amp;ument Information</source>
+-      <translation>ドキュメント情報(&amp;U)</translation>
++      <translation>ファイルの情報(&amp;U)</translation>
+     </message>
+     <message>
+       <location filename="../CommandDoc.cpp" line="1039"/>
+       <source>Shows information about the active document</source>
+-      <translation>アクティブなドキュメントに関する情報を表示</translation>
++      <translation>今のファイルの情報を表示</translation>
+     </message>
+   </context>
+   <context>
+@@ -13202,7 +13202,7 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandDoc.cpp" line="1958"/>
+       <source>Opens the placement editor to adjust the placement of the selected object</source>
+-      <translation>選択したオブジェクトの配置を調整するための配置エディターを開きます。</translation>
++      <translation>選んだものの位置と向きを数値で決める</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index cfd3bd1f0..4ef28dfee 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -302,7 +302,7 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../CommandBody.cpp" line="757"/>
+       <source>Duplicate &amp;Object</source>
+-      <translation>オブジェクトを複製(&amp;O)</translation>
++      <translation>複製(&amp;O)</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="758"/>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 18ef59e67..3ac1c1fd5 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -127,7 +127,7 @@
+     </message>
+     <message>
+         <source>Move</source>
+-        <translation>移動</translation>
++        <translation>動かす</translation>
+     </message>
+     <message>
+         <source>Hide</source>
+-- 
+2.43.0
+

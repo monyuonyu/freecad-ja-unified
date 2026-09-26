@@ -1,0 +1,100 @@
+From 45b6a93721f09ac5525736ad96eb76b70bd54d3c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 07:55:30 +0900
+Subject: [PATCH 33/47] Unified: fewer toolbar buttons, clearer first start
+ page
+
+Measuring was on two toolbars; the structure tools (containers, groups,
+links, variable sets) and "What's this?" are for experienced users and
+stay in the Edit and Help menus. The first start page no longer points to
+the add-on manager, which the integrated environment does not have, and
+its Japanese button says "start" instead of "quit".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Resources/translations/StartPage_ja.ts    |  6 ++---
+ src/Mod/Start/Gui/ThemeSelectorWidget.cpp     |  5 +++-
+ src/Mod/Unified/Gui/Workbench.cpp             | 23 +++++++++++++++++++
+ 3 files changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts b/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
+index d0d63a33a..a22514fca 100644
+--- a/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
++++ b/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
+@@ -6,7 +6,7 @@
+     <message>
+       <location filename="../../FirstStartWidget.cpp" line="91"/>
+       <source>Done</source>
+-      <translation>終了</translation>
++      <translation>始める</translation>
+     </message>
+     <message>
+       <location filename="../../FirstStartWidget.cpp" line="94"/>
+@@ -16,12 +16,12 @@
+     <message>
+       <location filename="../../FirstStartWidget.cpp" line="97"/>
+       <source>Set your basic configuration options below.</source>
+-      <translation>基本設定オプションを以下で設定します。</translation>
++      <translation>最初に、言語・単位・見た目を選んでください。</translation>
+     </message>
+     <message>
+       <location filename="../../FirstStartWidget.cpp" line="98"/>
+       <source>These options (and many more) can be changed later in the preferences.</source>
+-      <translation>これらのオプション（およびその他の多くの設定）は、後で環境設定から変更できます。</translation>
++      <translation>どれもあとから「編集 → 設定」で変えられます。</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Start/Gui/ThemeSelectorWidget.cpp b/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
+index 8ecf64fd1..959ffcc96 100644
+--- a/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
++++ b/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
+@@ -249,7 +249,10 @@ bool ThemeSelectorWidget::eventFilter(QObject* object, QEvent* event)
+ void ThemeSelectorWidget::retranslateUi()
+ {
+     _titleLabel->setText(QLatin1String("<h2>") + tr("Theme") + QLatin1String("</h2>"));
+-    if (Gui::Application::Instance->commandManager().getCommandByName("Std_AddonMgr")) {
++    // No add-on manager in the integrated environment (it only adds workbenches there)
++    bool addons = Gui::Application::Instance->commandManager().getCommandByName("Std_AddonMgr")
++        && !App::Application::Config().contains("SingleWorkbench");
++    if (addons) {
+         _descriptionLabel->setText(
+             tr("Looking for more themes? You can obtain them using "
+                "<a href=\"freecad:Std_AddonMgr\">Addon Manager</a>.")
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index ec088d5a0..f1b05ad9a 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -179,6 +179,29 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+ {
+     Gui::ToolBarItem* root = StdWorkbench::setupToolBars();
+ 
++    // Fewer buttons around the view: measuring is on the Check toolbar below, and the
++    // structure tools (containers, groups, links, variable sets) and "What's this?" stay in
++    // the Edit and Help menus
++    if (Gui::ToolBarItem* view = root->findItem("View")) {
++        for (const char* name : {"Std_Measure", "Std_MassProperties"}) {
++            if (Gui::ToolBarItem* found = view->findItem(name)) {
++                view->removeItem(found);
++                delete found;
++            }
++        }
++        QList<Gui::ToolBarItem*> items = view->getItems();
++        while (!items.isEmpty() && items.back()->command() == "Separator") {
++            view->removeItem(items.back());
++            delete items.takeLast();
++        }
++    }
++    for (const char* name : {"Structure", "Help"}) {
++        if (Gui::ToolBarItem* found = root->findItem(name)) {
++            root->removeItem(found);
++            delete found;
++        }
++    }
++
+     // The main flow: draw a sketch, turn it into a solid, refine it
+     auto sketch = new Gui::ToolBarItem(root);
+     sketch->setCommand("Unified Sketch");
+-- 
+2.43.0
+

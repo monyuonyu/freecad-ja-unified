@@ -12,6 +12,16 @@ if ! git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
 fi
 git submodule update --init src/3rdParty/OndselSolver
 # FreeCAD のソースは CRLF のファイルが多いので --keep-cr が要る
-git am --keep-cr "$HERE"/patches/freecad/*.patch
-git -C src/3rdParty/OndselSolver am --keep-cr "$HERE"/patches/ondselsolver/*.patch
+# git am は当てた人の名前を記録する。そのリポジトリで git に名前が無ければ仮の名前で当てる
+am() {
+  local repo=$1; shift
+  if git -C "$repo" config user.email >/dev/null 2>&1; then
+    git -C "$repo" am --keep-cr "$@"
+  else
+    GIT_COMMITTER_NAME="freecad-ja-unified apply.sh" GIT_COMMITTER_EMAIL="apply@localhost" \
+      git -C "$repo" am --keep-cr "$@"
+  fi
+}
+am . "$HERE"/patches/freecad/*.patch
+am src/3rdParty/OndselSolver "$HERE"/patches/ondselsolver/*.patch
 echo "当てた。ビルド手順は README を参照"

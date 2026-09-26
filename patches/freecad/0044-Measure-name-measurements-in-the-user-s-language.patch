@@ -1,0 +1,63 @@
+From f213a9c78ba84278a127373e2f1a218e64342564 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:23:58 +0900
+Subject: [PATCH 44/47] Measure: name measurements in the user's language
+
+A new measurement was labelled with the English name of its kind
+("Area: 100 mm^2"). Use the translated name, which the view provider
+keeps in front of the colon when it updates the result, and translate
+the name of the group of measurements.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Measure/Gui/Resources/translations/Measure_ja.ts   |  5 +++++
+ src/Mod/Measure/Gui/TaskMeasure.cpp                    | 10 ++++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/src/Mod/Measure/Gui/Resources/translations/Measure_ja.ts b/src/Mod/Measure/Gui/Resources/translations/Measure_ja.ts
+index b17f0afba..254536b2c 100644
+--- a/src/Mod/Measure/Gui/Resources/translations/Measure_ja.ts
++++ b/src/Mod/Measure/Gui/Resources/translations/Measure_ja.ts
+@@ -355,6 +355,11 @@
+       <source>Geometric Center</source>
+       <translation>図形の中心</translation>
+     </message>
++    <message>
++      <location filename="../../TaskMeasure.cpp" line="516"/>
++      <source>Measurements</source>
++      <translation>測定</translation>
++    </message>
+   </context>
+   <context>
+     <name>TaskMassProperties</name>
+diff --git a/src/Mod/Measure/Gui/TaskMeasure.cpp b/src/Mod/Measure/Gui/TaskMeasure.cpp
+index a77acb890..ad8ab46f2 100644
+--- a/src/Mod/Measure/Gui/TaskMeasure.cpp
++++ b/src/Mod/Measure/Gui/TaskMeasure.cpp
+@@ -318,6 +318,13 @@ void TaskMeasure::createObject(const App::MeasureType* measureType)
+             doc->addObject(measureType->measureObject.c_str(), measureType->label.c_str())
+         );
+     }
++    // The label starts with the kind of measurement ("Area: 100 mm^2"), in the user's
++    // language. The view provider keeps what is in front of the colon when it updates the result.
++    if (_mMeasureObject) {
++        _mMeasureObject->Label.setValue(
++            qApp->translate("TaskMeasure", measureType->label.c_str()).toStdString() + ": "
++        );
++    }
+ }
+ 
+ void TaskMeasure::update()
+@@ -511,6 +518,9 @@ void TaskMeasure::ensureGroup(Measure::MeasureBase* measurement)
+             true,
+             "MeasureGui::ViewProviderMeasureGroup"
+         );
++        group->Label.setValue(
++            QCoreApplication::translate("TaskMeasure", "Measurements").toStdString()
++        );
+     }
+ 
+     group->addObject(measurement);
+-- 
+2.43.0
+

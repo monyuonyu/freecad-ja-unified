@@ -1,0 +1,215 @@
+From f99678841eaeff77781ee82aaf2e22d291fc62f6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 07:58:07 +0900
+Subject: [PATCH 35/47] Unified: names under the icons of the main toolbars,
+ plain names for Boolean and Check Geometry
+
+The toolbars with the main modelling flow show the command names under
+the icons, like a ribbon. In Japanese, "Boolean" and "Check Geometry"
+use everyday words, also in the error messages about Booleans.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Part_ja.ts     |  4 +--
+ .../Resources/translations/PartDesign_ja.ts   | 30 +++++++++----------
+ src/Mod/Unified/Gui/Workbench.cpp             | 19 ++++++++++++
+ src/Mod/Unified/Gui/Workbench.h               |  2 ++
+ 4 files changed, 38 insertions(+), 17 deletions(-)
+
+diff --git a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+index b9efcb8e1..9ce9d39f7 100644
+--- a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
++++ b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+@@ -1228,12 +1228,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="2317"/>
+       <source>Check Geometry</source>
+-      <translation>幾何形状のチェック</translation>
++      <translation>形のチェック</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2318"/>
+       <source>Analyzes the selected shapes for errors</source>
+-      <translation>選択したシェイプの問題を分析</translation>
++      <translation>選んだ形に壊れた所がないか調べる</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index ca1c990f3..1cca78d19 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -212,12 +212,12 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="2711"/>
+       <source>Boolean Operation</source>
+-      <translation>ブーリアン演算</translation>
++      <translation>部品の合成</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2712"/>
+       <source>Applies boolean operations with the selected objects and the active body</source>
+-      <translation>選択したオブジェクトとアクティブな部品を使ってブール演算を適用</translation>
++      <translation>選んだ部品を作業中の部品に足す・そこから引く・重なりだけ残す</translation>
+     </message>
+   </context>
+   <context>
+@@ -996,7 +996,7 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Workbench.cpp" line="57"/>
+       <source>Boolean Tools</source>
+-      <translation>ブーリアン操作ツール</translation>
++      <translation>合成の道具</translation>
+     </message>
+     <message>
+       <location filename="../../Workbench.cpp" line="58"/>
+@@ -1439,7 +1439,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskBooleanParameters.cpp" line="97"/>
+       <source>Boolean Parameters</source>
+-      <translation>ブーリアンパラメーター</translation>
++      <translation>部品の合成</translation>
+     </message>
+     <message>
+       <location filename="../../TaskBooleanParameters.cpp" line="128"/>
+@@ -1664,7 +1664,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskBooleanParameters.cpp" line="458"/>
+       <source>Boolean: Accept: Input error</source>
+-      <translation>ブーリアン: 許可: 入力エラー</translation>
++      <translation>部品の合成: 入力に誤りがあります</translation>
+     </message>
+   </context>
+   <context>
+@@ -4011,7 +4011,7 @@ Although you will be able to migrate any moment later with 'Part Design -&gt; Mi
+     <message>
+       <location filename="../../ViewProviderBoolean.cpp" line="351"/>
+       <source>Edit Boolean</source>
+-      <translation>ブーリアンを編集</translation>
++      <translation>部品の合成を編集</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderChamfer.cpp" line="42"/>
+@@ -4884,17 +4884,17 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="172"/>
+       <source>Cannot do boolean cut without BaseFeature</source>
+-      <translation>BaseFeatureなしでブーリアン演算のカットを行うことはできません。</translation>
++      <translation>元になる形が無いので、切り抜けません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="194"/>
+       <source>Cannot do boolean with anything but Part::Feature and its derivatives</source>
+-      <translation>Part::Featureとその派生物以外ではブーリアン演算を行うことはできません。</translation>
++      <translation>形（Part::Feature）以外とは合成できません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="211"/>
+       <source>Cannot do boolean operation with invalid base shape</source>
+-      <translation>無効なベースシェイプではブーリアン演算を行うことはできません。</translation>
++      <translation>元の形が壊れているので合成できません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureRevolved.cpp" line="535"/>
+@@ -4925,7 +4925,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="248"/>
+       <source>Unsupported boolean operation</source>
+-      <translation>サポートされていないブーリアン演算です。</translation>
++      <translation>この合成の種類には対応していません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureExtrude.cpp" line="402"/>
+@@ -5187,17 +5187,17 @@ Intersecting sketch entities in a sketch are not allowed.</source>
+       <location filename="../../../App/FeatureHole.cpp" line="2114"/>
+       <location filename="../../../App/FeatureHole.cpp" line="2122"/>
+       <source>Boolean operation failed on profile Edge</source>
+-      <translation>輪郭辺でブーリアン演算に失敗</translation>
++      <translation>輪郭の辺の所で形の合成に失敗しました</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="2129"/>
+       <source>Boolean operation produced non-solid on profile Edge</source>
+-      <translation>ブーリアン演算によって輪郭辺上で非ソリッドが生成</translation>
++      <translation>合成の結果、輪郭の辺の所で立体にならなかった</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="258"/>
+       <source>Boolean operation failed</source>
+-      <translation>ブーリアン演算が失敗しました。</translation>
++      <translation>形の合成に失敗しました。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="2155"/>
+@@ -5343,7 +5343,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+       <location filename="../../../App/FeatureLoft.cpp" line="408"/>
+       <location filename="../../../App/FeaturePrimitive.cpp" line="124"/>
+       <source>Failed to perform boolean operation</source>
+-      <translation>ブール演算の実行に失敗しました。</translation>
++      <translation>形の合成に失敗しました。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeaturePrimitive.cpp" line="208"/>
+@@ -5961,7 +5961,7 @@ Adjust the parameters and try again.</source>
+     <message>
+       <location filename="../../TaskBooleanParameters.cpp" line="83"/>
+       <source>The result Body cannot be used as a Boolean tool.</source>
+-      <translation>結果の部品はブーリアン・ツールで使用できません。</translation>
++      <translation>合成の結果の部品は、合成する側には使えません。</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index f1b05ad9a..5eb6a11d2 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -2,7 +2,11 @@
+ 
+ #include <algorithm>
+ 
++#include <QTimer>
++#include <QToolBar>
++
+ #include <Gui/Application.h>
++#include <Gui/MainWindow.h>
+ #include <Gui/Command.h>
+ #include <Gui/MenuManager.h>
+ #include <Gui/ToolBarManager.h>
+@@ -21,6 +25,21 @@ Workbench::Workbench() = default;
+ 
+ Workbench::~Workbench() = default;
+ 
++void Workbench::activated()
++{
++    StdWorkbench::activated();
++    // The main toolbars show the names under the icons, like a ribbon: a first-time user
++    // should not have to hover over every button to find "Extrude". The other toolbars
++    // (view, file, sketch tools) keep small icons. After the toolbars have been set up.
++    QTimer::singleShot(0, Gui::getMainWindow(), []() {
++        for (QToolBar* bar : Gui::getMainWindow()->findChildren<QToolBar*>()) {
++            if (bar->objectName().startsWith(QLatin1String("Unified "))) {
++                bar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
++            }
++        }
++    });
++}
++
+ Gui::MenuItem* Workbench::setupMenuBar() const
+ {
+     Gui::MenuItem* root = StdWorkbench::setupMenuBar();
+diff --git a/src/Mod/Unified/Gui/Workbench.h b/src/Mod/Unified/Gui/Workbench.h
+index 005c19e2e..37f5d823f 100644
+--- a/src/Mod/Unified/Gui/Workbench.h
++++ b/src/Mod/Unified/Gui/Workbench.h
+@@ -20,6 +20,8 @@ public:
+     Workbench();
+     ~Workbench() override;
+ 
++    void activated() override;
++
+ protected:
+     Gui::MenuItem* setupMenuBar() const override;
+     Gui::ToolBarItem* setupToolBars() const override;
+-- 
+2.43.0
+

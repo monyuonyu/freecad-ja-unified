@@ -1,0 +1,74 @@
+From e555e4b0046bc189818153a7285f6578bb3fe566 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:09:48 +0900
+Subject: [PATCH 37/47] Unified: hide the overlaid task panel completely when
+ no tool is in use
+
+With the task panel overlaid on the view, hiding the panel left the
+overlay's title bar behind, and the overlay showed the panel again when
+only one of them was hidden. Hide both. Leaving a sketch does not
+announce the end of its dialog, so also look regularly (two flags).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/TaskPanel.cpp | 28 +++++++++++++++++++++++++++-
+ 1 file changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/Gui/TaskPanel.cpp b/src/Mod/Unified/Gui/TaskPanel.cpp
+index 9139c283b..b0c31d78c 100644
+--- a/src/Mod/Unified/Gui/TaskPanel.cpp
++++ b/src/Mod/Unified/Gui/TaskPanel.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: LGPL-2.1-or-later
+ 
+ #include <QDockWidget>
++#include <QTabWidget>
+ #include <QTimer>
+ 
+ #include <Gui/Control.h>
+@@ -58,6 +59,24 @@ void update(Gui::TaskView::TaskView* panel)
+         return;
+     }
+     bool inUse = Gui::Control().activeDialog() != nullptr;
++    // With the panel overlaid on the view, the overlay around it has a title bar of its own
++    // that would stay behind: hide both (the overlay shows the panel again when only one of
++    // them is hidden)
++    QWidget* overlay = nullptr;
++    for (QWidget* w = dock->parentWidget(); w; w = w->parentWidget()) {
++        if (qobject_cast<QTabWidget*>(w) && w->objectName().startsWith(QLatin1String("Overlay"))) {
++            overlay = w;
++            break;
++        }
++    }
++    if (overlay && overlay->isVisible() != inUse) {
++        dock->setVisible(inUse);
++        overlay->setVisible(inUse);
++        if (!inUse) {
++            bringModelIntoView();
++        }
++        return;
++    }
+     if (dock->isVisible() != inUse) {
+         dock->setVisible(inUse);
+         if (!inUse) {
+@@ -76,9 +95,16 @@ void UnifiedGui::installTaskPanelAutoHide()
+             return;
+         }
+         QObject::connect(panel, &Gui::TaskView::TaskView::taskUpdate, panel, [panel]() {
+-            // The dialog is registered/removed right after the signal: look once it is done
++            // The dialog is registered/removed right after the signal: look once it is done.
++            // Closing a sketch takes a little longer (the edit mode is left afterwards).
+             QTimer::singleShot(0, panel, [panel]() { update(panel); });
++            QTimer::singleShot(300, panel, [panel]() { update(panel); });
+         });
++        // Not every way a dialog closes is announced (e.g. leaving a sketch), and the overlay
++        // may show the panel again later: also look regularly. It only compares two flags.
++        auto* timer = new QTimer(panel);
++        QObject::connect(timer, &QTimer::timeout, panel, [panel]() { update(panel); });
++        timer->start(300);
+         update(panel);
+     });
+ }
+-- 
+2.43.0
+

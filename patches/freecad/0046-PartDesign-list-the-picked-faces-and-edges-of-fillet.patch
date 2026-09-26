@@ -1,0 +1,189 @@
+From 9e9c9e407a1ef9d0768c50139c8b4e4633af1e8c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:29:58 +0900
+Subject: [PATCH 46/47] PartDesign: list the picked faces and edges of fillets,
+ chamfers, drafts and thickness by their kind
+
+The reference lists of the dress-up task panels showed the internal
+element names ("Edge4"). They now show "Edge 4" in the user's language
+and keep the element name as the item's data, which adding, removing and
+highlighting use.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Resources/translations/PartDesign_ja.ts   | 15 +++++++
+ .../PartDesign/Gui/TaskChamferParameters.cpp  |  2 +-
+ .../PartDesign/Gui/TaskDraftParameters.cpp    |  2 +-
+ .../PartDesign/Gui/TaskDressUpParameters.cpp  | 42 +++++++++++++++----
+ .../PartDesign/Gui/TaskDressUpParameters.h    |  4 ++
+ .../PartDesign/Gui/TaskFilletParameters.cpp   |  2 +-
+ .../Gui/TaskThicknessParameters.cpp           |  2 +-
+ 7 files changed, 58 insertions(+), 11 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 4ef28dfee..8f4f8a519 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -1754,6 +1754,21 @@ If zero, it is equal to Radius2</source>
+       <source>Remove</source>
+       <translation>削除</translation>
+     </message>
++    <message>
++      <location filename="../../TaskDressUpParameters.cpp" line="420"/>
++      <source>Face %1</source>
++      <translation>面 %1</translation>
++    </message>
++    <message>
++      <location filename="../../TaskDressUpParameters.cpp" line="420"/>
++      <source>Edge %1</source>
++      <translation>辺 %1</translation>
++    </message>
++    <message>
++      <location filename="../../TaskDressUpParameters.cpp" line="420"/>
++      <source>Vertex %1</source>
++      <translation>頂点 %1</translation>
++    </message>
+   </context>
+   <context>
+     <name>PartDesignGui::TaskExtrudeParameters</name>
+diff --git a/src/Mod/PartDesign/Gui/TaskChamferParameters.cpp b/src/Mod/PartDesign/Gui/TaskChamferParameters.cpp
+index 110affea9..e487a4c5f 100644
+--- a/src/Mod/PartDesign/Gui/TaskChamferParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskChamferParameters.cpp
+@@ -77,7 +77,7 @@ TaskChamferParameters::TaskChamferParameters(ViewProviderDressUp* DressUpView, Q
+ 
+     std::vector<std::string> strings = pcChamfer->Base.getSubValues();
+     for (const auto& string : strings) {
+-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
++        ui->listWidgetReferences->addItem(referenceItem(string));
+     }
+ 
+     QMetaObject::connectSlotsByName(this);
+diff --git a/src/Mod/PartDesign/Gui/TaskDraftParameters.cpp b/src/Mod/PartDesign/Gui/TaskDraftParameters.cpp
+index 036e91d19..c148fba37 100644
+--- a/src/Mod/PartDesign/Gui/TaskDraftParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskDraftParameters.cpp
+@@ -79,7 +79,7 @@ TaskDraftParameters::TaskDraftParameters(ViewProviderDressUp* DressUpView, QWidg
+ 
+     std::vector<std::string> strings = pcDraft->Base.getSubValues();
+     for (const auto& string : strings) {
+-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
++        ui->listWidgetReferences->addItem(referenceItem(string));
+     }
+ 
+     QMetaObject::connectSlotsByName(this);
+diff --git a/src/Mod/PartDesign/Gui/TaskDressUpParameters.cpp b/src/Mod/PartDesign/Gui/TaskDressUpParameters.cpp
+index 7dd78a135..51b9f44c6 100644
+--- a/src/Mod/PartDesign/Gui/TaskDressUpParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskDressUpParameters.cpp
+@@ -125,7 +125,7 @@ void TaskDressUpParameters::referenceSelected(const Gui::SelectionChanges& msg,
+     }
+     else {
+         refs.push_back(subName);  // not yet in the list so we add it
+-        widget->addItem(QString::fromStdString(msg.pSubName));
++        widget->addItem(referenceItem(msg.pSubName));
+     }
+ 
+     updateFeature(pcDressUp, refs);
+@@ -256,7 +256,7 @@ void TaskDressUpParameters::setSelection(QListWidgetItem* current)
+         );
+ 
+         // name of the item
+-        std::string subName = current->text().toStdString();
++        std::string subName = referenceName(current);
+         // get the document name
+         std::string docName = DressUpView->getObject()->getDocument()->getName();
+         // get the name of the body we are in
+@@ -409,15 +409,43 @@ const std::vector<std::string> TaskDressUpParameters::getReferences() const
+ // TODO: This code is identical with TaskTransformedParameters::removeItemFromListWidget()
+ void TaskDressUpParameters::removeItemFromListWidget(QListWidget* widget, const char* itemstr)
+ {
+-    QList<QListWidgetItem*> items = widget->findItems(QString::fromLatin1(itemstr), Qt::MatchExactly);
+-    if (!items.empty()) {
+-        for (auto item : items) {
+-            QListWidgetItem* it = widget->takeItem(widget->row(item));
+-            delete it;
++    for (int row = widget->count() - 1; row >= 0; --row) {
++        if (referenceName(widget->item(row)) == itemstr) {
++            delete widget->takeItem(row);
+         }
+     }
+ }
+ 
++QListWidgetItem* TaskDressUpParameters::referenceItem(const std::string& subName)
++{
++    auto digits = subName.find_first_of("0123456789");
++    std::string kind = subName.substr(0, digits);
++    QString number = digits == std::string::npos ? QString()
++                                                 : QString::fromStdString(subName.substr(digits));
++    QString text;
++    if (kind == "Face") {
++        text = tr("Face %1").arg(number);
++    }
++    else if (kind == "Edge") {
++        text = tr("Edge %1").arg(number);
++    }
++    else if (kind == "Vertex") {
++        text = tr("Vertex %1").arg(number);
++    }
++    else {
++        text = QString::fromStdString(subName);
++    }
++    auto* item = new QListWidgetItem(text);
++    item->setData(Qt::UserRole, QString::fromStdString(subName));
++    return item;
++}
++
++std::string TaskDressUpParameters::referenceName(const QListWidgetItem* item)
++{
++    QVariant name = item->data(Qt::UserRole);
++    return (name.isValid() ? name.toString() : item->text()).toStdString();
++}
++
+ void TaskDressUpParameters::hideOnError()
+ {
+     App::DocumentObject* dressup = DressUpView->getObject();
+diff --git a/src/Mod/PartDesign/Gui/TaskDressUpParameters.h b/src/Mod/PartDesign/Gui/TaskDressUpParameters.h
+index 8e6bda17f..64260a6d5 100644
+--- a/src/Mod/PartDesign/Gui/TaskDressUpParameters.h
++++ b/src/Mod/PartDesign/Gui/TaskDressUpParameters.h
+@@ -102,6 +102,10 @@ protected:
+     void setSelectionMode(selectionModes mode);
+     virtual void setButtons(const selectionModes mode) = 0;
+     static void removeItemFromListWidget(QListWidget* widget, const char* itemstr);
++    /// A list item for a referenced element: shows e.g. "Edge 4" in the user's language and
++    /// keeps the element name ("Edge4") as its data
++    static QListWidgetItem* referenceItem(const std::string& subName);
++    static std::string referenceName(const QListWidgetItem* item);
+ 
+     ViewProviderDressUp* getDressUpView() const;
+ 
+diff --git a/src/Mod/PartDesign/Gui/TaskFilletParameters.cpp b/src/Mod/PartDesign/Gui/TaskFilletParameters.cpp
+index 324df22ce..e3aba39c0 100644
+--- a/src/Mod/PartDesign/Gui/TaskFilletParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskFilletParameters.cpp
+@@ -73,7 +73,7 @@ TaskFilletParameters::TaskFilletParameters(ViewProviderDressUp* DressUpView, QWi
+     QMetaObject::invokeMethod(ui->filletRadius, "setFocus", Qt::QueuedConnection);
+     std::vector<std::string> strings = pcFillet->Base.getSubValues();
+     for (const auto& string : strings) {
+-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
++        ui->listWidgetReferences->addItem(referenceItem(string));
+     }
+ 
+     QMetaObject::connectSlotsByName(this);
+diff --git a/src/Mod/PartDesign/Gui/TaskThicknessParameters.cpp b/src/Mod/PartDesign/Gui/TaskThicknessParameters.cpp
+index 09b5a61f8..3fc408c10 100644
+--- a/src/Mod/PartDesign/Gui/TaskThicknessParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskThicknessParameters.cpp
+@@ -92,7 +92,7 @@ void TaskThicknessParameters::initControls()
+ 
+     std::vector<std::string> strings = thickness->Base.getSubValues();
+     for (const auto& string : strings) {
+-        ui->listWidgetReferences->addItem(QString::fromStdString(string));
++        ui->listWidgetReferences->addItem(referenceItem(string));
+     }
+ 
+     setupConnections();
+-- 
+2.43.0
+
