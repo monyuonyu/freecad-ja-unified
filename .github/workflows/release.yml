@@ -50,7 +50,7 @@ jobs:
           remove-android: 'true'
           remove-cached-tools: 'true'
 
-      - name: Windows caches on D:
+      - name: Windows caches on drive D
         if: runner.os == 'Windows'
         shell: bash
         run: |
