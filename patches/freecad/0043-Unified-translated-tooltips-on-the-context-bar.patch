@@ -1,7 +1,7 @@
 From 05e99c51117e35f2f763d1dd0a81fd993cd5e55c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:20:53 +0900
-Subject: [PATCH 43/47] Unified: translated tooltips on the context bar
+Subject: [PATCH 43/55] Unified: translated tooltips on the context bar
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---

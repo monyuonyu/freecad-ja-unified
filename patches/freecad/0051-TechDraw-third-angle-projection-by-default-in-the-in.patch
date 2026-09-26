@@ -1,0 +1,127 @@
+From ec49205df88c99ac43c0cdcfc408bb04150c8a7f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:45:46 +0900
+Subject: [PATCH 51/55] TechDraw: third-angle projection by default in the
+ integrated environment, plainer projection texts
+
+Japanese drawings (JIS B 0001) use third-angle projection. The
+preference page shows the same default. In Japanese, the projection
+group panel says what its parts are (front view, the views around it,
+horizontal and vertical spacing).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/Preferences.cpp             |  6 +++++-
+ .../TechDraw/Gui/DlgPrefsTechDrawGeneralImp.cpp  |  2 ++
+ .../Gui/Resources/translations/TechDraw_ja.ts    | 16 ++++++++--------
+ 3 files changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/Preferences.cpp b/src/Mod/TechDraw/App/Preferences.cpp
+index 0eeeb569b..7192f1035 100644
+--- a/src/Mod/TechDraw/App/Preferences.cpp
++++ b/src/Mod/TechDraw/App/Preferences.cpp
+@@ -153,7 +153,11 @@ bool Preferences::useGlobalDecimals()
+ 
+ int Preferences::projectionAngle()
+ {
+-    int defaultConvention = (int)DrawProjGroup::ViewProjectionConvention::FirstAngle;
++    // The integrated working environment is made for Japanese users first: Japanese
++    // drawings (JIS B 0001) use third-angle projection
++    int defaultConvention = App::Application::Config().contains("SingleWorkbench")
++        ? (int)DrawProjGroup::ViewProjectionConvention::ThirdAngle
++        : (int)DrawProjGroup::ViewProjectionConvention::FirstAngle;
+     return getPreferenceGroup("General")->GetInt("ProjectionAngle",
+                                                  defaultConvention);
+ }
+diff --git a/src/Mod/TechDraw/Gui/DlgPrefsTechDrawGeneralImp.cpp b/src/Mod/TechDraw/Gui/DlgPrefsTechDrawGeneralImp.cpp
+index 61731b6ee..baa64a5c0 100644
+--- a/src/Mod/TechDraw/Gui/DlgPrefsTechDrawGeneralImp.cpp
++++ b/src/Mod/TechDraw/Gui/DlgPrefsTechDrawGeneralImp.cpp
+@@ -105,6 +105,8 @@ void DlgPrefsTechDrawGeneralImp::loadSettings()
+     ui->pfb_LabelFont->onRestore();
+     ui->plsb_LabelSize->onRestore();
+ 
++    // The default depends on the environment (see Preferences::projectionAngle())
++    ui->cbProjAngle->setCurrentIndex(Preferences::projectionAngle());
+     ui->cbProjAngle->onRestore();
+     ui->cbSectionLineStd->onRestore();
+ 
+diff --git a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+index 1b1c271dd..59d8e99f2 100644
+--- a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
++++ b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+@@ -8016,7 +8016,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="26"/>
+       <source>Projection Group</source>
+-      <translation>投影グループ</translation>
++      <translation>投影図（正面図と周りの図）</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="76"/>
+@@ -8062,7 +8062,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="55"/>
+       <source>Custom</source>
+-      <translation>カスタム</translation>
++      <translation>指定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="153"/>
+@@ -8077,7 +8077,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="224"/>
+       <source>Current primary view direction</source>
+-      <translation>現在の主ビュー方向</translation>
++      <translation>今の正面図の向き</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="231"/>
+@@ -8102,7 +8102,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="252"/>
+       <source>Sets the document front view as primary direction</source>
+-      <translation>ドキュメントの前面ビューを主方向に設定</translation>
++      <translation>3D の正面の向きを正面図にする</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="303"/>
+@@ -8112,7 +8112,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="333"/>
+       <source>Secondary Projections</source>
+-      <translation>副投影</translation>
++      <translation>正面図の周りに並べる図</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="339"/>
+@@ -8141,7 +8141,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="429"/>
+       <source>Primary</source>
+-      <translation>主</translation>
++      <translation>正面図</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="449"/>
+@@ -8202,7 +8202,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="608"/>
+       <source>X spacing</source>
+-      <translation>X方向スペーシング</translation>
++      <translation>横の間隔</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="640"/>
+@@ -8212,7 +8212,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="668"/>
+       <source>Y spacing</source>
+-      <translation>Y方向スペーシング</translation>
++      <translation>縦の間隔</translation>
+     </message>
+     <message>
+       <location filename="../../TaskProjGroup.ui" line="687"/>
+-- 
+2.43.0
+

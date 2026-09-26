@@ -1,0 +1,230 @@
+From 5fcd23ea104d06f2b5a422c712d32f1e90a4de07 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:54:39 +0900
+Subject: [PATCH 54/55] Unified: a hole where a flat face was clicked
+
+PartDesign's hole needs a sketch with circles or points; on a plain face
+it failed with "no axis found". The hole of the integrated environment
+(toolbar, Model menu and context bar) makes that sketch itself: a point
+where the face was clicked, on a sketch on the face, then opens
+PartDesign's hole. If the hole is cancelled the sketch is removed again.
+With a sketch or a face with circles it runs PartDesign's hole as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   2 +-
+ src/Mod/Unified/Gui/ContextBar.cpp            |   1 +
+ .../Gui/Resources/translations/Unified_ja.ts  |  19 ++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   4 +-
+ src/Mod/Unified/InitGui.py                    |   3 +
+ src/Mod/Unified/UnifiedCommands.py            | 102 ++++++++++++++++++
+ 6 files changed, 128 insertions(+), 3 deletions(-)
+ create mode 100644 src/Mod/Unified/UnifiedCommands.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index b5dc180c7..93087ecce 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -10,7 +10,7 @@ set(Unified_Scripts
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py)
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py)
+ endif(BUILD_GUI)
+ 
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index c2e651501..28f1e73c7 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -192,6 +192,7 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+             {"PartDesign_NewSketch", label("Sketch")},
+             {"PartDesign_Pad", label("Extrude")},
+             {"PartDesign_Pocket", label("Cut in")},
++            {"Unified_Hole", label("Hole")},
+             {"PartDesign_Thickness", label("Shell")},
+         };
+     }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 8aeb47a66..7666aeff6 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -133,6 +133,10 @@
+         <source>Hide</source>
+         <translation>隠す</translation>
+     </message>
++    <message>
++        <source>Hole</source>
++        <translation>穴</translation>
++    </message>
+ </context>
+ <context>
+     <name>PartDesignGui::SketchPlanePicker</name>
+@@ -320,4 +324,19 @@
+         <translation>部品を挿入</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_Hole</name>
++    <message>
++        <source>Hole</source>
++        <translation>穴</translation>
++    </message>
++    <message>
++        <source>Makes a hole. Click a flat face where the hole should go, or pick a sketch with circles or points</source>
++        <translation>穴を開ける。穴を開けたい平らな面の、その位置をクリックしてから押す（円や点を描いたスケッチを選んでもよい）</translation>
++    </message>
++    <message>
++        <source>Hole position</source>
++        <translation>穴の位置</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 646f5a6e5..ea8b99da9 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -89,7 +89,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+     auto subtractives = new Gui::MenuItem;
+     subtractives->setCommand("Unified Remove");
+     *subtractives << "PartDesign_Pocket"
+-                  << "PartDesign_Hole"
++                  << "Unified_Hole"
+                   << "PartDesign_Groove"
+                   << "PartDesign_SubtractiveLoft"
+                   << "PartDesign_SubtractivePipe"
+@@ -229,7 +229,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+            << "PartDesign_Pad"
+            << "PartDesign_Pocket"
+            << "PartDesign_Revolution"
+-           << "PartDesign_Hole"
++           << "Unified_Hole"
+            << "Separator"
+            << "PartDesign_Fillet"
+            << "PartDesign_Chamfer"
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 23f5596fe..5a1d3b91b 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -48,6 +48,9 @@ class UnifiedWorkbench(Workbench):
+                 "CommandCreateBom",
+             )
+ 
++        # Commands of this environment written in Python (after PartDesign, which they use)
++        import UnifiedCommands
++
+         # Load the translations of the modules imported above (e.g. Assembly's command names)
+         Gui.updateLocale()
+ 
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+new file mode 100644
+index 000000000..2ff7626bc
+--- /dev/null
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -0,0 +1,102 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Commands of the integrated working environment that are written in Python.
++
++import FreeCAD
++import FreeCADGui
++from PySide import QtCore
++
++translate = FreeCAD.Qt.translate
++QT_TRANSLATE_NOOP = FreeCAD.Qt.QT_TRANSLATE_NOOP
++
++
++def _picked_plane_face():
++    """The planar face of a solid that was picked in the 3D view, with the picked point."""
++    import Part
++
++    selection = FreeCADGui.Selection.getSelectionEx()
++    if len(selection) != 1 or len(selection[0].SubElementNames) != 1:
++        return None
++    sel = selection[0]
++    name = sel.SubElementNames[0]
++    if not name.startswith("Face") or not sel.PickedPoints:
++        return None
++    obj = sel.Object
++    if obj.isDerivedFrom("Sketcher::SketchObject"):
++        return None
++    face = sel.SubObjects[0]
++    if not isinstance(face.Surface, Part.Plane):
++        return None
++    # Only faces without round edges: with a circle to drill through, PartDesign's hole
++    # already knows where to go
++    if any(isinstance(edge.Curve, (Part.Circle, Part.ArcOfCircle)) for edge in face.Edges):
++        return None
++    return obj, name, sel.PickedPoints[0]
++
++
++class HoleCommand:
++    """A hole where the face was clicked.
++
++    PartDesign's hole needs a sketch with circles or points. When a flat face is picked, make
++    that sketch here: a point where the face was clicked, on a sketch on the face.
++    """
++
++    def GetResources(self):
++        return {
++            "Pixmap": "PartDesign_Hole",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Hole", "Hole"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_Hole",
++                "Makes a hole. Click a flat face where the hole should go, or pick a sketch "
++                "with circles or points",
++            ),
++        }
++
++    def IsActive(self):
++        return FreeCADGui.isCommandActive("PartDesign_Hole") or _picked_plane_face() is not None
++
++    def Activated(self):
++        picked = _picked_plane_face()
++        if not picked:
++            FreeCADGui.runCommand("PartDesign_Hole")
++            return
++        obj, face_name, point = picked
++        import Part
++
++        doc = obj.Document
++        body = obj.getParentGeoFeatureGroup()
++        if body is None or not body.isDerivedFrom("PartDesign::Body"):
++            FreeCADGui.runCommand("PartDesign_Hole")
++            return
++
++        doc.openTransaction(translate("Unified_Hole", "Hole position"))
++        sketch = body.newObject("Sketcher::SketchObject", "Sketch")
++        sketch.AttachmentSupport = [(obj, face_name)]
++        sketch.MapMode = "FlatFace"
++        doc.recompute()
++        local = sketch.getGlobalPlacement().inverse().multVec(point)
++        sketch.addGeometry(Part.Point(FreeCAD.Vector(local.x, local.y, 0)))
++        doc.recompute()
++        doc.commitTransaction()
++        sketch.ViewObject.Visibility = False
++
++        FreeCADGui.Selection.clearSelection()
++        FreeCADGui.Selection.addSelection(sketch)
++        FreeCADGui.runCommand("PartDesign_Hole")
++
++        # If the hole is cancelled, do not leave the sketch behind
++        def remove_if_unused():
++            if FreeCADGui.Control.activeDialog():
++                QtCore.QTimer.singleShot(300, remove_if_unused)
++                return
++            try:
++                unused = all(o.Name == body.Name for o in sketch.InList)
++            except Exception:
++                return  # already deleted
++            if unused:
++                doc.removeObject(sketch.Name)
++                doc.recompute()
++
++        QtCore.QTimer.singleShot(300, remove_if_unused)
++
++
++FreeCADGui.addCommand("Unified_Hole", HoleCommand())
+-- 
+2.43.0
+

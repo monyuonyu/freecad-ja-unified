@@ -1,0 +1,35 @@
+From a725be900f0e01a1edee36c209be5e0181dd42ca Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:45:46 +0900
+Subject: [PATCH 50/55] TechDraw: put views added to an open page into their
+ groups
+
+The views of a new projection group were drawn at the page's origin
+(bottom left) until the file was opened again: the page grouped views
+with their parent graphic only when it was opened. Do this whenever a
+view graphic is added.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/QGSPage.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Mod/TechDraw/Gui/QGSPage.cpp b/src/Mod/TechDraw/Gui/QGSPage.cpp
+index 259224801..93cc7cb9b 100644
+--- a/src/Mod/TechDraw/Gui/QGSPage.cpp
++++ b/src/Mod/TechDraw/Gui/QGSPage.cpp
+@@ -420,6 +420,11 @@ bool QGSPage::attachView(App::DocumentObject* obj)
+ 
+     if (qview) {
+         qview->updatePositionFromFeatureXY();
++        // A view added while the page is open (e.g. the views of a new projection group) may
++        // belong to a group whose graphic exists now, or be the group of views added before
++        // it: put them into their groups, as when the page is opened. Otherwise they stay at
++        // the page's origin until the file is opened again.
++        setViewParents();
+     }
+ 
+     return (qview != nullptr);
+-- 
+2.43.0
+

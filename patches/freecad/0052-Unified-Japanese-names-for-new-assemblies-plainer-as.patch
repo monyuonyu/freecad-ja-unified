@@ -1,0 +1,76 @@
+From 993a78899410c30741149925b37b270572ce9049 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:47:09 +0900
+Subject: [PATCH 52/55] Unified: Japanese names for new assemblies, plainer
+ assembly insert panel
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Assembly/Gui/Resources/translations/Assembly_ja.ts    | 6 +++---
+ src/Mod/Unified/Gui/Labels.cpp                            | 2 ++
+ src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts  | 8 ++++++++
+ 3 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts b/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
+index fa5bb717f..a4527859d 100644
+--- a/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
++++ b/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
+@@ -931,12 +931,12 @@ SLOPEはそれぞれ時間 = T1とT2付近での、0とH1の間、またH2から
+     <message>
+       <location filename="../panels/TaskAssemblyInsertLink.ui" line="20"/>
+       <source>Search parts…</source>
+-      <translation>パーツを検索…</translation>
++      <translation>探す…</translation>
+     </message>
+     <message>
+       <location filename="../panels/TaskAssemblyInsertLink.ui" line="39"/>
+       <source>Cannot find the part?</source>
+-      <translation>パーツが見つかりませんか？</translation>
++      <translation>見つからないときは</translation>
+     </message>
+     <message>
+       <location filename="../panels/TaskAssemblyInsertLink.ui" line="46"/>
+@@ -968,7 +968,7 @@ You can change this behavior at any time by either right-clicking the sub-assemb
+     <message>
+       <location filename="../panels/TaskAssemblyInsertLink.ui" line="81"/>
+       <source>Rigid sub-assemblies</source>
+-      <translation>リジッドなサブアセンブリ</translation>
++      <translation>中の組立は一つの固まりとして入れる</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+index cbf0cf653..edbb16844 100644
+--- a/src/Mod/Unified/Gui/Labels.cpp
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -54,6 +54,8 @@ const DefaultLabel defaultLabels[] = {
+     {"PartDesign::ShapeBinder", "ShapeBinder"},
+     {"PartDesign::SubShapeBinder", "Binder"},
+     {"App::Part", "Part"},
++    {"Assembly::AssemblyObject", "Assembly"},
++    {"Assembly::JointGroup", "Joints"},
+ };
+ // clang-format on
+ 
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 6aeb4fd42..8aeb47a66 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -151,6 +151,14 @@
+ </context>
+ <context>
+     <name>UnifiedGui::Labels</name>
++    <message>
++        <source>Assembly</source>
++        <translation>組立</translation>
++    </message>
++    <message>
++        <source>Joints</source>
++        <translation>ジョイント</translation>
++    </message>
+     <message>
+         <source>Body</source>
+         <translation>部品</translation>
+-- 
+2.43.0
+

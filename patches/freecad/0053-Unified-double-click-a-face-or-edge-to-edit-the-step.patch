@@ -1,0 +1,122 @@
+From e562ec97c8299ed16bef569fcaec5d30338c2a88 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:51:35 +0900
+Subject: [PATCH 53/55] Unified: double-click a face or edge to edit the step
+ that made it
+
+A double-click on a face or edge in the 3D view opens the step that
+created it, as a double-click in the tree does: the extrusion for a side
+face of a padded sketch, the fillet for a rounded face, the pattern for a
+copy. The face is followed back through the steps of the part while it
+stays a face (Part::Feature::getElementHistory with sameType).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/CMakeLists.txt |  1 +
+ src/Mod/Unified/Gui/ContextBar.cpp | 49 ++++++++++++++++++++++++++++++
+ src/Mod/Unified/Gui/ContextBar.h   |  3 ++
+ 3 files changed, 53 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index c918d016b..01f423bf4 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -2,6 +2,7 @@
+ 
+ set(UnifiedGui_LIBS
+     FreeCADGui
++    Part
+     SketcherGui
+ )
+ 
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index cd728fb08..c2e651501 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -25,6 +25,7 @@
+ #include <Gui/View3DInventor.h>
+ #include <Gui/View3DInventorViewer.h>
+ #include <Gui/ViewProviderDocumentObject.h>
++#include <Mod/Part/App/PartFeature.h>
+ 
+ #include "ContextBar.h"
+ 
+@@ -304,6 +305,15 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
++    if (event->type() == QEvent::MouseButtonDblClick
++        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
++        auto* widget = qobject_cast<QWidget*>(watched);
++        Gui::View3DInventor* view = active3DView();
++        if (widget && view && view->getViewer()->getGLWidget() == widget) {
++            // After the view has handled the clicks and updated the selection
++            QTimer::singleShot(0, this, [this]() { editPickedStep(); });
++        }
++    }
+     if (event->type() == QEvent::MouseButtonRelease
+         && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+         auto* widget = qobject_cast<QWidget*>(watched);
+@@ -329,6 +339,45 @@ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+     return QFrame::eventFilter(watched, event);
+ }
+ 
++void ContextBar::editPickedStep()
++{
++    if (Gui::Control().activeDialog() || Gui::Application::Instance->editDocument()) {
++        return;
++    }
++    auto selection = Gui::Selection().getSelectionEx();
++    if (selection.size() != 1 || selection.front().getSubNames().size() != 1) {
++        return;
++    }
++    App::DocumentObject* obj = selection.front().getObject();
++    const std::string& element = selection.front().getSubNames().front();
++    if (!obj || !(allStartWith({element}, "Face") || allStartWith({element}, "Edge"))) {
++        return;
++    }
++    // Follow the face or edge back through the steps of the part while it stays a face (or
++    // an edge): the last step is the one that made it, e.g. the extrusion for a side face or
++    // the fillet for a rounded face
++    App::DocumentObject* target = obj;
++    try {
++        for (const auto& item : Part::Feature::getElementHistory(obj, element.c_str(), true, true)) {
++            if (item.obj && isDerivedFrom(item.obj, "PartDesign::Feature")) {
++                target = item.obj;
++            }
++        }
++    }
++    catch (const Base::Exception&) {
++        // no history: edit what was picked
++    }
++    auto* vp = dynamic_cast<Gui::ViewProviderDocumentObject*>(
++        Gui::Application::Instance->getViewProvider(target)
++    );
++    if (!vp) {
++        return;
++    }
++    dismiss();
++    Gui::Selection().clearSelection();
++    vp->doubleClicked();
++}
++
+ void ContextBar::dismiss()
+ {
+     hide();
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index 467d12dd0..0ccc8ff8f 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -48,6 +48,9 @@ private:
+     /// A sketch was closed: if it is not used yet, offer to turn it into a solid
+     void onEditClosed(const App::DocumentObject* obj);
+     std::vector<Action> actionsForSelection() const;
++    /// Double-click on a face or edge in the 3D view: edit the step that made it, as a
++    /// double-click in the tree does
++    void editPickedStep();
+     void showActions(const std::vector<Action>& actions, QWidget* view);
+     void dismiss();
+ 
+-- 
+2.43.0
+

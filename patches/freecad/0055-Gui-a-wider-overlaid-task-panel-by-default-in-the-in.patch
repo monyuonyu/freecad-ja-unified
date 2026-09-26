@@ -1,0 +1,38 @@
+From 40fc23a159f0fd7d05bd6cb76c79d634dd52be07 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:56:19 +0900
+Subject: [PATCH 55/55] Gui: a wider overlaid task panel by default in the
+ integrated environment
+
+The right overlay took the main window's minimum width (about 350 px),
+which cut off panels with many fields such as the hole. Start at 440 px
+there; a width set by the user is kept as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/OverlayWidgets.cpp | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/OverlayWidgets.cpp b/src/Gui/OverlayWidgets.cpp
+index 0a3b3ade6..eacd062b8 100644
+--- a/src/Gui/OverlayWidgets.cpp
++++ b/src/Gui/OverlayWidgets.cpp
+@@ -862,7 +862,14 @@ void OverlayTabWidget::restore(ParameterGrp::handle handle)
+ 
+     QSize minimumSizeHint = parentWidget()->minimumSizeHint();
+ 
+-    int width = handle->GetInt("Width", minimumSizeHint.width());
++    int defaultWidth = minimumSizeHint.width();
++    // In the integrated environment the task panel is on the right while a tool is used:
++    // wide enough for the panels with the most fields (e.g. the hole) without cutting them off
++    if (getDockArea() == Qt::RightDockWidgetArea
++        && App::Application::Config().contains("SingleWorkbench")) {
++        defaultWidth = std::max(defaultWidth, 440);  // NOLINT(*-avoid-magic-numbers)
++    }
++    int width = handle->GetInt("Width", defaultWidth);
+     int height = handle->GetInt("Height", minimumSizeHint.height());
+     int offset1 = handle->GetInt("Offset1", 0);
+     int offset2 = handle->GetInt("Offset3", 0);
+-- 
+2.43.0
+

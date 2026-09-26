@@ -1,7 +1,7 @@
 From e38e60aa26c1be6b517fbc1a5d093d1e9f09df7a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:27:30 +0900
-Subject: [PATCH 30/47] Translations: remaining texts found by walking the
+Subject: [PATCH 30/55] Translations: remaining texts found by walking the
  integrated environment
 
 Sketch tools toolbar name; plain Japanese for the Std_Part tooltip and the

@@ -1,0 +1,113 @@
+From df72b4fa67e326f072378425acf214443ebf93ec Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:36:54 +0900
+Subject: [PATCH 48/55] Unified: Japanese names for the PartDesign steps in the
+ undo list
+
+The undo and redo lists showed "Make Pad", "Make Fillet", ... because
+PartDesign builds these names at run time and lupdate cannot see them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../translations/UnifiedProperties_ja.ts      | 87 +++++++++++++++++++
+ 1 file changed, 87 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+index aa0463d85..1f2a8b232 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+@@ -5779,4 +5779,91 @@ by negative value of 'Over Tolerance'</source>
+         <translation>グループ</translation>
+     </message>
+ </context>
++<context>
++    <name>Command</name>
++    <message>
++        <source>Make Pad</source>
++        <translation>押し出し</translation>
++    </message>
++    <message>
++        <source>Make Pocket</source>
++        <translation>切り抜き</translation>
++    </message>
++    <message>
++        <source>Make Revolution</source>
++        <translation>回転</translation>
++    </message>
++    <message>
++        <source>Make Groove</source>
++        <translation>回転切り抜き</translation>
++    </message>
++    <message>
++        <source>Make Hole</source>
++        <translation>穴</translation>
++    </message>
++    <message>
++        <source>Make Fillet</source>
++        <translation>丸め</translation>
++    </message>
++    <message>
++        <source>Make Chamfer</source>
++        <translation>面取り</translation>
++    </message>
++    <message>
++        <source>Make Draft</source>
++        <translation>抜き勾配</translation>
++    </message>
++    <message>
++        <source>Make Thickness</source>
++        <translation>厚み</translation>
++    </message>
++    <message>
++        <source>Make Mirrored</source>
++        <translation>鏡像</translation>
++    </message>
++    <message>
++        <source>Make LinearPattern</source>
++        <translation>直線配列</translation>
++    </message>
++    <message>
++        <source>Make PolarPattern</source>
++        <translation>円周配列</translation>
++    </message>
++    <message>
++        <source>Make MultiTransform</source>
++        <translation>複数の変換</translation>
++    </message>
++    <message>
++        <source>Make Scale</source>
++        <translation>拡大縮小</translation>
++    </message>
++    <message>
++        <source>Make AdditiveLoft</source>
++        <translation>ロフトで足す</translation>
++    </message>
++    <message>
++        <source>Make SubtractiveLoft</source>
++        <translation>ロフトで引く</translation>
++    </message>
++    <message>
++        <source>Make AdditivePipe</source>
++        <translation>スイープで足す</translation>
++    </message>
++    <message>
++        <source>Make SubtractivePipe</source>
++        <translation>スイープで引く</translation>
++    </message>
++    <message>
++        <source>Make AdditiveHelix</source>
++        <translation>らせんで足す</translation>
++    </message>
++    <message>
++        <source>Make SubtractiveHelix</source>
++        <translation>らせんで引く</translation>
++    </message>
++    <message>
++        <source>Sketch recompute</source>
++        <translation>スケッチの再計算</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

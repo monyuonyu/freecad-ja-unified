@@ -1,0 +1,111 @@
+From afc763b8fd4a685f79f00fc4f7370c3c4e0702e6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 08:38:32 +0900
+Subject: [PATCH 49/55] Translations: plain Japanese for fitting and aligning
+ the view
+
+"Fit all", "Fit selection", "Align to selection", "Draw style" and
+"Standard views" say what they do in everyday words (show everything,
+show what is picked, look straight at the picked face, ...).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                | 20 +++++++++----------
+ .../Gui/Resources/translations/Unified_ja.ts  |  2 +-
+ 2 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 83f9dc396..b4085be20 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -13639,12 +13639,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandView.cpp" line="763"/>
+       <source>&amp;Draw Style</source>
+-      <translation>描画スタイル(&amp;D)</translation>
++      <translation>表示の仕方(&amp;D)</translation>
+     </message>
+     <message>
+       <location filename="../CommandView.cpp" line="764"/>
+       <source>Changes the draw style of the objects</source>
+-      <translation>オブジェクトの描画スタイルを変更</translation>
++      <translation>面・線の表示の仕方を変える</translation>
+     </message>
+   </context>
+   <context>
+@@ -13782,12 +13782,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandView.cpp" line="1749"/>
+       <source>&amp;Fit All</source>
+-      <translation>すべてにフィット(&amp;F)</translation>
++      <translation>全体を表示(&amp;F)</translation>
+     </message>
+     <message>
+       <location filename="../CommandView.cpp" line="1750"/>
+       <source>Fits all content into the 3D view</source>
+-      <translation>すべてのコンテンツを3Dビューに収める</translation>
++      <translation>すべてが画面に収まるように表示する</translation>
+     </message>
+   </context>
+   <context>
+@@ -13795,12 +13795,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandView.cpp" line="1778"/>
+       <source>Fit &amp;Selection</source>
+-      <translation>選択範囲にフィット(&amp;S)</translation>
++      <translation>選んだものを表示(&amp;S)</translation>
+     </message>
+     <message>
+       <location filename="../CommandView.cpp" line="1779"/>
+       <source>Fits the selected content into the 3D view</source>
+-      <translation>選択したコンテンツを3Dビューに収める</translation>
++      <translation>選んだものが画面いっぱいになるように表示する</translation>
+     </message>
+   </context>
+   <context>
+@@ -13808,12 +13808,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandView.cpp" line="1808"/>
+       <source>Standard &amp;Views</source>
+-      <translation>標準ビュー(&amp;V)</translation>
++      <translation>決まった向きから見る(&amp;V)</translation>
+     </message>
+     <message>
+       <location filename="../CommandView.cpp" line="1809"/>
+       <source>Changes to a standard view</source>
+-      <translation>標準ビューに変更</translation>
++      <translation>正面・上・右などの決まった向きから見る</translation>
+     </message>
+   </context>
+   <context>
+@@ -14332,12 +14332,12 @@ This makes the docked panel stay transparent at all times.</source>
+     <message>
+       <location filename="../CommandView.cpp" line="4012"/>
+       <source>&amp;Align to Selection</source>
+-      <translation>選択範囲に合わせる(&amp;A)</translation>
++      <translation>選んだ面に向ける(&amp;A)</translation>
+     </message>
+     <message>
+       <location filename="../CommandView.cpp" line="4013"/>
+       <source>Aligns the camera view to the selected elements in the 3D view</source>
+-      <translation>カメラビューを3Dビュー内の選択した要素に合わせます</translation>
++      <translation>選んだ面や辺を正面から見る向きにする</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 3ac1c1fd5..6aeb4fd42 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -37,7 +37,7 @@
+     </message>
+     <message>
+         <source>Standard Views</source>
+-        <translation>標準の視点</translation>
++        <translation>決まった向きから見る</translation>
+     </message>
+     <message>
+         <source>Create</source>
+-- 
+2.43.0
+

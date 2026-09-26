@@ -1,7 +1,7 @@
 From 8bae0425f6e8c05f22e41f04080ed7eb931e5323 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 00:08:18 +0900
-Subject: [PATCH 10/47] Gui: no dialogs and no GUI state changes with --hidden
+Subject: [PATCH 10/55] Gui: no dialogs and no GUI state changes with --hidden
 
 - Skip the version migration dialog when the main window is hidden. On
   the first start of a new version with settings of an older version, it
