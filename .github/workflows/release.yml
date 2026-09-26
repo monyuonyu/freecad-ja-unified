@@ -1,0 +1,117 @@
+name: Build release
+
+# 本家 FreeCAD の元の版にこのリポジトリのパッチを当て、本家と同じ手順（package/bundle）で
+# Linux（AppImage）と Windows（7z とインストーラー）を作ってリリースに載せる。
+# 使い方: Actions の「Build release」から、タグ名（例 ja-unified-0.1.0）を入れて実行する。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. ja-unified-0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  # パッチを当てる元の FreeCAD（apply.sh と同じ）
+  FREECAD_BASE: b48098efaa2560d0aa989d7f6e61cdb7f831877f
+  BUILD_TAG: ${{ inputs.tag }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the release (prerelease until checked)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$BUILD_TAG" --target "${{ github.sha }}" --prerelease \
+            --title "freecad-ja-unified $BUILD_TAG" --notes-file RELEASE_NOTES.md \
+          || gh release view "$BUILD_TAG" > /dev/null
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-64, os: ubuntu-22.04, osfolder: linux }
+          - { target: win-64, os: windows-2022, osfolder: windows }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - name: Maximize build space
+        if: runner.os == 'Linux'
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-android: 'true'
+          remove-cached-tools: 'true'
+
+      - name: Windows caches on D:
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo 'PIXI_CACHE_DIR=D:\rattler' >> "$GITHUB_ENV"
+          echo 'RATTLER_CACHE_DIR=D:\rattler' >> "$GITHUB_ENV"
+
+      - name: Checkout the patches
+        uses: actions/checkout@v4
+        with:
+          path: patches
+
+      - name: Fetch FreeCAD and apply the patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global core.autocrlf false
+          git init -q FreeCAD
+          cd FreeCAD
+          git remote add origin https://github.com/FreeCAD/FreeCAD.git
+          git fetch -q --depth 1 origin "$FREECAD_BASE"
+          git checkout -q FETCH_HEAD
+          git submodule update -q --init --recursive
+          # FreeCAD のソースは CRLF のファイルが多いので --keep-cr が要る
+          git am -q --keep-cr ../patches/patches/freecad/*.patch
+          git -C src/3rdParty/OndselSolver am -q --keep-cr "$PWD/../patches/patches/ondselsolver/"*.patch
+          git log --oneline -3
+
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: v0.81.0
+          manifest-path: FreeCAD/pixi.toml
+          cache: false
+          locked: true
+
+      - name: Build FreeCAD
+        shell: bash
+        working-directory: FreeCAD
+        env:
+          TARGET_PLATFORM: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 package/scripts/write_version_info.py ../freecad_version.txt
+          pixi run --locked "bash package/bundle/build.sh"
+
+      - name: Bundle and upload
+        shell: bash
+        working-directory: FreeCAD/package/bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # create_bundle.sh は gh release upload を FreeCAD の clone の中で呼ぶ: 載せ先をこのリポジトリにする
+          GH_REPO: ${{ github.repository }}
+          TARGET_PLATFORM: ${{ matrix.target }}
+          MAKE_INSTALLER: "true"
+          UPLOAD_RELEASE: "true"
+          MACOS_SIGN_RELEASE: "0"
+          WINDOWS_SIGN_RELEASE: "0"
+        run: |
+          set -euo pipefail
+          # AppImage の更新の確認先を本家からこのリポジトリに（そのままだと本家の版に置き換わる）
+          sed -i "s#gh-releases-zsync|FreeCAD|FreeCAD|#gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|#" linux/create_bundle.sh
+          grep -n "gh-releases-zsync" linux/create_bundle.sh
+          pixi run --locked bash -c "cd ${{ matrix.osfolder }} && bash create_bundle.sh"

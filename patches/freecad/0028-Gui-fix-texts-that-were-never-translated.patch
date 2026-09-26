@@ -1,0 +1,205 @@
+From 2d11c297fe1098b30cc9a8b980e78ccfbff1c957 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:25:33 +0900
+Subject: [PATCH 28/31] Gui: fix texts that were never translated
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Tooltips of Std_ToggleTransparency, Std_SelectionBack/Forward and
+  Std_ToggleFreeze were wrapped in <p> before the lookup, so they never
+  matched their translations; the tooltip is laid out by Action anyway.
+- Menu titles of group commands (e.g. Assembly's Insert Component) were
+  retranslated with the C++ class name as context; Python commands use
+  their command name as context, as PythonGroupCommand::languageChange
+  already does. The submenu title also follows later text changes of
+  its action.
+- The window list entries were looked up in the QObject context instead
+  of the command's.
+- In the integrated environment, tooltips no longer end with the internal
+  command name (Std_New, PartDesign_Pad, ...).
+- Japanese: fix "FreeCAに寄付する", and a tooltip that named a command by
+  its internal name.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Action.cpp             | 10 +++++++++-
+ src/Gui/CommandFeat.cpp        | 15 +++++----------
+ src/Gui/CommandView.cpp        | 21 ++++++---------------
+ src/Gui/CommandWindow.cpp      |  5 ++++-
+ src/Gui/Language/FreeCAD_ja.ts |  4 ++--
+ src/Gui/MenuManager.cpp        |  6 +++++-
+ 6 files changed, 31 insertions(+), 30 deletions(-)
+
+diff --git a/src/Gui/Action.cpp b/src/Gui/Action.cpp
+index 97677e201..8e694e4cb 100644
+--- a/src/Gui/Action.cpp
++++ b/src/Gui/Action.cpp
+@@ -20,6 +20,7 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <App/Application.h>
+ #include <QActionEvent>
+ #include <QActionGroup>
+ #include <QApplication>
+@@ -346,7 +347,9 @@ QString Action::createToolTip(
+                           .arg(text.toHtmlEscaped(), shortcut.toHtmlEscaped());
+ 
+     QString cmdName;
+-    if (command && command->getName()) {
++    // The internal command name helps macro writers; the integrated environment is for
++    // modelling and leaves it out of the tooltips
++    if (command && command->getName() && !App::Application::Config().contains("SingleWorkbench")) {
+         cmdName = QString::fromLatin1(command->getName());
+         if (auto groupcmd = dynamic_cast<const GroupCommand*>(command)) {
+             if (auto act = command->getAction()) {
+@@ -464,6 +467,11 @@ void ActionGroup::addTo(QWidget* widget)
+             item->setMenuRole(action()->menuRole());
+             menu->setTitle(action()->text());
+             menu->addActions(groupAction()->actions());
++            // Keep the submenu title in step with the action, e.g. when its translation is
++            // (re)loaded after the menu was built
++            QObject::connect(action(), &QAction::changed, menu, [this, menu]() {
++                menu->setTitle(action()->text());
++            });
+ 
+             QObject::connect(menu, &QMenu::aboutToShow, [this, menu]() { Q_EMIT aboutToShow(menu); });
+ 
+diff --git a/src/Gui/CommandFeat.cpp b/src/Gui/CommandFeat.cpp
+index 8a9c64212..3d8fc5b07 100644
+--- a/src/Gui/CommandFeat.cpp
++++ b/src/Gui/CommandFeat.cpp
+@@ -188,11 +188,9 @@ StdCmdToggleFreeze::StdCmdToggleFreeze()
+ {
+     sGroup = "File";
+     sMenuText = QT_TR_NOOP("Toggle Freeze");
+-    static std::string toolTip
+-        = std::string("<p>")
+-        + QT_TR_NOOP("Toggles freeze state of the selected objects. A frozen object is not recomputed when its parents change.")
+-        + "</p>";
+-    sToolTipText = toolTip.c_str();
++    sToolTipText = QT_TR_NOOP(
++        "Toggles freeze state of the selected objects. A frozen object is not recomputed when its parents change."
++    );
+     sStatusTip = sToolTipText;
+     sWhatsThis = "Std_ToggleFreeze";
+     sPixmap = "Std_ToggleFreeze";
+@@ -238,11 +236,8 @@ StdCmdToggleSuppress::StdCmdToggleSuppress()
+ {
+     sGroup = "File";
+     sMenuText = QT_TR_NOOP("Toggle Suppressed");
+-    static std::string toolTip = std::string("<p>")
+-        + QT_TR_NOOP("Toggles suppressed state of the selected objects. "
+-                     "A suppressed object behaves like it was deleted.")
+-        + "</p>";
+-    sToolTipText = toolTip.c_str();
++    sToolTipText = QT_TR_NOOP("Toggles suppressed state of the selected objects. "
++                     "A suppressed object behaves like it was deleted.");
+     sStatusTip = sToolTipText;
+     sWhatsThis = "Std_ToggleSuppress";
+     sPixmap = "feature_suppressed";
+diff --git a/src/Gui/CommandView.cpp b/src/Gui/CommandView.cpp
+index c5b0d4f13..5a0e16708 100644
+--- a/src/Gui/CommandView.cpp
++++ b/src/Gui/CommandView.cpp
+@@ -1002,11 +1002,8 @@ StdCmdToggleTransparency::StdCmdToggleTransparency()
+ {
+     sGroup = "Standard-View";
+     sMenuText = QT_TR_NOOP("Toggle Transparenc&y");
+-    static std::string toolTip = std::string("<p>")
+-        + QT_TR_NOOP("Toggles the transparency of the selected objects. Transparency "
+-                     "can be fine-tuned in the appearance task dialog")
+-        + "</p>";
+-    sToolTipText = toolTip.c_str();
++    sToolTipText = QT_TR_NOOP("Toggles the transparency of the selected objects. Transparency "
++                     "can be fine-tuned in the appearance task dialog");
+     sStatusTip = sToolTipText;
+     sWhatsThis = "Std_ToggleTransparency";
+     sPixmap = "Std_ToggleTransparency";
+@@ -3184,11 +3181,8 @@ StdCmdSelBack::StdCmdSelBack()
+ {
+     sGroup = "View";
+     sMenuText = QT_TR_NOOP("Selection &Back");
+-    static std::string toolTip = std::string("<p>")
+-        + QT_TR_NOOP("Restores the previous tree view selection. "
+-                     "Only works if tree RecordSelection mode is switched on.")
+-        + "</p>";
+-    sToolTipText = toolTip.c_str();
++    sToolTipText = QT_TR_NOOP("Restores the previous tree view selection. "
++                     "Only works if tree RecordSelection mode is switched on.");
+     sWhatsThis = "Std_SelBack";
+     sStatusTip = sToolTipText;
+     sPixmap = "sel-back";
+@@ -3218,11 +3212,8 @@ StdCmdSelForward::StdCmdSelForward()
+ {
+     sGroup = "View";
+     sMenuText = QT_TR_NOOP("Selection &Forward");
+-    static std::string toolTip = std::string("<p>")
+-        + QT_TR_NOOP("Restores the next tree view selection. "
+-                     "Only works if tree RecordSelection mode is switched on.")
+-        + "</p>";
+-    sToolTipText = toolTip.c_str();
++    sToolTipText = QT_TR_NOOP("Restores the next tree view selection. "
++                     "Only works if tree RecordSelection mode is switched on.");
+     sWhatsThis = "Std_SelForward";
+     sStatusTip = sToolTipText;
+     sPixmap = "sel-forward";
+diff --git a/src/Gui/CommandWindow.cpp b/src/Gui/CommandWindow.cpp
+index 994b284f8..398d17e8b 100644
+--- a/src/Gui/CommandWindow.cpp
++++ b/src/Gui/CommandWindow.cpp
+@@ -483,7 +483,10 @@ Action* StdCmdWindowsMenu::createAction()
+     WindowAction* pcAction;
+     pcAction = new WindowAction(this, getMainWindow());
+     for (int i = 0; i < 10; i++) {
+-        QAction* window = pcAction->addAction(QObject::tr(getToolTipText()));
++        // The text is declared in this command's context (QT_TR_NOOP in the constructor)
++        QAction* window = pcAction->addAction(
++            QCoreApplication::translate(this->className(), getToolTipText())
++        );
+         window->setCheckable(true);
+         window->setToolTip(QCoreApplication::translate(this->className(), getToolTipText()));
+         window->setStatusTip(QCoreApplication::translate(this->className(), getStatusTip()));
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 45490120c..c49cd9840 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -426,7 +426,7 @@ The property of this object will refer to the property of the Variable Set.</sou
+     <message>
+       <location filename="../Application.h" line="311"/>
+       <source>The object will have its placement editable with the Std TransformManip command</source>
+-      <translation>オブジェクトの配置は Std TransformManip コマンドで編集可能です。</translation>
++      <translation>オブジェクトの配置は「移動」で編集できます。</translation>
+     </message>
+     <message>
+       <location filename="../Application.h" line="320"/>
+@@ -13496,7 +13496,7 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandStd.cpp" line="640"/>
+       <source>Donate to FreeCA&amp;D</source>
+-      <translation>FreeCAに寄付する(&amp;D)</translation>
++      <translation>FreeCAD に寄付する(&amp;D)</translation>
+     </message>
+     <message>
+       <location filename="../CommandStd.cpp" line="641"/>
+diff --git a/src/Gui/MenuManager.cpp b/src/Gui/MenuManager.cpp
+index b37071a5e..ba0e5c340 100644
+--- a/src/Gui/MenuManager.cpp
++++ b/src/Gui/MenuManager.cpp
+@@ -363,7 +363,11 @@ void MenuManager::retranslate(QMenu* menu) const
+     QByteArray menuName = menu->menuAction()->data().toByteArray();
+     Command* cmd = mgr.getCommandByName(menuName);
+     if (cmd) {
+-        menu->setTitle(QApplication::translate(cmd->className(), cmd->getMenuText()));
++        // Python commands use their name as translation context (see
++        // PythonGroupCommand::languageChange), C++ commands their class name
++        bool isPython = dynamic_cast<PythonCommand*>(cmd) || dynamic_cast<PythonGroupCommand*>(cmd);
++        const char* context = isPython ? cmd->getName() : cmd->className();
++        menu->setTitle(QApplication::translate(context, cmd->getMenuText()));
+     }
+     else {
+         menu->setTitle(QApplication::translate("Workbench", (const char*)menuName));
+-- 
+2.43.0
+

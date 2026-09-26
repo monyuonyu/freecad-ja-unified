@@ -1,0 +1,71 @@
+From e38e60aa26c1be6b517fbc1a5d093d1e9f09df7a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:27:30 +0900
+Subject: [PATCH 30/31] Translations: remaining texts found by walking the
+ integrated environment
+
+Sketch tools toolbar name; plain Japanese for the Std_Part tooltip and the
+reorient-sketch tooltip (no internal names); the leave-sketch tooltip no
+longer claims that Escape leaves the sketch, which is not the case in the
+integrated environment.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                             | 2 +-
+ src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts | 4 ++--
+ src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts   | 4 ++++
+ 3 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index c49cd9840..db15f2a89 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -13566,7 +13566,7 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandStructure.cpp" line="50"/>
+       <source>Creates a part, which is a general-purpose container to group objects so they act as a unit in the 3D view. It is intended to arrange objects that have a part TopoShape, like part primitives, Part Design bodies, and other parts.</source>
+-      <translation>オブジェクトをグループ化して3Dビューでの単位として振る舞うようにする汎用コンテナであるパーツを作成します。これはPartのプリミティブ、Part Designの部品、その他のパーツといった、パートTopoShapeを持つオブジェクトの配置を目的としています。</translation>
++      <translation>オブジェクトをまとめて、3D ビューで 1 つの単位として動かせる入れ物（パート）を作ります。部品や基本形状など、形を持つものをまとめて配置するのに使います。</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index 2a534b6fc..939a213a6 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -5945,7 +5945,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../Command.cpp" line="371"/>
+       <source>Finishes editing the active sketch. Press Escape to exit.</source>
+-      <translation>アクティブなスケッチの編集を終了します。終了するにはEscapeキーを押します。</translation>
++      <translation>アクティブなスケッチの編集を終了します。</translation>
+     </message>
+   </context>
+   <context>
+@@ -5973,7 +5973,7 @@ Instead equal constraints are applied between the original objects and their cop
+       <source>Places the selected sketch on one of the global coordinate planes.
+ This will clear the AttachmentSupport property.</source>
+       <translation>選択したスケッチをグローバル座標面の1つの上に配置します。
+-存在する場合はAttachmentSupportプロパティーが消去されます。</translation>
++取り付け先があれば、取り外されます。</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 0f38afa74..ea2481b29 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -43,6 +43,10 @@
+         <source>Create</source>
+         <translation>作成</translation>
+     </message>
++    <message>
++        <source>Sketcher Tools</source>
++        <translation>スケッチの道具</translation>
++    </message>
+     <message>
+         <source>Unified Sketch</source>
+         <translation>スケッチ</translation>
+-- 
+2.43.0
+

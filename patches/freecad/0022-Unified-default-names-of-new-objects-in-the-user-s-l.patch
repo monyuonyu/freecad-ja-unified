@@ -1,0 +1,314 @@
+From 9be5b70e1a747c2fe34cddc0d0324f1b0f06ae23 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:07:41 +0900
+Subject: [PATCH 22/31] Unified: default names of new objects in the user's
+ language
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+New bodies, sketches and PartDesign features get their default label in
+the user's language (部品, スケッチ, 押し出し001, ...), as origins and datums
+already do. Only a label that is still the English default is changed;
+internal names stay the same, and undoing the creation removes the object
+in one step as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp         |   4 +
+ src/Mod/Unified/Gui/CMakeLists.txt            |   2 +
+ src/Mod/Unified/Gui/Labels.cpp                |  95 ++++++++++++++
+ src/Mod/Unified/Gui/Labels.h                  |  15 +++
+ .../Gui/Resources/translations/Unified_ja.ts  | 119 ++++++++++++++++++
+ 5 files changed, 235 insertions(+)
+ create mode 100644 src/Mod/Unified/Gui/Labels.cpp
+ create mode 100644 src/Mod/Unified/Gui/Labels.h
+
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index 1e621242e..10657575a 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -7,6 +7,7 @@
+ #include <Gui/Language/Translator.h>
+ 
+ #include "ContextBar.h"
++#include "Labels.h"
+ #include "Workbench.h"
+ 
+ 
+@@ -42,6 +43,9 @@ PyMOD_INIT_FUNC(UnifiedGui)
+     // Actions for the picked face, edge, sketch or part, right next to the cursor
+     UnifiedGui::ContextBar::install();
+ 
++    // Default names of new objects in the user's language
++    UnifiedGui::installLocalizedLabels();
++
+     // Load Unified_<lang>.qm from the resources of this module
+     Gui::Translator::instance()->refresh();
+ 
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index 1b2f5c9b8..fea0e7731 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -17,6 +17,8 @@ SET(UnifiedGui_SRCS
+     AppUnifiedGui.cpp
+     ContextBar.cpp
+     ContextBar.h
++    Labels.cpp
++    Labels.h
+     Workbench.cpp
+     Workbench.h
+ )
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+new file mode 100644
+index 000000000..a6195a37a
+--- /dev/null
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -0,0 +1,95 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <QApplication>
++#include <QRegularExpression>
++#include <QTimer>
++
++#include <App/Application.h>
++#include <App/Document.h>
++#include <App/DocumentObject.h>
++#include <App/DocumentObserver.h>
++#include <Base/Type.h>
++
++#include "Labels.h"
++
++namespace
++{
++// Type name → English default label base, as the commands create them
++struct DefaultLabel
++{
++    const char* type;
++    const char* label;
++};
++// clang-format off
++const DefaultLabel defaultLabels[] = {
++    {"PartDesign::Body", "Body"},
++    {"Sketcher::SketchObject", "Sketch"},
++    {"PartDesign::Pad", "Pad"},
++    {"PartDesign::Pocket", "Pocket"},
++    {"PartDesign::Revolution", "Revolution"},
++    {"PartDesign::Groove", "Groove"},
++    {"PartDesign::Hole", "Hole"},
++    {"PartDesign::Fillet", "Fillet"},
++    {"PartDesign::Chamfer", "Chamfer"},
++    {"PartDesign::Draft", "Draft"},
++    {"PartDesign::Thickness", "Thickness"},
++    {"PartDesign::Mirrored", "Mirrored"},
++    {"PartDesign::LinearPattern", "LinearPattern"},
++    {"PartDesign::PolarPattern", "PolarPattern"},
++    {"PartDesign::MultiTransform", "MultiTransform"},
++    {"PartDesign::Boolean", "Boolean"},
++    {"PartDesign::AdditiveLoft", "AdditiveLoft"},
++    {"PartDesign::SubtractiveLoft", "SubtractiveLoft"},
++    {"PartDesign::AdditivePipe", "AdditivePipe"},
++    {"PartDesign::SubtractivePipe", "SubtractivePipe"},
++    {"PartDesign::AdditiveHelix", "AdditiveHelix"},
++    {"PartDesign::SubtractiveHelix", "SubtractiveHelix"},
++    {"PartDesign::Plane", "DatumPlane"},
++    {"PartDesign::Line", "DatumLine"},
++    {"PartDesign::Point", "DatumPoint"},
++    {"PartDesign::CoordinateSystem", "Local_CS"},
++    {"PartDesign::ShapeBinder", "ShapeBinder"},
++    {"PartDesign::SubShapeBinder", "Binder"},
++    {"App::Part", "Part"},
++};
++// clang-format on
++
++void localize(const App::DocumentObject* obj)
++{
++    for (const auto& entry : defaultLabels) {
++        Base::Type type = Base::Type::fromName(entry.type);
++        if (type.isBad() || obj->getTypeId() != type) {
++            continue;
++        }
++        // Only the untouched English default, with the number FreeCAD adds for uniqueness
++        QString base = QString::fromLatin1(entry.label);
++        QString label = QString::fromUtf8(obj->Label.getValue());
++        QRegularExpression pattern(QStringLiteral("^%1(\\d*)$").arg(QRegularExpression::escape(base)));
++        auto match = pattern.match(label);
++        if (!match.hasMatch()) {
++            return;
++        }
++        QString translated = QApplication::translate("UnifiedGui::Labels", entry.label);
++        if (translated == base) {
++            return;  // no translation for the current language
++        }
++        const_cast<App::DocumentObject*>(obj)->Label.setValue(
++            (translated + match.captured(1)).toUtf8().constData()
++        );
++        return;
++    }
++}
++}  // namespace
++
++void UnifiedGui::installLocalizedLabels()
++{
++    App::GetApplication().signalNewObject.connect([](const App::DocumentObject& obj) {
++        // After the command that created the object has set its label
++        App::DocumentObjectT ref(&obj);
++        QTimer::singleShot(0, [ref]() {
++            if (App::DocumentObject* o = ref.getObject()) {
++                localize(o);
++            }
++        });
++    });
++}
+diff --git a/src/Mod/Unified/Gui/Labels.h b/src/Mod/Unified/Gui/Labels.h
+new file mode 100644
+index 000000000..9b96e49b1
+--- /dev/null
++++ b/src/Mod/Unified/Gui/Labels.h
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++namespace UnifiedGui
++{
++
++/**
++ * New objects get the default label of their type in the user's language ("押し出し001"
++ * instead of "Pad001"), as datums and origins already do. Only labels that are still the
++ * English default are changed; the internal names used by scripts stay the same.
++ */
++void installLocalizedLabels();
++
++}  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index ab5dca88f..71f2dc6ae 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -141,4 +141,123 @@
+         <translation>そこは平らではありません。平面か、平らな面をクリックしてください。</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedGui::Labels</name>
++    <message>
++        <source>Body</source>
++        <translation>部品</translation>
++    </message>
++    <message>
++        <source>Sketch</source>
++        <translation>スケッチ</translation>
++    </message>
++    <message>
++        <source>Pad</source>
++        <translation>押し出し</translation>
++    </message>
++    <message>
++        <source>Pocket</source>
++        <translation>切り抜き</translation>
++    </message>
++    <message>
++        <source>Revolution</source>
++        <translation>回転</translation>
++    </message>
++    <message>
++        <source>Groove</source>
++        <translation>回転切り抜き</translation>
++    </message>
++    <message>
++        <source>Hole</source>
++        <translation>穴</translation>
++    </message>
++    <message>
++        <source>Fillet</source>
++        <translation>丸め</translation>
++    </message>
++    <message>
++        <source>Chamfer</source>
++        <translation>面取り</translation>
++    </message>
++    <message>
++        <source>Draft</source>
++        <translation>抜き勾配</translation>
++    </message>
++    <message>
++        <source>Thickness</source>
++        <translation>厚み</translation>
++    </message>
++    <message>
++        <source>Mirrored</source>
++        <translation>鏡像</translation>
++    </message>
++    <message>
++        <source>LinearPattern</source>
++        <translation>直線配列</translation>
++    </message>
++    <message>
++        <source>PolarPattern</source>
++        <translation>円周配列</translation>
++    </message>
++    <message>
++        <source>MultiTransform</source>
++        <translation>複数変換</translation>
++    </message>
++    <message>
++        <source>Boolean</source>
++        <translation>ブーリアン</translation>
++    </message>
++    <message>
++        <source>AdditiveLoft</source>
++        <translation>ロフト</translation>
++    </message>
++    <message>
++        <source>SubtractiveLoft</source>
++        <translation>ロフト切り抜き</translation>
++    </message>
++    <message>
++        <source>AdditivePipe</source>
++        <translation>スイープ</translation>
++    </message>
++    <message>
++        <source>SubtractivePipe</source>
++        <translation>スイープ切り抜き</translation>
++    </message>
++    <message>
++        <source>AdditiveHelix</source>
++        <translation>らせん</translation>
++    </message>
++    <message>
++        <source>SubtractiveHelix</source>
++        <translation>らせん切り抜き</translation>
++    </message>
++    <message>
++        <source>DatumPlane</source>
++        <translation>基準面</translation>
++    </message>
++    <message>
++        <source>DatumLine</source>
++        <translation>基準線</translation>
++    </message>
++    <message>
++        <source>DatumPoint</source>
++        <translation>基準点</translation>
++    </message>
++    <message>
++        <source>Local_CS</source>
++        <translation>ローカル座標系</translation>
++    </message>
++    <message>
++        <source>ShapeBinder</source>
++        <translation>形の参照</translation>
++    </message>
++    <message>
++        <source>Binder</source>
++        <translation>形の参照</translation>
++    </message>
++    <message>
++        <source>Part</source>
++        <translation>組</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

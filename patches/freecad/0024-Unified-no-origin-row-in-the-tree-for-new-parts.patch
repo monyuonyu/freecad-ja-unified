@@ -1,0 +1,60 @@
+From b757255ab129d7445c4b4cd80451af7c28da92cb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:12:29 +0900
+Subject: [PATCH 24/31] Unified: no origin row in the tree for new parts
+
+The planes of a part's origin are offered when choosing where to draw a
+sketch; the always visible tree row only added clutter.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/Labels.cpp | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+index a6195a37a..cbf0cf653 100644
+--- a/src/Mod/Unified/Gui/Labels.cpp
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -9,6 +9,9 @@
+ #include <App/DocumentObject.h>
+ #include <App/DocumentObserver.h>
+ #include <Base/Type.h>
++#include <Gui/Application.h>
++#include <Gui/ViewProvider.h>
++#include <App/PropertyStandard.h>
+ 
+ #include "Labels.h"
+ 
+@@ -54,6 +57,21 @@ const DefaultLabel defaultLabels[] = {
+ };
+ // clang-format on
+ 
++// The origin of a part is not shown in the tree: its planes are offered when choosing
++// where to draw a sketch, and the row only adds clutter
++void hideOriginInTree(const App::DocumentObject* obj)
++{
++    Base::Type origin = Base::Type::fromName("App::Origin");
++    if (origin.isBad() || obj->getTypeId() != origin) {
++        return;
++    }
++    if (Gui::ViewProvider* vp = Gui::Application::Instance->getViewProvider(obj)) {
++        if (auto* show = dynamic_cast<App::PropertyBool*>(vp->getPropertyByName("ShowInTree"))) {
++            show->setValue(false);
++        }
++    }
++}
++
+ void localize(const App::DocumentObject* obj)
+ {
+     for (const auto& entry : defaultLabels) {
+@@ -89,6 +107,7 @@ void UnifiedGui::installLocalizedLabels()
+         QTimer::singleShot(0, [ref]() {
+             if (App::DocumentObject* o = ref.getObject()) {
+                 localize(o);
++                hideOriginInTree(o);
+             }
+         });
+     });
+-- 
+2.43.0
+

@@ -1,0 +1,119 @@
+From d4339fabae045d54f1c6fb3e5512459ab302dafb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:14:25 +0900
+Subject: [PATCH 25/31] Unified: shorter right-click menu
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Leave out what is not needed for modelling (link actions, tree selection,
+selectability, freezing, docking the window, sending to the Python
+console; still in the main menus), drop stray separators, and name the
+menus and items plainly (標準の視点, 重なったものから選ぶ).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  | 18 +++++++++
+ src/Mod/Unified/Gui/Workbench.cpp             | 39 +++++++++++++++++++
+ src/Mod/Unified/Gui/Workbench.h               |  1 +
+ 3 files changed, 58 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 71f2dc6ae..06c2fddf2 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -35,6 +35,10 @@
+         <source>Unified Arrange</source>
+         <translation>並べる・鏡像</translation>
+     </message>
++    <message>
++        <source>Standard Views</source>
++        <translation>標準の視点</translation>
++    </message>
+     <message>
+         <source>Unified Sketch</source>
+         <translation>スケッチ</translation>
+@@ -260,4 +264,18 @@
+         <translation>組</translation>
+     </message>
+ </context>
++<context>
++    <name>QObject</name>
++    <message>
++        <source>Clarify Selection</source>
++        <translation>重なったものから選ぶ</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdClarifySelection</name>
++    <message>
++        <source>Clarify Selection</source>
++        <translation>重なったものから選ぶ</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index c66aa1725..748175a04 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -216,6 +216,45 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     return root;
+ }
+ 
++void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) const
++{
++    StdWorkbench::setupContextMenu(recipient, item);
++
++    // Keep the right-click menu short: what is needed for modelling. Links, selectability,
++    // freezing, window docking and the Python console stay in the main menus.
++    const char* rarelyUsed[] = {
++        "Link Actions",
++        "Std_TreeSelection",
++        "Std_TreeSelectAllInstances",
++        "Std_ToggleSelectability",
++        "Std_ToggleFreeze",
++        "Std_ViewDockUndockFullscreen",
++        "Std_SendToPythonConsole",
++    };
++    for (const char* name : rarelyUsed) {
++        while (Gui::MenuItem* found = item->findItem(name)) {
++            Gui::MenuItem* parent = item->findParentOf(name);
++            (parent ? parent : item)->removeItem(found);
++            delete found;
++        }
++    }
++    // No separators at the start, at the end or next to each other
++    QList<Gui::MenuItem*> items = item->getItems();
++    bool lastWasSeparator = true;
++    for (int i = 0; i < items.size(); ++i) {
++        bool isSeparator = items[i]->command() == "Separator";
++        bool atEnd = std::all_of(items.begin() + i + 1, items.end(), [](Gui::MenuItem* m) {
++            return m->command() == "Separator";
++        });
++        if (isSeparator && (lastWasSeparator || atEnd)) {
++            item->removeItem(items[i]);
++            delete items[i];
++            continue;
++        }
++        lastWasSeparator = isSeparator;
++    }
++}
++
+ Gui::ToolBarItem* Workbench::setupCommandBars() const
+ {
+     return new Gui::ToolBarItem;
+diff --git a/src/Mod/Unified/Gui/Workbench.h b/src/Mod/Unified/Gui/Workbench.h
+index 5d68eda33..005c19e2e 100644
+--- a/src/Mod/Unified/Gui/Workbench.h
++++ b/src/Mod/Unified/Gui/Workbench.h
+@@ -24,6 +24,7 @@ protected:
+     Gui::MenuItem* setupMenuBar() const override;
+     Gui::ToolBarItem* setupToolBars() const override;
+     Gui::ToolBarItem* setupCommandBars() const override;
++    void setupContextMenu(const char* recipient, Gui::MenuItem* item) const override;
+ };
+ 
+ }  // namespace UnifiedGui
+-- 
+2.43.0
+

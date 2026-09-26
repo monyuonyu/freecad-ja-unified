@@ -1,0 +1,135 @@
+From d8410a10a803a7cffb8a9b66a2bfa81b2f4de1bc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:30:07 +0900
+Subject: [PATCH 31/31] Unified: preferences without BIM and add-on pages;
+ Japanese group names
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- In single workbench mode the preferences leave out the pages of the
+  BIM workbench (IFC import/export, native IFC, DAE, SH3D, WebGL) and the
+  Addon Manager, which the integrated environment does not have.
+- Preference groups use the terms of the integrated environment (形,
+  スケッチ, 図面, 組立), and the DXF preference texts are translated.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Dialogs/DlgPreferencesImp.cpp         | 25 ++++++++++++++++++-
+ .../Draft/Resources/translations/Draft_ja.ts  | 12 ++++-----
+ .../Gui/Resources/translations/Unified_ja.ts  | 16 ++++++++++++
+ 3 files changed, 46 insertions(+), 7 deletions(-)
+
+diff --git a/src/Gui/Dialogs/DlgPreferencesImp.cpp b/src/Gui/Dialogs/DlgPreferencesImp.cpp
+index ac7a0e7db..71778b6df 100644
+--- a/src/Gui/Dialogs/DlgPreferencesImp.cpp
++++ b/src/Gui/Dialogs/DlgPreferencesImp.cpp
+@@ -400,11 +400,34 @@ void DlgPreferencesImp::setupPages()
+     // make sure that pages are ready to create
+     GetWidgetFactorySupplier();
+ 
++    // The integrated environment has no BIM workbench and no add-ons: leave out their pages
++    const bool single = App::Application::Config().contains("SingleWorkbench");
++    auto leftOut = [single](const std::string& group, const std::string& page) {
++        if (!single) {
++            return false;
++        }
++        if (group == "Addon Manager") {
++            return true;
++        }
++        for (const char* part : {"preferences-ifc", "preferencesNativeIFC", "preferences-dae",
++                                 "preferences-sh3d", "preferences-webgl"}) {
++            if (page.find(part) != std::string::npos) {
++                return true;
++            }
++        }
++        return false;
++    };
++
+     for (const auto& [name, pages] : _pages) {
++        if (std::all_of(pages.begin(), pages.end(), [&](const std::string& p) { return leftOut(name, p); })) {
++            continue;
++        }
+         auto* group = createGroup(name);
+ 
+         for (const auto& page : pages) {
+-            createPageInGroup(group, page);
++            if (!leftOut(name, page)) {
++                createPageInGroup(group, page);
++            }
+         }
+     }
+ 
+diff --git a/src/Mod/Draft/Resources/translations/Draft_ja.ts b/src/Mod/Draft/Resources/translations/Draft_ja.ts
+index 4cc832ca5..388e6b34d 100644
+--- a/src/Mod/Draft/Resources/translations/Draft_ja.ts
++++ b/src/Mod/Draft/Resources/translations/Draft_ja.ts
+@@ -2059,7 +2059,7 @@ a raw wire from the original shape is added</source>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="120"/>
+       <source>Apply cuts</source>
+-      <translation type="unfinished">Apply cuts</translation>
++      <translation>切り取りを適用</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="140"/>
+@@ -2076,16 +2076,16 @@ a raw wire from the original shape is added</source>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="190"/>
+       <source>Maximum deviation for approximation of complex curves</source>
+-      <translation type="unfinished">Maximum deviation for approximation of complex curves</translation>
++      <translation>複雑な曲線を近似するときの最大の偏差</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="210"/>
+       <source>Maximum deviation for the approximation of ellipses, hyperbolas, parabolas, and
+ Bézier and B-spline curves to arcs and lines. Can be useful for the CAM Workbench.
+ Set to zero to disable approximation.</source>
+-      <translation type="unfinished">Maximum deviation for the approximation of ellipses, hyperbolas, parabolas, and
+-Bézier and B-spline curves to arcs and lines. Can be useful for the CAM Workbench.
+-Set to zero to disable approximation.</translation>
++      <translation>楕円・双曲線・放物線・ベジェ曲線・B スプライン曲線を、円弧と線分で近似するときの最大の偏差。
++CAM で役立つことがあります。
++0 にすると近似しません。</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="256"/>
+@@ -2753,7 +2753,7 @@ if they match the X, Y or Z axis of the global coordinate system</source>
+     <message>
+       <location filename="../ui/preferences-dwg.ui" line="100"/>
+       <source>Note: DXF options apply to DWG files as well.</source>
+-      <translation type="unfinished">Note: DXF options apply to DWG files as well.</translation>
++      <translation>注: DXF の設定は DWG ファイルにも使われます。</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-draftinterface.ui" line="26"/>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index ea2481b29..f63511771 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -274,6 +274,22 @@
+ </context>
+ <context>
+     <name>QObject</name>
++    <message>
++        <source>Part/Part Design</source>
++        <translation>形</translation>
++    </message>
++    <message>
++        <source>Sketcher</source>
++        <translation>スケッチ</translation>
++    </message>
++    <message>
++        <source>TechDraw</source>
++        <translation>図面</translation>
++    </message>
++    <message>
++        <source>Assembly</source>
++        <translation>組立</translation>
++    </message>
+     <message>
+         <source>Clarify Selection</source>
+         <translation>重なったものから選ぶ</translation>
+-- 
+2.43.0
+

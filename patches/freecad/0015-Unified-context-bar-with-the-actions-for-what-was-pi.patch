@@ -1,0 +1,429 @@
+From fbb2af5d493167f4898d0167c2544d5b7c118a6e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:16:48 +0900
+Subject: [PATCH 15/31] Unified: context bar with the actions for what was
+ picked, next to the cursor
+
+When a face, edge, sketch or part is picked in the 3D view, a small bar
+appears next to the cursor with what can be done with it right there:
+a face can be sketched on, extruded, cut in or shelled, edges can be
+filleted or chamfered, a sketch extruded, cut in, revolved or edited, a
+part moved or hidden. The buttons run the ordinary commands, so their
+task panels and drag handles work as usual. The bar hides when the
+selection is cleared, a tool starts, or the view is orbited, panned or
+zoomed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp         |   4 +
+ src/Mod/Unified/Gui/CMakeLists.txt            |   2 +
+ src/Mod/Unified/Gui/ContextBar.cpp            | 251 ++++++++++++++++++
+ src/Mod/Unified/Gui/ContextBar.h              |  50 ++++
+ .../Gui/Resources/translations/Unified_ja.ts  |  43 +++
+ 5 files changed, 350 insertions(+)
+ create mode 100644 src/Mod/Unified/Gui/ContextBar.cpp
+ create mode 100644 src/Mod/Unified/Gui/ContextBar.h
+
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index 5f608eee0..1e621242e 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -6,6 +6,7 @@
+ #include <Gui/Application.h>
+ #include <Gui/Language/Translator.h>
+ 
++#include "ContextBar.h"
+ #include "Workbench.h"
+ 
+ 
+@@ -38,6 +39,9 @@ PyMOD_INIT_FUNC(UnifiedGui)
+ 
+     UnifiedGui::Workbench::init();
+ 
++    // Actions for the picked face, edge, sketch or part, right next to the cursor
++    UnifiedGui::ContextBar::install();
++
+     // Load Unified_<lang>.qm from the resources of this module
+     Gui::Translator::instance()->refresh();
+ 
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index ea29dc84f..1b2f5c9b8 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -15,6 +15,8 @@ qt_add_resources(UnifiedGui_QRC_SRCS ${Unified_TR_QRC} OPTIONS ${FREECAD_RCC_OPT
+ SET(UnifiedGui_SRCS
+     ${UnifiedGui_QRC_SRCS}
+     AppUnifiedGui.cpp
++    ContextBar.cpp
++    ContextBar.h
+     Workbench.cpp
+     Workbench.h
+ )
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+new file mode 100644
+index 000000000..e7f2e17a5
+--- /dev/null
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -0,0 +1,251 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <QApplication>
++#include <QCursor>
++#include <QEvent>
++#include <QHBoxLayout>
++#include <QMouseEvent>
++#include <QTimer>
++#include <QToolButton>
++
++#include <App/DocumentObject.h>
++#include <Base/Type.h>
++#include <Gui/Action.h>
++#include <Gui/Application.h>
++#include <Gui/BitmapFactory.h>
++#include <Gui/Command.h>
++#include <Gui/Control.h>
++#include <Gui/MainWindow.h>
++#include <Gui/View3DInventor.h>
++#include <Gui/View3DInventorViewer.h>
++
++#include "ContextBar.h"
++
++using namespace UnifiedGui;
++
++namespace
++{
++ContextBar* instance = nullptr;
++
++QString label(const char* text)
++{
++    return QApplication::translate("UnifiedGui::ContextBar", text);
++}
++
++bool isDerivedFrom(const App::DocumentObject* obj, const char* typeName)
++{
++    Base::Type type = Base::Type::fromName(typeName);
++    return !type.isBad() && obj->getTypeId().isDerivedFrom(type);
++}
++
++bool allStartWith(const std::vector<std::string>& names, const char* prefix)
++{
++    return !names.empty() && std::all_of(names.begin(), names.end(), [prefix](const std::string& n) {
++        return n.rfind(prefix, 0) == 0;
++    });
++}
++
++Gui::View3DInventor* active3DView()
++{
++    return dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
++}
++}  // namespace
++
++void ContextBar::install()
++{
++    if (!instance) {
++        instance = new ContextBar();
++    }
++}
++
++ContextBar::ContextBar()
++    : QFrame(Gui::getMainWindow())
++    , Gui::SelectionObserver(true)
++{
++    setObjectName(QStringLiteral("UnifiedContextBar"));
++    setFrameShape(QFrame::StyledPanel);
++    setAutoFillBackground(true);
++    layout = new QHBoxLayout(this);
++    layout->setContentsMargins(3, 3, 3, 3);
++    layout->setSpacing(1);
++    hide();
++}
++
++ContextBar::~ContextBar()
++{
++    instance = nullptr;
++}
++
++void ContextBar::onSelectionChanged(const Gui::SelectionChanges& msg)
++{
++    switch (msg.Type) {
++        case Gui::SelectionChanges::AddSelection:
++        case Gui::SelectionChanges::RmvSelection:
++        case Gui::SelectionChanges::SetSelection:
++        case Gui::SelectionChanges::ClrSelection:
++            break;
++        default:
++            return;
++    }
++    // Several messages arrive for one click; look at the selection once they are through
++    if (!refreshPending) {
++        refreshPending = true;
++        QTimer::singleShot(0, this, [this]() {
++            refreshPending = false;
++            refresh();
++        });
++    }
++}
++
++std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
++{
++    auto selection = Gui::Selection().getSelectionEx();
++    if (selection.empty()) {
++        return {};
++    }
++
++    // Several edges picked: round or chamfer them all at once
++    if (selection.size() > 1) {
++        bool edgesOnly = std::all_of(selection.begin(), selection.end(), [](const auto& s) {
++            return allStartWith(s.getSubNames(), "Edge");
++        });
++        if (edgesOnly) {
++            return {{"PartDesign_Fillet", label("Fillet")}, {"PartDesign_Chamfer", label("Chamfer")}};
++        }
++        return {};
++    }
++
++    const auto& sel = selection.front();
++    const App::DocumentObject* obj = sel.getObject();
++    const auto& subs = sel.getSubNames();
++    if (!obj) {
++        return {};
++    }
++    if (allStartWith(subs, "Face")) {
++        return {
++            {"PartDesign_NewSketch", label("Sketch")},
++            {"PartDesign_Pad", label("Extrude")},
++            {"PartDesign_Pocket", label("Cut in")},
++            {"PartDesign_Thickness", label("Shell")},
++        };
++    }
++    if (allStartWith(subs, "Edge")) {
++        return {{"PartDesign_Fillet", label("Fillet")}, {"PartDesign_Chamfer", label("Chamfer")}};
++    }
++    if (!subs.empty()) {
++        return {};
++    }
++    if (isDerivedFrom(obj, "Sketcher::SketchObject")) {
++        return {
++            {"PartDesign_Pad", label("Extrude")},
++            {"PartDesign_Pocket", label("Cut in")},
++            {"PartDesign_Revolution", label("Revolve")},
++            {"Sketcher_EditSketch", label("Edit")},
++        };
++    }
++    if (isDerivedFrom(obj, "Part::Feature") || isDerivedFrom(obj, "PartDesign::Body")) {
++        return {{"Std_TransformManip", label("Move")}, {"Std_ToggleVisibility", label("Hide")}};
++    }
++    return {};
++}
++
++void ContextBar::refresh()
++{
++    Gui::View3DInventor* view = active3DView();
++    // Only for picks in the 3D view, and not while a tool is running or something is edited
++    bool usable = view && !Gui::Control().activeDialog()
++        && !Gui::Application::Instance->editDocument()
++        && view->rect().contains(view->mapFromGlobal(QCursor::pos()));
++    std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
++    if (actions.empty()) {
++        dismiss();
++        return;
++    }
++    showActions(actions, view);
++}
++
++void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
++{
++    // Rebuild the buttons
++    while (QLayoutItem* item = layout->takeAt(0)) {
++        delete item->widget();
++        delete item;
++    }
++    auto& manager = Gui::Application::Instance->commandManager();
++    int shown = 0;
++    for (const auto& action : actions) {
++        Gui::Command* cmd = manager.getCommandByName(action.command);
++        if (!cmd) {
++            continue;
++        }
++        if (Gui::Action* a = cmd->getAction(); a && !a->isEnabled()) {
++            continue;  // e.g. no solid yet to cut into
++        }
++        auto button = new QToolButton(this);
++        button->setAutoRaise(true);
++        button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
++        button->setIconSize(QSize(24, 24));
++        button->setIcon(Gui::BitmapFactory().iconFromTheme(cmd->getPixmap()));
++        button->setText(action.label);
++        button->setToolTip(QString::fromUtf8(cmd->getToolTipText()));
++        const std::string name = action.command;
++        connect(button, &QToolButton::clicked, this, [this, name]() {
++            dismiss();
++            Gui::Application::Instance->commandManager().runCommandByName(name.c_str());
++        });
++        layout->addWidget(button);
++        ++shown;
++    }
++    if (shown == 0) {
++        dismiss();
++        return;
++    }
++
++    // Put the bar next to the cursor, inside the view. The bar stays a child of the main
++    // window (views come and go with their documents) and is only positioned over the view.
++    QWidget* main = parentWidget();
++    adjustSize();
++    QRect area(view->mapTo(main, QPoint(0, 0)), view->size());
++    QPoint pos = main->mapFromGlobal(QCursor::pos()) + QPoint(18, 18);
++    pos.setX(std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() - width())));
++    pos.setY(std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() - height())));
++    move(pos);
++    show();
++    raise();
++
++    // Leave the bar alone while the user works with the view: orbiting, panning or
++    // zooming hides it
++    auto* viewer = static_cast<Gui::View3DInventor*>(view)->getViewer();
++    QWidget* gl = viewer->getGLWidget();
++    if (watchedView != gl) {
++        if (watchedView) {
++            watchedView->removeEventFilter(this);
++        }
++        watchedView = gl;
++        gl->installEventFilter(this);
++    }
++}
++
++bool ContextBar::eventFilter(QObject* watched, QEvent* event)
++{
++    if (watched == watchedView && isVisible()) {
++        if (event->type() == QEvent::Wheel) {
++            dismiss();
++        }
++        else if (event->type() == QEvent::MouseButtonPress) {
++            auto* mouse = static_cast<QMouseEvent*>(event);
++            if (mouse->button() != Qt::LeftButton) {
++                dismiss();
++            }
++        }
++        else if (event->type() == QEvent::KeyPress) {
++            dismiss();
++        }
++    }
++    return QFrame::eventFilter(watched, event);
++}
++
++void ContextBar::dismiss()
++{
++    hide();
++}
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+new file mode 100644
+index 000000000..7d465dba2
+--- /dev/null
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -0,0 +1,50 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++#include <QFrame>
++#include <QPointer>
++
++#include <Gui/Selection/Selection.h>
++
++class QHBoxLayout;
++
++namespace UnifiedGui
++{
++
++/**
++ * A small bar that appears next to the cursor when something is picked in the 3D view and
++ * offers what can be done with it right there: a face can be sketched on, extruded or cut
++ * in, an edge can be rounded, a sketch can be turned into a solid, ... The buttons run the
++ * ordinary commands, so their task panels and drag handles are used as usual.
++ */
++class ContextBar: public QFrame, public Gui::SelectionObserver
++{
++public:
++    /// Create the bar once; it lives as long as the main window
++    static void install();
++
++private:
++    ContextBar();
++    ~ContextBar() override;
++
++    struct Action
++    {
++        const char* command;
++        QString label;
++    };
++
++    void onSelectionChanged(const Gui::SelectionChanges& msg) override;
++    bool eventFilter(QObject* watched, QEvent* event) override;
++
++    void refresh();
++    std::vector<Action> actionsForSelection() const;
++    void showActions(const std::vector<Action>& actions, QWidget* view);
++    void dismiss();
++
++    QHBoxLayout* layout {nullptr};
++    QPointer<QWidget> watchedView;
++    bool refreshPending {false};
++};
++
++}  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index c6064090c..891037c6d 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -51,4 +51,47 @@
+         <translation>スケッチを描いて立体にします</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedGui::ContextBar</name>
++    <message>
++        <source>Sketch</source>
++        <translation>スケッチ</translation>
++    </message>
++    <message>
++        <source>Extrude</source>
++        <translation>押し出す</translation>
++    </message>
++    <message>
++        <source>Cut in</source>
++        <translation>へこませる</translation>
++    </message>
++    <message>
++        <source>Shell</source>
++        <translation>殻</translation>
++    </message>
++    <message>
++        <source>Fillet</source>
++        <translation>丸め</translation>
++    </message>
++    <message>
++        <source>Chamfer</source>
++        <translation>面取り</translation>
++    </message>
++    <message>
++        <source>Revolve</source>
++        <translation>回転</translation>
++    </message>
++    <message>
++        <source>Edit</source>
++        <translation>編集</translation>
++    </message>
++    <message>
++        <source>Move</source>
++        <translation>移動</translation>
++    </message>
++    <message>
++        <source>Hide</source>
++        <translation>隠す</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

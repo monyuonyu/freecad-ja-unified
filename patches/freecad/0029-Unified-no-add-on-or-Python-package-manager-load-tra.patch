@@ -1,0 +1,96 @@
+From 0e8f98c78865fa434c23b8bd6f1aade668b0a2c0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:25:33 +0900
+Subject: [PATCH 29/31] Unified: no add-on or Python package manager; load
+ translations of the modules it imports
+
+Add-ons add workbenches, which the integrated environment does not have.
+Gui.updateLocale() after importing the modules makes their translations
+(e.g. Assembly's) available to the menus.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts   | 18 ++++++++++++++++++
+ src/Mod/Unified/Gui/Workbench.cpp              | 16 ++++++++++++++++
+ src/Mod/Unified/InitGui.py                     |  4 ++--
+ 3 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 06c2fddf2..0f38afa74 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -39,6 +39,10 @@
+         <source>Standard Views</source>
+         <translation>標準の視点</translation>
+     </message>
++    <message>
++        <source>Create</source>
++        <translation>作成</translation>
++    </message>
+     <message>
+         <source>Unified Sketch</source>
+         <translation>スケッチ</translation>
+@@ -278,4 +282,18 @@
+         <translation>重なったものから選ぶ</translation>
+     </message>
+ </context>
++<context>
++    <name>Assembly_Insert</name>
++    <message>
++        <source>Insert Component</source>
++        <translation>部品を挿入</translation>
++    </message>
++</context>
++<context>
++    <name>Assembly_InsertLink</name>
++    <message>
++        <source>Insert Component</source>
++        <translation>部品を挿入</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 748175a04..381090ed0 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -149,6 +149,22 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+               << "Assembly_CreateView"
+               << "Assembly_CreateBom";
+ 
++    // Add-ons add workbenches, which the integrated environment does not have: no add-on or
++    // Python package manager in the Tools menu
++    if (Gui::MenuItem* tools = root->findItem("&Tools")) {
++        for (const char* name : {"Std_AddonMgr", "Std_AddonMgrPip"}) {
++            if (Gui::MenuItem* found = tools->findItem(name)) {
++                tools->removeItem(found);
++                delete found;
++            }
++        }
++        QList<Gui::MenuItem*> items = tools->getItems();
++        if (!items.isEmpty() && items.front()->command() == "Separator") {
++            tools->removeItem(items.front());
++            delete items.front();
++        }
++    }
++
+     // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
+     Gui::MenuItem* edit = root->findItem("&Edit");
+     if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 8b178a55b..23f5596fe 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -48,8 +48,8 @@ class UnifiedWorkbench(Workbench):
+                 "CommandCreateBom",
+             )
+ 
+-        # Rebuild the menus and toolbars now that all commands exist
+-        import UnifiedGui  # noqa: F811
++        # Load the translations of the modules imported above (e.g. Assembly's command names)
++        Gui.updateLocale()
+ 
+     def GetClassName(self):
+         return "UnifiedGui::Workbench"
+-- 
+2.43.0
+

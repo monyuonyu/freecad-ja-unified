@@ -1,0 +1,33 @@
+From 6445f5a857ab05c60306a3afa88a2f5a789288b4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:12:31 +0900
+Subject: [PATCH 14/31] Main: TinkerCAD-like mouse navigation by default
+
+Left button selects, right drag orbits around the point under the cursor
+(a right click without dragging opens the context menu), middle drag pans
+and the wheel zooms at the cursor, like most applications. Only the
+default of a first start; a navigation style chosen by the user is kept.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Main/MainGui.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index 18841a177..a1bd9d259 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -233,6 +233,10 @@ int main(int argc, char** argv)
+     // One integrated working environment instead of a choice of workbenches
+     App::Application::Config()["StartWorkbench"] = "UnifiedWorkbench";
+     App::Application::Config()["SingleWorkbench"] = "UnifiedWorkbench";
++    // Mouse like most applications: left selects, right drag orbits (right click opens the
++    // context menu), middle drag pans, the wheel zooms at the cursor. Applied on the first
++    // start only; a style chosen by the user is kept.
++    App::Application::Config()["NavigationStyle"] = "Gui::TinkerCADNavigationStyle";
+     // App::Application::Config()["HiddenDockWindow"] = "Property editor";
+     App::Application::Config()["SplashAlignment"] = "Bottom|Left";
+     App::Application::Config()["SplashTextColor"] = "#418FDE";
+-- 
+2.43.0
+

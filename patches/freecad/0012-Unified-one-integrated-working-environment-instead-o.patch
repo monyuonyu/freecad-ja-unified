@@ -1,0 +1,582 @@
+From 2bda83b2d94d9e54958b233ef0f26d118038e74a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:05:21 +0900
+Subject: [PATCH 12/31] Unified: one integrated working environment instead of
+ a choice of workbenches
+
+- New module Unified with the only workbench shown to the user. Its
+  toolbars carry the main flow (sketch, pad/pocket/revolution/hole,
+  fillet/chamfer/thickness, patterns, parts, measure); the Sketch and
+  Part Design menus hold all other tools of Sketcher and PartDesign.
+- While a sketch is edited, the Sketcher edit mode toolbars replace the
+  modelling toolbars in the same workbench (Sketcher now also hides the
+  Unified toolbars and saves the edit mode toolbar state there).
+- Single workbench mode (Config "SingleWorkbench", set by FreeCAD's
+  main): requests to activate another workbench (start page, editing a
+  sketch or a PartDesign feature, the remembered last module, ...)
+  activate the integrated one instead; the workbench selector, the
+  View > Workbench menu and the Workbenches preference page are gone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../CheckInterModuleDependencies.cmake        |   1 +
+ .../InitializeFreeCADBuildOptions.cmake       |   1 +
+ src/Gui/Application.cpp                       |  14 ++
+ src/Gui/Workbench.cpp                         |  17 +-
+ src/Gui/resource.cpp                          |   7 +-
+ src/Main/MainGui.cpp                          |   4 +-
+ src/Mod/CMakeLists.txt                        |   4 +
+ src/Mod/Sketcher/Gui/Workbench.cpp            |  14 +-
+ src/Mod/Unified/CMakeLists.txt                |  24 +++
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp         |  43 +++++
+ src/Mod/Unified/Gui/CMakeLists.txt            |  32 ++++
+ src/Mod/Unified/Gui/Workbench.cpp             | 169 ++++++++++++++++++
+ src/Mod/Unified/Gui/Workbench.h               |  29 +++
+ src/Mod/Unified/Init.py                       |   2 +
+ src/Mod/Unified/InitGui.py                    |  23 +++
+ 15 files changed, 376 insertions(+), 8 deletions(-)
+ create mode 100644 src/Mod/Unified/CMakeLists.txt
+ create mode 100644 src/Mod/Unified/Gui/AppUnifiedGui.cpp
+ create mode 100644 src/Mod/Unified/Gui/CMakeLists.txt
+ create mode 100644 src/Mod/Unified/Gui/Workbench.cpp
+ create mode 100644 src/Mod/Unified/Gui/Workbench.h
+ create mode 100644 src/Mod/Unified/Init.py
+ create mode 100644 src/Mod/Unified/InitGui.py
+
+diff --git a/cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake b/cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake
+index 2d51de697..7f3aa5118 100644
+--- a/cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake
++++ b/cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake
+@@ -38,5 +38,6 @@ macro(CheckInterModuleDependencies)
+     REQUIRES_MODS(BUILD_SKETCHER           BUILD_PART)
+     REQUIRES_MODS(BUILD_SPREADSHEET        BUILD_DRAFT)
+     REQUIRES_MODS(BUILD_SURFACE            BUILD_PART)
++    REQUIRES_MODS(BUILD_UNIFIED            BUILD_SKETCHER BUILD_PART_DESIGN)
+     REQUIRES_MODS(BUILD_TECHDRAW           BUILD_PART BUILD_PART_DESIGN BUILD_SPREADSHEET BUILD_MEASURE BUILD_IMPORT)
+ endmacro(CheckInterModuleDependencies)
+diff --git a/cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake b/cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake
+index 89b7fc8e5..f546ab6c9 100644
+--- a/cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake
++++ b/cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake
+@@ -176,6 +176,7 @@ macro(InitializeFreeCADBuildOptions)
+     option(BUILD_TUX "Build the FreeCAD Tux module" ON)
+     option(BUILD_WEB "Build the FreeCAD Web module" ON)
+     option(BUILD_SURFACE "Build the FreeCAD surface module" ON)
++    option(BUILD_UNIFIED "Build the single integrated working environment (needs Sketcher and PartDesign)" ON)
+     option(ENABLE_DEVELOPER_TESTS "Build the FreeCAD unit tests suit" ON)
+ 
+     if(MSVC OR APPLE)
+diff --git a/src/Gui/Application.cpp b/src/Gui/Application.cpp
+index b53b43c1f..9deb1ee7d 100644
+--- a/src/Gui/Application.cpp
++++ b/src/Gui/Application.cpp
+@@ -1861,6 +1861,20 @@ bool Application::setUserEditMode(const std::string& mode)
+  */
+ bool Application::activateWorkbench(const char* name)
+ {
++    // Single workbench mode: the user works in one integrated environment. Requests to
++    // switch to another workbench (from the start page, when editing a sketch or a
++    // PartDesign feature, from a remembered "last module", ...) activate that one instead.
++    const auto& cfg = App::Application::Config();
++    auto single = cfg.find("SingleWorkbench");
++    if (single != cfg.end() && !single->second.empty() && single->second != name
++        && std::strcmp(name, "NoneWorkbench") != 0 && workbenches().contains(QString::fromStdString(single->second))) {
++        Workbench* current = WorkbenchManager::instance()->active();
++        if (current && current->name() == single->second) {
++            return true;  // stay in the integrated environment
++        }
++        return activateWorkbench(single->second.c_str());
++    }
++
+     bool ok = false;
+     WaitCursor wc;
+     Workbench* oldWb = WorkbenchManager::instance()->active();
+diff --git a/src/Gui/Workbench.cpp b/src/Gui/Workbench.cpp
+index ca907c839..a098e266e 100644
+--- a/src/Gui/Workbench.cpp
++++ b/src/Gui/Workbench.cpp
+@@ -778,6 +778,13 @@ MenuItem* StdWorkbench::setupMenuBar() const
+           << "Std_Workbench"
+           << "Std_ToolBarMenu"
+           << "Std_DockViewMenu";
++    if (App::Application::Config().contains("SingleWorkbench")) {
++        // Single workbench mode: there is no workbench to choose
++        if (MenuItem* item = view->findItem("Std_Workbench")) {
++            view->removeItem(item);
++            delete item;
++        }
++    }
+     if (DockWindowManager::instance()->isOverlayActivated()) {
+         *view << "Std_DockOverlay";
+     }
+@@ -868,10 +875,12 @@ ToolBarItem* StdWorkbench::setupToolBars() const
+     clipboard->setCommand("Clipboard");
+     *clipboard << "Std_Cut" << "Std_Copy" << "Std_Paste";
+ 
+-    // Workbench switcher
+-    auto wb = new ToolBarItem(root);
+-    wb->setCommand("Workbench");
+-    *wb << "Std_Workbench";
++    // Workbench switcher (not in single workbench mode, where there is nothing to switch to)
++    if (!App::Application::Config().contains("SingleWorkbench")) {
++        auto wb = new ToolBarItem(root);
++        wb->setCommand("Workbench");
++        *wb << "Std_Workbench";
++    }
+ 
+     // Macro
+     auto macro = new ToolBarItem(root, ToolBarItem::DefaultVisibility::Hidden);
+diff --git a/src/Gui/resource.cpp b/src/Gui/resource.cpp
+index 6cb6fff48..b23522e47 100644
+--- a/src/Gui/resource.cpp
++++ b/src/Gui/resource.cpp
+@@ -21,6 +21,8 @@
+  ***************************************************************************/
+ 
+ 
++#include <App/Application.h>
++
+ #include "BitmapFactory.h"
+ #include "WidgetFactory.h"
+ #include "Workbench.h"
+@@ -86,7 +88,10 @@ WidgetFactorySupplier::WidgetFactorySupplier()
+     new PrefPageProducer<DlgSettingsNavigation>       ( QT_TRANSLATE_NOOP("QObject","Display") );
+     new PrefPageProducer<DlgSettingsViewColor>        ( QT_TRANSLATE_NOOP("QObject","Display") );
+     new PrefPageProducer<DlgSettingsAdvanced>         ( QT_TRANSLATE_NOOP("QObject","Display") );
+-    new PrefPageProducer<DlgSettingsWorkbenchesImp>   ( QT_TRANSLATE_NOOP("QObject","Workbenches") );
++    if (!App::Application::Config().contains("SingleWorkbench")) {
++        // Only one integrated workbench in single workbench mode: nothing to choose
++        new PrefPageProducer<DlgSettingsWorkbenchesImp>   ( QT_TRANSLATE_NOOP("QObject","Workbenches") );
++    }
+     new PrefPageProducer<DlgSettingsPDF>              ( QT_TRANSLATE_NOOP("QObject","Import-Export") );
+     new PrefPageProducer<DlgSettingsMacroImp>         ( QT_TRANSLATE_NOOP("QObject", "Python"));
+     new PrefPageProducer<DlgSettingsPythonConsole>    ( QT_TRANSLATE_NOOP("QObject", "Python"));
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index 543304e4e..18841a177 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -230,7 +230,9 @@ int main(int argc, char** argv)
+     App::Application::Config()["CopyrightInfo"] = sBanner;
+     App::Application::Config()["AppIcon"] = "freecad";
+     App::Application::Config()["SplashScreen"] = "freecadsplash";
+-    App::Application::Config()["StartWorkbench"] = "PartDesignWorkbench";
++    // One integrated working environment instead of a choice of workbenches
++    App::Application::Config()["StartWorkbench"] = "UnifiedWorkbench";
++    App::Application::Config()["SingleWorkbench"] = "UnifiedWorkbench";
+     // App::Application::Config()["HiddenDockWindow"] = "Property editor";
+     App::Application::Config()["SplashAlignment"] = "Bottom|Left";
+     App::Application::Config()["SplashTextColor"] = "#418FDE";
+diff --git a/src/Mod/CMakeLists.txt b/src/Mod/CMakeLists.txt
+index 032e19800..ea5c36b6a 100644
+--- a/src/Mod/CMakeLists.txt
++++ b/src/Mod/CMakeLists.txt
+@@ -34,6 +34,10 @@ if(BUILD_INSPECTION)
+   add_subdirectory(Inspection)
+ endif(BUILD_INSPECTION)
+ 
++if(BUILD_UNIFIED)
++  add_subdirectory(Unified)
++endif(BUILD_UNIFIED)
++
+ if(BUILD_JTREADER)
+   add_subdirectory(JtReader)
+ endif(BUILD_JTREADER)
+diff --git a/src/Mod/Sketcher/Gui/Workbench.cpp b/src/Mod/Sketcher/Gui/Workbench.cpp
+index d836d521a..c80330dc1 100644
+--- a/src/Mod/Sketcher/Gui/Workbench.cpp
++++ b/src/Mod/Sketcher/Gui/Workbench.cpp
+@@ -170,7 +170,16 @@ inline const QStringList editModeToolbarNames()
+ 
+ inline const QStringList nonEditModeToolbarNames()
+ {
+-    return QStringList {QStringLiteral("Structure"), QStringLiteral("Sketcher")};
++    // Besides Sketcher's own toolbars, hide the modelling toolbars of the integrated
++    // working environment (UnifiedGui) while a sketch is edited
++    return QStringList {
++        QStringLiteral("Structure"),
++        QStringLiteral("Sketcher"),
++        QStringLiteral("Unified Sketch"),
++        QStringLiteral("Unified Model"),
++        QStringLiteral("Unified Parts"),
++        QStringLiteral("Unified Check")
++    };
+ }
+ }  // namespace
+ 
+@@ -235,7 +244,8 @@ void Workbench::leaveEditMode()
+      */
+     auto* workbench = Gui::WorkbenchManager::instance()->active();
+ 
+-    if (workbench->name() == "SketcherWorkbench") {
++    // The integrated working environment shows the same edit mode toolbars as the Sketcher
++    if (workbench->name() == "SketcherWorkbench" || workbench->name() == "UnifiedWorkbench") {
+         Gui::ToolBarManager::getInstance()->setState(
+             editModeToolbarNames(),
+             Gui::ToolBarManager::State::SaveState
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+new file mode 100644
+index 000000000..b5dc180c7
+--- /dev/null
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -0,0 +1,24 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# The single, integrated working environment: the only workbench the user sees.
++
++if(BUILD_GUI)
++    add_subdirectory(Gui)
++endif(BUILD_GUI)
++
++set(Unified_Scripts
++    Init.py
++)
++
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts InitGui.py)
++endif(BUILD_GUI)
++
++add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
++fc_copy_sources(UnifiedScripts "${CMAKE_BINARY_DIR}/Mod/Unified" ${Unified_Scripts})
++
++INSTALL(
++    FILES
++        ${Unified_Scripts}
++    DESTINATION
++        Mod/Unified
++)
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+new file mode 100644
+index 000000000..ca6dd0650
+--- /dev/null
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <Base/Console.h>
++#include <Base/Interpreter.h>
++#include <Base/PyObjectBase.h>
++#include <Gui/Application.h>
++
++#include "Workbench.h"
++
++
++namespace UnifiedGui
++{
++class Module: public Py::ExtensionModule<Module>
++{
++public:
++    Module()
++        : Py::ExtensionModule<Module>("UnifiedGui")
++    {
++        initialize("The single integrated working environment of FreeCAD.");
++    }
++};
++
++PyObject* initModule()
++{
++    return Base::Interpreter().addModule(new Module);
++}
++
++}  // namespace UnifiedGui
++
++
++PyMOD_INIT_FUNC(UnifiedGui)
++{
++    if (!Gui::Application::Instance) {
++        PyErr_SetString(PyExc_ImportError, "Cannot load Gui module in console application.");
++        PyMOD_Return(nullptr);
++    }
++
++    UnifiedGui::Workbench::init();
++
++    PyObject* mod = UnifiedGui::initModule();
++    Base::Console().log("Loading GUI of Unified module… done\n");
++    PyMOD_Return(mod);
++}
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+new file mode 100644
+index 000000000..65bc24185
+--- /dev/null
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -0,0 +1,32 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++set(UnifiedGui_LIBS
++    FreeCADGui
++    SketcherGui
++)
++
++SET(UnifiedGui_SRCS
++    AppUnifiedGui.cpp
++    Workbench.cpp
++    Workbench.h
++)
++
++add_library(UnifiedGui SHARED ${UnifiedGui_SRCS})
++
++target_include_directories(
++    UnifiedGui
++    PRIVATE
++    ${CMAKE_SOURCE_DIR}/src
++    ${CMAKE_CURRENT_BINARY_DIR}
++)
++
++target_link_libraries(UnifiedGui ${UnifiedGui_LIBS})
++
++if (MSVC)
++    target_compile_options(UnifiedGui PRIVATE /wd4251)
++endif()
++
++SET_BIN_DIR(UnifiedGui)
++SET_PYTHON_PREFIX_SUFFIX(UnifiedGui)
++
++INSTALL(TARGETS UnifiedGui DESTINATION ${CMAKE_INSTALL_LIBDIR})
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+new file mode 100644
+index 000000000..3eda0292a
+--- /dev/null
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -0,0 +1,169 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <Gui/Application.h>
++#include <Gui/Command.h>
++#include <Gui/MenuManager.h>
++#include <Gui/ToolBarManager.h>
++#include <Mod/Sketcher/Gui/Workbench.h>
++
++#include "Workbench.h"
++
++using namespace UnifiedGui;
++
++TYPESYSTEM_SOURCE(UnifiedGui::Workbench, Gui::StdWorkbench)
++
++// The toolbar names below are also listed in SketcherGui (nonEditModeToolbarNames) so that
++// they are hidden while a sketch is edited and only the sketch tools are shown.
++
++Workbench::Workbench() = default;
++
++Workbench::~Workbench() = default;
++
++Gui::MenuItem* Workbench::setupMenuBar() const
++{
++    Gui::MenuItem* root = StdWorkbench::setupMenuBar();
++    Gui::MenuItem* windows = root->findItem("&Windows");
++
++    // Sketch: everything about 2D drawing. The frequently used tools are also on the toolbars.
++    auto sketch = new Gui::MenuItem;
++    root->insertItem(windows, sketch);
++    sketch->setCommand("&Sketch");
++    *sketch << "PartDesign_NewSketch"
++            << "Sketcher_EditSketch"
++            << "Sketcher_MapSketch"
++            << "Sketcher_ReorientSketch"
++            << "Separator";
++    auto geom = new Gui::MenuItem;
++    geom->setCommand("Sketcher geometries");
++    SketcherGui::addSketcherWorkbenchGeometries(*geom);
++    auto cons = new Gui::MenuItem;
++    cons->setCommand("Sketcher constraints");
++    SketcherGui::addSketcherWorkbenchConstraints(*cons);
++    auto tools = new Gui::MenuItem;
++    tools->setCommand("Sketcher tools");
++    SketcherGui::addSketcherWorkbenchTools(*tools);
++    auto bspline = new Gui::MenuItem;
++    bspline->setCommand("Sketcher B-spline tools");
++    SketcherGui::addSketcherWorkbenchBSplines(*bspline);
++    auto visual = new Gui::MenuItem;
++    visual->setCommand("Sketcher visual");
++    SketcherGui::addSketcherWorkbenchVisual(*visual);
++    *sketch << geom << cons << tools << bspline << visual << "Separator"
++            << "Sketcher_ValidateSketch"
++            << "Sketcher_MergeSketches"
++            << "Sketcher_MirrorSketch";
++
++    // Part: all modelling tools, including the ones that are not on the toolbars
++    auto part = new Gui::MenuItem;
++    root->insertItem(windows, part);
++    part->setCommand("&Part Design");
++    auto additives = new Gui::MenuItem;
++    additives->setCommand("Additive Features");
++    *additives << "PartDesign_Pad"
++               << "PartDesign_Revolution"
++               << "PartDesign_AdditiveLoft"
++               << "PartDesign_AdditivePipe"
++               << "PartDesign_AdditiveHelix"
++               << "PartDesign_CompPrimitiveAdditive";
++    auto subtractives = new Gui::MenuItem;
++    subtractives->setCommand("Subtractive Features");
++    *subtractives << "PartDesign_Pocket"
++                  << "PartDesign_Hole"
++                  << "PartDesign_Groove"
++                  << "PartDesign_SubtractiveLoft"
++                  << "PartDesign_SubtractivePipe"
++                  << "PartDesign_SubtractiveHelix"
++                  << "PartDesign_CompPrimitiveSubtractive";
++    auto dressups = new Gui::MenuItem;
++    dressups->setCommand("Dress-Up Features");
++    *dressups << "PartDesign_Fillet"
++              << "PartDesign_Chamfer"
++              << "PartDesign_Draft"
++              << "PartDesign_Thickness"
++              << "PartDesign_Defeaturing";
++    auto transformations = new Gui::MenuItem;
++    transformations->setCommand("Transformation Features");
++    *transformations << "PartDesign_Mirrored"
++                     << "PartDesign_LinearPattern"
++                     << "PartDesign_PolarPattern"
++                     << "PartDesign_MultiTransform";
++    *part << "PartDesign_Body" << "Separator" << additives << subtractives << dressups
++          << transformations << "Separator"
++          << "PartDesign_Boolean"
++          << "PartDesign_ShapeBinder"
++          << "PartDesign_SubShapeBinder"
++          << "PartDesign_Clone"
++          << "Separator"
++          << "Part_CheckGeometry";
++
++    // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
++    Gui::MenuItem* edit = root->findItem("&Edit");
++    if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
++        dup->setCommand("PartDesign_DuplicateSelection");
++    }
++    return root;
++}
++
++Gui::ToolBarItem* Workbench::setupToolBars() const
++{
++    Gui::ToolBarItem* root = StdWorkbench::setupToolBars();
++
++    // The main flow: draw a sketch, turn it into a solid, refine it
++    auto sketch = new Gui::ToolBarItem(root);
++    sketch->setCommand("Unified Sketch");
++    *sketch << "PartDesign_NewSketch";
++
++    auto model = new Gui::ToolBarItem(root);
++    model->setCommand("Unified Model");
++    *model << "PartDesign_Pad"
++           << "PartDesign_Pocket"
++           << "PartDesign_Revolution"
++           << "PartDesign_Hole"
++           << "Separator"
++           << "PartDesign_Fillet"
++           << "PartDesign_Chamfer"
++           << "PartDesign_Thickness"
++           << "Separator"
++           << "PartDesign_Mirrored"
++           << "PartDesign_LinearPattern"
++           << "PartDesign_PolarPattern";
++
++    auto parts = new Gui::ToolBarItem(root);
++    parts->setCommand("Unified Parts");
++    *parts << "PartDesign_Body"
++           << "Std_TransformManip"
++           << "PartDesign_Boolean";
++
++    auto check = new Gui::ToolBarItem(root);
++    check->setCommand("Unified Check");
++    *check << "Std_Measure"
++           << "Part_CheckGeometry";
++
++    // Sketch tools: the same toolbars as in Sketcher, shown only while a sketch is edited
++    using Vis = Gui::ToolBarItem::DefaultVisibility;
++    auto editMode = new Gui::ToolBarItem(root, Vis::Unavailable);
++    editMode->setCommand("Edit Mode");
++    SketcherGui::addSketcherWorkbenchSketchEditModeActions(*editMode);
++    auto geom = new Gui::ToolBarItem(root, Vis::Unavailable);
++    geom->setCommand("Geometries");
++    SketcherGui::addSketcherWorkbenchGeometries(*geom);
++    auto cons = new Gui::ToolBarItem(root, Vis::Unavailable);
++    cons->setCommand("Constraints");
++    SketcherGui::addSketcherWorkbenchConstraints(*cons);
++    auto tools = new Gui::ToolBarItem(root, Vis::Unavailable);
++    tools->setCommand("Sketcher Tools");
++    SketcherGui::addSketcherWorkbenchTools(*tools);
++    auto bspline = new Gui::ToolBarItem(root, Vis::Unavailable);
++    bspline->setCommand("B-Spline Tools");
++    SketcherGui::addSketcherWorkbenchBSplines(*bspline);
++    auto visual = new Gui::ToolBarItem(root, Vis::Unavailable);
++    visual->setCommand("Visual Helpers");
++    SketcherGui::addSketcherWorkbenchVisual(*visual);
++
++    return root;
++}
++
++Gui::ToolBarItem* Workbench::setupCommandBars() const
++{
++    return new Gui::ToolBarItem;
++}
+diff --git a/src/Mod/Unified/Gui/Workbench.h b/src/Mod/Unified/Gui/Workbench.h
+new file mode 100644
+index 000000000..5d68eda33
+--- /dev/null
++++ b/src/Mod/Unified/Gui/Workbench.h
+@@ -0,0 +1,29 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++#include <Gui/Workbench.h>
++
++namespace UnifiedGui
++{
++
++/**
++ * The only workbench shown to the user. Sketching, modelling and checking parts all
++ * happen here; the tools of Sketcher and PartDesign are gathered instead of being
++ * spread over several workbenches.
++ */
++class Workbench: public Gui::StdWorkbench
++{
++    TYPESYSTEM_HEADER_WITH_OVERRIDE();
++
++public:
++    Workbench();
++    ~Workbench() override;
++
++protected:
++    Gui::MenuItem* setupMenuBar() const override;
++    Gui::ToolBarItem* setupToolBars() const override;
++    Gui::ToolBarItem* setupCommandBars() const override;
++};
++
++}  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Init.py b/src/Mod/Unified/Init.py
+new file mode 100644
+index 000000000..204269461
+--- /dev/null
++++ b/src/Mod/Unified/Init.py
+@@ -0,0 +1,2 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Unified: the single integrated working environment (nothing to do on the App side)
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+new file mode 100644
+index 000000000..221afd9be
+--- /dev/null
++++ b/src/Mod/Unified/InitGui.py
+@@ -0,0 +1,23 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Unified: the single integrated working environment.
++#
++# FreeCAD shows only this workbench. It gathers the tools of Sketcher, PartDesign and
++# friends in one place, so the user never has to pick or switch workbenches.
++
++
++class UnifiedWorkbench(Workbench):
++    MenuText = "FreeCAD"
++    ToolTip = "Sketch, model and check parts in one place"
++
++    def Initialize(self):
++        # Load the modules whose commands are used here. Their workbenches are never shown.
++        import PartGui
++        import SketcherGui
++        import PartDesignGui
++        import UnifiedGui
++
++    def GetClassName(self):
++        return "UnifiedGui::Workbench"
++
++
++Gui.addWorkbench(UnifiedWorkbench())
+-- 
+2.43.0
+

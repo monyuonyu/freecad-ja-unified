@@ -1,0 +1,95 @@
+From 3f29e099a9795035ee0170f0cbf0e60e9fde3622 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:39:56 +0900
+Subject: [PATCH 18/31] Unified: one way of navigating the 3D view
+
+In single workbench mode the navigation style is fixed to the default of
+FreeCAD's main (TinkerCAD-like) whatever is stored in the preferences,
+and the places to choose one are gone: the style combo box and mouse
+button help in the preferences, the choice on the first start page, and
+the navigation indicator in the status bar.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/PreferencePages/DlgSettingsNavigation.cpp | 6 ++++++
+ src/Gui/View3DSettings.cpp                        | 6 ++++++
+ src/Mod/Start/Gui/GeneralSettingsWidget.cpp       | 5 +++++
+ src/Mod/Tux/InitGui.py                            | 5 ++++-
+ 4 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+index 7299b4ef4..b47f9b34f 100644
+--- a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+@@ -67,6 +67,12 @@ DlgSettingsNavigation::DlgSettingsNavigation(QWidget* parent)
+     ui->naviCubeBaseColor->setAllowTransparency(true);
+     ui->rotationCenterColor->setAllowTransparency(true);
+     ui->checkBoxTouchpadScrollPans->setChecked(NavigationStyle::touchpadScrollPansByDefault());
++    if (App::Application::Config().contains("SingleWorkbench")) {
++        // One way of navigating in the integrated environment: nothing to choose
++        ui->navigationLabel->hide();
++        ui->comboNavigationStyle->hide();
++        ui->mouseButton->hide();
++    }
+     retranslate();
+ #if !defined(_USE_3DCONNEXION_SDK) && !defined(SPNAV_FOUND)
+     ui->legacySpaceMouseDevices->setDisabled(true);
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index a1ed887d3..a91e668e9 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -21,6 +21,7 @@
+  ***************************************************************************/
+ 
+ 
++#include <App/Application.h>
+ #include <Inventor/fields/SoSFColor.h>
+ #include <Inventor/nodes/SoDirectionalLight.h>
+ #include <Inventor/nodes/SoOrthographicCamera.h>
+@@ -285,6 +286,11 @@ void View3DSettings::OnChange(ParameterGrp::SubjectType& rCaller, ParameterGrp::
+                 "NavigationStyle",
+                 std::string {CADNavigationStyle::getClassTypeId().getName()}.c_str()
+             );
++            // The integrated environment has one way of navigating, whatever is stored
++            const auto& cfg = App::Application::Config();
++            if (cfg.contains("SingleWorkbench") && cfg.contains("NavigationStyle")) {
++                model = cfg.at("NavigationStyle");
++            }
+             Base::Type type = Base::Type::fromName(model.c_str());
+             for (auto _viewer : _viewers) {
+                 _viewer->setNavigationType(type);
+diff --git a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+index f87375b77..c4f4a4b30 100644
+--- a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
++++ b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+@@ -84,6 +84,11 @@ void GeneralSettingsWidget::createHorizontalUi()
+     mainLayout->addSpacing(extraSpace);
+     mainLayout->addWidget(_navigationStyleLabel);
+     mainLayout->addWidget(_navigationStyleComboBox);
++    if (App::Application::Config().contains("SingleWorkbench")) {
++        // One way of navigating in the integrated environment: nothing to choose
++        _navigationStyleLabel->hide();
++        _navigationStyleComboBox->hide();
++    }
+ }
+ 
+ 
+diff --git a/src/Mod/Tux/InitGui.py b/src/Mod/Tux/InitGui.py
+index 508eeb678..a4484039e 100644
+--- a/src/Mod/Tux/InitGui.py
++++ b/src/Mod/Tux/InitGui.py
+@@ -24,7 +24,10 @@ p = FreeCAD.ParamGet("User parameter:Tux")
+ 
+ 
+ # Navigation indicator
+-if p.GetGroup("NavigationIndicator").GetBool("Enabled", 1):
++# The integrated environment has one way of navigating: no indicator to switch styles
++if "SingleWorkbench" not in FreeCAD.ConfigDump() and p.GetGroup("NavigationIndicator").GetBool(
++    "Enabled", 1
++):
+     import NavigationIndicatorGui
+ else:
+     pass
+-- 
+2.43.0
+

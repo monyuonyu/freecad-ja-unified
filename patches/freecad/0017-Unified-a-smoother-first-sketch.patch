@@ -1,0 +1,461 @@
+From c4400d849ab8e1b49a76f97a5b084f5aab527499 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:37:24 +0900
+Subject: [PATCH 17/31] Unified: a smoother first sketch
+
+- Sketch without a picked face: instead of the full attachment editor,
+  the integrated environment asks for one click on a plane or flat face
+  and opens the sketch right away (no OK, no attachment modes). The
+  origin planes are shown four times larger while choosing.
+- Escape only cancels the current sketch tool; the sketch is closed with
+  its OK button (default of LeaveSketchWithEscape in single workbench
+  mode; a user setting is kept).
+- After closing a sketch that no feature uses yet, the context bar offers
+  extrude / revolve / edit (and cut in, once the part has a solid) in the
+  middle of the view.
+- Context bar: a sketch picked anywhere (edges or its inner face) gets the
+  sketch actions; command states are tested on the spot, since the
+  periodic update may not have run yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp     | 120 ++++++++++++++++++
+ src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp    |   6 +-
+ src/Mod/Sketcher/Gui/ViewProviderSketch.cpp   |   6 +-
+ src/Mod/Unified/Gui/ContextBar.cpp            |  87 +++++++++++--
+ src/Mod/Unified/Gui/ContextBar.h              |  13 ++
+ .../Gui/Resources/translations/Unified_ja.ts  |  15 +++
+ 6 files changed, 232 insertions(+), 15 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 2c5abbd34..43844781f 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -29,7 +29,9 @@
+ #include <string>
+ #include <vector>
+ #include <QApplication>
++#include <QLabel>
+ #include <QMessageBox>
++#include <QTimer>
+ 
+ 
+ #include "SketchWorkflow.h"
+@@ -48,6 +50,7 @@
+ #include <Mod/Part/App/TopoShape.h>
+ #include <Mod/Sketcher/Gui/ViewProviderSketch.h>
+ 
++#include <App/Application.h>
+ #include <App/Document.h>
+ #include <App/Link.h>
+ #include <App/Origin.h>
+@@ -60,7 +63,11 @@
+ #include <Gui/MainWindow.h>
+ #include <Gui/ViewParams.h>
+ #include <Gui/ViewProviderPlane.h>
++#include <Gui/View3DInventor.h>
++#include <Gui/View3DInventorViewer.h>
+ #include <Gui/Selection/SelectionFilter.h>
++#include <Gui/TaskView/TaskDialog.h>
++#include <Gui/TaskView/TaskView.h>
+ 
+ using namespace PartDesignGui;
+ 
+@@ -515,6 +522,103 @@ private:
+     std::vector<PartDesignGui::TaskFeaturePick::featureStatus> status;
+ };
+ 
++/**
++ * Integrated working environment: instead of the full attachment editor, ask for one click
++ * on a plane or a flat face and start editing the sketch right away.
++ */
++class SketchPlanePicker: public Gui::TaskView::TaskDialog, public Gui::SelectionObserver
++{
++public:
++    SketchPlanePicker(
++        Gui::Document* guidocument,
++        PartDesign::Body* body,
++        App::DocumentObject* sketch,
++        std::function<void()> onAccept,
++        std::function<void()> onReject
++    )
++        : Gui::SelectionObserver(true)
++        , guidocument(guidocument)
++        , body(body)
++        , sketch(sketch)
++        , onAccept(std::move(onAccept))
++        , onReject(std::move(onReject))
++    {
++        auto box = new Gui::TaskView::TaskBox(text("Where to draw"), false);
++        hint = new QLabel(text("Click one of the planes, or a flat face of the part, to draw the sketch on it."));
++        hint->setWordWrap(true);
++        box->groupLayout()->addWidget(hint);
++        Content.push_back(box);
++    }
++
++    QDialogButtonBox::StandardButtons getStandardButtons() const override
++    {
++        return QDialogButtonBox::Cancel;
++    }
++
++    bool reject() override
++    {
++        if (onReject) {
++            onReject();
++        }
++        guidocument->abortCommand();
++        Gui::Command::doCommand(Gui::Command::Doc, "App.ActiveDocument.recompute()");
++        return true;
++    }
++
++private:
++    static QString text(const char* source)
++    {
++        return QApplication::translate("PartDesignGui::SketchPlanePicker", source);
++    }
++
++    void onSelectionChanged(const Gui::SelectionChanges& msg) override
++    {
++        if (msg.Type != Gui::SelectionChanges::AddSelection || done) {
++            return;
++        }
++        App::PropertyLinkSubList support;
++        Gui::Selection().getAsPropertyLinkSubList(support);
++        support.removeValue(body);
++        support.removeValue(sketch);
++        auto* attach = sketch->getExtensionByType<Part::AttachExtension>();
++        if (support.getSize() != 1 || !attach) {
++            return;
++        }
++        attach->attacher().setReferences(support);
++        Attacher::SuggestResult sugr;
++        attach->attacher().suggestMapModes(sugr);
++        bool planar = sugr.message == Attacher::SuggestResult::srOK
++            && (sugr.bestFitMode == Attacher::mmFlatFace || sugr.bestFitMode == Attacher::mmObjectXY);
++        if (!planar) {
++            hint->setText(text("That is not flat. Click a plane or a flat face."));
++            QTimer::singleShot(0, []() { Gui::Selection().clearSelection(); });
++            return;
++        }
++        done = true;
++        FCMD_OBJ_CMD(sketch, "AttachmentSupport = " << support.getPyReprString());
++        FCMD_OBJ_CMD(sketch, "MapMode = '" << Attacher::AttachEngine::getModeName(sugr.bestFitMode) << "'");
++        Gui::Command::updateActive();
++        // Leave the selection callback before closing this dialog and opening the sketch
++        auto accept = onAccept;
++        Gui::Document* doc = guidocument;
++        QTimer::singleShot(0, [doc, accept]() {
++            Gui::Control().closeDialog();
++            doc->commitCommand();
++            if (accept) {
++                accept();
++            }
++        });
++    }
++
++    Gui::Document* guidocument;
++    PartDesign::Body* body;
++    App::DocumentObject* sketch;
++    std::function<void()> onAccept;
++    std::function<void()> onReject;
++    QLabel* hint {nullptr};
++    bool done {false};
++};
++
+ class SketchRequestSelection
+ {
+ public:
+@@ -636,6 +740,22 @@ private:
+ 
+         Gui::Selection().clearSelection();
+ 
++        // Integrated working environment: nothing was picked beforehand, so ask for a plane
++        // or face with one click instead of showing the full attachment editor
++        if (App::Application::Config().contains("SingleWorkbench") && support.getSize() == 0) {
++            Gui::Control().showDialog(
++                new SketchPlanePicker(guidocument, activeBody, sketch, onAccept, onReject)
++            );
++            // The planes are drawn at a fixed size on screen: make them big enough to click
++            // easily while choosing (reset by onAccept/onReject)
++            if (auto* vpo = dynamic_cast<Gui::ViewProviderCoordinateSystem*>(
++                    Gui::Application::Instance->getViewProvider(activeBody->getOrigin())
++                )) {
++                vpo->setTemporaryScale(4.0);
++            }
++            return;
++        }
++
+         // Open attachment dialog
+         auto* vps = dynamic_cast<SketcherGui::ViewProviderSketch*>(
+             Gui::Application::Instance->getViewProvider(sketch)
+diff --git a/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp b/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
+index 912d2d7a7..a26ed0256 100644
+--- a/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
++++ b/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
+@@ -23,6 +23,7 @@
+  ***************************************************************************/
+ 
+ 
++#include <App/Application.h>
+ #include <Gui/Command.h>
+ 
+ #include "TaskDlgEditSketch.h"
+@@ -54,7 +55,10 @@ TaskDlgEditSketch::TaskDlgEditSketch(ViewProviderSketch* sketchView)
+     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
+         "User parameter:BaseApp/Preferences/Mod/Sketcher"
+     );
+-    setEscapeButtonEnabled(hGrp->GetBool("LeaveSketchWithEscape", true));
++    // See ViewProviderSketch: in the integrated working environment Escape does not close the sketch
++    setEscapeButtonEnabled(
++        hGrp->GetBool("LeaveSketchWithEscape", !App::Application::Config().contains("SingleWorkbench"))
++    );
+     setAutoCloseOnResetEdit(true);
+ 
+     Content.push_back(Messages);
+diff --git a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+index 894934f55..c9ae471ee 100644
+--- a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
++++ b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+@@ -22,6 +22,7 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <App/Application.h>
+ #include <boost/bind/bind.hpp>
+ #include <boost/core/ignore_unused.hpp>
+ #include <Inventor/SbBox3f.h>
+@@ -230,8 +231,11 @@ void ViewProviderSketch::ParameterObserver::updateEscapeKeyBehaviour(const std::
+ 
+     ParameterGrp::handle hSketch = App::GetApplication().GetParameterGroupByPath(
+         "User parameter:BaseApp/Preferences/Mod/Sketcher");
++    // In the integrated working environment Escape only cancels the current tool, like in
++    // most drawing programs; the sketch is closed with its OK button
++    bool leaveDefault = !App::Application::Config().contains("SingleWorkbench");
+     Client.viewProviderParameters.handleEscapeButton =
+-        !hSketch->GetBool("LeaveSketchWithEscape", true);
++        !hSketch->GetBool("LeaveSketchWithEscape", leaveDefault);
+ }
+ 
+ void ViewProviderSketch::ParameterObserver::updateAutoRecompute(const std::string& string,
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index e7f2e17a5..a2953d858 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -8,7 +8,10 @@
+ #include <QTimer>
+ #include <QToolButton>
+ 
++#include <App/Document.h>
+ #include <App/DocumentObject.h>
++#include <App/DocumentObserver.h>
++#include <App/PropertyLinks.h>
+ #include <Base/Type.h>
+ #include <Gui/Action.h>
+ #include <Gui/Application.h>
+@@ -18,6 +21,7 @@
+ #include <Gui/MainWindow.h>
+ #include <Gui/View3DInventor.h>
+ #include <Gui/View3DInventorViewer.h>
++#include <Gui/ViewProviderDocumentObject.h>
+ 
+ #include "ContextBar.h"
+ 
+@@ -45,6 +49,19 @@ bool allStartWith(const std::vector<std::string>& names, const char* prefix)
+     });
+ }
+ 
++// Whether the part (PartDesign body) the object belongs to already has a solid to cut into
++bool partHasSolid(const App::DocumentObject* obj)
++{
++    const App::DocumentObject* body = isDerivedFrom(obj, "PartDesign::Body") ? obj : nullptr;
++    for (const App::DocumentObject* parent : obj->getInList()) {
++        if (!body && isDerivedFrom(parent, "PartDesign::Body")) {
++            body = parent;
++        }
++    }
++    auto* tip = body ? dynamic_cast<App::PropertyLink*>(body->getPropertyByName("Tip")) : nullptr;
++    return tip && tip->getValue();
++}
++
+ Gui::View3DInventor* active3DView()
+ {
+     return dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
+@@ -69,6 +86,35 @@ ContextBar::ContextBar()
+     layout->setContentsMargins(3, 3, 3, 3);
+     layout->setSpacing(1);
+     hide();
++
++    Gui::Application::Instance->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
++        // Look the object up again after the edit mode has been left completely: cancelling a
++        // new sketch deletes it
++        App::DocumentObjectT ref(vp.getObject());
++        QTimer::singleShot(0, this, [this, ref]() { onEditClosed(ref.getObject()); });
++    });
++}
++
++void ContextBar::onEditClosed(const App::DocumentObject* obj)
++{
++    if (!obj || !obj->isAttachedToDocument() || !isDerivedFrom(obj, "Sketcher::SketchObject")) {
++        return;
++    }
++    // Only a sketch that no feature uses yet: the natural next step is to make it a solid
++    for (const App::DocumentObject* user : obj->getInList()) {
++        if (isDerivedFrom(user, "PartDesign::Feature")) {
++            return;
++        }
++    }
++    // The sketch's task dialog may still be closing: wait until it is gone
++    if (Gui::Control().activeDialog() || Gui::Application::Instance->editDocument()) {
++        App::DocumentObjectT ref(obj);
++        QTimer::singleShot(100, this, [this, ref]() { onEditClosed(ref.getObject()); });
++        return;
++    }
++    anchoredObject = obj->getFullName();
++    Gui::Selection().clearSelection();
++    Gui::Selection().addSelection(obj->getDocument()->getName(), obj->getNameInDocument());
+ }
+ 
+ ContextBar::~ContextBar()
+@@ -121,6 +167,16 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+     if (!obj) {
+         return {};
+     }
++    // A sketch, wherever it was picked (its edges, or the area inside, "InternalFace1")
++    if (isDerivedFrom(obj, "Sketcher::SketchObject")) {
++        std::vector<Action> actions {{"PartDesign_Pad", label("Extrude")}};
++        if (partHasSolid(obj)) {
++            actions.push_back({"PartDesign_Pocket", label("Cut in")});
++        }
++        actions.push_back({"PartDesign_Revolution", label("Revolve")});
++        actions.push_back({"Sketcher_EditSketch", label("Edit")});
++        return actions;
++    }
+     if (allStartWith(subs, "Face")) {
+         return {
+             {"PartDesign_NewSketch", label("Sketch")},
+@@ -135,14 +191,6 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+     if (!subs.empty()) {
+         return {};
+     }
+-    if (isDerivedFrom(obj, "Sketcher::SketchObject")) {
+-        return {
+-            {"PartDesign_Pad", label("Extrude")},
+-            {"PartDesign_Pocket", label("Cut in")},
+-            {"PartDesign_Revolution", label("Revolve")},
+-            {"Sketcher_EditSketch", label("Edit")},
+-        };
+-    }
+     if (isDerivedFrom(obj, "Part::Feature") || isDerivedFrom(obj, "PartDesign::Body")) {
+         return {{"Std_TransformManip", label("Move")}, {"Std_ToggleVisibility", label("Hide")}};
+     }
+@@ -152,10 +200,19 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+ void ContextBar::refresh()
+ {
+     Gui::View3DInventor* view = active3DView();
+-    // Only for picks in the 3D view, and not while a tool is running or something is edited
+-    bool usable = view && !Gui::Control().activeDialog()
+-        && !Gui::Application::Instance->editDocument()
+-        && view->rect().contains(view->mapFromGlobal(QCursor::pos()));
++    // Right after closing a sketch, as long as it stays selected alone
++    auto selection = Gui::Selection().getSelectionEx();
++    bool anchored = !anchoredObject.empty() && selection.size() == 1 && selection.front().getObject()
++        && selection.front().getObject()->getFullName() == anchoredObject;
++    if (!anchored) {
++        anchoredObject.clear();
++    }
++    placeInView = anchored;
++    // Only for picks in the 3D view (or right after closing a sketch), and not while a tool
++    // is running or something is edited
++    bool inView = anchored || (view && view->rect().contains(view->mapFromGlobal(QCursor::pos())));
++    bool usable = view && inView && !Gui::Control().activeDialog()
++        && !Gui::Application::Instance->editDocument();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+     if (actions.empty()) {
+         dismiss();
+@@ -178,6 +235,9 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+         if (!cmd) {
+             continue;
+         }
++        // Ask the command now: the periodic update of the command states may not have run
++        // yet, e.g. right after a sketch was closed
++        cmd->testActive();
+         if (Gui::Action* a = cmd->getAction(); a && !a->isEnabled()) {
+             continue;  // e.g. no solid yet to cut into
+         }
+@@ -206,7 +266,8 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+     QWidget* main = parentWidget();
+     adjustSize();
+     QRect area(view->mapTo(main, QPoint(0, 0)), view->size());
+-    QPoint pos = main->mapFromGlobal(QCursor::pos()) + QPoint(18, 18);
++    QPoint pos = placeInView ? area.center() + QPoint(-width() / 2, area.height() / 4)
++                             : main->mapFromGlobal(QCursor::pos()) + QPoint(18, 18);
+     pos.setX(std::clamp(pos.x(), area.left(), std::max(area.left(), area.right() - width())));
+     pos.setY(std::clamp(pos.y(), area.top(), std::max(area.top(), area.bottom() - height())));
+     move(pos);
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index 7d465dba2..a3b38aafc 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -5,8 +5,15 @@
+ #include <QFrame>
+ #include <QPointer>
+ 
++#include <string>
++
+ #include <Gui/Selection/Selection.h>
+ 
++namespace App
++{
++class DocumentObject;
++}
++
+ class QHBoxLayout;
+ 
+ namespace UnifiedGui
+@@ -38,6 +45,8 @@ private:
+     bool eventFilter(QObject* watched, QEvent* event) override;
+ 
+     void refresh();
++    /// A sketch was closed: if it is not used yet, offer to turn it into a solid
++    void onEditClosed(const App::DocumentObject* obj);
+     std::vector<Action> actionsForSelection() const;
+     void showActions(const std::vector<Action>& actions, QWidget* view);
+     void dismiss();
+@@ -45,6 +54,10 @@ private:
+     QHBoxLayout* layout {nullptr};
+     QPointer<QWidget> watchedView;
+     bool refreshPending {false};
++    /// The sketch that was just closed: while it stays selected, the bar is shown in the
++    /// middle of the view (the cursor is still over the task panel's OK button)
++    std::string anchoredObject;
++    bool placeInView {false};
+ };
+ 
+ }  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 96e018f49..6878c025f 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -106,4 +106,19 @@
+         <translation>隠す</translation>
+     </message>
+ </context>
++<context>
++    <name>PartDesignGui::SketchPlanePicker</name>
++    <message>
++        <source>Where to draw</source>
++        <translation>描く場所</translation>
++    </message>
++    <message>
++        <source>Click one of the planes, or a flat face of the part, to draw the sketch on it.</source>
++        <translation>平面のどれか、または部品の平らな面をクリックすると、そこにスケッチを描き始めます。</translation>
++    </message>
++    <message>
++        <source>That is not flat. Click a plane or a flat face.</source>
++        <translation>そこは平らではありません。平面か、平らな面をクリックしてください。</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

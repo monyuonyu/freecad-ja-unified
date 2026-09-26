@@ -1,0 +1,217 @@
+From 1ab39979d45dea77d10bad2d60afa1e3ea0914f3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:11:01 +0900
+Subject: [PATCH 13/31] Unified: simple start page and Japanese names for the
+ integrated environment
+
+- In single workbench mode the start page offers only 'New Part' and
+  'Open File' besides the recent files; the workbench-specific document
+  types (assembly, 2D draft, BIM, empty file) and the examples of other
+  domains are not shown.
+- Unified ships its own translations (Unified_ja.ts) for the names and
+  texts it introduces.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Start/Gui/StartView.cpp               | 54 +++++++++++++++----
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp         |  4 ++
+ src/Mod/Unified/Gui/CMakeLists.txt            |  8 +++
+ .../Gui/Resources/translations/Unified_ja.ts  | 54 +++++++++++++++++++
+ 4 files changed, 109 insertions(+), 11 deletions(-)
+ create mode 100644 src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index 01a5bb55e..f27e5939e 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -64,6 +64,15 @@ using namespace StartGui;
+ 
+ TYPESYSTEM_SOURCE_ABSTRACT(StartGui::StartView, Gui::MDIView)  // NOLINT
+ 
++namespace
++{
++// FreeCAD runs with one integrated working environment (see Gui::Application::activateWorkbench)
++bool singleWorkbenchMode()
++{
++    return App::Application::Config().contains("SingleWorkbench");
++}
++}  // namespace
++
+ 
+ StartView::StartView(QWidget* parent)
+     : Gui::MDIView(nullptr, parent)
+@@ -79,7 +88,9 @@ StartView::StartView(QWidget* parent)
+         "User parameter:BaseApp/Preferences/Mod/Start"
+     );
+     auto cardSpacing = hGrp->GetInt("FileCardSpacing", 15);  // NOLINT
+-    auto showExamples = hGrp->GetBool("ShowExamples", true);
++    // The examples show many kinds of documents (BIM, FEM, ...) that do not belong to the
++    // integrated working environment
++    auto showExamples = !singleWorkbenchMode() && hGrp->GetBool("ShowExamples", true);
+ 
+     // Verify that the folder specified in preferences is available before showing it
+     std::string customFolder(hGrp->GetASCII("CustomFolder", ""));
+@@ -220,18 +231,33 @@ void StartView::configureNewFileButtons(QLayout* layout)
+ {
+     _newEmptyFileButton = new NewFileButton(this, QStringLiteral(":/icons/document-new.svg"));
+     _openFileButton = new NewFileButton(this, QStringLiteral(":/icons/document-open.svg"));
+-    _partDesignButton = new NewFileButton(this, QStringLiteral(":/icons/PartDesignWorkbench.svg"));
++    _partDesignButton = new NewFileButton(
++        this,
++        singleWorkbenchMode() ? QStringLiteral(":/icons/PartDesign_Body.svg")
++                              : QStringLiteral(":/icons/PartDesignWorkbench.svg")
++    );
+     _assemblyButton = new NewFileButton(this, QStringLiteral(":/icons/AssemblyWorkbench.svg"));
+     _draftButton = new NewFileButton(this, QStringLiteral(":/icons/DraftWorkbench.svg"));
+     _bimButton = new NewFileButton(this, QStringLiteral(":/icons/BIMWorkbench.svg"));
+ 
+-    // TODO: Ensure all of the required WBs are actually available
+-    layout->addWidget(_partDesignButton);
+-    layout->addWidget(_assemblyButton);
+-    layout->addWidget(_draftButton);
+-    layout->addWidget(_bimButton);
+-    layout->addWidget(_newEmptyFileButton);
+-    layout->addWidget(_openFileButton);
++    if (singleWorkbenchMode()) {
++        // One integrated working environment: only "new part" and "open", no choice of
++        // workbench-specific documents
++        layout->addWidget(_partDesignButton);
++        layout->addWidget(_openFileButton);
++        for (auto* unused : {_assemblyButton, _draftButton, _bimButton, _newEmptyFileButton}) {
++            unused->hide();
++        }
++    }
++    else {
++        // TODO: Ensure all of the required WBs are actually available
++        layout->addWidget(_partDesignButton);
++        layout->addWidget(_assemblyButton);
++        layout->addWidget(_draftButton);
++        layout->addWidget(_bimButton);
++        layout->addWidget(_newEmptyFileButton);
++        layout->addWidget(_openFileButton);
++    }
+ 
+     connect(_newEmptyFileButton, &QPushButton::clicked, this, &StartView::newEmptyFile);
+     connect(_openFileButton, &QPushButton::clicked, this, &StartView::openExistingFile);
+@@ -518,8 +544,14 @@ void StartView::retranslateUi()
+     _newEmptyFileButton->setDescriptionText(tr("Creates a new empty FreeCAD file"));
+     _openFileButton->setHeadingText(tr("Open File"));
+     _openFileButton->setDescriptionText(tr("Opens an existing CAD file or 3D model"));
+-    _partDesignButton->setHeadingText(tr("Parametric Body"));
+-    _partDesignButton->setDescriptionText(tr("Creates a body with the Part Design workbench"));
++    if (singleWorkbenchMode()) {
++        _partDesignButton->setHeadingText(tr("New Part"));
++        _partDesignButton->setDescriptionText(tr("Draw a sketch and turn it into a solid"));
++    }
++    else {
++        _partDesignButton->setHeadingText(tr("Parametric Body"));
++        _partDesignButton->setDescriptionText(tr("Creates a body with the Part Design workbench"));
++    }
+     _assemblyButton->setHeadingText(tr("Assembly"));
+     _assemblyButton->setDescriptionText(tr("Creates an assembly project"));
+     _draftButton->setHeadingText(tr("2D Draft"));
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index ca6dd0650..5f608eee0 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -4,6 +4,7 @@
+ #include <Base/Interpreter.h>
+ #include <Base/PyObjectBase.h>
+ #include <Gui/Application.h>
++#include <Gui/Language/Translator.h>
+ 
+ #include "Workbench.h"
+ 
+@@ -37,6 +38,9 @@ PyMOD_INIT_FUNC(UnifiedGui)
+ 
+     UnifiedGui::Workbench::init();
+ 
++    // Load Unified_<lang>.qm from the resources of this module
++    Gui::Translator::instance()->refresh();
++
+     PyObject* mod = UnifiedGui::initModule();
+     Base::Console().log("Loading GUI of Unified module… done\n");
+     PyMOD_Return(mod);
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index 65bc24185..ea29dc84f 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -5,7 +5,15 @@ set(UnifiedGui_LIBS
+     SketcherGui
+ )
+ 
++# Translations of the names and texts introduced by the integrated environment
++set(Unified_TR_QRC ${CMAKE_CURRENT_BINARY_DIR}/Resources/Unified_translation.qrc)
++qt_find_and_add_translation(QM_SRCS "Resources/translations/*_*.ts"
++    ${CMAKE_CURRENT_BINARY_DIR}/Resources/translations)
++qt_create_resource_file(${Unified_TR_QRC} ${QM_SRCS})
++qt_add_resources(UnifiedGui_QRC_SRCS ${Unified_TR_QRC} OPTIONS ${FREECAD_RCC_OPTIONS})
++
+ SET(UnifiedGui_SRCS
++    ${UnifiedGui_QRC_SRCS}
+     AppUnifiedGui.cpp
+     Workbench.cpp
+     Workbench.h
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+new file mode 100644
+index 000000000..c6064090c
+--- /dev/null
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -0,0 +1,54 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!DOCTYPE TS>
++<TS version="2.1" language="ja">
++<context>
++    <name>Workbench</name>
++    <message>
++        <source>Unified Sketch</source>
++        <translation>スケッチ</translation>
++    </message>
++    <message>
++        <source>Unified Model</source>
++        <translation>形</translation>
++    </message>
++    <message>
++        <source>Unified Parts</source>
++        <translation>部品</translation>
++    </message>
++    <message>
++        <source>Unified Check</source>
++        <translation>確かめる</translation>
++    </message>
++    <message>
++        <source>Sketcher geometries</source>
++        <translation>図形</translation>
++    </message>
++    <message>
++        <source>Sketcher constraints</source>
++        <translation>拘束</translation>
++    </message>
++    <message>
++        <source>Sketcher tools</source>
++        <translation>スケッチの道具</translation>
++    </message>
++    <message>
++        <source>Sketcher B-spline tools</source>
++        <translation>B スプライン</translation>
++    </message>
++    <message>
++        <source>Sketcher visual</source>
++        <translation>表示の補助</translation>
++    </message>
++</context>
++<context>
++    <name>StartGui::StartView</name>
++    <message>
++        <source>New Part</source>
++        <translation>新しい部品</translation>
++    </message>
++    <message>
++        <source>Draw a sketch and turn it into a solid</source>
++        <translation>スケッチを描いて立体にします</translation>
++    </message>
++</context>
++</TS>
+-- 
+2.43.0
+

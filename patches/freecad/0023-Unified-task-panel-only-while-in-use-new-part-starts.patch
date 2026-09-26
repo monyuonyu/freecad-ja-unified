@@ -1,0 +1,214 @@
+From 151e4fac41ef639acf49885abca1fd11605cee25 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:11:38 +0900
+Subject: [PATCH 23/31] Unified: task panel only while in use; new part starts
+ with its sketch; context bar only for picks
+
+- The task panel is shown while a tool uses it and hidden otherwise,
+  instead of an empty column taking space next to the 3D view.
+- "New Part" on the start page goes straight to choosing where to draw
+  the first sketch.
+- The context bar follows picks in the 3D view (left button released over
+  it) and no longer pops up for selections made by commands, e.g. the
+  new body being selected.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Start/Gui/StartView.cpp       |  4 +++
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp |  4 +++
+ src/Mod/Unified/Gui/CMakeLists.txt    |  2 ++
+ src/Mod/Unified/Gui/ContextBar.cpp    | 14 +++++++-
+ src/Mod/Unified/Gui/ContextBar.h      |  3 ++
+ src/Mod/Unified/Gui/TaskPanel.cpp     | 51 +++++++++++++++++++++++++++
+ src/Mod/Unified/Gui/TaskPanel.h       | 11 ++++++
+ 7 files changed, 88 insertions(+), 1 deletion(-)
+ create mode 100644 src/Mod/Unified/Gui/TaskPanel.cpp
+ create mode 100644 src/Mod/Unified/Gui/TaskPanel.h
+
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index f27e5939e..77e60cee9 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -328,6 +328,10 @@ void StartView::newPartDesignFile()
+     Gui::Application::Instance->activateWorkbench("PartDesignWorkbench");
+     Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
+     postStart(PostStartBehavior::doNotSwitchWorkbench);
++    if (singleWorkbenchMode()) {
++        // The first thing to do in an empty part is a sketch: ask where to draw it right away
++        Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
++    }
+ }
+ 
+ void StartView::openExistingFile()
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index 10657575a..0f35dfe08 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "ContextBar.h"
+ #include "Labels.h"
++#include "TaskPanel.h"
+ #include "Workbench.h"
+ 
+ 
+@@ -46,6 +47,9 @@ PyMOD_INIT_FUNC(UnifiedGui)
+     // Default names of new objects in the user's language
+     UnifiedGui::installLocalizedLabels();
+ 
++    // The task panel only while a tool uses it
++    UnifiedGui::installTaskPanelAutoHide();
++
+     // Load Unified_<lang>.qm from the resources of this module
+     Gui::Translator::instance()->refresh();
+ 
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index fea0e7731..c918d016b 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -19,6 +19,8 @@ SET(UnifiedGui_SRCS
+     ContextBar.h
+     Labels.cpp
+     Labels.h
++    TaskPanel.cpp
++    TaskPanel.h
+     Workbench.cpp
+     Workbench.h
+ )
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index a2953d858..9736525c4 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <QApplication>
+ #include <QCursor>
++#include <QDateTime>
+ #include <QEvent>
+ #include <QHBoxLayout>
+ #include <QMouseEvent>
+@@ -86,6 +87,7 @@ ContextBar::ContextBar()
+     layout->setContentsMargins(3, 3, 3, 3);
+     layout->setSpacing(1);
+     hide();
++    qApp->installEventFilter(this);
+ 
+     Gui::Application::Instance->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
+         // Look the object up again after the edit mode has been left completely: cancelling a
+@@ -210,7 +212,9 @@ void ContextBar::refresh()
+     placeInView = anchored;
+     // Only for picks in the 3D view (or right after closing a sketch), and not while a tool
+     // is running or something is edited
+-    bool inView = anchored || (view && view->rect().contains(view->mapFromGlobal(QCursor::pos())));
++    bool picked = QDateTime::currentMSecsSinceEpoch() - lastViewClick < 1000;
++    bool inView = anchored
++        || (picked && view && view->rect().contains(view->mapFromGlobal(QCursor::pos())));
+     bool usable = view && inView && !Gui::Control().activeDialog()
+         && !Gui::Application::Instance->editDocument();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+@@ -289,6 +293,14 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
++    if (event->type() == QEvent::MouseButtonRelease
++        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
++        auto* widget = qobject_cast<QWidget*>(watched);
++        Gui::View3DInventor* view = active3DView();
++        if (widget && view && view->getViewer()->getGLWidget() == widget) {
++            lastViewClick = QDateTime::currentMSecsSinceEpoch();
++        }
++    }
+     if (watched == watchedView && isVisible()) {
+         if (event->type() == QEvent::Wheel) {
+             dismiss();
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index a3b38aafc..467d12dd0 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -58,6 +58,9 @@ private:
+     /// middle of the view (the cursor is still over the task panel's OK button)
+     std::string anchoredObject;
+     bool placeInView {false};
++    /// When the left mouse button was last released over a 3D view: the bar follows picks
++    /// in the view, not selections made by commands or in the tree
++    qint64 lastViewClick {0};
+ };
+ 
+ }  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/TaskPanel.cpp b/src/Mod/Unified/Gui/TaskPanel.cpp
+new file mode 100644
+index 000000000..47ee1fdf6
+--- /dev/null
++++ b/src/Mod/Unified/Gui/TaskPanel.cpp
+@@ -0,0 +1,51 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <QDockWidget>
++#include <QTimer>
++
++#include <Gui/Control.h>
++#include <Gui/MainWindow.h>
++#include <Gui/TaskView/TaskView.h>
++
++#include "TaskPanel.h"
++
++namespace
++{
++QDockWidget* dockOf(QWidget* widget)
++{
++    for (QWidget* w = widget; w; w = w->parentWidget()) {
++        if (auto dock = qobject_cast<QDockWidget*>(w)) {
++            return dock;
++        }
++    }
++    return nullptr;
++}
++
++void update(Gui::TaskView::TaskView* panel)
++{
++    QDockWidget* dock = dockOf(panel);
++    if (!dock) {
++        return;
++    }
++    bool inUse = Gui::Control().activeDialog() != nullptr;
++    if (dock->isVisible() != inUse) {
++        dock->setVisible(inUse);
++    }
++}
++}  // namespace
++
++void UnifiedGui::installTaskPanelAutoHide()
++{
++    // The panel is created with the main window; connect once everything is set up
++    QTimer::singleShot(0, []() {
++        Gui::TaskView::TaskView* panel = Gui::Control().taskPanel();
++        if (!panel) {
++            return;
++        }
++        QObject::connect(panel, &Gui::TaskView::TaskView::taskUpdate, panel, [panel]() {
++            // The dialog is registered/removed right after the signal: look once it is done
++            QTimer::singleShot(0, panel, [panel]() { update(panel); });
++        });
++        update(panel);
++    });
++}
+diff --git a/src/Mod/Unified/Gui/TaskPanel.h b/src/Mod/Unified/Gui/TaskPanel.h
+new file mode 100644
+index 000000000..1d405ce91
+--- /dev/null
++++ b/src/Mod/Unified/Gui/TaskPanel.h
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++namespace UnifiedGui
++{
++
++/// Show the task panel only while a tool uses it, instead of an empty column at all times
++void installTaskPanelAutoHide();
++
++}  // namespace UnifiedGui
+-- 
+2.43.0
+

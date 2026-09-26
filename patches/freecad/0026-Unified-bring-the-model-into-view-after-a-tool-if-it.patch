@@ -1,0 +1,76 @@
+From cf28023dd16102283d1f38fc3978f62f2e2e8cbb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:15:55 +0900
+Subject: [PATCH 26/31] Unified: bring the model into view after a tool, if it
+ grew out of it
+
+Extruding or patterning often makes the part larger than the shown part
+of the scene. When a task dialog closes and the scene no longer fits in
+the view, fit it; otherwise leave the view alone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/TaskPanel.cpp | 33 +++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/TaskPanel.cpp b/src/Mod/Unified/Gui/TaskPanel.cpp
+index 47ee1fdf6..9139c283b 100644
+--- a/src/Mod/Unified/Gui/TaskPanel.cpp
++++ b/src/Mod/Unified/Gui/TaskPanel.cpp
+@@ -6,6 +6,9 @@
+ #include <Gui/Control.h>
+ #include <Gui/MainWindow.h>
+ #include <Gui/TaskView/TaskView.h>
++#include <Gui/View3DInventor.h>
++#include <Gui/View3DInventorViewer.h>
++#include <Inventor/SbBox.h>
+ 
+ #include "TaskPanel.h"
+ 
+@@ -21,6 +24,33 @@ QDockWidget* dockOf(QWidget* widget)
+     return nullptr;
+ }
+ 
++// After a tool has finished, make sure the model is in view: extruding or patterning often
++// grows it beyond the part of the scene that was shown. The view is left alone when
++// everything is visible already.
++void bringModelIntoView()
++{
++    auto* view = dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
++    if (!view) {
++        return;
++    }
++    Gui::View3DInventorViewer* viewer = view->getViewer();
++    SbBox3f box;
++    if (!viewer->getSceneBoundBox(box) || box.isEmpty()) {
++        return;
++    }
++    QSize size = viewer->getGLWidget()->size();
++    SbVec3f lo = box.getMin();
++    SbVec3f hi = box.getMax();
++    for (int i = 0; i < 8; ++i) {
++        SbVec3f corner(i & 1 ? hi[0] : lo[0], i & 2 ? hi[1] : lo[1], i & 4 ? hi[2] : lo[2]);
++        QPoint p = viewer->toQPoint(viewer->getPointOnViewport(corner));
++        if (p.x() < 0 || p.y() < 0 || p.x() > size.width() || p.y() > size.height()) {
++            viewer->viewAll();
++            return;
++        }
++    }
++}
++
+ void update(Gui::TaskView::TaskView* panel)
+ {
+     QDockWidget* dock = dockOf(panel);
+@@ -30,6 +60,9 @@ void update(Gui::TaskView::TaskView* panel)
+     bool inUse = Gui::Control().activeDialog() != nullptr;
+     if (dock->isVisible() != inUse) {
+         dock->setVisible(inUse);
++        if (!inUse) {
++            bringModelIntoView();
++        }
+     }
+ }
+ }  // namespace
+-- 
+2.43.0
+

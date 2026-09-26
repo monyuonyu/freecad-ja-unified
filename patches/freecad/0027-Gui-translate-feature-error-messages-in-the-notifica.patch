@@ -1,0 +1,58 @@
+From 5ca2fd1849fac0253e53f3bf82da179888eabbd4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 02:18:03 +0900
+Subject: [PATCH 27/31] Gui: translate feature error messages in the
+ notification area
+
+Error messages of features are declared for translation in the
+"Exception" context and arrive prefixed with the object label ("Pad:
+Cannot create a pad with a total length of zero."), while the
+notification area only looked them up in its own context. Look in the
+Exception context too, and translate the message part after the label.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/NotificationArea.cpp | 27 ++++++++++++++++++++++-----
+ 1 file changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/src/Gui/NotificationArea.cpp b/src/Gui/NotificationArea.cpp
+index 9411a1276..1113c07bb 100644
+--- a/src/Gui/NotificationArea.cpp
++++ b/src/Gui/NotificationArea.cpp
+@@ -310,11 +310,28 @@ void NotificationAreaObserver::sendLog(
+         notificationArea->pushNotification(QString::fromStdString(notifiername), simplifiedstring, level);
+     }
+     else {
+-        notificationArea->pushNotification(
+-            QString::fromStdString(notifiername),
+-            QCoreApplication::translate("Notifications", simplifiedstring.toUtf8()),
+-            level
+-        );
++        auto translate = [](const QString& text) {
++            QString result = QCoreApplication::translate("Notifications", text.toUtf8());
++            if (result == text) {
++                // Error messages of features are declared for translation in the "Exception"
++                // context (QT_TRANSLATE_NOOP("Exception", ...)); look there as well
++                result = QCoreApplication::translate("Exception", text.toUtf8());
++            }
++            return result;
++        };
++        QString translated = translate(simplifiedstring);
++        if (translated == simplifiedstring) {
++            // Recompute errors arrive as "<object label>: <message>": translate the message
++            int colon = simplifiedstring.indexOf(QLatin1String(": "));
++            if (colon > 0) {
++                QString message = simplifiedstring.mid(colon + 2);
++                QString translatedMessage = translate(message);
++                if (translatedMessage != message) {
++                    translated = simplifiedstring.left(colon + 2) + translatedMessage;
++                }
++            }
++        }
++        notificationArea->pushNotification(QString::fromStdString(notifiername), translated, level);
+     }
+ }
+ 
+-- 
+2.43.0
+

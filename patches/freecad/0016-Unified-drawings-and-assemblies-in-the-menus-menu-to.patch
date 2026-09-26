@@ -1,0 +1,193 @@
+From 66f4231a2893bba485bf42ed24d7db267c643168 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 01:22:10 +0900
+Subject: [PATCH 16/31] Unified: drawings and assemblies in the menus; menu
+ tooltips
+
+- The Drawing and Assemblies menus give access to TechDraw and Assembly
+  without switching workbench; their commands are registered when the
+  integrated environment initializes.
+- Menus show the tooltip of the hovered command (all workbenches): many
+  commands are only reachable from menus, and their names alone often do
+  not tell what they do.
+- UnifiedGui is imported at startup, so its translations are available
+  for the start page and the context bar exists from the beginning.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/MenuManager.cpp                       |  4 ++
+ .../Gui/Resources/translations/Unified_ja.ts  | 12 +++++
+ src/Mod/Unified/Gui/Workbench.cpp             | 53 +++++++++++++++++++
+ src/Mod/Unified/InitGui.py                    | 37 ++++++++++++-
+ 4 files changed, 105 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/MenuManager.cpp b/src/Gui/MenuManager.cpp
+index b4426101c..b37071a5e 100644
+--- a/src/Gui/MenuManager.cpp
++++ b/src/Gui/MenuManager.cpp
+@@ -238,6 +238,9 @@ void MenuManager::setup(MenuItem* menuItems) const
+                 // create a new menu
+                 std::string menuName = item->command();
+                 QMenu* menu = menuBar->addMenu(QApplication::translate("Workbench", menuName.c_str()));
++                // Show what a command does when hovering it: many commands are only reachable
++                // from the menus, and their names alone often do not tell what they are for
++                menu->setToolTipsVisible(true);
+                 action = menu->menuAction();
+                 menu->setObjectName(QString::fromLatin1(menuName.c_str()));
+                 action->setObjectName(QString::fromLatin1(menuName.c_str()));
+@@ -292,6 +295,7 @@ void MenuManager::setup(MenuItem* item, QMenu* menu) const
+                     QMenu* submenu = menu->addMenu(
+                         QApplication::translate("Workbench", menuName.c_str())
+                     );
++                    submenu->setToolTipsVisible(true);
+                     QAction* action = submenu->menuAction();
+                     submenu->setObjectName(QString::fromLatin1(item->command().c_str()));
+                     action->setObjectName(QString::fromLatin1(item->command().c_str()));
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 891037c6d..96e018f49 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -3,6 +3,18 @@
+ <TS version="2.1" language="ja">
+ <context>
+     <name>Workbench</name>
++    <message>
++        <source>&amp;Drawing</source>
++        <translation>図面(&amp;D)</translation>
++    </message>
++    <message>
++        <source>&amp;Assemblies</source>
++        <translation>組立(&amp;A)</translation>
++    </message>
++    <message>
++        <source>Joints</source>
++        <translation>ジョイント</translation>
++    </message>
+     <message>
+         <source>Unified Sketch</source>
+         <translation>スケッチ</translation>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 3eda0292a..3282d41dd 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -96,6 +96,59 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+           << "Separator"
+           << "Part_CheckGeometry";
+ 
++    // Technical drawings: used now and then, so in a menu instead of on the toolbars
++    auto drawing = new Gui::MenuItem;
++    root->insertItem(windows, drawing);
++    drawing->setCommand("&Drawing");
++    auto dims = new Gui::MenuItem;
++    dims->setCommand("Dimensions");
++    *dims << "TechDraw_LengthDimension"
++          << "TechDraw_HorizontalDimension"
++          << "TechDraw_VerticalDimension"
++          << "TechDraw_RadiusDimension"
++          << "TechDraw_DiameterDimension"
++          << "TechDraw_AngleDimension";
++    *drawing << "TechDraw_PageDefault"
++             << "TechDraw_PageTemplate"
++             << "Separator"
++             << "TechDraw_View"
++             << "TechDraw_ProjectionGroup"
++             << "TechDraw_SectionView"
++             << "TechDraw_DetailView"
++             << "Separator" << dims
++             << "TechDraw_Annotation"
++             << "TechDraw_Balloon"
++             << "Separator"
++             << "TechDraw_ExportPageSVG"
++             << "TechDraw_ExportPageDXF"
++             << "TechDraw_PrintAll";
++
++    // Assemblies: parts connected by joints
++    auto assembly = new Gui::MenuItem;
++    root->insertItem(windows, assembly);
++    assembly->setCommand("&Assemblies");
++    auto joints = new Gui::MenuItem;
++    joints->setCommand("Joints");
++    *joints << "Assembly_ToggleGrounded"
++            << "Separator"
++            << "Assembly_CreateJointFixed"
++            << "Assembly_CreateJointRevolute"
++            << "Assembly_CreateJointCylindrical"
++            << "Assembly_CreateJointSlider"
++            << "Assembly_CreateJointBall"
++            << "Separator"
++            << "Assembly_CreateJointDistance"
++            << "Assembly_CreateJointParallel"
++            << "Assembly_CreateJointPerpendicular"
++            << "Assembly_CreateJointAngle";
++    *assembly << "Assembly_CreateAssembly"
++              << "Assembly_Insert"
++              << "Separator" << joints
++              << "Assembly_SolveAssembly"
++              << "Separator"
++              << "Assembly_CreateView"
++              << "Assembly_CreateBom";
++
+     // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
+     Gui::MenuItem* edit = root->findItem("&Edit");
+     if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 221afd9be..8b178a55b 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -4,17 +4,52 @@
+ # FreeCAD shows only this workbench. It gathers the tools of Sketcher, PartDesign and
+ # friends in one place, so the user never has to pick or switch workbenches.
+ 
++# Loaded right away (not in Initialize) so that its translations are there for the start
++# page, and the context bar is installed from the beginning
++import UnifiedGui
++
+ 
+ class UnifiedWorkbench(Workbench):
+     MenuText = "FreeCAD"
+     ToolTip = "Sketch, model and check parts in one place"
+ 
+     def Initialize(self):
++        import importlib
++
++        def load_optional(*modules):
++            # Import modules that may not be built; continue if one is missing
++            for name in modules:
++                try:
++                    importlib.import_module(name)
++                except ImportError as err:
++                    FreeCAD.Console.PrintLog("Unified: {} not available ({})\n".format(name, err))
++                    return False
++            return True
++
+         # Load the modules whose commands are used here. Their workbenches are never shown.
+         import PartGui
+         import SketcherGui
+         import PartDesignGui
+-        import UnifiedGui
++
++        # Tools used less often, reachable from the menus: technical drawings and assemblies
++        load_optional("TechDrawGui", "TechDrawTools")
++        if load_optional("AssemblyGui"):
++            # What the Assembly workbench does in its Initialize(), without showing it
++            load_optional(
++                "CommandCreateAssembly",
++                "CommandInsertLink",
++                "CommandInsertNewPart",
++                "CommandCreateJoint",
++                "CommandSolveAssembly",
++                "CommandExportASMT",
++                "CommandCreateView",
++                "CommandCreateSimulation",
++                "CommandCreateSnapshot",
++                "CommandCreateBom",
++            )
++
++        # Rebuild the menus and toolbars now that all commands exist
++        import UnifiedGui  # noqa: F811
+ 
+     def GetClassName(self):
+         return "UnifiedGui::Workbench"
+-- 
+2.43.0
+
