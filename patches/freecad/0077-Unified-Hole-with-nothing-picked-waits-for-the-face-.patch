@@ -1,0 +1,73 @@
+From b98d263bf8efe33d4489f29ea5d1d0e4575e8880 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:44:11 +0900
+Subject: [PATCH 77/77] Unified: "Hole" with nothing picked waits for the face
+ to click
+
+Instead of PartDesign's empty list of sketches, the hole asks for the
+flat face to click and makes the hole there.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  |  4 ++++
+ src/Mod/Unified/UnifiedCommands.py            | 22 +++++++++++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 450dc22ce..4cc0302d4 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -346,6 +346,10 @@
+         <source>Hole position</source>
+         <translation>穴の位置</translation>
+     </message>
++    <message>
++        <source>Click the flat face where the hole should go</source>
++        <translation>穴を開けたい平らな面の、その位置をクリックしてください</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_About</name>
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 515153dcd..2babdf91e 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -33,6 +33,21 @@ def _picked_plane_face():
+     return obj, name, sel.PickedPoints[0]
+ 
+ 
++class _WaitForFace:
++    """After "Hole" with nothing picked: the next face clicked in the view gets the hole."""
++
++    def addSelection(self, doc, obj, sub, pnt):
++        FreeCADGui.Selection.removeObserver(self)
++        if sub and sub.startswith("Face"):
++            # After the selection has been completed
++            QtCore.QTimer.singleShot(0, lambda: FreeCADGui.runCommand("Unified_Hole"))
++        else:
++            FreeCADGui.getMainWindow().showMessage("")
++
++    def clearSelection(self, doc):
++        pass
++
++
+ class HoleCommand:
+     """A hole where the face was clicked.
+ 
+@@ -55,6 +70,13 @@ class HoleCommand:
+         return FreeCADGui.isCommandActive("PartDesign_Hole") or _picked_plane_face() is not None
+ 
+     def Activated(self):
++        if not FreeCADGui.Selection.getSelectionEx():
++            # Nothing picked: ask for the face instead of opening an empty list of sketches
++            FreeCADGui.Selection.addObserver(_WaitForFace())
++            FreeCADGui.getMainWindow().showMessage(
++                translate("Unified_Hole", "Click the flat face where the hole should go")
++            )
++            return
+         picked = _picked_plane_face()
+         if not picked:
+             FreeCADGui.runCommand("PartDesign_Hole")
+-- 
+2.43.0
+

@@ -1,0 +1,69 @@
+From bbc296591d6696f694dbbfaa6193892d5a548f47 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:39:42 +0900
+Subject: [PATCH 74/77] Translations: the sketch status in everyday Japanese
+
+"Under-constrained: 2 degrees of freedom" and "Fully constrained" now
+say what they mean for the user: two places are not fixed yet, shape and
+position are all fixed, constraints conflict or say the same twice.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Sketcher_ja.ts      | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index 48d7728b9..4376c7a8f 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -4112,7 +4112,7 @@ This is done by analyzing the sketch geometries and constraints.</source>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4473"/>
+       <source>Over-constrained:</source>
+-      <translation>過剰拘束:</translation>
++      <translation>拘束がぶつかっています:</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4479"/>
+@@ -4122,32 +4122,32 @@ This is done by analyzing the sketch geometries and constraints.</source>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4487"/>
+       <source>Redundant constraints:</source>
+-      <translation>冗長な拘束:</translation>
++      <translation>同じ意味の拘束が重なっています:</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4493"/>
+       <source>Partially redundant:</source>
+-      <translation>部分的に冗長:</translation>
++      <translation>一部が重なっている拘束:</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4500"/>
+       <source>Solver failed to converge</source>
+-      <translation>ソルバーの収束に失敗</translation>
++      <translation>形を決められませんでした（拘束を見直してください）</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4506"/>
+       <source>Under-constrained:</source>
+-      <translation>未拘束:</translation>
++      <translation>まだ決まっていない所:</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="4512"/>
+       <source>Fully constrained</source>
+-      <translation>完全拘束</translation>
++      <translation>形と位置がすべて決まっています</translation>
+     </message>
+     <message numerus="yes">
+       <source>%n Degrees of Freedom</source>
+       <translation>
+-        <numerusform>自由度 %n</numerusform>
++        <numerusform>%n か所</numerusform>
+       </translation>
+     </message>
+     <message>
+-- 
+2.43.0
+

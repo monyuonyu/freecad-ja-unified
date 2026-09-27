@@ -1,0 +1,52 @@
+From 0f913211a36b6e0ba223749f574e71693a1bb543 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:42:31 +0900
+Subject: [PATCH 76/77] Gui: tell in the status bar that a step of a part opens
+ on a double-click
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts  |  5 +++++
+ src/Gui/Selection/Selection.cpp | 11 +++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 8273fdaad..caf1c2b88 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -15173,5 +15173,10 @@ treated as shortcut key sequence 'F, F'.</source>
+       <source>%1, %2</source>
+       <translation>%1 の %2</translation>
+     </message>
++    <message>
++      <location filename="../Selection/Selection.cpp" line="1115"/>
++      <source> (double-click to edit)</source>
++      <translation>（ダブルクリックで編集）</translation>
++    </message>
+   </context>
+ </TS>
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index c4d057237..436d4fc99 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -1112,6 +1112,17 @@ QString getPreselectionInfo(
+                 what = QApplication::translate("Gui::SelectionSingleton", "%1, %2")
+                            .arg(what, kindText);
+             }
++            // The steps of a part and sketches open for editing on a double-click in the view
++            for (const char* editable : {"PartDesign::Feature", "Sketcher::SketchObject"}) {
++                Base::Type type = Base::Type::fromName(editable);
++                if (!type.isBad() && leaf->getTypeId().isDerivedFrom(type)) {
++                    what += QApplication::translate(
++                        "Gui::SelectionSingleton",
++                        " (double-click to edit)"
++                    );
++                    break;
++                }
++            }
+             return QStringLiteral("%1 (%2 %3, %4 %5, %6 %7)")
+                 .arg(what)
+                 .arg(QString::number(pts[0].first, 'f', numberDecimals))
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From ca29bc16dc87615a3f644a022ab5fd0e4eaa111b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:13:30 +0900
-Subject: [PATCH 01/73] Core: make FreeCADCmd behave like the Python executable
+Subject: [PATCH 01/77] Core: make FreeCADCmd behave like the Python executable
  when running scripts
 
 - Run a .py file exactly once as __main__. It was imported as a module first

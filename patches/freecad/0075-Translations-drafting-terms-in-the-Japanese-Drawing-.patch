@@ -1,0 +1,118 @@
+From 673a048d889ca10d6e038f95e5082e18f9762ffb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:40:51 +0900
+Subject: [PATCH 75/77] Translations: drafting terms in the Japanese Drawing
+ menu
+
+New view, projection group, section view, detail view and balloon use
+the words of Japanese drafting (three-view drawing, section drawing,
+partial enlarged view, item number).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/TechDraw_ja.ts | 24 +++++++++----------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+index 2f6e556d9..085759d16 100644
+--- a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
++++ b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+@@ -113,7 +113,7 @@
+     <message>
+       <location filename="../../CommandAnnotate.cpp" line="528"/>
+       <source>Text Annotation</source>
+-      <translation>テキスト注釈</translation>
++      <translation>文字の注記</translation>
+     </message>
+     <message>
+       <location filename="../../CommandAnnotate.cpp" line="529"/>
+@@ -149,7 +149,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1286"/>
+       <source>Balloon Annotation</source>
+-      <translation>バルーン注釈</translation>
++      <translation>照合番号（バルーン）</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1287"/>
+@@ -335,12 +335,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="1019"/>
+       <source>Detail View</source>
+-      <translation>詳細ビュー</translation>
++      <translation>部分拡大図</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1020"/>
+       <source>Inserts a new detail view based on the selected view in the current page</source>
+-      <translation>現在のページに選択したビューに基づく新しい詳細ビューを挿入</translation>
++      <translation>選んだ図の一部を拡大した図をページに置く</translation>
+     </message>
+   </context>
+   <context>
+@@ -1742,12 +1742,12 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="1063"/>
+       <source>Projection Group</source>
+-      <translation>投影グループ</translation>
++      <translation>三面図（正面図と周りの図）</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1064"/>
+       <source>Inserts multiple new linked views of the selected objects in the current page</source>
+-      <translation>現在のページに、選択したオブジェクトの複数の新しいリンクビューを挿入</translation>
++      <translation>選んだ物の正面図と、その上・横などから見た図をまとめてページに置く</translation>
+     </message>
+   </context>
+   <context>
+@@ -1832,7 +1832,7 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="738"/>
+       <source>Section View (Simple or Complex)</source>
+-      <translation>断面ビュー（シンプルまたは複雑）</translation>
++      <translation>断面図（まっすぐ／折れ線で切る）</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="739"/>
+@@ -1842,12 +1842,12 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="803"/>
+       <source>Section View</source>
+-      <translation>断面ビュー</translation>
++      <translation>断面図</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="807"/>
+       <source>Complex Section View</source>
+-      <translation>複雑な断面ビュー</translation>
++      <translation>折れ線で切った断面図</translation>
+     </message>
+   </context>
+   <context>
+@@ -1860,12 +1860,12 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="830"/>
+       <source>Section View</source>
+-      <translation>断面ビュー</translation>
++      <translation>断面図</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="831"/>
+       <source>Inserts a new section view based on the selected view in the current page</source>
+-      <translation>現在のページに選択したビューに基づく新しい断面ビューを挿入</translation>
++      <translation>選んだ図を切った断面図をページに置く</translation>
+     </message>
+   </context>
+   <context>
+@@ -2095,7 +2095,7 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="303"/>
+       <source>New View</source>
+-      <translation>新しいビュー</translation>
++      <translation>図を置く</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="304"/>
+-- 
+2.43.0
+
