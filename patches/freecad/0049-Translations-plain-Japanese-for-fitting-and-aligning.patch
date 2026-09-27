@@ -1,7 +1,7 @@
 From afc763b8fd4a685f79f00fc4f7370c3c4e0702e6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:38:32 +0900
-Subject: [PATCH 049/107] Translations: plain Japanese for fitting and aligning
+Subject: [PATCH 049/108] Translations: plain Japanese for fitting and aligning
  the view
 
 "Fit all", "Fit selection", "Align to selection", "Draw style" and

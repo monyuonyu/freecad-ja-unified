@@ -1,7 +1,7 @@
 From a97c366672e04df40afd199317b484ce91db72b2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:34:03 +0900
-Subject: [PATCH 095/107] PartDesign: take the body just made from a loose
+Subject: [PATCH 095/108] PartDesign: take the body just made from a loose
  solid, not the first one found
 
 adoptPickedLooseSolid searched the whole document for a base feature of the

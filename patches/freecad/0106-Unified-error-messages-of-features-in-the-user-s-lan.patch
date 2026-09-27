@@ -1,7 +1,7 @@
 From 55e10390d775a567eb6f0e73364eddc69f6fd687 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 14:40:08 +0900
-Subject: [PATCH 106/107] Unified: error messages of features in the user's
+Subject: [PATCH 106/108] Unified: error messages of features in the user's
  language
 
 Many messages thrown by FreeCAD and OCC are not marked for translation

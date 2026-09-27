@@ -1,7 +1,7 @@
 From 5ca2fd1849fac0253e53f3bf82da179888eabbd4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:18:03 +0900
-Subject: [PATCH 027/107] Gui: translate feature error messages in the
+Subject: [PATCH 027/108] Gui: translate feature error messages in the
  notification area
 
 Error messages of features are declared for translation in the

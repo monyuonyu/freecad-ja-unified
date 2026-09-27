@@ -1,7 +1,7 @@
 From 2c06d2eb97ea7cff3c2ec5367fba3549999ca9a5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:10:06 +0900
-Subject: [PATCH 060/107] PartDesign: sketch on a face of an imported solid
+Subject: [PATCH 060/108] PartDesign: sketch on a face of an imported solid
  without asking for a body
 
 In the integrated environment, starting a sketch on a face of a solid

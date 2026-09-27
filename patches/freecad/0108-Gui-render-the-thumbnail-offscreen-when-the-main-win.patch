@@ -1,0 +1,111 @@
+From ae2eac85300a273be8ca8670338dee9095522dd0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 17:08:07 +0900
+Subject: [PATCH 108/108] Gui: render the thumbnail offscreen when the main
+ window is hidden
+
+Saving a document from a script with --hidden warned 'renderToImage failed
+because no context is active' and stored the application icon as the
+thumbnail: the hidden view has no OpenGL context. Render it offscreen as
+saving a picture does, from the thumbnail's camera, and put the view's
+camera back.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Thumbnail.cpp | 41 ++++++++++++++++++++++++++++++++++++++++-
+ src/Gui/Thumbnail.h   |  4 ++++
+ 2 files changed, 44 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Thumbnail.cpp b/src/Gui/Thumbnail.cpp
+index 8ad784e7d..bd03ed07c 100644
+--- a/src/Gui/Thumbnail.cpp
++++ b/src/Gui/Thumbnail.cpp
+@@ -39,8 +39,10 @@
+ 
+ #include <Inventor/SbBox3f.h>
+ #include <Inventor/nodes/SoOrthographicCamera.h>
++#include <Inventor/SoRenderManager.h>
+ 
+ #include "Thumbnail.h"
++#include "Application.h"
+ #include "BitmapFactory.h"
+ #include "Camera.h"
+ #include "View3DInventorViewer.h"
+@@ -89,6 +91,36 @@ void Thumbnail::Restore(Base::XMLReader& reader)
+     // reader.addFile("Thumbnail.png",this);
+ }
+ 
++QImage Thumbnail::renderOffscreen(const SbBox3f& box) const
++{
++    SoCamera* camera = this->viewer->getSoRenderManager()->getCamera();
++    auto* ortho = dynamic_cast<SoOrthographicCamera*>(camera);
++    if (!ortho) {
++        return {};
++    }
++    // Use the thumbnail's camera for the moment and put the view's camera back afterwards
++    CoinPtr<SoOrthographicCamera> saved(new SoOrthographicCamera);
++    saved->copyFieldValues(ortho);
++    ortho->orientation.setValue(Camera::defaultOrientation());
++    Camera::fitToBox(*ortho, box, 1.0F);
++    QImage img;
++    try {
++        this->viewer->savePicture(
++            this->size,
++            this->size,
++            4,
++            QColor(0, 0, 0, 0),
++            img,
++            View3DInventorViewer::RenderIntent::RasterCapture
++        );
++    }
++    catch (...) {
++        img = QImage();
++    }
++    ortho->copyFieldValues(saved);
++    return img;
++}
++
+ void Thumbnail::SaveDocFile(Base::Writer& writer) const
+ {
+     QImage img;
+@@ -119,7 +151,14 @@ void Thumbnail::SaveDocFile(Base::Writer& writer) const
+                 .includeViewerLighting = true,
+                 .camera = camera.get(),
+             };
+-            img = this->viewer->renderToImage(options);
++            if (Application::hiddenMainWindow()) {
++                // With the main window hidden (scripts, --hidden) the view has no OpenGL
++                // context: render offscreen, as saving a picture does, from the same camera
++                img = renderOffscreen(box);
++            }
++            else {
++                img = this->viewer->renderToImage(options);
++            }
+             created = !img.isNull();
+         }
+     }
+diff --git a/src/Gui/Thumbnail.h b/src/Gui/Thumbnail.h
+index f5b6a7787..3d7d6c011 100644
+--- a/src/Gui/Thumbnail.h
++++ b/src/Gui/Thumbnail.h
+@@ -28,6 +28,8 @@
+ 
+ class QImage;
+ 
++class SbBox3f;
++
+ namespace Gui
+ {
+ class View3DInventorViewer;
+@@ -56,6 +58,8 @@ public:
+     //@}
+ 
+ private:
++    QImage renderOffscreen(const SbBox3f& box) const;
++
+     QUrl uri;
+     View3DInventorViewer* viewer {nullptr};
+     int size;
+-- 
+2.43.0
+

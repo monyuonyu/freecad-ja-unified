@@ -1,7 +1,7 @@
 From 17f3d2f8d1c01f968410475cbcfefc44be34bec8 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:22:27 +0900
-Subject: [PATCH 091/107] Unified: show the task panel on dialog signals
+Subject: [PATCH 091/108] Unified: show the task panel on dialog signals
  instead of polling
 
 Gui::ControlSingleton gets dialogShown() and dialogClosed() signals

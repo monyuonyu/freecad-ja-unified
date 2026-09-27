@@ -1,7 +1,7 @@
 From 3521267d122fcc1166b21d410c853b64844f1dd3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:33:29 +0900
-Subject: [PATCH 047/107] PartDesign: size a new linear pattern after what it
+Subject: [PATCH 047/108] PartDesign: size a new linear pattern after what it
  repeats; clearer pattern texts
 
 A new linear pattern used a fixed length of 100 mm, which put the copy of

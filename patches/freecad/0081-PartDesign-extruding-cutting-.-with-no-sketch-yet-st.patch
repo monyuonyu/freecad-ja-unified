@@ -1,7 +1,7 @@
 From 3d3b2c873835a003fab4d3cbc877750702df2b49 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 10:04:52 +0900
-Subject: [PATCH 081/107] PartDesign: extruding, cutting, ... with no sketch
+Subject: [PATCH 081/108] PartDesign: extruding, cutting, ... with no sketch
  yet starts one
 
 In the integrated environment, Pad, Pocket, Revolution and the other
