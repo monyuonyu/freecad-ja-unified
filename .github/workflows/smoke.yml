@@ -1,0 +1,49 @@
+name: Smoke test release
+
+# リリースに載せたビルド済みのファイルを落として、起動と最低限の動作（部品を作って書き出す）を確かめる。
+# 使い方: Actions の「Smoke test release」から、タグ名を入れて実行する。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. ja-unified-0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.tag }}" -R "${{ github.repository }}" -p "*Linux*.AppImage"
+      - name: Run FreeCADCmd from the AppImage
+        run: |
+          set -euo pipefail
+          chmod +x ./*.AppImage
+          ./*.AppImage --appimage-extract > /dev/null
+          ./squashfs-root/usr/bin/FreeCADCmd tests/smoke.py -- "$PWD/out" | tee smoke.log
+          grep -q "SMOKE OK" smoke.log
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the 7z
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.tag }}" -R "${{ github.repository }}" -p "*Windows*.7z"
+      - name: Run FreeCADCmd from the 7z
+        shell: bash
+        run: |
+          set -euo pipefail
+          7z x -y ./*.7z > /dev/null
+          exe=$(ls -d FreeCAD_*/bin/FreeCADCmd.exe | head -1)
+          "$exe" tests/smoke.py -- "$PWD/out" | tee smoke.log
+          grep -q "SMOKE OK" smoke.log
