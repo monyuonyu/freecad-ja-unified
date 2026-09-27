@@ -27,7 +27,7 @@ jobs:
           set -euo pipefail
           chmod +x ./*.AppImage
           ./*.AppImage --appimage-extract > /dev/null
-          ./squashfs-root/usr/bin/FreeCADCmd tests/smoke.py -- "$PWD/out" | tee smoke.log
+          ./squashfs-root/usr/bin/freecadcmd tests/smoke.py -- "$PWD/out" | tee smoke.log
           grep -q "SMOKE OK" smoke.log
 
   windows:
