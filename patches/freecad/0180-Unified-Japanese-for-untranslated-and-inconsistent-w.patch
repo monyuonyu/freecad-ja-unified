@@ -1,7 +1,7 @@
 From fb63e6cb1751c632e681d0b93a85781b5ac78699 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:57:53 +0900
-Subject: [PATCH 180/197] Unified: Japanese for untranslated and inconsistent
+Subject: [PATCH 180/200] Unified: Japanese for untranslated and inconsistent
  wording found in GUI testing
 
 Assembly isolate modes, TechDraw projection view labels and line type

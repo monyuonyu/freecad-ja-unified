@@ -1,7 +1,7 @@
 From 7c1f6df00c0ed63065a512f464f90909015785cf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 10:03:24 +0900
-Subject: [PATCH 080/197] Translations: sketch hints say "click" where a point
+Subject: [PATCH 080/200] Translations: sketch hints say "click" where a point
  is picked
 
 Japanese hints translated "pick" (click a point in the view) as "select",

@@ -1,7 +1,7 @@
 From 4e50bbca1f8f913055770ce3b8760cb5970b94b4 Mon Sep 17 00:00:00 2001
 From: paddle <pierrelouis.boyer@gmail.com>
 Date: Fri, 26 Jun 2026 11:00:52 +0200
-Subject: [PATCH 129/197] Assembly: Enable joint group deletion if orphaned
+Subject: [PATCH 129/200] Assembly: Enable joint group deletion if orphaned
 
 ---
  src/Mod/Assembly/Gui/ViewProviderGroups.cpp | 14 ++++++++++++++

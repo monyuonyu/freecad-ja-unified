@@ -1,7 +1,7 @@
 From 22f25cee15dfd2aaeb73293d25f98df73b475255 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:44:10 +0900
-Subject: [PATCH 176/197] Unified: A hole goes where the face was clicked, also
+Subject: [PATCH 176/200] Unified: A hole goes where the face was clicked, also
  on faces with round edges
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

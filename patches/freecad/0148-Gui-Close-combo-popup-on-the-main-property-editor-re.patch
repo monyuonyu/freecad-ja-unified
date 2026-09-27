@@ -1,7 +1,7 @@
 From 192c97002e23b8570c8422455e6470b95206e597 Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Fri, 24 Jul 2026 11:30:28 -0600
-Subject: [PATCH 148/197] Gui: Close combo popup on the main property-editor
+Subject: [PATCH 148/200] Gui: Close combo popup on the main property-editor
  rebuild path
 
 The prior combo-popup UAF fix (a95c5c0e48) closed the enum QComboBox

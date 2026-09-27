@@ -1,7 +1,7 @@
 From ab55650c7912209afebef8fa9534a29e5b3cd7b1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:13:47 +0900
-Subject: [PATCH 039/197] Translations: task panel titles as "settings", fix a
+Subject: [PATCH 039/200] Translations: task panel titles as "settings", fix a
  broken Japanese term
 
 Japanese task panel titles read "... settings" instead of the katakana

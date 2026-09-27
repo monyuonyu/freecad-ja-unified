@@ -1,7 +1,7 @@
 From 5727eb46cba8398fce95e8007fb872b269ebfc35 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:32 +0900
-Subject: [PATCH 166/197] Gui: Do not let a %n in a label take the coordinates
+Subject: [PATCH 166/200] Gui: Do not let a %n in a label take the coordinates
  in the preselection message
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

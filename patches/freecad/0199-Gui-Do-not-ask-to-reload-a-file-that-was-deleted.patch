@@ -1,0 +1,3162 @@
+From 2af9fb87b91001c4f5d248eb3e08fecc9c953582 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 05:40:45 +0900
+Subject: [PATCH 199/200] Gui: Do not ask to reload a file that was deleted
+
+The source editor asked whether to reload a file changed outside it
+also when the file was gone, which cannot be reloaded; unattended runs
+(the GUI test suite, whose macro editor test left an editor with a
+deleted temporary file behind) then waited forever. The test now also
+deletes its editor when it closes it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/EditorView.cpp      | 2295 ++++++++++++++++++-----------------
+ src/Mod/Test/GuiDocument.py |  837 ++++++-------
+ 2 files changed, 1570 insertions(+), 1562 deletions(-)
+
+diff --git a/src/Gui/EditorView.cpp b/src/Gui/EditorView.cpp
+index d433a7c5a..fcfe2638a 100644
+--- a/src/Gui/EditorView.cpp
++++ b/src/Gui/EditorView.cpp
+@@ -1,1145 +1,1150 @@
+-/***************************************************************************
+- *   Copyright (c) 2007 Werner Mayer <wmayer[at]users.sourceforge.net>     *
+- *                                                                         *
+- *   This file is part of the FreeCAD CAx development system.              *
+- *                                                                         *
+- *   This library is free software; you can redistribute it and/or         *
+- *   modify it under the terms of the GNU Library General Public           *
+- *   License as published by the Free Software Foundation; either          *
+- *   version 2 of the License, or (at your option) any later version.      *
+- *                                                                         *
+- *   This library  is distributed in the hope that it will be useful,      *
+- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+- *   GNU Library General Public License for more details.                  *
+- *                                                                         *
+- *   You should have received a copy of the GNU Library General Public     *
+- *   License along with this library; see the file COPYING.LIB. If not,    *
+- *   write to the Free Software Foundation, Inc., 59 Temple Place,         *
+- *   Suite 330, Boston, MA  02111-1307, USA                                *
+- *                                                                         *
+- ***************************************************************************/
+-
+-#include <QApplication>
+-#include <QCheckBox>
+-#include <QClipboard>
+-#include <QDateTime>
+-#include <QLabel>
+-#include <QHBoxLayout>
+-#include <QVBoxLayout>
+-#include <QLineEdit>
+-#include <QMessageBox>
+-#include <QPrinter>
+-#include <QPrintDialog>
+-#include <QPlainTextEdit>
+-#include <QPrintPreviewDialog>
+-#include <QSpacerItem>
+-#include <QStyle>
+-#include <QTextCursor>
+-#include <QTextDocument>
+-#include <QTextStream>
+-#include <QTimer>
+-#include <QToolButton>
+-
+-#include "EditorView.h"
+-#include "Application.h"
+-#include "FileDialog.h"
+-#include "InputHint.h"
+-#include "Macro.h"
+-#include "MainWindow.h"
+-#include "PythonEditor.h"
+-#include "PythonTracing.h"
+-#include "WaitCursor.h"
+-
+-#include <Base/Exception.h>
+-#include <Base/Interpreter.h>
+-#include <Base/Parameter.h>
+-
+-#include <Gui/PreferencePages/DlgSettingsPDF.h>
+-
+-
+-namespace
+-{
+-constexpr int SearchSelectionProperty = QTextFormat::UserProperty + 1;
+-}
+-
+-using namespace Gui;
+-namespace Gui
+-{
+-class EditorViewP
+-{
+-public:
+-    TextEdit* textEdit;
+-    SearchBar* searchBar;
+-    QString fileName;
+-    EditorView::DisplayName displayName;
+-    QTimer* activityTimer;
+-    qint64 timeStamp;
+-    bool lock;
+-    bool aboutToClose;
+-    QStringList undos;
+-    QStringList redos;
+-};
+-}  // namespace Gui
+-
+-// -------------------------------------------------------
+-
+-/* TRANSLATOR Gui::EditorView */
+-
+-TYPESYSTEM_SOURCE_ABSTRACT(Gui::EditorView, Gui::MDIView)
+-
+-/**
+- *  Constructs a EditorView which is a child of 'parent', with the
+- *  name 'name'.
+- */
+-EditorView::EditorView(TextEdit* editor, QWidget* parent)
+-    : MDIView(nullptr, parent, Qt::WindowFlags())
+-    , WindowParameter("Editor")
+-{
+-    d = new EditorViewP;
+-    d->lock = false;
+-    d->aboutToClose = false;
+-    d->displayName = EditorView::FullName;
+-
+-    // create the editor first
+-    d->textEdit = editor;
+-    d->textEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+-
+-    d->searchBar = new SearchBar();
+-    d->searchBar->setEditor(editor);
+-
+-    // clang-format off
+-    // update editor actions on request
+-    Gui::MainWindow* mw = Gui::getMainWindow();
+-    connect(editor, &QPlainTextEdit::undoAvailable, mw, &MainWindow::updateEditorActions);
+-    connect(editor, &QPlainTextEdit::redoAvailable, mw, &MainWindow::updateEditorActions);
+-    connect(editor, &QPlainTextEdit::copyAvailable, mw, &MainWindow::updateEditorActions);
+-
+-    connect(editor, &TextEdit::showSearchBar, d->searchBar, &SearchBar::activate);
+-    connect(editor, &TextEdit::findNext, d->searchBar, &SearchBar::findNext);
+-    connect(editor, &TextEdit::findPrevious, d->searchBar, &SearchBar::findPrevious);
+-    // clang-format on
+-
+-    // Create the layout containing the workspace and a tab bar
+-    auto hbox = new QFrame(this);
+-    hbox->setFrameShape(QFrame::StyledPanel);
+-    hbox->setFrameShadow(QFrame::Sunken);
+-    auto layout = new QVBoxLayout();
+-    layout->setContentsMargins(1, 1, 1, 1);
+-    layout->addWidget(d->textEdit);
+-    layout->addWidget(d->searchBar);
+-    d->textEdit->setParent(hbox);
+-    d->searchBar->setParent(hbox);
+-    hbox->setLayout(layout);
+-    setCentralWidget(hbox);
+-
+-    setCurrentFileName(QString());
+-    d->textEdit->setFocus();
+-
+-    connect(d->textEdit, &QPlainTextEdit::cursorPositionChanged, this, &EditorView::updateInputHints);
+-    connect(d->textEdit, &QPlainTextEdit::selectionChanged, this, &EditorView::updateInputHints);
+-    connect(qApp, &QApplication::focusChanged, this, [this](QWidget*, QWidget*) {
+-        updateInputHints();
+-    });
+-    connect(d->searchBar, &SearchBar::textChanged, this, &EditorView::updateInputHints);
+-
+-    setWindowIcon(d->textEdit->windowIcon());
+-
+-    ParameterGrp::handle hPrefGrp = getWindowParameter();
+-    hPrefGrp->Attach(this);
+-    hPrefGrp->NotifyAll();
+-
+-    d->activityTimer = new QTimer(this);
+-    // clang-format off
+-    connectionList <<
+-    connect(d->activityTimer, &QTimer::timeout,
+-            this, &EditorView::checkTimestamp) <<
+-    connect(d->textEdit->document(), &QTextDocument::modificationChanged,
+-            this, &EditorView::setWindowModified) <<
+-    connect(d->textEdit->document(), &QTextDocument::undoAvailable,
+-            this, &EditorView::undoAvailable) <<
+-    connect(d->textEdit->document(), &QTextDocument::redoAvailable,
+-            this, &EditorView::redoAvailable) <<
+-    connect(d->textEdit->document(), &QTextDocument::contentsChange,
+-            this, &EditorView::contentsChange);
+-    // clang-format on
+-}
+-
+-/** Destroys the object and frees any allocated resources */
+-EditorView::~EditorView()
+-{
+-    Gui::getMainWindow()->hideHints();
+-
+-    d->activityTimer->stop();
+-    // to avoid the assert introduced a debug version of Qt >6.3. See QTBUG-105473
+-    for (auto conn : connectionList) {  // NOLINT(performance-for-range-copy)
+-        disconnect(conn);
+-    }
+-    delete d->activityTimer;
+-    delete d;
+-    getWindowParameter()->Detach(this);
+-}
+-
+-QPlainTextEdit* EditorView::getEditor() const
+-{
+-    return d->textEdit;
+-}
+-
+-void EditorView::showEvent(QShowEvent* event)
+-{
+-    Gui::MainWindow* mw = Gui::getMainWindow();
+-    mw->updateEditorActions();
+-
+-    updateInputHints();
+-
+-    MDIView::showEvent(event);
+-}
+-
+-void EditorView::hideEvent(QHideEvent* event)
+-{
+-    Gui::getMainWindow()->hideHints();
+-
+-    MDIView::hideEvent(event);
+-}
+-
+-void EditorView::closeEvent(QCloseEvent* event)
+-{
+-    MDIView::closeEvent(event);
+-    if (event->isAccepted()) {
+-        d->aboutToClose = true;
+-        Gui::MainWindow* mw = Gui::getMainWindow();
+-        mw->updateEditorActions();
+-    }
+-}
+-
+-void EditorView::OnChange(Base::Subject<const char*>& rCaller, const char* rcReason)
+-{
+-    Q_UNUSED(rCaller);
+-    ParameterGrp::handle hPrefGrp = getWindowParameter();
+-    if (strcmp(rcReason, "EnableLineNumber") == 0) {
+-        // bool show = hPrefGrp->GetBool( "EnableLineNumber", true );
+-    }
+-}
+-
+-void EditorView::checkTimestamp()
+-{
+-    QFileInfo fi(d->fileName);
+-    qint64 timeStamp = fi.lastModified().toSecsSinceEpoch();
+-    if (timeStamp != d->timeStamp) {
+-        switch (QMessageBox::question(
+-            this,
+-            tr("Modified file"),
+-            tr("%1.\n\nThis has been modified outside of the source "
+-               "editor. Reload it?")
+-                .arg(d->fileName),
+-            QMessageBox::Yes | QMessageBox::No,
+-            QMessageBox::Yes
+-        )) {
+-            case QMessageBox::Yes:
+-                // updates time stamp and timer
+-                open(d->fileName);
+-                return;
+-            case QMessageBox::No:
+-                d->timeStamp = timeStamp;
+-                break;
+-            default:
+-                break;
+-        }
+-    }
+-
+-    d->activityTimer->setSingleShot(true);
+-    d->activityTimer->start(3000);
+-}
+-
+-/**
+- * Runs the action specified by \a pMsg.
+- */
+-bool EditorView::onMsg(const char* pMsg)
+-{
+-    // don't allow any actions if the editor is being closed
+-    if (d->aboutToClose) {
+-        return false;
+-    }
+-
+-    if (strcmp(pMsg, "Save") == 0) {
+-        saveFile();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "SaveAs") == 0) {
+-        saveAs();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "Cut") == 0) {
+-        cut();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "Copy") == 0) {
+-        copy();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "Paste") == 0) {
+-        paste();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "Undo") == 0) {
+-        undo();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "Redo") == 0) {
+-        redo();
+-        return true;
+-    }
+-    else if (strcmp(pMsg, "ViewFit") == 0) {
+-        // just ignore this
+-        return true;
+-    }
+-
+-    return false;
+-}
+-
+-/**
+- * Checks if the action \a pMsg is available. This is for enabling/disabling
+- * the corresponding buttons or menu items for this action.
+- */
+-bool EditorView::onHasMsg(const char* pMsg) const
+-{
+-    // don't allow any actions if the editor is being closed
+-    if (d->aboutToClose) {
+-        return false;
+-    }
+-    if (strcmp(pMsg, "Run") == 0) {
+-        return true;
+-    }
+-    if (strcmp(pMsg, "SaveAs") == 0) {
+-        return true;
+-    }
+-    if (strcmp(pMsg, "Print") == 0) {
+-        return true;
+-    }
+-    if (strcmp(pMsg, "PrintPreview") == 0) {
+-        return true;
+-    }
+-    if (strcmp(pMsg, "PrintPdf") == 0) {
+-        return true;
+-    }
+-    if (strcmp(pMsg, "Save") == 0) {
+-        return d->textEdit->document()->isModified();
+-    }
+-    else if (strcmp(pMsg, "Cut") == 0) {
+-        bool canWrite = !d->textEdit->isReadOnly();
+-        return (canWrite && (d->textEdit->textCursor().hasSelection()));
+-    }
+-    else if (strcmp(pMsg, "Copy") == 0) {
+-        return (d->textEdit->textCursor().hasSelection());
+-    }
+-    else if (strcmp(pMsg, "Paste") == 0) {
+-        QClipboard* cb = QApplication::clipboard();
+-        QString text;
+-
+-        // Copy text from the clipboard (paste)
+-        text = cb->text();
+-
+-        bool canWrite = !d->textEdit->isReadOnly();
+-        return (!text.isEmpty() && canWrite);
+-    }
+-    else if (strcmp(pMsg, "Undo") == 0) {
+-        return d->textEdit->document()->isUndoAvailable();
+-    }
+-    else if (strcmp(pMsg, "Redo") == 0) {
+-        return d->textEdit->document()->isRedoAvailable();
+-    }
+-
+-    return false;
+-}
+-
+-/** Checking on close state. */
+-bool EditorView::canClose()
+-{
+-    if (!d->textEdit->document()->isModified()) {
+-        return true;
+-    }
+-    this->setFocus();  // raises the view to front
+-    switch (QMessageBox::question(
+-        this,
+-        tr("Unsaved document"),
+-        tr("The document has been modified.\n"
+-           "Save all changes?"),
+-        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
+-        QMessageBox::Cancel
+-    )) {
+-        case QMessageBox::Yes:
+-            return saveFile();
+-        case QMessageBox::No:
+-            return true;
+-        case QMessageBox::Cancel:
+-            return false;
+-        default:
+-            return false;
+-    }
+-}
+-
+-void EditorView::setDisplayName(EditorView::DisplayName type)
+-{
+-    d->displayName = type;
+-}
+-
+-/**
+- * Saves the content of the editor to a file specified by the appearing file dialog.
+- */
+-bool EditorView::saveAs()
+-{
+-    QString fn = FileDialog::getSaveFileName(
+-        this,
+-        QObject::tr("Save Macro"),
+-        QString(),
+-        FileDialog::FilterList {{tr("FreeCAD macro"), {"*.FCMacro"}}, {"Python", {"*.py"}}}
+-    );
+-    if (fn.isEmpty()) {
+-        return false;
+-    }
+-    setCurrentFileName(fn);
+-    return saveFile();
+-}
+-
+-/**
+- * Opens the file \a fileName.
+- */
+-bool EditorView::open(const QString& fileName)
+-{
+-    if (!QFile::exists(fileName)) {
+-        return false;
+-    }
+-    QFile file(fileName);
+-    if (!file.open(QFile::ReadOnly)) {
+-        return false;
+-    }
+-
+-    d->lock = true;
+-    d->textEdit->setPlainText(QString::fromUtf8(file.readAll()));
+-    d->lock = false;
+-    d->undos.clear();
+-    d->redos.clear();
+-    file.close();
+-
+-    QFileInfo fi(fileName);
+-    d->timeStamp = fi.lastModified().toSecsSinceEpoch();
+-    d->activityTimer->setSingleShot(true);
+-    d->activityTimer->start(3000);
+-
+-    setCurrentFileName(fileName);
+-    return true;
+-}
+-
+-/**
+- * Copies the selected text to the clipboard and deletes it from the text edit.
+- * If there is no selected text nothing happens.
+- */
+-void EditorView::cut()
+-{
+-    d->textEdit->cut();
+-}
+-
+-/**
+- * Copies any selected text to the clipboard.
+- */
+-void EditorView::copy()
+-{
+-    d->textEdit->copy();
+-}
+-
+-/**
+- * Pastes the text from the clipboard into the text edit at the current cursor position.
+- * If there is no text in the clipboard nothing happens.
+- */
+-void EditorView::paste()
+-{
+-    d->textEdit->paste();
+-}
+-
+-/**
+- * Undoes the last operation.
+- * If there is no operation to undo, i.e. there is no undo step in the undo/redo history, nothing
+- * happens.
+- */
+-void EditorView::undo()
+-{
+-    d->lock = true;
+-    if (!d->undos.isEmpty()) {
+-        d->redos << d->undos.back();
+-        d->undos.pop_back();
+-    }
+-    d->textEdit->document()->undo();
+-    d->lock = false;
+-}
+-
+-/**
+- * Redoes the last operation.
+- * If there is no operation to undo, i.e. there is no undo step in the undo/redo history, nothing
+- * happens.
+- */
+-void EditorView::redo()
+-{
+-    d->lock = true;
+-    if (!d->redos.isEmpty()) {
+-        d->undos << d->redos.back();
+-        d->redos.pop_back();
+-    }
+-    d->textEdit->document()->redo();
+-    d->lock = false;
+-}
+-
+-/**
+- * Shows the printer dialog.
+- */
+-void EditorView::print()
+-{
+-    QPrinter printer(QPrinter::ScreenResolution);
+-    printer.setFullPage(true);
+-    QPrintDialog dlg(&printer, this);
+-    if (dlg.exec() == QDialog::Accepted) {
+-        d->textEdit->document()->print(&printer);
+-    }
+-}
+-
+-void EditorView::printPreview()
+-{
+-    QPrinter printer(QPrinter::ScreenResolution);
+-    QPrintPreviewDialog dlg(&printer, this);
+-    connect(&dlg, &QPrintPreviewDialog::paintRequested, this, qOverload<QPrinter*>(&EditorView::print));
+-    dlg.exec();
+-}
+-
+-void EditorView::print(QPrinter* printer)
+-{
+-    d->textEdit->document()->print(printer);
+-}
+-
+-/**
+- * Prints the document into a Pdf file.
+- */
+-void EditorView::printPdf()
+-{
+-    QString filename = FileDialog::getSaveFileName(
+-        this,
+-        tr("Export PDF"),
+-        QString(),
+-        FileDialog::FilterList {{QStringLiteral("PDF"), {"*.pdf"}}}
+-    );
+-    if (!filename.isEmpty()) {
+-        QPrinter printer(QPrinter::ScreenResolution);
+-        // setPdfVersion sets the printed PDF Version to what is chosen in
+-        // Preferences/Import-Export/PDF more details under:
+-        // https://www.kdab.com/creating-pdfa-documents-qt/
+-        printer.setPdfVersion(Gui::Dialog::DlgSettingsPDF::evaluatePDFVersion());
+-        printer.setOutputFormat(QPrinter::PdfFormat);
+-        printer.setOutputFileName(filename);
+-        printer.setCreator(QString::fromStdString(App::Application::getNameWithVersion()));
+-        d->textEdit->document()->print(&printer);
+-    }
+-}
+-
+-void EditorView::setCurrentFileName(const QString& fileName)
+-{
+-    d->fileName = fileName;
+-    d->textEdit->document()->setModified(false);
+-
+-    QString name;
+-    QFileInfo fi(fileName);
+-    switch (d->displayName) {
+-        case FullName:
+-            name = fileName;
+-            break;
+-        case FileName:
+-            name = fi.fileName();
+-            break;
+-        case BaseName:
+-            name = fi.baseName();
+-            break;
+-    }
+-
+-    QString shownName;
+-    if (fileName.isEmpty()) {
+-        shownName = tr("untitled[*]");
+-    }
+-    else {
+-        shownName = QStringLiteral("%1[*]").arg(name);
+-    }
+-    shownName += tr(" - Editor");
+-    setWindowTitle(shownName);
+-    setWindowModified(false);
+-}
+-
+-QString EditorView::fileName() const
+-{
+-    return d->fileName;
+-}
+-
+-/**
+- * Saves the contents to a file.
+- */
+-bool EditorView::saveFile()
+-{
+-    if (d->fileName.isEmpty()) {
+-        return saveAs();
+-    }
+-
+-    QFile file(d->fileName);
+-    if (!file.open(QFile::WriteOnly)) {
+-        return false;
+-    }
+-    QTextStream ts(&file);
+-#if QT_VERSION < 0x060000
+-    ts.setCodec("UTF-8");
+-#endif
+-    ts << d->textEdit->document()->toPlainText();
+-    file.close();
+-    d->textEdit->document()->setModified(false);
+-
+-    QFileInfo fi(d->fileName);
+-    d->timeStamp = fi.lastModified().toSecsSinceEpoch();
+-    return true;
+-}
+-
+-void EditorView::undoAvailable(bool undo)
+-{
+-    if (!undo) {
+-        d->undos.clear();
+-    }
+-}
+-
+-void EditorView::redoAvailable(bool redo)
+-{
+-    if (!redo) {
+-        d->redos.clear();
+-    }
+-}
+-
+-void EditorView::contentsChange(int position, int charsRemoved, int charsAdded)
+-{
+-    Q_UNUSED(position);
+-    if (d->lock) {
+-        return;
+-    }
+-    if (charsRemoved > 0 && charsAdded > 0) {
+-        return;  // syntax highlighting
+-    }
+-    else if (charsRemoved > 0) {
+-        d->undos << tr("%1 chars removed").arg(charsRemoved);
+-    }
+-    else if (charsAdded > 0) {
+-        d->undos << tr("%1 chars added").arg(charsAdded);
+-    }
+-    else {
+-        d->undos << tr("Formatted");
+-    }
+-    d->redos.clear();
+-}
+-
+-/**
+- * Get the undo history.
+- */
+-QStringList EditorView::undoActions() const
+-{
+-    return d->undos;
+-}
+-
+-/**
+- * Get the redo history.
+- */
+-QStringList EditorView::redoActions() const
+-{
+-    return d->redos;
+-}
+-
+-void EditorView::focusInEvent(QFocusEvent*)
+-{
+-    d->textEdit->setFocus();
+-}
+-
+-/**
+- * Somewhat contextual Input Hints in Status Bar.
+- */
+-void EditorView::updateInputHints()
+-{
+-    auto* mw = Gui::getMainWindow();
+-    if (!mw) {
+-        return;
+-    }
+-
+-    if (mw->activeWindow() != this) {
+-        mw->hideHints();
+-        return;
+-    }
+-
+-    using enum Gui::InputHint::UserInput;
+-
+-    std::list<Gui::InputHint> hints;
+-
+-    QWidget* fw = QApplication::focusWidget();
+-
+-    bool editorFocus = fw && (fw == d->textEdit || d->textEdit->isAncestorOf(fw));
+-    bool searchFocus = fw && (fw == d->searchBar || d->searchBar->isAncestorOf(fw));
+-
+-    QTextCursor cursor = d->textEdit->textCursor();
+-    bool hasSelection = cursor.hasSelection();
+-
+-    if (editorFocus) {
+-
+-        hints.push_back({.message = tr("%1 search"), .sequences = {{ModifierCtrl, KeyF}}});
+-
+-        hints.push_back({.message = tr("%1 toggle breakpoint"), .sequences = {{KeyF9}}});
+-
+-        hints.push_back(
+-            {.message = tr("(%1) %2 (un)indent"), .sequences = {{ModifierShift}, {KeyTab}}}
+-        );
+-
+-        if (hasSelection) {
+-            hints.push_back(
+-                {.message = tr("%1 / %2 (un)comment"), .sequences = {{ModifierAlt, KeyC}, {KeyU}}}
+-            );
+-
+-            hints.push_back(
+-                {.message = tr("%1 execute selection"),
+-                 .sequences = {{ModifierAlt, ModifierShift, KeyP}}}
+-            );
+-        }
+-
+-        if (d->textEdit->hasCompletion()) {
+-            hints.push_back(
+-                {.message = tr("%1 auto-complete"), .sequences = {{ModifierCtrl, KeySpace}}}
+-            );
+-        }
+-    }
+-
+-    else if (searchFocus) {
+-
+-        bool hasText = !d->searchBar->getSearchText().isEmpty();
+-
+-        if (hasText) {
+-            hints.push_back({.message = tr("%1 next result"), .sequences = {{KeyReturn}}});
+-        }
+-
+-        hints.push_back({.message = tr("%1 close search"), .sequences = {{KeyEscape}}});
+-    }
+-
+-    else {
+-        mw->hideHints();
+-        return;
+-    }
+-
+-    mw->showHints(hints);
+-}
+-
+-// ---------------------------------------------------------
+-
+-TYPESYSTEM_SOURCE_ABSTRACT(Gui::PythonEditorView, Gui::EditorView)
+-
+-PythonEditorView::PythonEditorView(PythonEditor* editor, QWidget* parent)
+-    : EditorView(editor, parent)
+-    , watcher(new PythonTracingWatcher(this))
+-{}
+-
+-PythonEditorView::~PythonEditorView()
+-{
+-    delete watcher;
+-}
+-
+-/// Runs the action specified by \a pMsg.
+-bool PythonEditorView::onMsg(const char* pMsg)
+-{
+-    if (strcmp(pMsg, "Run") == 0) {
+-        executeScript();
+-        return true;
+-    }
+-    return EditorView::onMsg(pMsg);
+-}
+-
+-/**
+- * Checks if the action \a pMsg is available. This is for enabling/disabling
+- * the corresponding buttons or menu items for this action.
+- */
+-bool PythonEditorView::onHasMsg(const char* pMsg) const
+-{
+-    if (strcmp(pMsg, "Run") == 0) {
+-        return true;
+-    }
+-    return EditorView::onHasMsg(pMsg);
+-}
+-
+-/// Runs the opened script in the macro manager.
+-void PythonEditorView::executeScript()
+-{
+-    // always save the macro when it is modified
+-    if (EditorView::onHasMsg("Save")) {
+-        EditorView::onMsg("Save");
+-    }
+-    try {
+-        getMainWindow()->setCursor(Qt::WaitCursor);
+-        PythonTracingLocker tracelock(watcher->getTrace());
+-        Application::Instance->macroManager()->run(Gui::MacroManager::File, fileName().toUtf8());
+-        getMainWindow()->unsetCursor();
+-    }
+-    catch (const Base::SystemExitException&) {
+-        // handle SystemExit exceptions
+-        Base::PyGILStateLocker locker;
+-        Base::PyException e;
+-        e.reportException();
+-        getMainWindow()->unsetCursor();
+-    }
+-}
+-
+-// ----------------------------------------------------------------------------
+-
+-SearchBar::SearchBar(QWidget* parent)
+-    : QWidget(parent)
+-    , textEditor(nullptr)
+-{
+-    horizontalLayout = new QHBoxLayout(this);
+-    horizontalLayout->setSpacing(3);
+-
+-    closeButton = new QToolButton(this);
+-    closeButton->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
+-    closeButton->setAutoRaise(true);
+-    connect(closeButton, &QToolButton::clicked, this, &SearchBar::deactivate);
+-
+-    horizontalLayout->addWidget(closeButton);
+-
+-    searchText = new QLineEdit(this);
+-    searchText->setClearButtonEnabled(true);
+-    searchText->setPlaceholderText(tr("Find in document..."));
+-    horizontalLayout->addWidget(searchText);
+-    connect(searchText, &QLineEdit::returnPressed, this, &SearchBar::findNext);
+-    connect(searchText, &QLineEdit::textChanged, this, [this]() {
+-        if (!skipSearch) {
+-            findCurrent();
+-        }
+-    });
+-    connect(searchText, &QLineEdit::textChanged, this, &SearchBar::updateButtons);
+-    connect(searchText, &QLineEdit::textChanged, this, &SearchBar::textChanged);
+-
+-    resultLabel = new QLabel(this);
+-    resultLabel->setMinimumWidth(60);
+-    resultLabel->setAlignment(Qt::AlignCenter);
+-    horizontalLayout->addWidget(resultLabel);
+-
+-    prevButton = new QToolButton(this);
+-    prevButton->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+-    prevButton->setAutoRaise(true);
+-    prevButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+-    horizontalLayout->addWidget(prevButton);
+-    connect(prevButton, &QToolButton::clicked, this, &SearchBar::findPrevious);
+-
+-    nextButton = new QToolButton(this);
+-    nextButton->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+-    nextButton->setAutoRaise(true);
+-    nextButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+-    horizontalLayout->addWidget(nextButton);
+-    connect(nextButton, &QToolButton::clicked, this, &SearchBar::findNext);
+-
+-    matchCase = new QCheckBox(this);
+-    horizontalLayout->addWidget(matchCase);
+-    connect(matchCase, &QCheckBox::toggled, this, &SearchBar::findCurrent);
+-
+-    matchWord = new QCheckBox(this);
+-    horizontalLayout->addWidget(matchWord);
+-    connect(matchWord, &QCheckBox::toggled, this, &SearchBar::findCurrent);
+-
+-    horizontalSpacer = new QSpacerItem(192, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+-    horizontalLayout->addItem(horizontalSpacer);
+-
+-    retranslateUi();
+-
+-    setMinimumWidth(minimumSizeHint().width());
+-    updateButtons();
+-    resultLabel->setText("");
+-    hide();
+-}
+-
+-void SearchBar::setEditor(QPlainTextEdit* textEdit)
+-{
+-    textEditor = textEdit;
+-}
+-
+-void SearchBar::keyPressEvent(QKeyEvent* event)
+-{
+-    if (event->key() == Qt::Key_Escape) {
+-        hide();
+-        return;
+-    }
+-
+-    QWidget::keyPressEvent(event);
+-}
+-
+-void SearchBar::retranslateUi()
+-{
+-    prevButton->setText(tr("Previous"));
+-    nextButton->setText(tr("Next"));
+-    matchCase->setText(tr("Case sensitive"));
+-    matchWord->setText(tr("Whole words"));
+-}
+-
+-/**
+- * Show the search bar with optional prefilled text from selection.
+- */
+-void SearchBar::activate(const QString& prefill)
+-{
+-    show();
+-
+-    if (!prefill.isEmpty()) {
+-        skipSearch = true;  // prevent cursor jump to next search match after prefill
+-        searchText->setText(prefill);
+-        skipSearch = false;
+-    }
+-
+-    searchText->selectAll();
+-    searchText->setFocus(Qt::ShortcutFocusReason);
+-    updateButtons();
+-
+-    if (!searchText->text().isEmpty()) {
+-        updateSearchResults(searchText->text());
+-    }
+-}
+-
+-void SearchBar::deactivate()
+-{
+-    if (textEditor) {
+-        textEditor->setFocus();
+-    }
+-    hide();
+-}
+-
+-/**
+- * Get all search result matches in document.
+- */
+-SearchBar::SearchResults SearchBar::findAllMatches(const QString& str)
+-{
+-    SearchResults matches;
+-
+-    if (!textEditor || str.isEmpty()) {
+-        return matches;
+-    }
+-
+-    QTextDocument* doc = textEditor->document();
+-    if (!doc) {
+-        return matches;
+-    }
+-
+-    QTextDocument::FindFlags options = {};
+-    if (matchCase->isChecked()) {
+-        options |= QTextDocument::FindCaseSensitively;
+-    }
+-    if (matchWord->isChecked()) {
+-        options |= QTextDocument::FindWholeWords;
+-    }
+-
+-    QTextCursor cursor(doc);
+-    QTextCursor currentCursor = textEditor->textCursor();
+-
+-    while (true) {
+-        cursor = doc->find(str, cursor, options);
+-        if (cursor.isNull()) {
+-            break;
+-        }
+-
+-        const int start = cursor.selectionStart();
+-        const int end = cursor.selectionEnd();
+-
+-        matches.matchRanges.push_back({start, end});
+-
+-        if (currentCursor.position() >= start && currentCursor.position() <= end) {
+-            matches.currentIndex = matches.matchRanges.size();
+-        }
+-    }
+-
+-    return matches;
+-}
+-
+-/**
+- * Show current search result position and total matches count.
+- */
+-void SearchBar::updateSearchResults(const QString& str)
+-{
+-    if (!textEditor || str.isEmpty()) {
+-        resultLabel->clear();
+-        return;
+-    }
+-
+-    SearchResults matches = findAllMatches(str);
+-
+-    if (matches.matchRanges.isEmpty()) {
+-        resultLabel->setText(tr("No results"));
+-        highlightSearchResults(matches);
+-        return;
+-    }
+-
+-    int total = matches.matchRanges.size();
+-    int currentIndex = matches.currentIndex;
+-
+-    if (currentIndex == -1) {
+-        resultLabel->setText(QString("0 / %1").arg(total));
+-    }
+-    else {
+-        resultLabel->setText(QString("%1 / %2").arg(currentIndex).arg(total));
+-    }
+-
+-    highlightSearchResults(matches);
+-}
+-
+-/**
+- * Highlight visually all search result matches.
+- * Note: highlight stays after closing search bar, but disappears after any subsequent click.
+- */
+-void SearchBar::highlightSearchResults(const SearchResults& matches)
+-{
+-    if (!textEditor || !textEditor->document()) {
+-        return;
+-    }
+-
+-    const auto& selections = textEditor->extraSelections();
+-
+-    QVector<QTextEdit::ExtraSelection> cleaned;
+-    cleaned.reserve(selections.size());
+-
+-    for (const auto& sel : selections) {
+-        if (!sel.format.property(SearchSelectionProperty).toBool()) {
+-            cleaned.push_back(sel);
+-        }
+-    }
+-
+-    QVector<QTextEdit::ExtraSelection> searchSelections;
+-    searchSelections.reserve(matches.matchRanges.size());
+-
+-    QTextCursor currentCursor = textEditor->textCursor();
+-
+-    const QPalette pal = textEditor->palette();
+-    const QColor highlightColor = pal.color(QPalette::Highlight);
+-
+-    QColor matchColor = highlightColor;
+-    matchColor.setAlphaF(0.75);
+-
+-    QTextDocument* doc = textEditor->document();
+-
+-    for (const auto& range : matches.matchRanges) {
+-        QTextCursor cursor(doc);
+-        cursor.setPosition(range.first);
+-        cursor.setPosition(range.second, QTextCursor::KeepAnchor);
+-
+-        QTextEdit::ExtraSelection sel;
+-        sel.cursor = cursor;
+-
+-        const int pos = currentCursor.position();
+-        const bool isCurrent = (pos >= range.first && pos <= range.second);
+-
+-        QTextCharFormat format;
+-        format.setBackground(isCurrent ? highlightColor : matchColor);
+-        format.setProperty(QTextFormat::FullWidthSelection, true);
+-        format.setProperty(SearchSelectionProperty, true);
+-
+-        sel.format = format;
+-        searchSelections.push_back(sel);
+-    }
+-
+-    cleaned += searchSelections;
+-    textEditor->setExtraSelections(cleaned);
+-}
+-
+-void SearchBar::findPrevious()
+-{
+-    findText(true, false, searchText->text());
+-}
+-
+-void SearchBar::findNext()
+-{
+-    findText(true, true, searchText->text());
+-}
+-
+-void SearchBar::findCurrent()
+-{
+-    findText(false, true, searchText->text());
+-}
+-
+-void SearchBar::findText(bool skip, bool next, const QString& str)
+-{
+-    if (!textEditor) {
+-        return;
+-    }
+-
+-    QTextCursor cursor = textEditor->textCursor();
+-    QTextDocument* doc = textEditor->document();
+-    if (!doc || cursor.isNull()) {
+-        return;
+-    }
+-
+-    if (cursor.hasSelection()) {
+-        cursor.setPosition((skip && next) ? cursor.position() : cursor.anchor());
+-    }
+-
+-    bool found = true;
+-    QTextCursor newCursor = cursor;
+-    if (!str.isEmpty()) {
+-        QTextDocument::FindFlags options = {};
+-        if (!next) {
+-            options |= QTextDocument::FindBackward;
+-        }
+-        if (matchCase->isChecked()) {
+-            options |= QTextDocument::FindCaseSensitively;
+-        }
+-        if (matchWord->isChecked()) {
+-            options |= QTextDocument::FindWholeWords;
+-        }
+-
+-        newCursor = doc->find(str, cursor, options);
+-        if (newCursor.isNull()) {
+-            QTextCursor ac(doc);
+-            ac.movePosition(
+-                options & QTextDocument::FindBackward ? QTextCursor::End : QTextCursor::Start
+-            );
+-            newCursor = doc->find(str, ac, options);
+-            if (newCursor.isNull()) {
+-                found = false;
+-                newCursor = cursor;
+-            }
+-        }
+-    }
+-
+-    if (!isVisible()) {
+-        show();
+-    }
+-
+-    textEditor->setTextCursor(newCursor);
+-
+-    QString styleSheet;
+-    if (!found) {
+-        styleSheet = QStringLiteral(
+-            " QLineEdit {\n"
+-            "     background-color: rgb(221,144,161);\n"
+-            " }\n"
+-        );
+-    }
+-
+-    searchText->setStyleSheet(styleSheet);
+-    updateSearchResults(str);
+-}
+-
+-void SearchBar::updateButtons()
+-{
+-    bool empty = searchText->text().isEmpty();
+-    prevButton->setDisabled(empty);
+-    nextButton->setDisabled(empty);
+-}
+-
+-void SearchBar::changeEvent(QEvent* event)
+-{
+-    if (event->type() == QEvent::LanguageChange) {
+-        retranslateUi();
+-    }
+-
+-    QWidget::changeEvent(event);
+-}
+-
+-QString SearchBar::getSearchText() const
+-{
+-    return searchText->text();
+-}
+-
+-#include "moc_EditorView.cpp"
++/***************************************************************************
++ *   Copyright (c) 2007 Werner Mayer <wmayer[at]users.sourceforge.net>     *
++ *                                                                         *
++ *   This file is part of the FreeCAD CAx development system.              *
++ *                                                                         *
++ *   This library is free software; you can redistribute it and/or         *
++ *   modify it under the terms of the GNU Library General Public           *
++ *   License as published by the Free Software Foundation; either          *
++ *   version 2 of the License, or (at your option) any later version.      *
++ *                                                                         *
++ *   This library  is distributed in the hope that it will be useful,      *
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
++ *   GNU Library General Public License for more details.                  *
++ *                                                                         *
++ *   You should have received a copy of the GNU Library General Public     *
++ *   License along with this library; see the file COPYING.LIB. If not,    *
++ *   write to the Free Software Foundation, Inc., 59 Temple Place,         *
++ *   Suite 330, Boston, MA  02111-1307, USA                                *
++ *                                                                         *
++ ***************************************************************************/
++
++#include <QApplication>
++#include <QCheckBox>
++#include <QClipboard>
++#include <QDateTime>
++#include <QLabel>
++#include <QHBoxLayout>
++#include <QVBoxLayout>
++#include <QLineEdit>
++#include <QMessageBox>
++#include <QPrinter>
++#include <QPrintDialog>
++#include <QPlainTextEdit>
++#include <QPrintPreviewDialog>
++#include <QSpacerItem>
++#include <QStyle>
++#include <QTextCursor>
++#include <QTextDocument>
++#include <QTextStream>
++#include <QTimer>
++#include <QToolButton>
++
++#include "EditorView.h"
++#include "Application.h"
++#include "FileDialog.h"
++#include "InputHint.h"
++#include "Macro.h"
++#include "MainWindow.h"
++#include "PythonEditor.h"
++#include "PythonTracing.h"
++#include "WaitCursor.h"
++
++#include <Base/Exception.h>
++#include <Base/Interpreter.h>
++#include <Base/Parameter.h>
++
++#include <Gui/PreferencePages/DlgSettingsPDF.h>
++
++
++namespace
++{
++constexpr int SearchSelectionProperty = QTextFormat::UserProperty + 1;
++}
++
++using namespace Gui;
++namespace Gui
++{
++class EditorViewP
++{
++public:
++    TextEdit* textEdit;
++    SearchBar* searchBar;
++    QString fileName;
++    EditorView::DisplayName displayName;
++    QTimer* activityTimer;
++    qint64 timeStamp;
++    bool lock;
++    bool aboutToClose;
++    QStringList undos;
++    QStringList redos;
++};
++}  // namespace Gui
++
++// -------------------------------------------------------
++
++/* TRANSLATOR Gui::EditorView */
++
++TYPESYSTEM_SOURCE_ABSTRACT(Gui::EditorView, Gui::MDIView)
++
++/**
++ *  Constructs a EditorView which is a child of 'parent', with the
++ *  name 'name'.
++ */
++EditorView::EditorView(TextEdit* editor, QWidget* parent)
++    : MDIView(nullptr, parent, Qt::WindowFlags())
++    , WindowParameter("Editor")
++{
++    d = new EditorViewP;
++    d->lock = false;
++    d->aboutToClose = false;
++    d->displayName = EditorView::FullName;
++
++    // create the editor first
++    d->textEdit = editor;
++    d->textEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
++
++    d->searchBar = new SearchBar();
++    d->searchBar->setEditor(editor);
++
++    // clang-format off
++    // update editor actions on request
++    Gui::MainWindow* mw = Gui::getMainWindow();
++    connect(editor, &QPlainTextEdit::undoAvailable, mw, &MainWindow::updateEditorActions);
++    connect(editor, &QPlainTextEdit::redoAvailable, mw, &MainWindow::updateEditorActions);
++    connect(editor, &QPlainTextEdit::copyAvailable, mw, &MainWindow::updateEditorActions);
++
++    connect(editor, &TextEdit::showSearchBar, d->searchBar, &SearchBar::activate);
++    connect(editor, &TextEdit::findNext, d->searchBar, &SearchBar::findNext);
++    connect(editor, &TextEdit::findPrevious, d->searchBar, &SearchBar::findPrevious);
++    // clang-format on
++
++    // Create the layout containing the workspace and a tab bar
++    auto hbox = new QFrame(this);
++    hbox->setFrameShape(QFrame::StyledPanel);
++    hbox->setFrameShadow(QFrame::Sunken);
++    auto layout = new QVBoxLayout();
++    layout->setContentsMargins(1, 1, 1, 1);
++    layout->addWidget(d->textEdit);
++    layout->addWidget(d->searchBar);
++    d->textEdit->setParent(hbox);
++    d->searchBar->setParent(hbox);
++    hbox->setLayout(layout);
++    setCentralWidget(hbox);
++
++    setCurrentFileName(QString());
++    d->textEdit->setFocus();
++
++    connect(d->textEdit, &QPlainTextEdit::cursorPositionChanged, this, &EditorView::updateInputHints);
++    connect(d->textEdit, &QPlainTextEdit::selectionChanged, this, &EditorView::updateInputHints);
++    connect(qApp, &QApplication::focusChanged, this, [this](QWidget*, QWidget*) {
++        updateInputHints();
++    });
++    connect(d->searchBar, &SearchBar::textChanged, this, &EditorView::updateInputHints);
++
++    setWindowIcon(d->textEdit->windowIcon());
++
++    ParameterGrp::handle hPrefGrp = getWindowParameter();
++    hPrefGrp->Attach(this);
++    hPrefGrp->NotifyAll();
++
++    d->activityTimer = new QTimer(this);
++    // clang-format off
++    connectionList <<
++    connect(d->activityTimer, &QTimer::timeout,
++            this, &EditorView::checkTimestamp) <<
++    connect(d->textEdit->document(), &QTextDocument::modificationChanged,
++            this, &EditorView::setWindowModified) <<
++    connect(d->textEdit->document(), &QTextDocument::undoAvailable,
++            this, &EditorView::undoAvailable) <<
++    connect(d->textEdit->document(), &QTextDocument::redoAvailable,
++            this, &EditorView::redoAvailable) <<
++    connect(d->textEdit->document(), &QTextDocument::contentsChange,
++            this, &EditorView::contentsChange);
++    // clang-format on
++}
++
++/** Destroys the object and frees any allocated resources */
++EditorView::~EditorView()
++{
++    Gui::getMainWindow()->hideHints();
++
++    d->activityTimer->stop();
++    // to avoid the assert introduced a debug version of Qt >6.3. See QTBUG-105473
++    for (auto conn : connectionList) {  // NOLINT(performance-for-range-copy)
++        disconnect(conn);
++    }
++    delete d->activityTimer;
++    delete d;
++    getWindowParameter()->Detach(this);
++}
++
++QPlainTextEdit* EditorView::getEditor() const
++{
++    return d->textEdit;
++}
++
++void EditorView::showEvent(QShowEvent* event)
++{
++    Gui::MainWindow* mw = Gui::getMainWindow();
++    mw->updateEditorActions();
++
++    updateInputHints();
++
++    MDIView::showEvent(event);
++}
++
++void EditorView::hideEvent(QHideEvent* event)
++{
++    Gui::getMainWindow()->hideHints();
++
++    MDIView::hideEvent(event);
++}
++
++void EditorView::closeEvent(QCloseEvent* event)
++{
++    MDIView::closeEvent(event);
++    if (event->isAccepted()) {
++        d->aboutToClose = true;
++        Gui::MainWindow* mw = Gui::getMainWindow();
++        mw->updateEditorActions();
++    }
++}
++
++void EditorView::OnChange(Base::Subject<const char*>& rCaller, const char* rcReason)
++{
++    Q_UNUSED(rCaller);
++    ParameterGrp::handle hPrefGrp = getWindowParameter();
++    if (strcmp(rcReason, "EnableLineNumber") == 0) {
++        // bool show = hPrefGrp->GetBool( "EnableLineNumber", true );
++    }
++}
++
++void EditorView::checkTimestamp()
++{
++    QFileInfo fi(d->fileName);
++    qint64 timeStamp = fi.lastModified().toSecsSinceEpoch();
++    // A deleted file cannot be reloaded: do not ask (a modal question nobody answers blocks
++    // unattended runs); ask again if it comes back changed. Saving writes the text again.
++    if (!fi.exists()) {
++        d->timeStamp = timeStamp;
++    }
++    else if (timeStamp != d->timeStamp) {
++        switch (QMessageBox::question(
++            this,
++            tr("Modified file"),
++            tr("%1.\n\nThis has been modified outside of the source "
++               "editor. Reload it?")
++                .arg(d->fileName),
++            QMessageBox::Yes | QMessageBox::No,
++            QMessageBox::Yes
++        )) {
++            case QMessageBox::Yes:
++                // updates time stamp and timer
++                open(d->fileName);
++                return;
++            case QMessageBox::No:
++                d->timeStamp = timeStamp;
++                break;
++            default:
++                break;
++        }
++    }
++
++    d->activityTimer->setSingleShot(true);
++    d->activityTimer->start(3000);
++}
++
++/**
++ * Runs the action specified by \a pMsg.
++ */
++bool EditorView::onMsg(const char* pMsg)
++{
++    // don't allow any actions if the editor is being closed
++    if (d->aboutToClose) {
++        return false;
++    }
++
++    if (strcmp(pMsg, "Save") == 0) {
++        saveFile();
++        return true;
++    }
++    else if (strcmp(pMsg, "SaveAs") == 0) {
++        saveAs();
++        return true;
++    }
++    else if (strcmp(pMsg, "Cut") == 0) {
++        cut();
++        return true;
++    }
++    else if (strcmp(pMsg, "Copy") == 0) {
++        copy();
++        return true;
++    }
++    else if (strcmp(pMsg, "Paste") == 0) {
++        paste();
++        return true;
++    }
++    else if (strcmp(pMsg, "Undo") == 0) {
++        undo();
++        return true;
++    }
++    else if (strcmp(pMsg, "Redo") == 0) {
++        redo();
++        return true;
++    }
++    else if (strcmp(pMsg, "ViewFit") == 0) {
++        // just ignore this
++        return true;
++    }
++
++    return false;
++}
++
++/**
++ * Checks if the action \a pMsg is available. This is for enabling/disabling
++ * the corresponding buttons or menu items for this action.
++ */
++bool EditorView::onHasMsg(const char* pMsg) const
++{
++    // don't allow any actions if the editor is being closed
++    if (d->aboutToClose) {
++        return false;
++    }
++    if (strcmp(pMsg, "Run") == 0) {
++        return true;
++    }
++    if (strcmp(pMsg, "SaveAs") == 0) {
++        return true;
++    }
++    if (strcmp(pMsg, "Print") == 0) {
++        return true;
++    }
++    if (strcmp(pMsg, "PrintPreview") == 0) {
++        return true;
++    }
++    if (strcmp(pMsg, "PrintPdf") == 0) {
++        return true;
++    }
++    if (strcmp(pMsg, "Save") == 0) {
++        return d->textEdit->document()->isModified();
++    }
++    else if (strcmp(pMsg, "Cut") == 0) {
++        bool canWrite = !d->textEdit->isReadOnly();
++        return (canWrite && (d->textEdit->textCursor().hasSelection()));
++    }
++    else if (strcmp(pMsg, "Copy") == 0) {
++        return (d->textEdit->textCursor().hasSelection());
++    }
++    else if (strcmp(pMsg, "Paste") == 0) {
++        QClipboard* cb = QApplication::clipboard();
++        QString text;
++
++        // Copy text from the clipboard (paste)
++        text = cb->text();
++
++        bool canWrite = !d->textEdit->isReadOnly();
++        return (!text.isEmpty() && canWrite);
++    }
++    else if (strcmp(pMsg, "Undo") == 0) {
++        return d->textEdit->document()->isUndoAvailable();
++    }
++    else if (strcmp(pMsg, "Redo") == 0) {
++        return d->textEdit->document()->isRedoAvailable();
++    }
++
++    return false;
++}
++
++/** Checking on close state. */
++bool EditorView::canClose()
++{
++    if (!d->textEdit->document()->isModified()) {
++        return true;
++    }
++    this->setFocus();  // raises the view to front
++    switch (QMessageBox::question(
++        this,
++        tr("Unsaved document"),
++        tr("The document has been modified.\n"
++           "Save all changes?"),
++        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
++        QMessageBox::Cancel
++    )) {
++        case QMessageBox::Yes:
++            return saveFile();
++        case QMessageBox::No:
++            return true;
++        case QMessageBox::Cancel:
++            return false;
++        default:
++            return false;
++    }
++}
++
++void EditorView::setDisplayName(EditorView::DisplayName type)
++{
++    d->displayName = type;
++}
++
++/**
++ * Saves the content of the editor to a file specified by the appearing file dialog.
++ */
++bool EditorView::saveAs()
++{
++    QString fn = FileDialog::getSaveFileName(
++        this,
++        QObject::tr("Save Macro"),
++        QString(),
++        FileDialog::FilterList {{tr("FreeCAD macro"), {"*.FCMacro"}}, {"Python", {"*.py"}}}
++    );
++    if (fn.isEmpty()) {
++        return false;
++    }
++    setCurrentFileName(fn);
++    return saveFile();
++}
++
++/**
++ * Opens the file \a fileName.
++ */
++bool EditorView::open(const QString& fileName)
++{
++    if (!QFile::exists(fileName)) {
++        return false;
++    }
++    QFile file(fileName);
++    if (!file.open(QFile::ReadOnly)) {
++        return false;
++    }
++
++    d->lock = true;
++    d->textEdit->setPlainText(QString::fromUtf8(file.readAll()));
++    d->lock = false;
++    d->undos.clear();
++    d->redos.clear();
++    file.close();
++
++    QFileInfo fi(fileName);
++    d->timeStamp = fi.lastModified().toSecsSinceEpoch();
++    d->activityTimer->setSingleShot(true);
++    d->activityTimer->start(3000);
++
++    setCurrentFileName(fileName);
++    return true;
++}
++
++/**
++ * Copies the selected text to the clipboard and deletes it from the text edit.
++ * If there is no selected text nothing happens.
++ */
++void EditorView::cut()
++{
++    d->textEdit->cut();
++}
++
++/**
++ * Copies any selected text to the clipboard.
++ */
++void EditorView::copy()
++{
++    d->textEdit->copy();
++}
++
++/**
++ * Pastes the text from the clipboard into the text edit at the current cursor position.
++ * If there is no text in the clipboard nothing happens.
++ */
++void EditorView::paste()
++{
++    d->textEdit->paste();
++}
++
++/**
++ * Undoes the last operation.
++ * If there is no operation to undo, i.e. there is no undo step in the undo/redo history, nothing
++ * happens.
++ */
++void EditorView::undo()
++{
++    d->lock = true;
++    if (!d->undos.isEmpty()) {
++        d->redos << d->undos.back();
++        d->undos.pop_back();
++    }
++    d->textEdit->document()->undo();
++    d->lock = false;
++}
++
++/**
++ * Redoes the last operation.
++ * If there is no operation to undo, i.e. there is no undo step in the undo/redo history, nothing
++ * happens.
++ */
++void EditorView::redo()
++{
++    d->lock = true;
++    if (!d->redos.isEmpty()) {
++        d->undos << d->redos.back();
++        d->redos.pop_back();
++    }
++    d->textEdit->document()->redo();
++    d->lock = false;
++}
++
++/**
++ * Shows the printer dialog.
++ */
++void EditorView::print()
++{
++    QPrinter printer(QPrinter::ScreenResolution);
++    printer.setFullPage(true);
++    QPrintDialog dlg(&printer, this);
++    if (dlg.exec() == QDialog::Accepted) {
++        d->textEdit->document()->print(&printer);
++    }
++}
++
++void EditorView::printPreview()
++{
++    QPrinter printer(QPrinter::ScreenResolution);
++    QPrintPreviewDialog dlg(&printer, this);
++    connect(&dlg, &QPrintPreviewDialog::paintRequested, this, qOverload<QPrinter*>(&EditorView::print));
++    dlg.exec();
++}
++
++void EditorView::print(QPrinter* printer)
++{
++    d->textEdit->document()->print(printer);
++}
++
++/**
++ * Prints the document into a Pdf file.
++ */
++void EditorView::printPdf()
++{
++    QString filename = FileDialog::getSaveFileName(
++        this,
++        tr("Export PDF"),
++        QString(),
++        FileDialog::FilterList {{QStringLiteral("PDF"), {"*.pdf"}}}
++    );
++    if (!filename.isEmpty()) {
++        QPrinter printer(QPrinter::ScreenResolution);
++        // setPdfVersion sets the printed PDF Version to what is chosen in
++        // Preferences/Import-Export/PDF more details under:
++        // https://www.kdab.com/creating-pdfa-documents-qt/
++        printer.setPdfVersion(Gui::Dialog::DlgSettingsPDF::evaluatePDFVersion());
++        printer.setOutputFormat(QPrinter::PdfFormat);
++        printer.setOutputFileName(filename);
++        printer.setCreator(QString::fromStdString(App::Application::getNameWithVersion()));
++        d->textEdit->document()->print(&printer);
++    }
++}
++
++void EditorView::setCurrentFileName(const QString& fileName)
++{
++    d->fileName = fileName;
++    d->textEdit->document()->setModified(false);
++
++    QString name;
++    QFileInfo fi(fileName);
++    switch (d->displayName) {
++        case FullName:
++            name = fileName;
++            break;
++        case FileName:
++            name = fi.fileName();
++            break;
++        case BaseName:
++            name = fi.baseName();
++            break;
++    }
++
++    QString shownName;
++    if (fileName.isEmpty()) {
++        shownName = tr("untitled[*]");
++    }
++    else {
++        shownName = QStringLiteral("%1[*]").arg(name);
++    }
++    shownName += tr(" - Editor");
++    setWindowTitle(shownName);
++    setWindowModified(false);
++}
++
++QString EditorView::fileName() const
++{
++    return d->fileName;
++}
++
++/**
++ * Saves the contents to a file.
++ */
++bool EditorView::saveFile()
++{
++    if (d->fileName.isEmpty()) {
++        return saveAs();
++    }
++
++    QFile file(d->fileName);
++    if (!file.open(QFile::WriteOnly)) {
++        return false;
++    }
++    QTextStream ts(&file);
++#if QT_VERSION < 0x060000
++    ts.setCodec("UTF-8");
++#endif
++    ts << d->textEdit->document()->toPlainText();
++    file.close();
++    d->textEdit->document()->setModified(false);
++
++    QFileInfo fi(d->fileName);
++    d->timeStamp = fi.lastModified().toSecsSinceEpoch();
++    return true;
++}
++
++void EditorView::undoAvailable(bool undo)
++{
++    if (!undo) {
++        d->undos.clear();
++    }
++}
++
++void EditorView::redoAvailable(bool redo)
++{
++    if (!redo) {
++        d->redos.clear();
++    }
++}
++
++void EditorView::contentsChange(int position, int charsRemoved, int charsAdded)
++{
++    Q_UNUSED(position);
++    if (d->lock) {
++        return;
++    }
++    if (charsRemoved > 0 && charsAdded > 0) {
++        return;  // syntax highlighting
++    }
++    else if (charsRemoved > 0) {
++        d->undos << tr("%1 chars removed").arg(charsRemoved);
++    }
++    else if (charsAdded > 0) {
++        d->undos << tr("%1 chars added").arg(charsAdded);
++    }
++    else {
++        d->undos << tr("Formatted");
++    }
++    d->redos.clear();
++}
++
++/**
++ * Get the undo history.
++ */
++QStringList EditorView::undoActions() const
++{
++    return d->undos;
++}
++
++/**
++ * Get the redo history.
++ */
++QStringList EditorView::redoActions() const
++{
++    return d->redos;
++}
++
++void EditorView::focusInEvent(QFocusEvent*)
++{
++    d->textEdit->setFocus();
++}
++
++/**
++ * Somewhat contextual Input Hints in Status Bar.
++ */
++void EditorView::updateInputHints()
++{
++    auto* mw = Gui::getMainWindow();
++    if (!mw) {
++        return;
++    }
++
++    if (mw->activeWindow() != this) {
++        mw->hideHints();
++        return;
++    }
++
++    using enum Gui::InputHint::UserInput;
++
++    std::list<Gui::InputHint> hints;
++
++    QWidget* fw = QApplication::focusWidget();
++
++    bool editorFocus = fw && (fw == d->textEdit || d->textEdit->isAncestorOf(fw));
++    bool searchFocus = fw && (fw == d->searchBar || d->searchBar->isAncestorOf(fw));
++
++    QTextCursor cursor = d->textEdit->textCursor();
++    bool hasSelection = cursor.hasSelection();
++
++    if (editorFocus) {
++
++        hints.push_back({.message = tr("%1 search"), .sequences = {{ModifierCtrl, KeyF}}});
++
++        hints.push_back({.message = tr("%1 toggle breakpoint"), .sequences = {{KeyF9}}});
++
++        hints.push_back(
++            {.message = tr("(%1) %2 (un)indent"), .sequences = {{ModifierShift}, {KeyTab}}}
++        );
++
++        if (hasSelection) {
++            hints.push_back(
++                {.message = tr("%1 / %2 (un)comment"), .sequences = {{ModifierAlt, KeyC}, {KeyU}}}
++            );
++
++            hints.push_back(
++                {.message = tr("%1 execute selection"),
++                 .sequences = {{ModifierAlt, ModifierShift, KeyP}}}
++            );
++        }
++
++        if (d->textEdit->hasCompletion()) {
++            hints.push_back(
++                {.message = tr("%1 auto-complete"), .sequences = {{ModifierCtrl, KeySpace}}}
++            );
++        }
++    }
++
++    else if (searchFocus) {
++
++        bool hasText = !d->searchBar->getSearchText().isEmpty();
++
++        if (hasText) {
++            hints.push_back({.message = tr("%1 next result"), .sequences = {{KeyReturn}}});
++        }
++
++        hints.push_back({.message = tr("%1 close search"), .sequences = {{KeyEscape}}});
++    }
++
++    else {
++        mw->hideHints();
++        return;
++    }
++
++    mw->showHints(hints);
++}
++
++// ---------------------------------------------------------
++
++TYPESYSTEM_SOURCE_ABSTRACT(Gui::PythonEditorView, Gui::EditorView)
++
++PythonEditorView::PythonEditorView(PythonEditor* editor, QWidget* parent)
++    : EditorView(editor, parent)
++    , watcher(new PythonTracingWatcher(this))
++{}
++
++PythonEditorView::~PythonEditorView()
++{
++    delete watcher;
++}
++
++/// Runs the action specified by \a pMsg.
++bool PythonEditorView::onMsg(const char* pMsg)
++{
++    if (strcmp(pMsg, "Run") == 0) {
++        executeScript();
++        return true;
++    }
++    return EditorView::onMsg(pMsg);
++}
++
++/**
++ * Checks if the action \a pMsg is available. This is for enabling/disabling
++ * the corresponding buttons or menu items for this action.
++ */
++bool PythonEditorView::onHasMsg(const char* pMsg) const
++{
++    if (strcmp(pMsg, "Run") == 0) {
++        return true;
++    }
++    return EditorView::onHasMsg(pMsg);
++}
++
++/// Runs the opened script in the macro manager.
++void PythonEditorView::executeScript()
++{
++    // always save the macro when it is modified
++    if (EditorView::onHasMsg("Save")) {
++        EditorView::onMsg("Save");
++    }
++    try {
++        getMainWindow()->setCursor(Qt::WaitCursor);
++        PythonTracingLocker tracelock(watcher->getTrace());
++        Application::Instance->macroManager()->run(Gui::MacroManager::File, fileName().toUtf8());
++        getMainWindow()->unsetCursor();
++    }
++    catch (const Base::SystemExitException&) {
++        // handle SystemExit exceptions
++        Base::PyGILStateLocker locker;
++        Base::PyException e;
++        e.reportException();
++        getMainWindow()->unsetCursor();
++    }
++}
++
++// ----------------------------------------------------------------------------
++
++SearchBar::SearchBar(QWidget* parent)
++    : QWidget(parent)
++    , textEditor(nullptr)
++{
++    horizontalLayout = new QHBoxLayout(this);
++    horizontalLayout->setSpacing(3);
++
++    closeButton = new QToolButton(this);
++    closeButton->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
++    closeButton->setAutoRaise(true);
++    connect(closeButton, &QToolButton::clicked, this, &SearchBar::deactivate);
++
++    horizontalLayout->addWidget(closeButton);
++
++    searchText = new QLineEdit(this);
++    searchText->setClearButtonEnabled(true);
++    searchText->setPlaceholderText(tr("Find in document..."));
++    horizontalLayout->addWidget(searchText);
++    connect(searchText, &QLineEdit::returnPressed, this, &SearchBar::findNext);
++    connect(searchText, &QLineEdit::textChanged, this, [this]() {
++        if (!skipSearch) {
++            findCurrent();
++        }
++    });
++    connect(searchText, &QLineEdit::textChanged, this, &SearchBar::updateButtons);
++    connect(searchText, &QLineEdit::textChanged, this, &SearchBar::textChanged);
++
++    resultLabel = new QLabel(this);
++    resultLabel->setMinimumWidth(60);
++    resultLabel->setAlignment(Qt::AlignCenter);
++    horizontalLayout->addWidget(resultLabel);
++
++    prevButton = new QToolButton(this);
++    prevButton->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
++    prevButton->setAutoRaise(true);
++    prevButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
++    horizontalLayout->addWidget(prevButton);
++    connect(prevButton, &QToolButton::clicked, this, &SearchBar::findPrevious);
++
++    nextButton = new QToolButton(this);
++    nextButton->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
++    nextButton->setAutoRaise(true);
++    nextButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
++    horizontalLayout->addWidget(nextButton);
++    connect(nextButton, &QToolButton::clicked, this, &SearchBar::findNext);
++
++    matchCase = new QCheckBox(this);
++    horizontalLayout->addWidget(matchCase);
++    connect(matchCase, &QCheckBox::toggled, this, &SearchBar::findCurrent);
++
++    matchWord = new QCheckBox(this);
++    horizontalLayout->addWidget(matchWord);
++    connect(matchWord, &QCheckBox::toggled, this, &SearchBar::findCurrent);
++
++    horizontalSpacer = new QSpacerItem(192, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
++    horizontalLayout->addItem(horizontalSpacer);
++
++    retranslateUi();
++
++    setMinimumWidth(minimumSizeHint().width());
++    updateButtons();
++    resultLabel->setText("");
++    hide();
++}
++
++void SearchBar::setEditor(QPlainTextEdit* textEdit)
++{
++    textEditor = textEdit;
++}
++
++void SearchBar::keyPressEvent(QKeyEvent* event)
++{
++    if (event->key() == Qt::Key_Escape) {
++        hide();
++        return;
++    }
++
++    QWidget::keyPressEvent(event);
++}
++
++void SearchBar::retranslateUi()
++{
++    prevButton->setText(tr("Previous"));
++    nextButton->setText(tr("Next"));
++    matchCase->setText(tr("Case sensitive"));
++    matchWord->setText(tr("Whole words"));
++}
++
++/**
++ * Show the search bar with optional prefilled text from selection.
++ */
++void SearchBar::activate(const QString& prefill)
++{
++    show();
++
++    if (!prefill.isEmpty()) {
++        skipSearch = true;  // prevent cursor jump to next search match after prefill
++        searchText->setText(prefill);
++        skipSearch = false;
++    }
++
++    searchText->selectAll();
++    searchText->setFocus(Qt::ShortcutFocusReason);
++    updateButtons();
++
++    if (!searchText->text().isEmpty()) {
++        updateSearchResults(searchText->text());
++    }
++}
++
++void SearchBar::deactivate()
++{
++    if (textEditor) {
++        textEditor->setFocus();
++    }
++    hide();
++}
++
++/**
++ * Get all search result matches in document.
++ */
++SearchBar::SearchResults SearchBar::findAllMatches(const QString& str)
++{
++    SearchResults matches;
++
++    if (!textEditor || str.isEmpty()) {
++        return matches;
++    }
++
++    QTextDocument* doc = textEditor->document();
++    if (!doc) {
++        return matches;
++    }
++
++    QTextDocument::FindFlags options = {};
++    if (matchCase->isChecked()) {
++        options |= QTextDocument::FindCaseSensitively;
++    }
++    if (matchWord->isChecked()) {
++        options |= QTextDocument::FindWholeWords;
++    }
++
++    QTextCursor cursor(doc);
++    QTextCursor currentCursor = textEditor->textCursor();
++
++    while (true) {
++        cursor = doc->find(str, cursor, options);
++        if (cursor.isNull()) {
++            break;
++        }
++
++        const int start = cursor.selectionStart();
++        const int end = cursor.selectionEnd();
++
++        matches.matchRanges.push_back({start, end});
++
++        if (currentCursor.position() >= start && currentCursor.position() <= end) {
++            matches.currentIndex = matches.matchRanges.size();
++        }
++    }
++
++    return matches;
++}
++
++/**
++ * Show current search result position and total matches count.
++ */
++void SearchBar::updateSearchResults(const QString& str)
++{
++    if (!textEditor || str.isEmpty()) {
++        resultLabel->clear();
++        return;
++    }
++
++    SearchResults matches = findAllMatches(str);
++
++    if (matches.matchRanges.isEmpty()) {
++        resultLabel->setText(tr("No results"));
++        highlightSearchResults(matches);
++        return;
++    }
++
++    int total = matches.matchRanges.size();
++    int currentIndex = matches.currentIndex;
++
++    if (currentIndex == -1) {
++        resultLabel->setText(QString("0 / %1").arg(total));
++    }
++    else {
++        resultLabel->setText(QString("%1 / %2").arg(currentIndex).arg(total));
++    }
++
++    highlightSearchResults(matches);
++}
++
++/**
++ * Highlight visually all search result matches.
++ * Note: highlight stays after closing search bar, but disappears after any subsequent click.
++ */
++void SearchBar::highlightSearchResults(const SearchResults& matches)
++{
++    if (!textEditor || !textEditor->document()) {
++        return;
++    }
++
++    const auto& selections = textEditor->extraSelections();
++
++    QVector<QTextEdit::ExtraSelection> cleaned;
++    cleaned.reserve(selections.size());
++
++    for (const auto& sel : selections) {
++        if (!sel.format.property(SearchSelectionProperty).toBool()) {
++            cleaned.push_back(sel);
++        }
++    }
++
++    QVector<QTextEdit::ExtraSelection> searchSelections;
++    searchSelections.reserve(matches.matchRanges.size());
++
++    QTextCursor currentCursor = textEditor->textCursor();
++
++    const QPalette pal = textEditor->palette();
++    const QColor highlightColor = pal.color(QPalette::Highlight);
++
++    QColor matchColor = highlightColor;
++    matchColor.setAlphaF(0.75);
++
++    QTextDocument* doc = textEditor->document();
++
++    for (const auto& range : matches.matchRanges) {
++        QTextCursor cursor(doc);
++        cursor.setPosition(range.first);
++        cursor.setPosition(range.second, QTextCursor::KeepAnchor);
++
++        QTextEdit::ExtraSelection sel;
++        sel.cursor = cursor;
++
++        const int pos = currentCursor.position();
++        const bool isCurrent = (pos >= range.first && pos <= range.second);
++
++        QTextCharFormat format;
++        format.setBackground(isCurrent ? highlightColor : matchColor);
++        format.setProperty(QTextFormat::FullWidthSelection, true);
++        format.setProperty(SearchSelectionProperty, true);
++
++        sel.format = format;
++        searchSelections.push_back(sel);
++    }
++
++    cleaned += searchSelections;
++    textEditor->setExtraSelections(cleaned);
++}
++
++void SearchBar::findPrevious()
++{
++    findText(true, false, searchText->text());
++}
++
++void SearchBar::findNext()
++{
++    findText(true, true, searchText->text());
++}
++
++void SearchBar::findCurrent()
++{
++    findText(false, true, searchText->text());
++}
++
++void SearchBar::findText(bool skip, bool next, const QString& str)
++{
++    if (!textEditor) {
++        return;
++    }
++
++    QTextCursor cursor = textEditor->textCursor();
++    QTextDocument* doc = textEditor->document();
++    if (!doc || cursor.isNull()) {
++        return;
++    }
++
++    if (cursor.hasSelection()) {
++        cursor.setPosition((skip && next) ? cursor.position() : cursor.anchor());
++    }
++
++    bool found = true;
++    QTextCursor newCursor = cursor;
++    if (!str.isEmpty()) {
++        QTextDocument::FindFlags options = {};
++        if (!next) {
++            options |= QTextDocument::FindBackward;
++        }
++        if (matchCase->isChecked()) {
++            options |= QTextDocument::FindCaseSensitively;
++        }
++        if (matchWord->isChecked()) {
++            options |= QTextDocument::FindWholeWords;
++        }
++
++        newCursor = doc->find(str, cursor, options);
++        if (newCursor.isNull()) {
++            QTextCursor ac(doc);
++            ac.movePosition(
++                options & QTextDocument::FindBackward ? QTextCursor::End : QTextCursor::Start
++            );
++            newCursor = doc->find(str, ac, options);
++            if (newCursor.isNull()) {
++                found = false;
++                newCursor = cursor;
++            }
++        }
++    }
++
++    if (!isVisible()) {
++        show();
++    }
++
++    textEditor->setTextCursor(newCursor);
++
++    QString styleSheet;
++    if (!found) {
++        styleSheet = QStringLiteral(
++            " QLineEdit {\n"
++            "     background-color: rgb(221,144,161);\n"
++            " }\n"
++        );
++    }
++
++    searchText->setStyleSheet(styleSheet);
++    updateSearchResults(str);
++}
++
++void SearchBar::updateButtons()
++{
++    bool empty = searchText->text().isEmpty();
++    prevButton->setDisabled(empty);
++    nextButton->setDisabled(empty);
++}
++
++void SearchBar::changeEvent(QEvent* event)
++{
++    if (event->type() == QEvent::LanguageChange) {
++        retranslateUi();
++    }
++
++    QWidget::changeEvent(event);
++}
++
++QString SearchBar::getSearchText() const
++{
++    return searchText->text();
++}
++
++#include "moc_EditorView.cpp"
+diff --git a/src/Mod/Test/GuiDocument.py b/src/Mod/Test/GuiDocument.py
+index 6e2f63d72..8e3def208 100644
+--- a/src/Mod/Test/GuiDocument.py
++++ b/src/Mod/Test/GuiDocument.py
+@@ -1,417 +1,420 @@
+-# SPDX-License-Identifier: LGPL-2.1-or-later
+-"""**************************************************************************
+-*                                                                          *
+-*   Copyright (c) 2024 Ondsel <development@ondsel.com>                     *
+-*                                                                          *
+-*   This file is part of FreeCAD.                                          *
+-*                                                                          *
+-*   FreeCAD is free software: you can redistribute it and/or modify it     *
+-*   under the terms of the GNU Lesser General Public License as            *
+-*   published by the Free Software Foundation, either version 2.1 of the   *
+-*   License, or (at your option) any later version.                        *
+-*                                                                          *
+-*   FreeCAD is distributed in the hope that it will be useful, but         *
+-*   WITHOUT ANY WARRANTY; without even the implied warranty of             *
+-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       *
+-*   Lesser General Public License for more details.                        *
+-*                                                                          *
+-*   You should have received a copy of the GNU Lesser General Public       *
+-*   License along with FreeCAD. If not, see                                *
+-*   <https://www.gnu.org/licenses/>.                                       *
+-*                                                                          *
+-***************************************************************************/"""
+-
+-import os
+-import tempfile
+-import threading
+-import time
+-import unittest
+-import warnings
+-import zipfile
+-
+-import FreeCAD
+-import FreeCADGui
+-from PySide6 import QtCore, QtWidgets
+-
+-# ---------------------------------------------------------------------------
+-# define the functions to test the FreeCAD Gui Document code
+-# ---------------------------------------------------------------------------
+-
+-
+-class TestGuiDocument(unittest.TestCase):
+-    def setUp(self):
+-        # Create a new document
+-        self.doc = FreeCAD.newDocument("TestDoc")
+-
+-    def tearDown(self):
+-        # Close the document
+-        if self.doc is not None and self.doc.Name in FreeCAD.listDocuments():
+-            FreeCAD.closeDocument(self.doc.Name)
+-
+-    def _findAutoSaver(self):
+-        app = QtWidgets.QApplication.instance()
+-        self.assertIsNotNone(app)
+-
+-        for child in app.children():
+-            meta_object = child.metaObject() if hasattr(child, "metaObject") else None
+-            if meta_object and meta_object.className() == "Gui::AutoSaver":
+-                return child
+-
+-        raise self.failureException("Gui::AutoSaver was not found in the QApplication object tree")
+-
+-    def _recoveryArchive(self):
+-        return os.path.join(self.doc.TransientDir, "fc_recovery_file.fcstd")
+-
+-    def _removeRecoveryArchive(self):
+-        archive = self._recoveryArchive()
+-        if os.path.exists(archive):
+-            os.remove(archive)
+-
+-    def _invokeAutoSaverFlush(self):
+-        invoked = QtCore.QMetaObject.invokeMethod(
+-            self._findAutoSaver(),
+-            "flushPendingSave",
+-            QtCore.Qt.ConnectionType.DirectConnection,
+-            QtCore.Q_ARG(str, self.doc.Name),
+-        )
+-        self.assertTrue(invoked)
+-
+-    def _processEventsUntil(self, predicate, timeout=3.0):
+-        deadline = time.monotonic() + timeout
+-        while time.monotonic() < deadline:
+-            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
+-            if predicate():
+-                return True
+-            time.sleep(0.01)
+-
+-        return predicate()
+-
+-    def _assertRecoveryArchiveContains(self, expected_label=None):
+-        archive = self._recoveryArchive()
+-        self.assertTrue(os.path.isfile(archive))
+-
+-        with zipfile.ZipFile(archive) as recovery:
+-            self.assertIn("Document.xml", recovery.namelist())
+-            self.assertIn("GuiDocument.xml", recovery.namelist())
+-
+-            if expected_label is not None:
+-                document_xml = recovery.read("Document.xml").decode("utf-8", errors="replace")
+-                self.assertIn(expected_label, document_xml)
+-
+-    def _writeArchiveWithoutGuiDocument(self, source_path, target_path):
+-        with zipfile.ZipFile(source_path, "r") as source:
+-            self.assertIn("Document.xml", source.namelist())
+-            self.assertIn("GuiDocument.xml", source.namelist())
+-
+-            with zipfile.ZipFile(target_path, "w") as target:
+-                for item in source.infolist():
+-                    if item.filename == "GuiDocument.xml":
+-                        continue
+-
+-                    target.writestr(item, source.read(item.filename))
+-
+-        with zipfile.ZipFile(target_path, "r") as target:
+-            self.assertIn("Document.xml", target.namelist())
+-            self.assertNotIn("GuiDocument.xml", target.namelist())
+-
+-    def testGetTreeRootObject(self):
+-        # Create objects at the root level
+-        group1 = self.doc.addObject("App::DocumentObjectGroup", "Group1")
+-        group2 = self.doc.addObject("App::DocumentObjectGroup", "Group2")
+-        obj1 = self.doc.addObject("App::FeaturePython", "RootObject1")
+-        part1 = self.doc.addObject("App::Part", "Part1")
+-
+-        # Create App::Parts and groups with objects in them
+-        part1_obj = part1.newObject("App::FeaturePython", "Part1_Object")
+-        group3 = group2.newObject("App::DocumentObjectGroup", "Group1")
+-        group1_obj = group3.newObject("App::FeaturePython", "Group1_Object")
+-
+-        # Fetch the root objects using getTreeRootObjects
+-        root_objects = FreeCADGui.getDocument("TestDoc").TreeRootObjects
+-
+-        # Check if the new function returns the correct root objects
+-        expected_root_objects = [group1, group2, obj1, part1]
+-        self.assertEqual(set(root_objects), set(expected_root_objects))
+-
+-    def testIssue30418(self):
+-        class ViewProvider:
+-            def __init__(self, vobj):
+-                vobj.Proxy = self
+-
+-            def attach(self, vobj):
+-                self.ViewObject = vobj
+-                self.Object = vobj.Object
+-
+-            def setEdit(self, vobj, mode):
+-                return True
+-
+-            def unsetEdit(self, vobj, mode):
+-                obj = vobj.Object
+-                doc = obj.Document
+-                doc.removeObject(obj.Name)
+-                return True
+-
+-        gui = FreeCADGui.getDocument(self.doc)
+-
+-        self.doc.openTransaction("Add object")
+-        obj = self.doc.addObject("App::FeaturePython", "Object")
+-        ViewProvider(obj.ViewObject)
+-        self.doc.commitTransaction()
+-        gui.setEdit(obj, 0)
+-        self.doc.undo()
+-
+-        self.assertTrue(True)
+-
+-    def testViewObjectRequiresMainThread(self):
+-        obj = self.doc.addObject("App::FeaturePython", "ThreadGuard")
+-
+-        result = {}
+-
+-        def access_view_object():
+-            try:
+-                _ = obj.ViewObject
+-            except Exception as exc:  # pragma: no cover - exercised through assertion below
+-                result["exception"] = exc
+-
+-        worker = threading.Thread(target=access_view_object)
+-        worker.start()
+-        worker.join()
+-
+-        self.assertIn("exception", result)
+-        self.assertIsInstance(result["exception"], RuntimeError)
+-        self.assertIn("main thread", str(result["exception"]).lower())
+-
+-    def testRefreshFallsBackToSyncForFeaturePython(self):
+-        params = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Document")
+-        old_async = params.GetBool("EnableAsyncRecompute", True)
+-
+-        class RefreshProxy:
+-            def __init__(self):
+-                self.executed_thread_id = None
+-
+-            def execute(self, obj):
+-                self.executed_thread_id = threading.get_ident()
+-                time.sleep(0.05)
+-
+-        proxy = RefreshProxy()
+-        obj = self.doc.addObject("App::FeaturePython", "PythonFeature")
+-        obj.Proxy = proxy
+-        obj.touch()
+-
+-        try:
+-            params.SetBool("EnableAsyncRecompute", True)
+-
+-            start = time.monotonic()
+-            FreeCADGui.runCommand("Std_Refresh", 0)
+-            elapsed = time.monotonic() - start
+-        finally:
+-            params.SetBool("EnableAsyncRecompute", old_async)
+-
+-        self.assertEqual(proxy.executed_thread_id, threading.get_ident())
+-        self.assertGreaterEqual(elapsed, 0.04)
+-
+-    def testSaveCommandDoesNotUseDeprecatedAPI(self):
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            self.doc.saveAs(os.path.join(temp_dir, "TestDoc.FCStd"))
+-            self.doc.addObject("App::FeaturePython", "ModifiedObject")
+-
+-            with warnings.catch_warnings(record=True) as caught_warnings:
+-                warnings.simplefilter("always", DeprecationWarning)
+-                FreeCADGui.runCommand("Std_Save", 0)
+-
+-            deprecations = [
+-                warning
+-                for warning in caught_warnings
+-                if issubclass(warning.category, DeprecationWarning)
+-            ]
+-            self.assertEqual(deprecations, [])
+-
+-    def testRecoverySnapshotIncludesGuiDocument(self):
+-        self.doc.addObject("App::FeaturePython", "RecoveryGuiObject")
+-
+-        self.assertTrue(FreeCAD.writeRecoverySnapshotToTransientDir(self.doc))
+-
+-        self._assertRecoveryArchiveContains()
+-
+-    def testRestoreWithoutGuiDocumentFitsViewAndRestoresVisibility(self):
+-        try:
+-            from pivy import coin  # noqa: F401
+-        except ImportError as exc:
+-            raise unittest.SkipTest(f"Coin bindings are unavailable: {exc}") from exc
+-
+-        try:
+-            import Part  # noqa: F401
+-        except ImportError as exc:
+-            raise unittest.SkipTest(f"Part workbench objects are unavailable: {exc}") from exc
+-
+-        visible_box = self.doc.addObject("Part::Box", "VisibleBox")
+-        hidden_cylinder = self.doc.addObject("Part::Cylinder", "HiddenCylinder")
+-
+-        visible_box.Length = 25
+-        visible_box.Width = 20
+-        visible_box.Height = 15
+-        visible_box.Placement.Base = FreeCAD.Vector(80, 35, 45)
+-        visible_box.Visibility = True
+-        visible_box.ViewObject.Visibility = True
+-
+-        hidden_cylinder.Radius = 5
+-        hidden_cylinder.Height = 20
+-        hidden_cylinder.Placement.Base = FreeCAD.Vector(120, 50, 55)
+-        hidden_cylinder.Visibility = False
+-        hidden_cylinder.ViewObject.Visibility = False
+-
+-        self.doc.recompute()
+-
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            source_path = os.path.join(temp_dir, "with_gui_document.FCStd")
+-            target_path = os.path.join(temp_dir, "without_gui_document.FCStd")
+-
+-            self.doc.saveAs(source_path)
+-            self._writeArchiveWithoutGuiDocument(source_path, target_path)
+-
+-            FreeCAD.closeDocument(self.doc.Name)
+-            self.doc = None
+-
+-            restored_doc = FreeCAD.openDocument(target_path)
+-            self.doc = restored_doc
+-            try:
+-                FreeCAD.setActiveDocument(restored_doc.Name)
+-
+-                view = FreeCADGui.getDocument(restored_doc.Name).ActiveView
+-                self.assertIsNotNone(view)
+-
+-                self.assertTrue(restored_doc.VisibleBox.ViewObject.Visibility)
+-                self.assertFalse(restored_doc.HiddenCylinder.Visibility)
+-                self.assertFalse(restored_doc.HiddenCylinder.ViewObject.Visibility)
+-
+-                def cameraIsFitted():
+-                    position = view.getCameraNode().position.getValue().getValue()
+-                    return sum(abs(component) for component in position) > 10.0
+-
+-                self.assertTrue(self._processEventsUntil(cameraIsFitted), view.getCamera())
+-            finally:
+-                if self.doc is not None and self.doc.Name in FreeCAD.listDocuments():
+-                    FreeCAD.closeDocument(self.doc.Name)
+-                self.doc = None
+-
+-    def testAutoSaverFlushWritesRecoverySnapshot(self):
+-        obj = self.doc.addObject("App::FeaturePython", "AutoSaveGuiObject")
+-        obj.Label = "AutoSaveImmediate"
+-        self._removeRecoveryArchive()
+-
+-        self._invokeAutoSaverFlush()
+-
+-        self._assertRecoveryArchiveContains(expected_label="AutoSaveImmediate")
+-
+-    def testAutoSaverRetriesWhenDocumentBecomesStable(self):
+-        obj = self.doc.addObject("App::FeaturePython", "AutoSaveBlockedObject")
+-        self._removeRecoveryArchive()
+-
+-        self.doc.openTransaction("AutoSaveBlocked")
+-        obj.Label = "AutoSaveRetried"
+-        self._invokeAutoSaverFlush()
+-
+-        self.assertFalse(os.path.exists(self._recoveryArchive()))
+-
+-        self.doc.abortTransaction()
+-
+-        self.assertTrue(self._processEventsUntil(lambda: os.path.exists(self._recoveryArchive())))
+-        self._assertRecoveryArchiveContains()
+-
+-    def testAutoSaverStableSignalDoesNotBypassTimeout(self):
+-        obj = self.doc.addObject("App::FeaturePython", "AutoSaveStableObject")
+-        self._removeRecoveryArchive()
+-
+-        self.doc.openTransaction("AutoSaveStable")
+-        obj.Label = "AutoSaveStillPending"
+-        self.doc.commitTransaction()
+-
+-        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
+-        self.assertFalse(os.path.exists(self._recoveryArchive()))
+-
+-    def testAutoSaverCoalescesBlockedFlushesToLatestCommittedState(self):
+-        obj = self.doc.addObject("App::FeaturePython", "AutoSaveChurnObject")
+-        self._removeRecoveryArchive()
+-
+-        self.doc.openTransaction("AutoSaveChurn")
+-        for index in range(8):
+-            obj.Label = f"AutoSaveBurst{index}"
+-            self._invokeAutoSaverFlush()
+-
+-        self.assertFalse(os.path.exists(self._recoveryArchive()))
+-
+-        self.doc.commitTransaction()
+-
+-        self.assertTrue(self._processEventsUntil(lambda: os.path.exists(self._recoveryArchive())))
+-        self._assertRecoveryArchiveContains(expected_label="AutoSaveBurst7")
+-
+-    def testSaveDispatchesToFocusedMacroEditor(self):
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-
+-            self.doc.saveAs(os.path.join(temp_dir, "TestDoc.FCStd"))
+-            doc_path = self.doc.FileName
+-
+-            macro_path = os.path.join(temp_dir, "test_macro.FCMacro")
+-            with open(macro_path, "w", encoding="utf-8") as macro_file:
+-                macro_file.write("# original\n")
+-
+-            FreeCADGui.open(macro_path)
+-
+-            main_window = FreeCADGui.getMainWindow()
+-
+-            def active_type_id():
+-                view = main_window.getActiveWindow()
+-                return view.getTypeId() if view else ""
+-
+-            self.assertTrue(self._processEventsUntil(lambda: "EditorView" in active_type_id()))
+-
+-            editor = main_window.getActiveWindow()
+-
+-            self.assertIn("EditorView", editor.getTypeId())
+-
+-            text_edits = [
+-                widget
+-                for widget in main_window.findChildren(QtWidgets.QPlainTextEdit)
+-                if widget.toPlainText().startswith("# original")
+-            ]
+-
+-            self.assertEqual(len(text_edits), 1)
+-
+-            text_edit = text_edits[0]
+-
+-            def closeEditor():
+-                text_edit.document().setModified(False)
+-                main_window.removeWindow(editor)
+-
+-            self.addCleanup(closeEditor)
+-
+-            text_edit.insertPlainText("# modified\n")
+-
+-            QtWidgets.QApplication.processEvents(
+-                QtCore.QEventLoop.ProcessEventsFlag.AllEvents,
+-                50,
+-            )
+-
+-            self.assertTrue(editor.supportMessage("Save"))
+-
+-            gui_doc = FreeCADGui.getDocument(self.doc.Name)
+-
+-            self.doc.addObject("App::FeaturePython", "ModifiedObject")
+-
+-            self.assertTrue(gui_doc.Modified)
+-
+-            doc_mtime_before = os.stat(doc_path).st_mtime_ns
+-
+-            FreeCADGui.runCommand("Std_Save", 0)
+-
+-            with open(macro_path, encoding="utf-8") as macro_file:
+-                macro_contents = macro_file.read()
+-
+-            self.assertIn("# modified", macro_contents)
+-            self.assertTrue(gui_doc.Modified)
+-
+-            doc_mtime_after = os.stat(doc_path).st_mtime_ns
+-
+-            # Std_Save must reach the focused macro editor, not the active document,
+-            # the macro is written and the document is left untouched
+-            self.assertEqual(doc_mtime_after, doc_mtime_before)
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""**************************************************************************
++*                                                                          *
++*   Copyright (c) 2024 Ondsel <development@ondsel.com>                     *
++*                                                                          *
++*   This file is part of FreeCAD.                                          *
++*                                                                          *
++*   FreeCAD is free software: you can redistribute it and/or modify it     *
++*   under the terms of the GNU Lesser General Public License as            *
++*   published by the Free Software Foundation, either version 2.1 of the   *
++*   License, or (at your option) any later version.                        *
++*                                                                          *
++*   FreeCAD is distributed in the hope that it will be useful, but         *
++*   WITHOUT ANY WARRANTY; without even the implied warranty of             *
++*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       *
++*   Lesser General Public License for more details.                        *
++*                                                                          *
++*   You should have received a copy of the GNU Lesser General Public       *
++*   License along with FreeCAD. If not, see                                *
++*   <https://www.gnu.org/licenses/>.                                       *
++*                                                                          *
++***************************************************************************/"""
++
++import os
++import tempfile
++import threading
++import time
++import unittest
++import warnings
++import zipfile
++
++import FreeCAD
++import FreeCADGui
++from PySide6 import QtCore, QtWidgets
++
++# ---------------------------------------------------------------------------
++# define the functions to test the FreeCAD Gui Document code
++# ---------------------------------------------------------------------------
++
++
++class TestGuiDocument(unittest.TestCase):
++    def setUp(self):
++        # Create a new document
++        self.doc = FreeCAD.newDocument("TestDoc")
++
++    def tearDown(self):
++        # Close the document
++        if self.doc is not None and self.doc.Name in FreeCAD.listDocuments():
++            FreeCAD.closeDocument(self.doc.Name)
++
++    def _findAutoSaver(self):
++        app = QtWidgets.QApplication.instance()
++        self.assertIsNotNone(app)
++
++        for child in app.children():
++            meta_object = child.metaObject() if hasattr(child, "metaObject") else None
++            if meta_object and meta_object.className() == "Gui::AutoSaver":
++                return child
++
++        raise self.failureException("Gui::AutoSaver was not found in the QApplication object tree")
++
++    def _recoveryArchive(self):
++        return os.path.join(self.doc.TransientDir, "fc_recovery_file.fcstd")
++
++    def _removeRecoveryArchive(self):
++        archive = self._recoveryArchive()
++        if os.path.exists(archive):
++            os.remove(archive)
++
++    def _invokeAutoSaverFlush(self):
++        invoked = QtCore.QMetaObject.invokeMethod(
++            self._findAutoSaver(),
++            "flushPendingSave",
++            QtCore.Qt.ConnectionType.DirectConnection,
++            QtCore.Q_ARG(str, self.doc.Name),
++        )
++        self.assertTrue(invoked)
++
++    def _processEventsUntil(self, predicate, timeout=3.0):
++        deadline = time.monotonic() + timeout
++        while time.monotonic() < deadline:
++            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
++            if predicate():
++                return True
++            time.sleep(0.01)
++
++        return predicate()
++
++    def _assertRecoveryArchiveContains(self, expected_label=None):
++        archive = self._recoveryArchive()
++        self.assertTrue(os.path.isfile(archive))
++
++        with zipfile.ZipFile(archive) as recovery:
++            self.assertIn("Document.xml", recovery.namelist())
++            self.assertIn("GuiDocument.xml", recovery.namelist())
++
++            if expected_label is not None:
++                document_xml = recovery.read("Document.xml").decode("utf-8", errors="replace")
++                self.assertIn(expected_label, document_xml)
++
++    def _writeArchiveWithoutGuiDocument(self, source_path, target_path):
++        with zipfile.ZipFile(source_path, "r") as source:
++            self.assertIn("Document.xml", source.namelist())
++            self.assertIn("GuiDocument.xml", source.namelist())
++
++            with zipfile.ZipFile(target_path, "w") as target:
++                for item in source.infolist():
++                    if item.filename == "GuiDocument.xml":
++                        continue
++
++                    target.writestr(item, source.read(item.filename))
++
++        with zipfile.ZipFile(target_path, "r") as target:
++            self.assertIn("Document.xml", target.namelist())
++            self.assertNotIn("GuiDocument.xml", target.namelist())
++
++    def testGetTreeRootObject(self):
++        # Create objects at the root level
++        group1 = self.doc.addObject("App::DocumentObjectGroup", "Group1")
++        group2 = self.doc.addObject("App::DocumentObjectGroup", "Group2")
++        obj1 = self.doc.addObject("App::FeaturePython", "RootObject1")
++        part1 = self.doc.addObject("App::Part", "Part1")
++
++        # Create App::Parts and groups with objects in them
++        part1_obj = part1.newObject("App::FeaturePython", "Part1_Object")
++        group3 = group2.newObject("App::DocumentObjectGroup", "Group1")
++        group1_obj = group3.newObject("App::FeaturePython", "Group1_Object")
++
++        # Fetch the root objects using getTreeRootObjects
++        root_objects = FreeCADGui.getDocument("TestDoc").TreeRootObjects
++
++        # Check if the new function returns the correct root objects
++        expected_root_objects = [group1, group2, obj1, part1]
++        self.assertEqual(set(root_objects), set(expected_root_objects))
++
++    def testIssue30418(self):
++        class ViewProvider:
++            def __init__(self, vobj):
++                vobj.Proxy = self
++
++            def attach(self, vobj):
++                self.ViewObject = vobj
++                self.Object = vobj.Object
++
++            def setEdit(self, vobj, mode):
++                return True
++
++            def unsetEdit(self, vobj, mode):
++                obj = vobj.Object
++                doc = obj.Document
++                doc.removeObject(obj.Name)
++                return True
++
++        gui = FreeCADGui.getDocument(self.doc)
++
++        self.doc.openTransaction("Add object")
++        obj = self.doc.addObject("App::FeaturePython", "Object")
++        ViewProvider(obj.ViewObject)
++        self.doc.commitTransaction()
++        gui.setEdit(obj, 0)
++        self.doc.undo()
++
++        self.assertTrue(True)
++
++    def testViewObjectRequiresMainThread(self):
++        obj = self.doc.addObject("App::FeaturePython", "ThreadGuard")
++
++        result = {}
++
++        def access_view_object():
++            try:
++                _ = obj.ViewObject
++            except Exception as exc:  # pragma: no cover - exercised through assertion below
++                result["exception"] = exc
++
++        worker = threading.Thread(target=access_view_object)
++        worker.start()
++        worker.join()
++
++        self.assertIn("exception", result)
++        self.assertIsInstance(result["exception"], RuntimeError)
++        self.assertIn("main thread", str(result["exception"]).lower())
++
++    def testRefreshFallsBackToSyncForFeaturePython(self):
++        params = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Document")
++        old_async = params.GetBool("EnableAsyncRecompute", True)
++
++        class RefreshProxy:
++            def __init__(self):
++                self.executed_thread_id = None
++
++            def execute(self, obj):
++                self.executed_thread_id = threading.get_ident()
++                time.sleep(0.05)
++
++        proxy = RefreshProxy()
++        obj = self.doc.addObject("App::FeaturePython", "PythonFeature")
++        obj.Proxy = proxy
++        obj.touch()
++
++        try:
++            params.SetBool("EnableAsyncRecompute", True)
++
++            start = time.monotonic()
++            FreeCADGui.runCommand("Std_Refresh", 0)
++            elapsed = time.monotonic() - start
++        finally:
++            params.SetBool("EnableAsyncRecompute", old_async)
++
++        self.assertEqual(proxy.executed_thread_id, threading.get_ident())
++        self.assertGreaterEqual(elapsed, 0.04)
++
++    def testSaveCommandDoesNotUseDeprecatedAPI(self):
++        with tempfile.TemporaryDirectory() as temp_dir:
++            self.doc.saveAs(os.path.join(temp_dir, "TestDoc.FCStd"))
++            self.doc.addObject("App::FeaturePython", "ModifiedObject")
++
++            with warnings.catch_warnings(record=True) as caught_warnings:
++                warnings.simplefilter("always", DeprecationWarning)
++                FreeCADGui.runCommand("Std_Save", 0)
++
++            deprecations = [
++                warning
++                for warning in caught_warnings
++                if issubclass(warning.category, DeprecationWarning)
++            ]
++            self.assertEqual(deprecations, [])
++
++    def testRecoverySnapshotIncludesGuiDocument(self):
++        self.doc.addObject("App::FeaturePython", "RecoveryGuiObject")
++
++        self.assertTrue(FreeCAD.writeRecoverySnapshotToTransientDir(self.doc))
++
++        self._assertRecoveryArchiveContains()
++
++    def testRestoreWithoutGuiDocumentFitsViewAndRestoresVisibility(self):
++        try:
++            from pivy import coin  # noqa: F401
++        except ImportError as exc:
++            raise unittest.SkipTest(f"Coin bindings are unavailable: {exc}") from exc
++
++        try:
++            import Part  # noqa: F401
++        except ImportError as exc:
++            raise unittest.SkipTest(f"Part workbench objects are unavailable: {exc}") from exc
++
++        visible_box = self.doc.addObject("Part::Box", "VisibleBox")
++        hidden_cylinder = self.doc.addObject("Part::Cylinder", "HiddenCylinder")
++
++        visible_box.Length = 25
++        visible_box.Width = 20
++        visible_box.Height = 15
++        visible_box.Placement.Base = FreeCAD.Vector(80, 35, 45)
++        visible_box.Visibility = True
++        visible_box.ViewObject.Visibility = True
++
++        hidden_cylinder.Radius = 5
++        hidden_cylinder.Height = 20
++        hidden_cylinder.Placement.Base = FreeCAD.Vector(120, 50, 55)
++        hidden_cylinder.Visibility = False
++        hidden_cylinder.ViewObject.Visibility = False
++
++        self.doc.recompute()
++
++        with tempfile.TemporaryDirectory() as temp_dir:
++            source_path = os.path.join(temp_dir, "with_gui_document.FCStd")
++            target_path = os.path.join(temp_dir, "without_gui_document.FCStd")
++
++            self.doc.saveAs(source_path)
++            self._writeArchiveWithoutGuiDocument(source_path, target_path)
++
++            FreeCAD.closeDocument(self.doc.Name)
++            self.doc = None
++
++            restored_doc = FreeCAD.openDocument(target_path)
++            self.doc = restored_doc
++            try:
++                FreeCAD.setActiveDocument(restored_doc.Name)
++
++                view = FreeCADGui.getDocument(restored_doc.Name).ActiveView
++                self.assertIsNotNone(view)
++
++                self.assertTrue(restored_doc.VisibleBox.ViewObject.Visibility)
++                self.assertFalse(restored_doc.HiddenCylinder.Visibility)
++                self.assertFalse(restored_doc.HiddenCylinder.ViewObject.Visibility)
++
++                def cameraIsFitted():
++                    position = view.getCameraNode().position.getValue().getValue()
++                    return sum(abs(component) for component in position) > 10.0
++
++                self.assertTrue(self._processEventsUntil(cameraIsFitted), view.getCamera())
++            finally:
++                if self.doc is not None and self.doc.Name in FreeCAD.listDocuments():
++                    FreeCAD.closeDocument(self.doc.Name)
++                self.doc = None
++
++    def testAutoSaverFlushWritesRecoverySnapshot(self):
++        obj = self.doc.addObject("App::FeaturePython", "AutoSaveGuiObject")
++        obj.Label = "AutoSaveImmediate"
++        self._removeRecoveryArchive()
++
++        self._invokeAutoSaverFlush()
++
++        self._assertRecoveryArchiveContains(expected_label="AutoSaveImmediate")
++
++    def testAutoSaverRetriesWhenDocumentBecomesStable(self):
++        obj = self.doc.addObject("App::FeaturePython", "AutoSaveBlockedObject")
++        self._removeRecoveryArchive()
++
++        self.doc.openTransaction("AutoSaveBlocked")
++        obj.Label = "AutoSaveRetried"
++        self._invokeAutoSaverFlush()
++
++        self.assertFalse(os.path.exists(self._recoveryArchive()))
++
++        self.doc.abortTransaction()
++
++        self.assertTrue(self._processEventsUntil(lambda: os.path.exists(self._recoveryArchive())))
++        self._assertRecoveryArchiveContains()
++
++    def testAutoSaverStableSignalDoesNotBypassTimeout(self):
++        obj = self.doc.addObject("App::FeaturePython", "AutoSaveStableObject")
++        self._removeRecoveryArchive()
++
++        self.doc.openTransaction("AutoSaveStable")
++        obj.Label = "AutoSaveStillPending"
++        self.doc.commitTransaction()
++
++        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
++        self.assertFalse(os.path.exists(self._recoveryArchive()))
++
++    def testAutoSaverCoalescesBlockedFlushesToLatestCommittedState(self):
++        obj = self.doc.addObject("App::FeaturePython", "AutoSaveChurnObject")
++        self._removeRecoveryArchive()
++
++        self.doc.openTransaction("AutoSaveChurn")
++        for index in range(8):
++            obj.Label = f"AutoSaveBurst{index}"
++            self._invokeAutoSaverFlush()
++
++        self.assertFalse(os.path.exists(self._recoveryArchive()))
++
++        self.doc.commitTransaction()
++
++        self.assertTrue(self._processEventsUntil(lambda: os.path.exists(self._recoveryArchive())))
++        self._assertRecoveryArchiveContains(expected_label="AutoSaveBurst7")
++
++    def testSaveDispatchesToFocusedMacroEditor(self):
++        with tempfile.TemporaryDirectory() as temp_dir:
++
++            self.doc.saveAs(os.path.join(temp_dir, "TestDoc.FCStd"))
++            doc_path = self.doc.FileName
++
++            macro_path = os.path.join(temp_dir, "test_macro.FCMacro")
++            with open(macro_path, "w", encoding="utf-8") as macro_file:
++                macro_file.write("# original\n")
++
++            FreeCADGui.open(macro_path)
++
++            main_window = FreeCADGui.getMainWindow()
++
++            def active_type_id():
++                view = main_window.getActiveWindow()
++                return view.getTypeId() if view else ""
++
++            self.assertTrue(self._processEventsUntil(lambda: "EditorView" in active_type_id()))
++
++            editor = main_window.getActiveWindow()
++
++            self.assertIn("EditorView", editor.getTypeId())
++
++            text_edits = [
++                widget
++                for widget in main_window.findChildren(QtWidgets.QPlainTextEdit)
++                if widget.toPlainText().startswith("# original")
++            ]
++
++            self.assertEqual(len(text_edits), 1)
++
++            text_edit = text_edits[0]
++
++            def closeEditor():
++                text_edit.document().setModified(False)
++                main_window.removeWindow(editor)
++                # removeWindow() deletes the view later; the tests run inside one event, so
++                # delete it now, or its file watcher outlives the temporary directory
++                QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
++
++            self.addCleanup(closeEditor)
++
++            text_edit.insertPlainText("# modified\n")
++
++            QtWidgets.QApplication.processEvents(
++                QtCore.QEventLoop.ProcessEventsFlag.AllEvents,
++                50,
++            )
++
++            self.assertTrue(editor.supportMessage("Save"))
++
++            gui_doc = FreeCADGui.getDocument(self.doc.Name)
++
++            self.doc.addObject("App::FeaturePython", "ModifiedObject")
++
++            self.assertTrue(gui_doc.Modified)
++
++            doc_mtime_before = os.stat(doc_path).st_mtime_ns
++
++            FreeCADGui.runCommand("Std_Save", 0)
++
++            with open(macro_path, encoding="utf-8") as macro_file:
++                macro_contents = macro_file.read()
++
++            self.assertIn("# modified", macro_contents)
++            self.assertTrue(gui_doc.Modified)
++
++            doc_mtime_after = os.stat(doc_path).st_mtime_ns
++
++            # Std_Save must reach the focused macro editor, not the active document,
++            # the macro is written and the document is left untouched
++            self.assertEqual(doc_mtime_after, doc_mtime_before)
+-- 
+2.43.0
+

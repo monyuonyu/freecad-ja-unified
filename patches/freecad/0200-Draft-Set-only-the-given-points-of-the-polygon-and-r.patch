@@ -1,0 +1,55 @@
+From 655db3171d59eed1b997014ad4e85200c4fd0d6a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 05:40:45 +0900
+Subject: [PATCH 200/200] Draft: Set only the given points of the polygon and
+ rectangle trackers
+
+setValues(0, 50, ...) with a list of 4 or 5 points read past the list
+(found with AddressSanitizer in the BIM wall tests).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Draft/draftguitools/gui_trackers.py | 20 +++++++++++---------
+ 1 file changed, 11 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/Draft/draftguitools/gui_trackers.py b/src/Mod/Draft/draftguitools/gui_trackers.py
+index ae41148c9..2b65eb963 100644
+--- a/src/Mod/Draft/draftguitools/gui_trackers.py
++++ b/src/Mod/Draft/draftguitools/gui_trackers.py
+@@ -271,10 +271,11 @@ class polygonTracker(Tracker):
+         self.line.numVertices.setValue(self.sides + 1)
+         self.coords = coin.SoCoordinate3()  # this is the coordinate
+         # fmt: off
+-        self.coords.point.setValues(0, 50, [[0, 0, 0],
+-                                            [2, 0, 0],
+-                                            [1, 2, 0],
+-                                            [0, 0, 0]])
++        # as many points as given: more would read past the list (set1Value adds points)
++        self.coords.point.setValues(0, 4, [[0, 0, 0],
++                                           [2, 0, 0],
++                                           [1, 2, 0],
++                                           [0, 0, 0]])
+         # fmt: on
+         if face:
+             m1 = coin.SoMaterial()
+@@ -331,11 +332,12 @@ class rectangleTracker(Tracker):
+         line.numVertices.setValue(5)
+         self.coords = coin.SoCoordinate3()  # this is the coordinate
+         # fmt: off
+-        self.coords.point.setValues(0, 50, [[0, 0, 0],
+-                                            [2, 0, 0],
+-                                            [2, 2, 0],
+-                                            [0, 2, 0],
+-                                            [0, 0, 0]])
++        # as many points as given: more would read past the list
++        self.coords.point.setValues(0, 5, [[0, 0, 0],
++                                           [2, 0, 0],
++                                           [2, 2, 0],
++                                           [0, 2, 0],
++                                           [0, 0, 0]])
+         # fmt: on
+         if face:
+             m1 = coin.SoMaterial()
+-- 
+2.43.0
+

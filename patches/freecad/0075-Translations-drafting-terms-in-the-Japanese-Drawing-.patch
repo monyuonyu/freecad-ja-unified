@@ -1,7 +1,7 @@
 From 673a048d889ca10d6e038f95e5082e18f9762ffb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:40:51 +0900
-Subject: [PATCH 075/197] Translations: drafting terms in the Japanese Drawing
+Subject: [PATCH 075/200] Translations: drafting terms in the Japanese Drawing
  menu
 
 New view, projection group, section view, detail view and balloon use

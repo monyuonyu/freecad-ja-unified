@@ -1,7 +1,7 @@
 From cb6a52df66d03745b2546338533429241d3494f5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 22:08:19 +0900
-Subject: [PATCH 181/197] Gui: A bare number from the expression editor takes
+Subject: [PATCH 181/200] Gui: A bare number from the expression editor takes
  the displayed unit
 
 Since c15232437 a number entered with the expression editor was

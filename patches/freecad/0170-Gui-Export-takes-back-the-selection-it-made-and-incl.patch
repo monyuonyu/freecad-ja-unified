@@ -1,7 +1,7 @@
 From b7c8569713531af852e22ec46a37c529b11c6d93 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:33 +0900
-Subject: [PATCH 170/197] Gui: Export takes back the selection it made and
+Subject: [PATCH 170/200] Gui: Export takes back the selection it made and
  includes links
 
 With nothing selected the export selected the visible parts and left

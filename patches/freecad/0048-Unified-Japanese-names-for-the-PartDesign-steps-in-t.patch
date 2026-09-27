@@ -1,7 +1,7 @@
 From df72b4fa67e326f072378425acf214443ebf93ec Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:36:54 +0900
-Subject: [PATCH 048/197] Unified: Japanese names for the PartDesign steps in
+Subject: [PATCH 048/200] Unified: Japanese names for the PartDesign steps in
  the undo list
 
 The undo and redo lists showed "Make Pad", "Make Fillet", ... because

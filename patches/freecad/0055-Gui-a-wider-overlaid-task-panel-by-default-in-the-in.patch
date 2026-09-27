@@ -1,7 +1,7 @@
 From 40fc23a159f0fd7d05bd6cb76c79d634dd52be07 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:56:19 +0900
-Subject: [PATCH 055/197] Gui: a wider overlaid task panel by default in the
+Subject: [PATCH 055/200] Gui: a wider overlaid task panel by default in the
  integrated environment
 
 The right overlay took the main window's minimum width (about 350 px),

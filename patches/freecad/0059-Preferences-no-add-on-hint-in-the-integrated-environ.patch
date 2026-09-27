@@ -1,7 +1,7 @@
 From 55da3ead714af5a02baa28308f400dcda931ad4d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:06:44 +0900
-Subject: [PATCH 059/197] Preferences: no add-on hint in the integrated
+Subject: [PATCH 059/200] Preferences: no add-on hint in the integrated
  environment, TechDraw pages as "drawings" in Japanese
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

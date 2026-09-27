@@ -1,7 +1,7 @@
 From 535c59993a52cd86859240bf983caaa3e077035f Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Sat, 25 Jul 2026 15:11:34 -0600
-Subject: [PATCH 149/197] Gui: Close combo popup on the closeEditor() teardown
+Subject: [PATCH 149/200] Gui: Close combo popup on the closeEditor() teardown
  path
 
 The enum QComboBox popup UAF has one more destroyer that the previous fixes

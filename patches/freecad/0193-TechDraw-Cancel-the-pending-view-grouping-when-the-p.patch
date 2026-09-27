@@ -1,7 +1,7 @@
 From c8adc2e798149bc370232a2a4381179aae312392 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 00:25:04 +0900
-Subject: [PATCH 193/197] TechDraw: Cancel the pending view grouping when the
+Subject: [PATCH 193/200] TechDraw: Cancel the pending view grouping when the
  page goes away
 
 The grouping of new views, deferred to the event loop by 405acd297, ran

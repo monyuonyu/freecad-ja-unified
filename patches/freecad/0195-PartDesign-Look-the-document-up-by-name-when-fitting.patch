@@ -1,7 +1,7 @@
 From be0548c594fd2109fdccd8ca474279dcd56b08d1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 00:25:04 +0900
-Subject: [PATCH 195/197] PartDesign: Look the document up by name when fitting
+Subject: [PATCH 195/200] PartDesign: Look the document up by name when fitting
  the view for a new sketch
 
 The deferred fit kept a raw pointer to the document, which a script

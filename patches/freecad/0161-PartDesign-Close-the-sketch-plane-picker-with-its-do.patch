@@ -1,7 +1,7 @@
 From 48870ba8a19b18d5a8c55ec25020a8b1d32501eb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:44:22 +0900
-Subject: [PATCH 161/197] PartDesign: Close the sketch plane picker with its
+Subject: [PATCH 161/200] PartDesign: Close the sketch plane picker with its
  document and keep picks in the body
 
 The picker kept raw pointers to the sketch and body and stayed open when

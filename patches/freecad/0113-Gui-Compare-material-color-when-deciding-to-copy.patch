@@ -1,7 +1,7 @@
 From ee991392283b6be4339a1fc4cb4f8fc0238c606f Mon Sep 17 00:00:00 2001
 From: Chris Hennes <chennes@pioneerlibrarysystem.org>
 Date: Sun, 13 Sep 2026 22:34:24 -0500
-Subject: [PATCH 113/197] Gui: Compare material color when deciding to copy
+Subject: [PATCH 113/200] Gui: Compare material color when deciding to copy
 
 ---
  src/Gui/ViewProviderGeometryObject.cpp     |  4 ++-

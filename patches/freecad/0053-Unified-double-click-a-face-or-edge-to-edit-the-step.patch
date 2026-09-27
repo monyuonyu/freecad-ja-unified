@@ -1,7 +1,7 @@
 From e562ec97c8299ed16bef569fcaec5d30338c2a88 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:51:35 +0900
-Subject: [PATCH 053/197] Unified: double-click a face or edge to edit the step
+Subject: [PATCH 053/200] Unified: double-click a face or edge to edit the step
  that made it
 
 A double-click on a face or edge in the 3D view opens the step that

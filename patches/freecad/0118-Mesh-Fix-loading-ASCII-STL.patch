@@ -1,7 +1,7 @@
 From 1b321b8dd1d51aedeedf4c0e1dd7e9457d440860 Mon Sep 17 00:00:00 2001
 From: wwmayer <wmayer@freecad.org>
 Date: Thu, 24 Sep 2026 17:55:50 +0200
-Subject: [PATCH 118/197] Mesh: Fix loading ASCII STL
+Subject: [PATCH 118/200] Mesh: Fix loading ASCII STL
 
 When counting the number of triangles then the error flag might be set
 to the input stream (in case the file doesn't end with a newline).

@@ -1,7 +1,7 @@
 From 60fdd2474cab88b1f17700343e784b6d62e875d8 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 22:08:20 +0900
-Subject: [PATCH 183/197] App: A document opened hidden does not become the
+Subject: [PATCH 183/200] App: A document opened hidden does not become the
  active one
 
 openDocument(hidden=True) made the hidden document active, which broke
