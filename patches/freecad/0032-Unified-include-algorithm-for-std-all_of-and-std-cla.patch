@@ -1,7 +1,7 @@
 From 55754e0d633b0915487401ffbbd25d5f745bc9c6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 07:46:44 +0900
-Subject: [PATCH 032/100] Unified: include <algorithm> for std::all_of and
+Subject: [PATCH 032/104] Unified: include <algorithm> for std::all_of and
  std::clamp
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

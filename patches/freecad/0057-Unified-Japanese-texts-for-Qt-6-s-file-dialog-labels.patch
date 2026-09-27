@@ -1,7 +1,7 @@
 From 1e44326f2e6eeb95a434e91e47383c5812ef8ee8 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:04:03 +0900
-Subject: [PATCH 057/100] Unified: Japanese texts for Qt 6's file dialog labels
+Subject: [PATCH 057/104] Unified: Japanese texts for Qt 6's file dialog labels
 
 Qt's own Japanese translation still has the Qt 5 texts ("Look in:"),
 while Qt 6 uses "&Look in:" and "Files of &type:", so the file dialogs

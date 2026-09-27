@@ -1,0 +1,56 @@
+From fb1b4089a15d0decb6766f2004eef37a67d5161a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:11:59 +0900
+Subject: [PATCH 103/104] Unified: find the FreeCADCmd of the bundle by its
+ name there; check in-process without it
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 0fdeb4981..01166145d 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -261,6 +261,19 @@ def _pair(a, b, need_touch, opt):
+     return res
+ 
+ 
++def _worker_exe():
++    """GUI の無い FreeCAD の実行ファイル（配り方によって名前が違う）。無ければ None"""
++    import os
++    import sys
++    bindir = os.path.join(App.getHomePath(), "bin")
++    names = ("FreeCADCmd.exe", "freecadcmd.exe") if sys.platform == "win32" else ("FreeCADCmd", "freecadcmd")
++    for name in names:
++        path = os.path.join(bindir, name)
++        if os.path.exists(path):
++            return path
++    return None
++
++
+ class _Background:
+     """重なりの計算を別のプロセス（GUI の無い FreeCAD）で行う。その間も画面は動き、止めるときはプロセスを
+     終わらせるだけで済む（同じプロセスで計算すると、計算の間は FreeCAD がマウスの操作を受け付けない）"""
+@@ -286,7 +299,7 @@ class _Background:
+         jobfile = os.path.join(self.dir, "jobs.json")
+         with open(jobfile, "w") as f:
+             json.dump({"opt": opt, "jobs": items}, f)
+-        exe = os.path.join(App.getHomePath(), "bin", "FreeCADCmd.exe" if sys.platform == "win32" else "FreeCADCmd")
++        exe = _worker_exe()
+         here = os.path.dirname(os.path.abspath(__file__))
+         code = "import sys; sys.path.insert(0, %r); import DesignCheck; DesignCheck.worker_main(%r)" % (here, jobfile)
+         self.proc = subprocess.Popen([exe, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+@@ -363,7 +376,7 @@ def iter_interference(doc, issues, opt, shapes):
+         return translate("DesignCheck", "Checking whether {0} and {1} overlap").format(
+             doc.getObject(na).Label, doc.getObject(nb).Label)
+ 
+-    if opt.get("background") and pairs:
++    if opt.get("background") and pairs and _worker_exe() is not None:
+         # まだ結果を覚えていない組を、別のプロセスでまとめて計算する（浮きのための距離も全部の組で測る）
+         todo = [k for k, ((_, a), (_, b)) in enumerate(pairs) if _pair_cached(_pair_key(a, b), need_touch) is None]
+         if todo:
+-- 
+2.43.0
+

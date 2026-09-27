@@ -1,0 +1,25 @@
+From 1538af82cce3b735d92a725587de84f6f4302247 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:12:09 +0900
+Subject: [PATCH 104/104] Unified: drop an unused import
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 01166145d..a9a54e50c 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -283,7 +283,6 @@ class _Background:
+         import os
+         import queue
+         import subprocess
+-        import sys
+         import tempfile
+         import threading
+ 
+-- 
+2.43.0
+

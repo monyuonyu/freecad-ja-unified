@@ -1,7 +1,7 @@
 From da0ce0f5708cbebb3e37a2bfaf36931cbef39ba0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:10:06 +0900
-Subject: [PATCH 061/100] Unified: Japanese name for the base shape of a part
+Subject: [PATCH 061/104] Unified: Japanese name for the base shape of a part
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---

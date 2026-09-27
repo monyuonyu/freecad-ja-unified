@@ -1,7 +1,7 @@
 From 1028b96a7c2a7ddbf61099e6762de9a6fdfa1494 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 12:51:13 +0900
-Subject: [PATCH 086/100] Sketcher: show the real default of 'Esc leaves the
+Subject: [PATCH 086/104] Sketcher: show the real default of 'Esc leaves the
  sketch' in the preferences
 
 In the integrated environment Esc does not leave the sketch by default, but

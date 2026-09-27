@@ -1,7 +1,7 @@
 From f99678841eaeff77781ee82aaf2e22d291fc62f6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 07:58:07 +0900
-Subject: [PATCH 035/100] Unified: names under the icons of the main toolbars,
+Subject: [PATCH 035/104] Unified: names under the icons of the main toolbars,
  plain names for Boolean and Check Geometry
 
 The toolbars with the main modelling flow show the command names under

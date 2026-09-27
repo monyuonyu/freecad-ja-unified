@@ -1,7 +1,7 @@
 From 265c90719dfb3fc499de16f3babfb40e857b6a8d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:13:09 +0900
-Subject: [PATCH 062/100] PartDesign: any tool on an imported solid without
+Subject: [PATCH 062/104] PartDesign: any tool on an imported solid without
  asking for a body
 
 The previous change covered only new sketches. In the integrated

@@ -1,7 +1,7 @@
 From 93e3b8fdb05e6de6fd5bb9f184e0c39b0505e82a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:21:45 +0900
-Subject: [PATCH 006/100] Core: save user.cfg/system.cfg only when a parameter
+Subject: [PATCH 006/104] Core: save user.cfg/system.cfg only when a parameter
  changed
 
 Every run, including 'FreeCADCmd -c pass', rewrote both parameter files

@@ -1,7 +1,7 @@
 From 5c063cd6cbff88432d025ac4be4983625dc72205 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 11:51:57 +0900
-Subject: [PATCH 084/100] Unified: design check finds drawing dimensions that
+Subject: [PATCH 084/104] Unified: design check finds drawing dimensions that
  lost their geometry
 
 TechDraw dimensions whose edge or vertex is gone keep showing an old

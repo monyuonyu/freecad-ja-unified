@@ -1,0 +1,620 @@
+From 88a8ab4f36dc4db24af24c5dfb5597d03c37ff01 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:11:48 +0900
+Subject: [PATCH 102/104] Unified: the design check shows its progress, can be
+ cancelled, and does not freeze the GUI
+
+The overlap of each pair of parts can take seconds, and while OCC computes
+FreeCAD does not take mouse input. In the GUI the pairs are now computed in
+a separate FreeCADCmd process (shapes passed as BREP files, one JSON line
+per pair), so the view stays usable; cancelling ends the process. The
+panel shows what is being checked and 'n / m pairs' with a Cancel button
+(also for 'Fix all'), the status bar shows 'Checking n/m' with a Stop
+button. Scripts and the CLI still check in the same process.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py                | 201 +++++++++++++++---
+ src/Mod/Unified/DesignCheckGui.py             | 185 ++++++++++++++--
+ .../Gui/Resources/translations/Unified_ja.ts  |  48 +++++
+ 3 files changed, 383 insertions(+), 51 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 19e075b63..0fdeb4981 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -218,12 +218,26 @@ def _fingerprint(s):
+             tuple(round(v, 3) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)))
+ 
+ 
+-def _pair(a, b, need_touch, opt):
++def _pair_key(a, b):
+     fa, fb = _fingerprint(a), _fingerprint(b)
+-    key = (fa, fb) if fa <= fb else (fb, fa)
++    return (fa, fb) if fa <= fb else (fb, fa)
++
++
++def _pair_cached(key, need_touch):
+     hit = _PAIR_CACHE.get(key)
+     if hit is not None and (hit[2] is not None or not need_touch):
+         return hit
++    return None
++
++
++def _remember(key, res):
++    if len(_PAIR_CACHE) > 20000:
++        _PAIR_CACHE.clear()
++    _PAIR_CACHE[key] = res
++
++
++def _pair_compute(a, b, need_touch, opt):
++    """2 つの形の (重なりの体積, 重なりの中心, 接しているか)。重い（形によっては 1 組に数秒）"""
+     try:
+         c = a.common(b)
+         v = c.Volume
+@@ -235,41 +249,157 @@ def _pair(a, b, need_touch, opt):
+         touch = True
+     elif need_touch:
+         touch = a.distToShape(b)[0] <= opt["touch_mm"]
+-    res = (v, center, touch)
+-    if len(_PAIR_CACHE) > 20000:
+-        _PAIR_CACHE.clear()
+-    _PAIR_CACHE[key] = res
++    return (v, center, touch)
++
++
++def _pair(a, b, need_touch, opt):
++    key = _pair_key(a, b)
++    res = _pair_cached(key, need_touch)
++    if res is None:
++        res = _pair_compute(a, b, need_touch, opt)
++        _remember(key, res)
+     return res
+ 
+ 
++class _Background:
++    """重なりの計算を別のプロセス（GUI の無い FreeCAD）で行う。その間も画面は動き、止めるときはプロセスを
++    終わらせるだけで済む（同じプロセスで計算すると、計算の間は FreeCAD がマウスの操作を受け付けない）"""
++
++    def __init__(self, jobs, opt):
++        import json
++        import os
++        import queue
++        import subprocess
++        import sys
++        import tempfile
++        import threading
++
++        self.dir = tempfile.mkdtemp(prefix="designcheck-")
++        paths = {}
++        items = []
++        for a, b, need_touch in jobs:
++            for s in (a, b):
++                if id(s) not in paths:
++                    paths[id(s)] = os.path.join(self.dir, "%d.brep" % len(paths))
++                    s.exportBrep(paths[id(s)])
++            items.append({"a": paths[id(a)], "b": paths[id(b)], "touch": need_touch})
++        jobfile = os.path.join(self.dir, "jobs.json")
++        with open(jobfile, "w") as f:
++            json.dump({"opt": opt, "jobs": items}, f)
++        exe = os.path.join(App.getHomePath(), "bin", "FreeCADCmd.exe" if sys.platform == "win32" else "FreeCADCmd")
++        here = os.path.dirname(os.path.abspath(__file__))
++        code = "import sys; sys.path.insert(0, %r); import DesignCheck; DesignCheck.worker_main(%r)" % (here, jobfile)
++        self.proc = subprocess.Popen([exe, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
++                                     stdin=subprocess.DEVNULL, text=True)
++        self.results = queue.Queue()
++
++        def read():
++            for line in self.proc.stdout:
++                if line.startswith("{"):
++                    self.results.put(json.loads(line))
++            self.results.put(None)
++        threading.Thread(target=read, daemon=True).start()
++
++    def close(self):
++        import shutil
++        if self.proc.poll() is None:
++            self.proc.kill()
++        try:
++            self.proc.wait(timeout=5)
++        except Exception:
++            pass
++        shutil.rmtree(self.dir, ignore_errors=True)
++
++
++def worker_main(jobfile):
++    """別のプロセスでの重なりの計算（_Background から呼ばれる）。1 組ごとに結果を 1 行の JSON で出す"""
++    import json
++    import sys
++    with open(jobfile) as f:
++        job = json.load(f)
++    shapes = {}
++
++    def load(path):
++        if path not in shapes:
++            s = Part.Shape()
++            s.read(path)
++            shapes[path] = s
++        return shapes[path]
++    for i, j in enumerate(job["jobs"]):
++        v, center, touch = _pair_compute(load(j["a"]), load(j["b"]), j["touch"], job["opt"])
++        sys.stdout.write(json.dumps({"i": i, "v": v, "center": None if center is None else list(center),
++                                     "touch": touch}) + "\n")
++        sys.stdout.flush()
++
++
+ def check_interference(doc, issues, opt, shapes):
+     """部品どうしの干渉。opt["floating"] が真なら、どこにも接していない部品も調べる（重いので手動の検査だけ）"""
+     for _ in iter_interference(doc, issues, opt, shapes):
+         pass
+ 
+ 
++class Progress:
++    """検査の途中経過（iter_run が yield する）: done / total 組目、いま何をしているか。
++    waiting が真なら、別のプロセスの計算を待っているだけ（呼ぶ側は少し間を空けてよい）"""
++
++    def __init__(self, done, total, message):
++        self.done = done
++        self.total = total
++        self.message = message
++        self.waiting = False
++
++
+ def iter_interference(doc, issues, opt, shapes):
+-    """check_interference の中身。部品の組を 1 つ調べるごとに yield する（画面を止めずに少しずつ進めるため）"""
++    """check_interference の中身。部品の組を調べる前に Progress を yield する（画面を止めずに少しずつ進め、
++    何をしているかを見せ、途中で止められるように）"""
+     items = list(shapes.items())
+     need_touch = opt.get("floating", True) and len(shapes) >= 2
+     touch = {n: False for n in shapes}
+-    for i in range(len(items)):
+-        for j in range(i + 1, len(items)):
+-            (na, a), (nb, b) = items[i], items[j]
+-            if not a.BoundBox.intersect(b.BoundBox):
+-                continue
+-            # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
+-            pair_touch = need_touch and not (touch[na] and touch[nb])
+-            v, center, t = _pair(a, b, pair_touch, opt)
+-            if v > opt["interference_mm3"]:
+-                issues.append(Issue(ERROR, "interference",
+-                                    translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
+-                                        doc.getObject(na).Label, doc.getObject(nb).Label, v),
+-                                    [na, nb], center,
+-                                    fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None))
+-            if t:
+-                touch[na] = touch[nb] = True
+-            yield
++    # 外形の箱が重ならない組は調べない。残りの数が進み具合の分母
++    pairs = [(items[i], items[j]) for i in range(len(items)) for j in range(i + 1, len(items))
++             if items[i][1].BoundBox.intersect(items[j][1].BoundBox)]
++    def message(k):
++        (na, _), (nb, _) = pairs[k]
++        return translate("DesignCheck", "Checking whether {0} and {1} overlap").format(
++            doc.getObject(na).Label, doc.getObject(nb).Label)
++
++    if opt.get("background") and pairs:
++        # まだ結果を覚えていない組を、別のプロセスでまとめて計算する（浮きのための距離も全部の組で測る）
++        todo = [k for k, ((_, a), (_, b)) in enumerate(pairs) if _pair_cached(_pair_key(a, b), need_touch) is None]
++        if todo:
++            import queue
++            bg = _Background([(pairs[k][0][1], pairs[k][1][1], need_touch) for k in todo], opt)
++            try:
++                done = len(pairs) - len(todo)
++                while done < len(pairs):
++                    try:
++                        r = bg.results.get_nowait()
++                    except queue.Empty:
++                        p = Progress(done, len(pairs), message(todo[done - (len(pairs) - len(todo))]))
++                        p.waiting = True
++                        yield p
++                        continue
++                    if r is None:
++                        break  # 途中で終わった（残りはこのプロセスで計算する）
++                    (_, a), (_, b) = pairs[todo[r["i"]]]
++                    center = None if r["center"] is None else App.Vector(*r["center"])
++                    _remember(_pair_key(a, b), (r["v"], center, r["touch"]))
++                    done += 1
++            finally:
++                bg.close()
++    for k, ((na, a), (nb, b)) in enumerate(pairs):
++        yield Progress(k, len(pairs), message(k))
++        # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
++        pair_touch = need_touch and not (touch[na] and touch[nb])
++        v, center, t = _pair(a, b, pair_touch, opt)
++        if v > opt["interference_mm3"]:
++            issues.append(Issue(ERROR, "interference",
++                                translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
++                                    doc.getObject(na).Label, doc.getObject(nb).Label, v),
++                                [na, nb], center,
++                                fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None))
++        if t:
++            touch[na] = touch[nb] = True
+     if need_touch:
+         for n, t in touch.items():
+             if not t:
+@@ -458,13 +588,24 @@ def fix(doc, issue):
+     return msg
+ 
+ 
+-def fix_all(doc, **options):
++def fix_all(doc, progress=None, **options):
+     """直せるものを 1 つずつ直す（1 つ直すと他の結果も変わるので、そのたびに検査し直す）。
+-    したことを [{"ok": 直せたか, "message": 説明}] で返す"""
++    したことを [{"ok": 直せたか, "message": 説明}] で返す。
++    progress(Progress) が False を返したら、そこで止める（それまでに直したものは残る）"""
+     done = []
+     tried = set()
+     for _ in range(50):
+-        todo = [i for i in run(doc, **options)
++        result = Issues()
++        steps = iter_run(doc, **options)
++        try:
++            for r in steps:
++                if isinstance(r, Issues):
++                    result = r
++                elif progress is not None and progress(r) is False:
++                    return done
++        finally:
++            steps.close()  # 別のプロセスで計算していれば止める
++        todo = [i for i in result
+                 if i.fix is not None and (i.rule, tuple(i.objects)) not in tried]
+         if not todo:
+             break
+@@ -516,25 +657,25 @@ def run(doc=None, **options):
+     """doc を検査して Issue のリストを返す（重い順）"""
+     result = Issues()
+     for r in iter_run(doc, **options):
+-        if r is not None:
++        if isinstance(r, Issues):
+             result = r
+     return result
+ 
+ 
+ def iter_run(doc=None, **options):
+-    """run を少しずつ進める版。途中は None を、最後に Issue のリストを yield する"""
++    """run を少しずつ進める版。途中は Progress を、最後に Issues を yield する"""
+     doc = doc or App.ActiveDocument
+     if doc is None:
+         yield Issues()
+         return
+     opt = dict(DEFAULTS, **options)
+     issues = []
++    yield Progress(0, 0, translate("DesignCheck", "Checking the steps, shapes, sketches and drawings"))
+     shapes = parts(doc)
+     check_features(doc, issues, opt)
+     check_shapes(doc, issues, opt, shapes)
+     check_sketches(doc, issues, opt)
+     check_drawings(doc, issues, opt)
+-    yield None
+     yield from iter_interference(doc, issues, opt, shapes)
+     kept = Issues(i for i in issues if not _is_ignored(doc, i))
+     kept.ignored = len(issues) - len(kept)
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index de4d91b11..a5215b188 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -110,6 +110,30 @@ class Panel:
+         self.head = QtWidgets.QLabel()
+         self.head.setWordWrap(True)
+         lay.addWidget(self.head)
++        # 検査・まとめて直す間の進み具合（何をしているか・何組目か）と中止
++        self.busy_box = QtWidgets.QWidget()
++        busy = QtWidgets.QVBoxLayout(self.busy_box)
++        busy.setContentsMargins(0, 0, 0, 0)
++        self.busy_text = QtWidgets.QLabel()
++        self.busy_text.setWordWrap(True)
++        busy.addWidget(self.busy_text)
++        brow = QtWidgets.QHBoxLayout()
++        self.busy_bar = QtWidgets.QProgressBar()
++        brow.addWidget(self.busy_bar, 1)
++        self.cancel_btn = QtWidgets.QPushButton(translate("DesignCheck", "Cancel"))
++        self.cancel_btn.clicked.connect(self.on_cancel)
++        # 形の計算の間、FreeCAD は画面の操作を止めるが、このボタンだけは押せるようにする
++        self.cancel_btn.setProperty("allowInputWhileBusy", True)
++        brow.addWidget(self.cancel_btn)
++        busy.addLayout(brow)
++        self.busy_box.hide()
++        lay.addWidget(self.busy_box)
++        self._steps = None
++        self._cancelled = False
++        self._timer = QtCore.QTimer()
++        self._timer.setSingleShot(True)
++        self._timer.setInterval(0)
++        self._timer.timeout.connect(self._step)
+         self.tree = QtWidgets.QTreeWidget()
+         self.tree.setHeaderLabels([translate("DesignCheck", "Kind"), translate("DesignCheck", "What")])
+         self.tree.setRootIsDecorated(False)
+@@ -147,23 +171,87 @@ class Panel:
+         self.ignore_btn.setEnabled(False)
+         self.ignore_btn.clicked.connect(self.on_ignore)
+         row.addWidget(self.ignore_btn)
+-        again = QtWidgets.QPushButton(translate("DesignCheck", "Check again"))
+-        again.clicked.connect(self.refresh)
+-        row.addWidget(again)
++        self.again_btn = QtWidgets.QPushButton(translate("DesignCheck", "Check again"))
++        self.again_btn.clicked.connect(self.refresh)
++        row.addWidget(self.again_btn)
+         lay.addLayout(row)
+         self.issues = DesignCheck.Issues()
+         self.refresh()
+ 
+     def refresh(self):
++        """検査を始める。部品の組ごとに少しずつ進めるので、その間も画面は動き、中止できる"""
+         if self.doc is None:
+             self.head.setText(translate("DesignCheck", "No document is open."))
+             return
+-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        indicator.stop()  # 常時の検査と二重に走らせない
++        self.doc.recompute()
++        self._close_steps()
++        self._steps = DesignCheck.iter_run(self.doc, background=True)
++        self._cancelled = False
++        self._set_busy(True)
++        self._timer.start()
++
++    def _step(self):
++        if self._steps is None:
++            return
++        gen = self._steps
+         try:
+-            self.doc.recompute()
+-            self.issues = DesignCheck.run(self.doc)
+-        finally:
+-            QtWidgets.QApplication.restoreOverrideCursor()
++            # 形の計算の間も FreeCAD は画面の処理を回すので、その間にキャンセルされることがある
++            r = next(gen)
++        except StopIteration:
++            r = None
++        except Exception as e:
++            self._steps = None
++            self._set_busy(False)
++            self.head.setText(translate("DesignCheck", "The check stopped with an error: {0}").format(e))
++            return
++        if self._steps is not gen:
++            return  # 計算の最中にキャンセルされた（または始め直した）
++        if r is None or isinstance(r, DesignCheck.Issues):
++            self._steps = None
++            self._set_busy(False)
++            if r is not None:
++                self._show(r)
++            return
++        self._show_progress(r)
++        # 別のプロセスの計算を待っているだけなら、少し間を空けて見に行く
++        self._timer.start(30 if r.waiting else 0)
++
++    def _show_progress(self, p):
++        self.busy_text.setText(p.message)
++        if p.total:
++            self.busy_bar.setRange(0, p.total)
++            self.busy_bar.setValue(p.done)
++            self.busy_bar.setFormat(translate("DesignCheck", "%v / %m pairs"))
++        else:
++            self.busy_bar.setRange(0, 0)  # まだ数が分からない: 動いていることだけ示す
++
++    def _set_busy(self, busy):
++        self.busy_box.setVisible(busy)
++        for w in (self.fix_btn, self.fix_all_btn, self.ignore_btn, self.ai_btn, self.again_btn):
++            w.setEnabled(not busy and w in (self.again_btn,))
++        self.tree.setEnabled(not busy)
++        if busy:
++            self.busy_text.setText(translate("DesignCheck", "Checking…"))
++            self.busy_bar.setRange(0, 0)
++
++    def _close_steps(self):
++        if self._steps is not None:
++            steps, self._steps = self._steps, None
++            steps.close()  # 別のプロセスで計算していれば止める
++
++    def on_cancel(self):
++        self._cancelled = True
++        self.busy_text.setText(translate("DesignCheck", "Stopping after the current pair…"))
++        if self._steps is not None:
++            self._close_steps()
++            self._set_busy(False)
++            self.head.setText(translate("DesignCheck", "The check was cancelled. The list below is from the "
++                                                       "previous check."))
++            self.fix_all_btn.setEnabled(any(i.fix for i in self.issues))
++
++    def _show(self, issues):
++        self.issues = issues
+         self.tree.clear()
+         for i in self.issues:
+             text = translate("DesignCheck", DesignCheck.RULES[i.rule]) + "\n" + i.message
+@@ -241,17 +329,30 @@ class Panel:
+ 
+     def on_fix_all(self):
+         self.doc.openTransaction(translate("DesignCheck", "Fix all design check problems"))
+-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        self._cancelled = False
++        self._set_busy(True)
++
++        def progress(p):
++            # 直すたびに検査し直すので、その進み具合を見せ、中止を受け付ける
++            self._show_progress(p)
++            QtWidgets.QApplication.processEvents()
++            if p.waiting:
++                QtCore.QThread.msleep(20)
++            return not self._cancelled
+         try:
+-            done = DesignCheck.fix_all(self.doc)
++            done = DesignCheck.fix_all(self.doc, progress=progress, background=True)
+         finally:
+-            QtWidgets.QApplication.restoreOverrideCursor()
++            self._set_busy(False)
+         self.doc.commitTransaction()
++        cancelled = self._cancelled
+         marker.clear()
+         self.refresh()
+-        self._report([translate("DesignCheck", "Fixed: {0}").format(d["message"]) if d["ok"]
+-                      else translate("DesignCheck", "Could not fix: {0}").format(d["message"]) for d in done]
+-                     or [translate("DesignCheck", "Nothing to fix.")])
++        lines = [translate("DesignCheck", "Fixed: {0}").format(d["message"]) if d["ok"]
++                 else translate("DesignCheck", "Could not fix: {0}").format(d["message"]) for d in done]
++        if cancelled:
++            lines.append(translate("DesignCheck", "Cancelled. What was fixed so far stays "
++                                                  "(one undo step reverts it)."))
++        self._report(lines or [translate("DesignCheck", "Nothing to fix.")])
+ 
+     def on_ignore(self):
+         items = self.tree.selectedItems()
+@@ -269,6 +370,8 @@ class Panel:
+         return QtWidgets.QDialogButtonBox.Close
+ 
+     def reject(self):
++        self._close_steps()
++        self._cancelled = True
+         marker.clear()
+         Gui.Control.closeDialog()
+         return True
+@@ -324,6 +427,16 @@ class Indicator:
+         self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
+         mw.statusBar().addPermanentWidget(self.button)
+         self.button.hide()
++        # 走っている間だけ出る中止ボタン
++        self.cancel_button = QtWidgets.QToolButton()
++        self.cancel_button.setAutoRaise(True)
++        self.cancel_button.setText(translate("DesignCheck", "Stop"))
++        self.cancel_button.setToolTip(translate("DesignCheck", "Stop this check (it runs again after the next change)"))
++        self.cancel_button.clicked.connect(self.stop)
++        self.cancel_button.setProperty("allowInputWhileBusy", True)
++        mw.statusBar().addPermanentWidget(self.cancel_button)
++        self.cancel_button.hide()
++        self.last = None
+         App.addDocumentObserver(self)
+ 
+     # ドキュメントの見張り
+@@ -350,35 +463,65 @@ class Indicator:
+             self.button.hide()
+             return
+         # 自動の検査では重い「浮き」を省く（手で開いた一覧では調べる）
+-        self.steps = DesignCheck.iter_run(doc, floating=False)
++        self.stop()
++        self.steps = DesignCheck.iter_run(doc, floating=False, background=True)
+         self.step_doc = doc
+         self.step_timer.start()
+ 
++    def stop(self):
++        """走っている検査をやめる。表示は前の結果に戻す"""
++        self.step_timer.stop()
++        running = self.steps is not None
++        if running:
++            steps, self.steps = self.steps, None
++            steps.close()  # 別のプロセスで計算していれば止める
++        if self.button is not None:
++            self.cancel_button.hide()
++            if running:
++                if self.last is not None:
++                    self.update_from(self.last)
++                else:
++                    self.button.hide()  # まだ結果が無い
++
+     def step(self):
+         if self.steps is None:
+             return
+         if self.step_doc is not App.ActiveDocument or Gui.Control.activeDialog():
+             # 別の文書に移った・編集が始まった: 途中の検査は捨てる（次の再計算でやり直す）
+-            self.steps = None
++            self.stop()
+             return
++        gen = self.steps
+         try:
+-            r = next(self.steps)
++            # 形の計算の間も FreeCAD は画面の処理を回すので、その間に中止されることがある
++            r = next(gen)
+         except StopIteration:
+-            self.steps = None
++            if self.steps is gen:
++                self.stop()
+             return
+         except Exception as e:
+-            self.steps = None
++            self.stop()
+             App.Console.PrintLog("DesignCheck: %s\n" % e)
+             return
+-        if r is not None:
++        if self.steps is not gen:
++            return  # 計算の最中に中止された（または始め直した）
++        if isinstance(r, DesignCheck.Issues):
+             self.steps = None
++            self.cancel_button.hide()
+             self.update_from(DesignCheck.summary(r))
+             return
+-        self.step_timer.start()
++        if r.total:
++            # 部品の組を調べている間: 何組目かと、いま何を調べているか
++            self.button.setText(translate("DesignCheck", "Checking {0}/{1}").format(r.done + 1, r.total))
++            self.button.setToolTip(r.message)
++            self.button.show()
++            self.cancel_button.show()
++        self.step_timer.start(30 if r.waiting else 0)
+ 
+     def update_from(self, sm):
+         if self.button is None:
+             return
++        self.last = sm
++        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
+         worst = DesignCheck.ERROR if sm[DesignCheck.ERROR] else DesignCheck.WARNING if sm[DesignCheck.WARNING] else None
+         self.button.setIcon(_dot(_COLORS[worst]) if worst else _dot("#5cb85c"))
+         if not sm[DesignCheck.ERROR] and not sm[DesignCheck.WARNING]:
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 927b19f3c..17e6d3389 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -700,6 +700,54 @@
+         <source>The design check reports: {0} — {1}. Find the cause and fix it.</source>
+         <translation>設計の検査で指摘が出ています: {0} — {1}。原因を調べて直してください。</translation>
+     </message>
++    <message>
++        <source>Checking whether {0} and {1} overlap</source>
++        <translation>{0} と {1} が重なっていないか調べています</translation>
++    </message>
++    <message>
++        <source>Checking the steps, shapes, sketches and drawings</source>
++        <translation>手順・形・スケッチ・図面を調べています</translation>
++    </message>
++    <message>
++        <source>%v / %m pairs</source>
++        <translation>%v / %m 組</translation>
++    </message>
++    <message>
++        <source>Cancel</source>
++        <translation>キャンセル</translation>
++    </message>
++    <message>
++        <source>Checking…</source>
++        <translation>調べています…</translation>
++    </message>
++    <message>
++        <source>The check stopped with an error: {0}</source>
++        <translation>検査がエラーで止まりました: {0}</translation>
++    </message>
++    <message>
++        <source>The check was cancelled. The list below is from the previous check.</source>
++        <translation>検査を途中でやめました。下の一覧は前回の結果です。</translation>
++    </message>
++    <message>
++        <source>Cancelled. What was fixed so far stays (one undo step reverts it).</source>
++        <translation>途中でやめました。それまでに直した分は残っています（「元に戻す」1 回で戻せます）。</translation>
++    </message>
++    <message>
++        <source>Stop</source>
++        <translation>中止</translation>
++    </message>
++    <message>
++        <source>Stop this check (it runs again after the next change)</source>
++        <translation>この検査をやめる（次に形を変えたら、また調べます）</translation>
++    </message>
++    <message>
++        <source>Checking {0}/{1}</source>
++        <translation>検査中 {0}/{1}</translation>
++    </message>
++    <message>
++        <source>Stopping after the current pair…</source>
++        <translation>いま調べている組が終わったら止めます…</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_DesignCheck</name>
+-- 
+2.43.0
+

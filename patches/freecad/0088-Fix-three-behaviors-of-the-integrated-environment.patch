@@ -1,7 +1,7 @@
 From d27350d14facd758c5e271cc63cc790b8f8fd6b5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 12:51:29 +0900
-Subject: [PATCH 088/100] Fix three behaviors of the integrated environment
+Subject: [PATCH 088/104] Fix three behaviors of the integrated environment
 
 - 'New part' goes on to the sketch plane choice only when run from the
   toolbar or menu, not from a script (where the dialog stopped the script).

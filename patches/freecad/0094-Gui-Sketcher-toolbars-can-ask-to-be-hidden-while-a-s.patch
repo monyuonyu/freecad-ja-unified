@@ -1,7 +1,7 @@
 From f2fbaf09c002054b52ff187a21a215e7f66d8576 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:31:58 +0900
-Subject: [PATCH 094/100] Gui, Sketcher: toolbars can ask to be hidden while a
+Subject: [PATCH 094/104] Gui, Sketcher: toolbars can ask to be hidden while a
  sketch is edited
 
 ToolBarItem::hiddenWhileEditing; ToolBarManager collects the names in

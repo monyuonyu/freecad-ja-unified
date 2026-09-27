@@ -1,0 +1,82 @@
+From f3bebc12faab0daa51eaea722aced5188fd7cded Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:11:48 +0900
+Subject: [PATCH 101/104] Gui: widgets can stay usable while the application is
+ busy
+
+The wait cursor and the progress bar swallow mouse clicks while an
+operation runs. A widget (or a parent) with the dynamic property
+allowInputWhileBusy is let through, e.g. the Cancel button of a check.
+WaitCursor::allowsInputWhileBusy() is shared by both.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/ProgressBar.cpp |  2 +-
+ src/Gui/WaitCursor.cpp  | 12 +++++++++++-
+ src/Gui/WaitCursor.h    |  7 +++++++
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/ProgressBar.cpp b/src/Gui/ProgressBar.cpp
+index fe9ca4e25..cf8664145 100644
+--- a/src/Gui/ProgressBar.cpp
++++ b/src/Gui/ProgressBar.cpp
+@@ -674,7 +674,7 @@ bool ProgressBar::eventFilter(QObject* o, QEvent* e)
+             case QEvent::MouseMove:
+             case QEvent::NativeGesture:
+             case QEvent::ContextMenu: {
+-                if (!d->isModalDialog(o)) {
++                if (!d->isModalDialog(o) && !WaitCursor::allowsInputWhileBusy(o)) {
+                     return true;
+                 }
+             } break;
+diff --git a/src/Gui/WaitCursor.cpp b/src/Gui/WaitCursor.cpp
+index b46da3b20..c568d43ce 100644
+--- a/src/Gui/WaitCursor.cpp
++++ b/src/Gui/WaitCursor.cpp
+@@ -136,7 +136,7 @@ bool WaitCursorP::eventFilter(QObject* o, QEvent* e)
+     }
+     if (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonRelease
+         || e->type() == QEvent::MouseButtonDblClick) {
+-        if (isModalDialog(o)) {
++        if (isModalDialog(o) || WaitCursor::allowsInputWhileBusy(o)) {
+             return false;
+         }
+         if (this->flags & WaitCursor::MouseEvents) {
+@@ -148,6 +148,16 @@ bool WaitCursorP::eventFilter(QObject* o, QEvent* e)
+ 
+ int WaitCursor::instances = 0;
+ 
++bool WaitCursor::allowsInputWhileBusy(QObject* object)
++{
++    for (QObject* o = object; o; o = o->parent()) {
++        if (o->property("allowInputWhileBusy").toBool()) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ /**
+  * Constructs this object and shows the wait cursor immediately. If you need to open a dialog as
+  * long as an instance of WaitCursor exists you must call restoreCursor() before and setWaitCursor()
+diff --git a/src/Gui/WaitCursor.h b/src/Gui/WaitCursor.h
+index 3ed136629..e1c1c712b 100644
+--- a/src/Gui/WaitCursor.h
++++ b/src/Gui/WaitCursor.h
+@@ -90,6 +90,13 @@ public:
+      */
+     static void resume();
+ 
++    /**
++     * @brief Whether the widget (or one of its parents) stays usable while the application is
++     * busy: it has the dynamic property "allowInputWhileBusy" set to true, e.g. the Cancel
++     * button of a check that runs step by step. Used by the wait cursor and the progress bar.
++     */
++    static bool allowsInputWhileBusy(QObject* object);
++
+ private:
+     FilterEventsFlags filter;
+     static int instances;
+-- 
+2.43.0
+
