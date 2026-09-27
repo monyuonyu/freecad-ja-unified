@@ -1,0 +1,48 @@
+From ad2c25d0926617853da8ab4ab90af4e688a30208 Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Thu, 2 Jul 2026 10:11:32 -0700
+Subject: [PATCH 143/158] Gui: Fix property-editor editor use-after-free on
+ focus-out
+
+Clicking the 3D view while an inline property editor has focus delivers a
+FocusOut to the editor. PropertyItemDelegate::eventFilter forwards to
+QItemDelegate::eventFilter, which emits commitData(); for a property whose
+recompute changes the object's property set, commitData() then calls
+propertyModel->buildUp() synchronously. That performs a full model reset which
+destroys the persistent editor in place -- while Qt is still iterating that
+widget's event filters in sendThroughObjectEventFilters(), a use-after-free
+that crashes with EXC_BAD_ACCESS.
+
+Defer the buildUp() via a queued invocation so the model reset (and editor
+teardown) runs after control returns to the event loop, when the editor is no
+longer the receiver of an event being dispatched.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index 5066c2171..40da16cb2 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -281,7 +281,14 @@ void PropertyEditor::commitData(QWidget* editor)
+     committing = false;
+     if (delaybuild) {
+         delaybuild = false;
+-        propertyModel->buildUp(PropertyModel::PropertyList());
++        // commitData() can run while a FocusOut is being delivered to the editor, and
++        // buildUp() resets the model, destroying that editor in place. Defer the
++        // rebuild until control returns to the event loop.
++        QMetaObject::invokeMethod(
++            this,
++            [this]() { propertyModel->buildUp(PropertyModel::PropertyList()); },
++            Qt::QueuedConnection
++        );
+     }
+ }
+ 
+-- 
+2.43.0
+

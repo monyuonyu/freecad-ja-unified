@@ -1,0 +1,64 @@
+From c69d83d5764575db5ed265d6d9e50e0c2a47a7f4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 19:21:51 +0900
+Subject: [PATCH 139/158] Windows installer: install apart from FreeCAD when
+ the build has its own settings
+
+APP_NAME, which names the installation folder, registry keys, shortcuts
+and uninstall entry, is the settings directory name (UserDataDirName) if
+the build sets one; APP_EXE keeps the executables' name.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/WindowsInstaller/include/declarations.nsh | 8 ++++----
+ package/WindowsInstaller/write_version_nsh.py     | 7 +++++--
+ 2 files changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/package/WindowsInstaller/include/declarations.nsh b/package/WindowsInstaller/include/declarations.nsh
+index cd2625697..89fc99319 100644
+--- a/package/WindowsInstaller/include/declarations.nsh
++++ b/package/WindowsInstaller/include/declarations.nsh
+@@ -30,11 +30,11 @@ Configuration and variables of FreeCAD installer
+ !define APP_WEBPAGE_INFO "${APP_NAME} Website"
+ !define APP_WIKI "https://wiki.freecad.org/Main_Page"
+ !define APP_WIKI_INFO "${APP_NAME} Wiki"
+-!define APP_COPYRIGHT "${APP_NAME} is Copyright © 2001-${COPYRIGHT_YEAR} by the ${APP_NAME} Team"
++!define APP_COPYRIGHT "${APP_EXE} is Copyright © 2001-${COPYRIGHT_YEAR} by the ${APP_EXE} Team"
+ 
+-!define APP_RUN "bin\${APP_NAME}.exe"
+-!define BIN_FREECAD "${APP_NAME}.exe"
+-!define BIN_FREECADCMD "${APP_NAME}cmd.exe"
++!define APP_RUN "bin\${APP_EXE}.exe"
++!define BIN_FREECAD "${APP_EXE}.exe"
++!define BIN_FREECADCMD "${APP_EXE}cmd.exe"
+ 
+ !define APP_REGKEY "SOFTWARE\${APP_NAME}${APP_SERIES_KEY}" # like "FreeCAD0180"
+ !define APP_REGKEY_SETUP "${APP_REGKEY}\Setup"
+diff --git a/package/WindowsInstaller/write_version_nsh.py b/package/WindowsInstaller/write_version_nsh.py
+index 6656c1430..144896f13 100644
+--- a/package/WindowsInstaller/write_version_nsh.py
++++ b/package/WindowsInstaller/write_version_nsh.py
+@@ -1,7 +1,9 @@
+ # SPDX-License-Identifier: LGPL-2.1-or-later
+ #
+ # this script is meant to be called by nsis installer scripts, it gets version information
+-# from freecad and writes version.nsh file in the directory the script is located at
++# from freecad and writes version.nsh file in the directory the script is located at.
++# APP_NAME names the installation (folder, registry, shortcuts): a build that keeps its settings
++# apart from FreeCAD's (UserDataDirName) installs apart as well. APP_EXE is the executables' name.
+ import FreeCAD
+ import datetime
+ import os
+@@ -14,7 +16,8 @@ content=f'''\
+ !define APP_VERSION_MINOR "{v[1]}"
+ !define APP_VERSION_PATCH "{v[2]}"
+ !define APP_VERSION_REVISION "{v[3].split()[0]}"
+-!define APP_NAME "{FreeCAD.ConfigGet('ExeName')}"
++!define APP_NAME "{FreeCAD.ConfigGet('UserDataDirName') or FreeCAD.ConfigGet('ExeName')}"
++!define APP_EXE "{FreeCAD.ConfigGet('ExeName')}"
+ '''
+ 
+ with open(filepath, "w", encoding="utf-8") as file:
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From ac5af27a328312dc26a24d4c58541301a90b1639 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:24:09 +0900
-Subject: [PATCH 070/137] Unified: a cancelled hole leaves no empty step in the
+Subject: [PATCH 070/158] Unified: a cancelled hole leaves no empty step in the
  undo list
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

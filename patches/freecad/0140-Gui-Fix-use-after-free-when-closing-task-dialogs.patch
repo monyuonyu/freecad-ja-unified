@@ -1,0 +1,45 @@
+From 9de0c7502b5ed425689da5005d0a725cf2b3f147 Mon Sep 17 00:00:00 2001
+From: alexdremov <dremov.me@gmail.com>
+Date: Wed, 9 Sep 2026 22:47:43 +0200
+Subject: [PATCH 140/158] Gui: Fix use-after-free when closing task dialogs
+
+removeDialog() deleted the task dialog, its button bar and its panel
+synchronously, while that memory was still referenced: the OK/Cancel
+click dispatch that led here is still unwinding through the button bar
+and focus chain ("Deleting a QObject while it is handling an event
+delivered to it can cause a crash", QObject destructor docs), and the
+dialog's own accept()/reject() frame can be on the stack when a
+re-entrant close reaches the delete.
+
+Defer the destruction with deleteLater(), as suggested in #31793 and
+matching what removeContextualPanel() already does. The dialog object
+itself is deferred too, not just the two widgets.
+
+Assisted-by: GLM-5.3-Flash (Z.ai)
+---
+ src/Gui/TaskView/TaskView.cpp | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/src/Gui/TaskView/TaskView.cpp b/src/Gui/TaskView/TaskView.cpp
+index 7a00505f9..5073708c0 100644
+--- a/src/Gui/TaskView/TaskView.cpp
++++ b/src/Gui/TaskView/TaskView.cpp
+@@ -703,9 +703,12 @@ void TaskView::removeDialog(std::vector<TaskInfo>::iterator infoIt)
+     if (remove) {
+         remove->ActiveDialog->closed();
+         remove->ActiveDialog->emitDestructionSignal();
+-        delete remove->ActiveCtrl;
+-        delete remove->ActiveDialog;
+-        delete remove->taskPanel;
++        // Defer the deletion: a dialog may still be on the stack here (e.g. its own
++        // accept()/reject() invocation, or a pending focus event referencing the
++        // widgets), so deleting synchronously would leave dangling users behind.
++        remove->ActiveCtrl->deleteLater();
++        remove->ActiveDialog->deleteLater();
++        remove->taskPanel->deleteLater();
+     }
+ 
+     tryRestoreWidth();
+-- 
+2.43.0
+

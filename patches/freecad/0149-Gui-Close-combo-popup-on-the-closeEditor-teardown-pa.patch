@@ -1,0 +1,49 @@
+From 535c59993a52cd86859240bf983caaa3e077035f Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Sat, 25 Jul 2026 15:11:34 -0600
+Subject: [PATCH 149/158] Gui: Close combo popup on the closeEditor() teardown
+ path
+
+The enum QComboBox popup UAF has one more destroyer that the previous fixes
+missed. releaseEditorFocus() now closes the drop-down on the model-reset
+(buildUp) and row-removal paths, but the normal enum-editing teardown goes
+through PropertyEditor::closeEditor() -> closePersistentEditor(), which frees
+the combo directly and never closed its popup.
+
+When the auto-opened drop-down is still open as closeEditor() runs (commit /
+focus-out), the popup window is freed without Qt's closePopup() teardown. A
+queued window-system mouse release is then delivered to the dead popup and
+routed back into QComboBoxPrivate::itemSelected() on the dangling combo box,
+crashing with EXC_BAD_ACCESS in doActivate() <- emitCurrentIndexChanged()
+(sender = freed QComboBox), with no FreeCAD frames on the stack.
+
+Close the popup with hidePopup() while the combo is still alive, right before
+closePersistentEditor(), mirroring the releaseEditorFocus() guard on the other
+teardown paths.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index 2f81f7ae8..2874eaa5d 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -332,6 +332,12 @@ void PropertyEditor::closeEditor()
+     if (editingIndex.isValid()) {
+         Base::StateLocker guard(closingEditor);
+         bool hasFocus = activeEditor && activeEditor->hasFocus();
++
++        // closePersistentEditor() below destroys the editor; close an open combo
++        // drop-down first so Qt tears the popup down normally (see releaseEditorFocus()).
++        if (auto* combo = qobject_cast<QComboBox*>(activeEditor.data())) {
++            combo->hidePopup();
++        }
+ #ifdef Q_OS_MACOS
+         // Brute-force workaround for https://github.com/FreeCAD/FreeCAD/issues/14350
+         int currentIndex = 0;
+-- 
+2.43.0
+

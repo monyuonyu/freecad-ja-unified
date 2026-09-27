@@ -1,0 +1,136 @@
+From 052b9f5ec302403c3bbdf64f9a7a14642b636d6a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 19:58:54 +0900
+Subject: [PATCH 158/158] Unified: Japanese for the detailed fillet and chamfer
+ failures
+
+The fillet and chamfer failures now say why (OCC's diagnostics): translate
+them, with patterns for the ones that name an edge contour or count edges
+or vertices.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ErrorMessages.cpp         | 15 ++++
+ .../translations/UnifiedWording_ja.ts         | 80 +++++++++++++++++++
+ 2 files changed, 95 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/ErrorMessages.cpp b/src/Mod/Unified/Gui/ErrorMessages.cpp
+index 9c39e5059..8b08af816 100644
+--- a/src/Mod/Unified/Gui/ErrorMessages.cpp
++++ b/src/Mod/Unified/Gui/ErrorMessages.cpp
+@@ -39,6 +39,21 @@ const Pattern patterns[] = {
+      QT_TRANSLATE_NOOP("UnifiedErrors", "Attachment placement cannot be calculated (%1)")},
+     {R"(makeOffset2D:\s*(.*))",
+      QT_TRANSLATE_NOOP("UnifiedErrors", "Offset failed (%1)")},
++    // Fillet failures with OCC's diagnostics: the number of the edge contour or of the edges
++    {R"(Fillet failed: could not trace the blending surface along edge contour (\d+)\..*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet: cannot trace the blend along edge contour %1")},
++    {R"(Fillet failed to start on edge contour (\d+):.*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet: cannot start on edge contour %1")},
++    {R"(Fillet failed on edge contour (\d+): the blending surface would be self-intersecting.*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet: blend on edge contour %1 intersects itself")},
++    {R"(Fillet failed on edge contour (\d+): OCC internal geometry error.*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet: kernel error on edge contour %1")},
++    {R"(Fillet failed on (\d+) edge contour\(s\)\..*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet failed on %1 edge contours")},
++    {R"(Fillet failed at (\d+) vertex/vertices\..*)",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet failed at %1 vertices")},
++    {R"(Fillet failed: (.*))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Fillet failed (%1)")},
+ };
+ // clang-format on
+ 
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 69305ae2d..295c690f6 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -8564,6 +8564,86 @@ Each unit is approximately 0.1mm wide</source>
+         <source>PropertyTopoShapeList::Copy encountered a null shape. Undo may not be possible.</source>
+         <translation>空の形がありました。元に戻せないかもしれません</translation>
+     </message>
++    <message>
++        <source>Chamfer failed: size is incompatible with the shape geometry. Reduce the size, select fewer edges, or ensure edges have sufficient width.</source>
++        <translation>面取りできません: 大きさがこの形に合いません。大きさを小さくするか、選ぶ辺を減らすか、辺の幅が足りているか確かめてください</translation>
++    </message>
++    <message>
++        <source>Chamfer failed: size may be too large for adjacent edges sharing a vertex. Reduce the size or chamfer edges individually.</source>
++        <translation>面取りできません: 1 つの角に集まる辺に対して、大きさが大きすぎるかもしれません。大きさを小さくするか、辺を 1 本ずつ面取りしてください</translation>
++    </message>
++    <message>
++        <source>Chamfer failed: the parameters are incompatible with this shape geometry. Try reducing the size, selecting fewer edges, or ensuring the selected edges have sufficient width.</source>
++        <translation>面取りできません: 設定がこの形に合いません。大きさを小さくするか、選ぶ辺を減らすか、辺の幅が足りているか確かめてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed at one or more vertices. The radius may be causing conflicts where edges meet. Try reducing the radius or filleting edges individually.</source>
++        <translation>丸められない頂点があります。辺が集まる所で丸めどうしがぶつかっているかもしれません。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed on selected edge(s). Reduce the radius or fillet edges individually.</source>
++        <translation>選んだ辺を丸められません。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed to start on selected edge: the radius may be too large. Reduce the radius or fillet this edge separately.</source>
++        <translation>選んだ辺で丸めを始められません。半径が大きすぎるかもしれません。半径を小さくするか、この辺だけ別に丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed: OCC internal geometry error. Check that selected edges are valid and the shape has no defects.</source>
++        <translation>丸めできません（形の計算の内部エラー）。選んだ辺が正しいか、形に欠陥がないか確かめてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed: could not trace the blending surface along this edge. The radius may be too large or the edge geometry too complex. Try reducing the radius or selecting fewer edges.</source>
++        <translation>丸めできません: この辺に沿って丸めの面をつなげられません。半径が大きすぎるか、辺の形が複雑すぎるかもしれません。半径を小さくするか、選ぶ辺を減らしてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed: the blending surface would be self-intersecting. Try reducing the radius or selecting a different edge.</source>
++        <translation>丸めできません: 丸めの面が自分と交わってしまいます。半径を小さくするか、別の辺を選んでください</translation>
++    </message>
++    <message>
++        <source>Fillet failed: the radius may be too large or incompatible with the selected edges. Reduce the radius or select fewer edges.</source>
++        <translation>丸めできません: 半径が大きすぎるか、選んだ辺に合わないかもしれません。半径を小さくするか、選ぶ辺を減らしてください</translation>
++    </message>
++    <message>
++        <source>Fillet operation failed. Try a smaller radius or fillet edges individually.</source>
++        <translation>丸めに失敗しました。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet partially applied: some edges could not be filleted. Reduce the radius or fillet edges individually.</source>
++        <translation>丸められない辺があり、一部だけ丸めました。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet partially applied: some edges failed. Reduce the radius or fillet individually.</source>
++        <translation>丸められない辺があり、一部だけ丸めました。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet: cannot trace the blend along edge contour %1</source>
++        <translation>丸めできません: 辺のつながり %1 に沿って丸めの面をつなげられません。半径が大きすぎるか、辺の形が複雑すぎるかもしれません。半径を小さくするか、選ぶ辺を減らしてください</translation>
++    </message>
++    <message>
++        <source>Fillet: cannot start on edge contour %1</source>
++        <translation>辺のつながり %1 で丸めを始められません。半径が大きすぎるかもしれません。半径を小さくするか、この辺だけ別に丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet: blend on edge contour %1 intersects itself</source>
++        <translation>丸めできません: 辺のつながり %1 の丸めの面が自分と交わってしまいます。半径を小さくするか、別の辺を選んでください</translation>
++    </message>
++    <message>
++        <source>Fillet: kernel error on edge contour %1</source>
++        <translation>丸めできません（辺のつながり %1 で形の計算の内部エラー）。選んだ辺が正しいか、形に欠陥がないか確かめてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed on %1 edge contours</source>
++        <translation>%1 か所の辺のつながりを丸められません。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed at %1 vertices</source>
++        <translation>%1 か所の頂点で丸められません。辺が集まる所で丸めどうしがぶつかっているかもしれません。半径を小さくするか、辺を 1 本ずつ丸めてください</translation>
++    </message>
++    <message>
++        <source>Fillet failed (%1)</source>
++        <translation>丸めできません（%1）</translation>
++    </message>
+ </context>
+ <context>
+     <name>Gui::NaviCube</name>
+-- 
+2.43.0
+

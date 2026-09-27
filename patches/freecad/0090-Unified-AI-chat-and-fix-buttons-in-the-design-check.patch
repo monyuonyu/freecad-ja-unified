@@ -1,7 +1,7 @@
 From 1d216249efb087480426df80b2d5149470f8d78e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 12:51:36 +0900
-Subject: [PATCH 090/137] Unified: AI chat, and fix buttons in the design check
+Subject: [PATCH 090/158] Unified: AI chat, and fix buttons in the design check
 
 AI chat (right dock, toolbar and Model menu 'AI'): Claude, through the Agent
 SDK in a separate process (AIAgentBridge.py, Python with claude-agent-sdk),

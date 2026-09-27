@@ -1,7 +1,7 @@
 From 151e4fac41ef639acf49885abca1fd11605cee25 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:11:38 +0900
-Subject: [PATCH 023/137] Unified: task panel only while in use; new part
+Subject: [PATCH 023/158] Unified: task panel only while in use; new part
  starts with its sketch; context bar only for picks
 
 - The task panel is shown while a tool uses it and hidden otherwise,

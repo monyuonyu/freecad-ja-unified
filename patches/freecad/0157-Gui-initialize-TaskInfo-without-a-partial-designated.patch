@@ -1,0 +1,31 @@
+From a2727b2e5c74188970c1923bca650e7199884da1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 19:58:54 +0900
+Subject: [PATCH 157/158] Gui: initialize TaskInfo without a partial designated
+ initializer
+
+-Werror,-Wmissing-designated-field-initializers rejected
+'TaskInfo outInfo {.Document = doc};' with the compilers of this build.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/TaskView/TaskView.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/TaskView/TaskView.cpp b/src/Gui/TaskView/TaskView.cpp
+index 58803b452..a02f7c891 100644
+--- a/src/Gui/TaskView/TaskView.cpp
++++ b/src/Gui/TaskView/TaskView.cpp
+@@ -606,7 +606,8 @@ bool TaskView::showDialog(TaskDialog* dlg, App::Document* doc)
+     }
+     assert(foundTaskInfo == taskInfos.end());
+ 
+-    TaskInfo outInfo {.Document = doc};
++    TaskInfo outInfo;
++    outInfo.Document = doc;
+     // first create the control element, set it up and wire it:
+     outInfo.ActiveCtrl = new TaskEditControl(this);
+     outInfo.ActiveCtrl->buttonBox->setStandardButtons(dlg->getStandardButtons());
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 16b76fcfea8b6e60f1f5f76af99ebddb6c458e95 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:38:51 +0900
-Subject: [PATCH 097/137] Gui: translation files that win over the others,
+Subject: [PATCH 097/158] Gui: translation files that win over the others,
  whenever those are loaded
 
 Qt looks in the most recently installed translator first, so the wording

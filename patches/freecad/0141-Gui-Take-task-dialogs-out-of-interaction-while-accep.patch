@@ -1,0 +1,82 @@
+From 63debcce2616af839f49508b04e29c986d6791d3 Mon Sep 17 00:00:00 2001
+From: alexdremov <dremov.me@gmail.com>
+Date: Thu, 10 Sep 2026 01:48:04 +0200
+Subject: [PATCH 141/158] Gui: Take task dialogs out of interaction while
+ accept/reject runs
+
+Dialog methods like a sketch's reject() trigger the recompute of the
+touched model before returning, and the recompute sequencer pumps the
+event loop - so the dialog stayed visible and clickable during the
+whole recompute, allowing a second OK/Cancel click to re-enter the
+slot. That re-entrancy window is one of the paths that fed the
+use-after-free crashes fixed in the previous commit.
+
+Hide the panel and button bar as soon as accept()/reject() starts and
+restore them if the dialog decides to stay open. Small visible change:
+the panel now disappears for the duration of an OK/Cancel-triggered
+recompute instead of staying clickable.
+
+Assisted-by: GLM-5.3-Flash (Z.ai)
+---
+ src/Gui/TaskView/TaskView.cpp | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/Gui/TaskView/TaskView.cpp b/src/Gui/TaskView/TaskView.cpp
+index 5073708c0..dc8c805e9 100644
+--- a/src/Gui/TaskView/TaskView.cpp
++++ b/src/Gui/TaskView/TaskView.cpp
+@@ -958,6 +958,14 @@ void TaskView::accept(App::Document* doc)
+         return;
+     }
+ 
++    // Take the dialog out of interaction right away: accept() may run a long
++    // recompute or open dialogs while pumping events, and a second click on
++    // OK during that time would re-enter this slot.
++    QWidget* panel = foundTaskInfo->taskPanel;
++    QWidget* ctrl = foundTaskInfo->ActiveCtrl;
++    panel->hide();
++    ctrl->hide();
++
+     // Make sure that if 'accept' calls 'closeDialog' the deletion is postponed until
+     // the dialog leaves the 'accept' method
+     foundTaskInfo->ActiveDialog->setProperty("taskview_accept_or_reject", true);
+@@ -966,6 +974,11 @@ void TaskView::accept(App::Document* doc)
+     if (success || foundTaskInfo->ActiveDialog->property("taskview_remove_dialog").isValid()) {
+         removeDialog(doc);
+     }
++    else {
++        // The dialog stays open, restore it
++        panel->show();
++        ctrl->show();
++    }
+ }
+ 
+ void TaskView::reject(App::Document* doc)
+@@ -976,6 +989,12 @@ void TaskView::reject(App::Document* doc)
+         return;
+     }
+ 
++    // See 'accept'
++    QWidget* panel = foundTaskInfo->taskPanel;
++    QWidget* ctrl = foundTaskInfo->ActiveCtrl;
++    panel->hide();
++    ctrl->hide();
++
+     // Make sure that if 'reject' calls 'closeDialog' the deletion is postponed until
+     // the dialog leaves the 'reject' method
+     foundTaskInfo->ActiveDialog->setProperty("taskview_accept_or_reject", true);
+@@ -984,6 +1003,11 @@ void TaskView::reject(App::Document* doc)
+     if (success || foundTaskInfo->ActiveDialog->property("taskview_remove_dialog").isValid()) {
+         removeDialog(doc);
+     }
++    else {
++        // The dialog stays open, restore it
++        panel->show();
++        ctrl->show();
++    }
+ }
+ 
+ void TaskView::helpRequested(App::Document* doc)
+-- 
+2.43.0
+

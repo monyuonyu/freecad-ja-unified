@@ -1,0 +1,208 @@
+From df06454f3e7bccfbf6051ba116196f295d4650b1 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Tue, 10 Mar 2026 13:56:10 +0000
+Subject: [PATCH 151/158] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/Part/App/FeatureChamfer.cpp       |  3 +-
+ src/Mod/Part/App/FeatureFillet.cpp        | 28 ++++++++++----
+ src/Mod/Part/App/TopoShapeExpansion.cpp   | 45 +++++++++++++++--------
+ src/Mod/PartDesign/App/FeatureChamfer.cpp |  6 ++-
+ src/Mod/PartDesign/App/FeatureFillet.cpp  |  6 ++-
+ 5 files changed, 59 insertions(+), 29 deletions(-)
+
+diff --git a/src/Mod/Part/App/FeatureChamfer.cpp b/src/Mod/Part/App/FeatureChamfer.cpp
+index 69ce9d524..74f239ba2 100644
+--- a/src/Mod/Part/App/FeatureChamfer.cpp
++++ b/src/Mod/Part/App/FeatureChamfer.cpp
+@@ -119,7 +119,8 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+         if (msg.find("command not done") != std::string::npos) {
+             return new App::DocumentObjectExecReturn(
+                 "Chamfer size too large: would consume an adjacent face. "
+-                "Reduce the size or select fewer edges.");
++                "Reduce the size or select fewer edges."
++            );
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
+diff --git a/src/Mod/Part/App/FeatureFillet.cpp b/src/Mod/Part/App/FeatureFillet.cpp
+index c342efee8..839138bf5 100644
+--- a/src/Mod/Part/App/FeatureFillet.cpp
++++ b/src/Mod/Part/App/FeatureFillet.cpp
+@@ -124,31 +124,42 @@ App::DocumentObjectExecReturn* Fillet::execute()
+                 switch (mkFillet.StripeStatus(ic)) {
+                     case ChFiDS_WalkingFailure:
+                         return new App::DocumentObjectExecReturn(
+-                            "Fillet radius too large: cannot trace surface along edge. Reduce the radius.");
++                            "Fillet radius too large: cannot trace surface along edge. Reduce the "
++                            "radius."
++                        );
+                     case ChFiDS_StartsolFailure:
+                         return new App::DocumentObjectExecReturn(
+                             "Fillet conflict at shared vertex: adjacent radii overlap. "
+-                            "Reduce the radius or fillet edges separately.");
++                            "Reduce the radius or fillet edges separately."
++                        );
+                     case ChFiDS_TwistedSurface:
+                         return new App::DocumentObjectExecReturn(
+-                            "Fillet radius too large: surface would self-intersect. Reduce the radius.");
++                            "Fillet radius too large: surface would self-intersect. Reduce the "
++                            "radius."
++                        );
+                     default:
+                         break;
+                 }
+                 return new App::DocumentObjectExecReturn(
+-                    "Fillet failed on selected edge(s). Reduce the radius or fillet edges individually.");
++                    "Fillet failed on selected edge(s). Reduce the radius or fillet edges "
++                    "individually."
++                );
+             }
+             if (mkFillet.NbFaultyVertices() > 0) {
+                 return new App::DocumentObjectExecReturn(
+-                    "Fillet failed at shared corner: adjacent radii overlap. Reduce the radius.");
++                    "Fillet failed at shared corner: adjacent radii overlap. Reduce the radius."
++                );
+             }
+             if (mkFillet.HasResult()) {
+                 return new App::DocumentObjectExecReturn(
+-                    "Fillet partially applied: some edges failed. Reduce the radius or fillet individually.");
++                    "Fillet partially applied: some edges failed. Reduce the radius or fillet "
++                    "individually."
++                );
+             }
+             return new App::DocumentObjectExecReturn(
+                 "Fillet failed: radius exceeds adjacent face width. "
+-                "Reduce the radius or select fewer edges.");
++                "Reduce the radius or select fewer edges."
++            );
+         }
+ 
+         TopoDS_Shape shape = mkFillet.Shape();
+@@ -165,7 +176,8 @@ App::DocumentObjectExecReturn* Fillet::execute()
+         if (msg.find("command not done") != std::string::npos) {
+             return new App::DocumentObjectExecReturn(
+                 "Fillet failed: radius too large for selected edge(s). "
+-                "Reduce the radius or select fewer edges.");
++                "Reduce the radius or select fewer edges."
++            );
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
+diff --git a/src/Mod/Part/App/TopoShapeExpansion.cpp b/src/Mod/Part/App/TopoShapeExpansion.cpp
+index 0543cc418..27095780d 100644
+--- a/src/Mod/Part/App/TopoShapeExpansion.cpp
++++ b/src/Mod/Part/App/TopoShapeExpansion.cpp
+@@ -4185,32 +4185,43 @@ TopoShape& TopoShape::makeElementFillet(
+             int ic = mkFillet.FaultyContour(1);
+             switch (mkFillet.StripeStatus(ic)) {
+                 case ChFiDS_WalkingFailure:
+-                    FC_THROWM(Base::CADKernelError,
+-                        "Fillet radius too large: cannot trace surface along edge. Reduce the radius.");
++                    FC_THROWM(Base::CADKernelError, "Fillet radius too large: cannot trace surface along edge. Reduce the radius.");
+                 case ChFiDS_StartsolFailure:
+-                    FC_THROWM(Base::CADKernelError,
++                    FC_THROWM(
++                        Base::CADKernelError,
+                         "Fillet conflict at shared vertex: adjacent radii overlap. "
+-                        "Reduce the radius or fillet edges separately.");
++                        "Reduce the radius or fillet edges separately."
++                    );
+                 case ChFiDS_TwistedSurface:
+-                    FC_THROWM(Base::CADKernelError,
+-                        "Fillet radius too large: surface would self-intersect. Reduce the radius.");
++                    FC_THROWM(
++                        Base::CADKernelError,
++                        "Fillet radius too large: surface would self-intersect. Reduce the radius."
++                    );
+                 default:
+                     break;
+             }
+-            FC_THROWM(Base::CADKernelError,
+-                "Fillet failed on " << nFaulty << " edge contour(s). "
+-                "Reduce the radius or fillet edges individually.");
++            FC_THROWM(
++                Base::CADKernelError,
++                "Fillet failed on " << nFaulty
++                                    << " edge contour(s). "
++                                       "Reduce the radius or fillet edges individually."
++            );
+         }
+         int nVerts = mkFillet.NbFaultyVertices();
+         if (nVerts > 0) {
+-            FC_THROWM(Base::CADKernelError,
+-                "Fillet failed at " << nVerts << " shared vertex/vertices: "
+-                "adjacent radii overlap. Reduce the radius.");
++            FC_THROWM(
++                Base::CADKernelError,
++                "Fillet failed at " << nVerts
++                                    << " shared vertex/vertices: "
++                                       "adjacent radii overlap. Reduce the radius."
++            );
+         }
+         if (mkFillet.HasResult()) {
+-            FC_THROWM(Base::CADKernelError,
++            FC_THROWM(
++                Base::CADKernelError,
+                 "Fillet partially applied: some edges could not be filleted. "
+-                "Reduce the radius or fillet edges individually.");
++                "Reduce the radius or fillet edges individually."
++            );
+         }
+         // No fillet-specific diagnostic matched — rethrow the original OCC exception
+         // so real errors (memory, corruption, etc.) are not masked.
+@@ -4285,9 +4296,11 @@ TopoShape& TopoShape::makeElementChamfer(
+     catch (const Standard_Failure& e) {
+         std::string msg = e.GetMessageString();
+         if (msg.find("command not done") != std::string::npos) {
+-            FC_THROWM(Base::CADKernelError,
++            FC_THROWM(
++                Base::CADKernelError,
+                 "Chamfer size too large: would consume or eliminate an adjacent face. "
+-                "Reduce the size, select fewer edges, or widen the sketch.");
++                "Reduce the size, select fewer edges, or widen the sketch."
++            );
+         }
+         throw;
+     }
+diff --git a/src/Mod/PartDesign/App/FeatureChamfer.cpp b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+index bb7749471..54e7efca2 100644
+--- a/src/Mod/PartDesign/App/FeatureChamfer.cpp
++++ b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+@@ -206,9 +206,11 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+     catch (Standard_Failure& e) {
+         std::string msg = e.GetMessageString();
+         if (msg.find("command not done") != std::string::npos) {
+-            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP("Exception",
++            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
++                "Exception",
+                 "Chamfer failed: size too large for selected edge(s). "
+-                "Reduce the size or select fewer edges."));
++                "Reduce the size or select fewer edges."
++            ));
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
+diff --git a/src/Mod/PartDesign/App/FeatureFillet.cpp b/src/Mod/PartDesign/App/FeatureFillet.cpp
+index 2a4674b27..4e49a93c8 100644
+--- a/src/Mod/PartDesign/App/FeatureFillet.cpp
++++ b/src/Mod/PartDesign/App/FeatureFillet.cpp
+@@ -155,9 +155,11 @@ App::DocumentObjectExecReturn* Fillet::execute()
+     catch (Standard_Failure& e) {
+         std::string msg = e.GetMessageString();
+         if (msg.find("command not done") != std::string::npos) {
+-            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP("Exception",
++            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
++                "Exception",
+                 "Fillet failed: radius too large for selected edge(s). "
+-                "Reduce the radius or select fewer edges."));
++                "Reduce the radius or select fewer edges."
++            ));
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
+-- 
+2.43.0
+

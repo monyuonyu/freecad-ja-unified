@@ -1,0 +1,49 @@
+From 192c97002e23b8570c8422455e6470b95206e597 Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Fri, 24 Jul 2026 11:30:28 -0600
+Subject: [PATCH 148/158] Gui: Close combo popup on the main property-editor
+ rebuild path
+
+The prior combo-popup UAF fix (a95c5c0e48) closed the enum QComboBox
+drop-down in releaseEditorFocus(), but only wired it into the delaybuild
+(commitData) and rowsAboutToBeRemoved paths. The main selection/recompute
+rebuild -- PropertyEditor::buildUp() -> PropertyModel::buildUp() -- reaches
+the model reset directly and destroyed the persistent combo editor without
+calling it.
+
+When an enum combo has its drop-down open (auto-opened by the delegate on
+FocusIn) and a rebuild fires, the popup window is freed without Qt's normal
+closePopup() teardown. A queued window-system mouse release is then delivered
+to the dead popup and routed back into QComboBoxPrivate::itemSelected() on the
+dangling combo box, crashing with EXC_BAD_ACCESS in doActivate() <-
+emitCurrentIndexChanged() (sender = freed QComboBox).
+
+Call releaseEditorFocus() right before the model reset in buildUp() so this
+path also closes the popup and moves focus off the editor while it is still
+alive. releaseEditorFocus() early-returns when there is no active editor, so
+it is a safe no-op on the common case.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index e2d0bbf67..2f81f7ae8 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -754,6 +754,10 @@ void PropertyEditor::buildUp(PropertyModel::PropertyList&& props, bool _checkDoc
+     //
+     // closeTransaction();
+ 
++    // The model reset below destroys every persistent editor: close an open combo
++    // popup and move focus off the editor first. No-op when nothing is being edited.
++    releaseEditorFocus();
++
+     QModelIndex index = this->currentIndex();
+     QStringList propertyPath = propertyModel->propertyPathFromIndex(index);
+     if (!propertyPath.isEmpty()) {
+-- 
+2.43.0
+

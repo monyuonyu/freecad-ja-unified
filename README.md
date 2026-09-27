@@ -2,13 +2,15 @@
 
 FreeCAD を「迷わない一つの画面」にまとめ、日本語で使えるようにしたもの。
 作業場（ワークベンチ）の切り替えを無くし、選んだものに応じてその場で次の操作を出し、
-画面の言葉を平易な日本語にそろえた。あわせて、コマンドラインやスクリプトから使うときの不具合も直している。
-FreeCAD 本家へのパッチの形で置いている（上流には送っていない）。
+画面の言葉を平易な日本語にそろえた。間違いを見つける「設計の検査」と、モデルを見て直す AI チャットも入れた。
+コマンドラインやスクリプトから使うときの不具合も直している。FreeCAD 本家へのパッチの形で置いている（上流には送っていない）。
 
 FreeCAD with one integrated, Japanese-first working environment: no workbench switching,
-actions offered next to what you picked, plain Japanese throughout, plus fixes for using
-FreeCAD from the command line and from scripts. Kept as patches on top of FreeCAD; not
-submitted upstream.
+actions offered next to what you picked, plain Japanese throughout, a design check that finds
+and fixes mistakes, an AI chat that works on the model, and fixes for using FreeCAD from the
+command line and from scripts. Kept as patches on top of FreeCAD; not submitted upstream.
+
+![面をクリックすると、その横に次の操作が出る](docs/images/08_face_actions.png)
 
 - 元にした版: FreeCAD main `b48098efa`（2026-09-26、バージョン表記 26.3.0dev）
 - 同梱の OndselSolver: `4be80eef`
@@ -21,11 +23,92 @@ submitted upstream.
 - Windows: `FreeCAD_<版>-Windows-x86_64-installer.exe`（インストーラー）または `.7z`（展開して `bin/FreeCAD.exe`）
 
 署名はしていないので、Windows では SmartScreen の警告が出る（「詳細情報」→「実行」）。
-設定フォルダは本家の FreeCAD と共通なので、本家と並べて使うと設定が混ざる。
-Windows のインストーラーは本家の開発版（26.3）と同じ場所（`FreeCAD 26.3`）に入り、.FCStd の関連付けも引き継ぐ。
-本家の開発版と並べて使うなら 7z 版を展開して使う（本家の安定版 1.x とはぶつからない）。
 
-## 一つの画面
+設定・マクロ・ウィンドウの配置は本家の FreeCAD と別の場所（`FreeCAD-ja-unified`）に置く。Windows のインストーラーも
+本家と別の場所（`FreeCAD-ja-unified 26.3`）に入る。0.3.1 までは本家と共通だった（本家と並べて使うと設定が混ざる）。
+
+## 画面で見る
+
+### 最初の起動
+
+言語・単位・見た目（ライト／ダーク）を選ぶだけ。あとから「編集 → 設定」で変えられる。
+
+![最初の起動の画面](docs/images/01_first_start.png)
+
+### 新しい部品 → 描く場所をクリック
+
+スタート画面は「新しい部品」「ファイルを開く」だけ。新しい部品を押すと、そのまま描く場所を聞いてくる。
+本家のように面を選んでダイアログで OK を押す必要はなく、3D 画面の平面か部品の平らな面を 1 回クリックする。
+
+![スタート画面](docs/images/02_start.png)
+
+![描く場所を 3D 画面でクリック](docs/images/03_pick_plane.png)
+
+### スケッチ中はスケッチの道具だけ
+
+スケッチを描いている間は、ツールバーがスケッチの道具に切り替わり、終われば元に戻る。
+グリッドの点に吸い付くので、マウスで描いても切りのいい寸法になる。決まっていない所の数は日本語で出る。
+
+![スケッチの編集](docs/images/04_sketch.png)
+
+### 描いたら、次の一手が横に出る
+
+スケッチを閉じると、その横に「押し出す・回転・編集・AI に頼む」が出る。ツールバーから探さなくてよい。
+ツールバーも主な道具はアイコンの下に名前（押し出し・切り抜き・丸め…）が付いている。
+
+![スケッチを閉じた後の候補](docs/images/05_after_sketch.png)
+
+作業パネルは道具を使っている間だけ出て、終わったら消える（モデルが画面に収まるように視点も合わせる）。
+
+![押し出しの設定](docs/images/06_pad_panel.png)
+
+### 面をクリックすると、その面でできること
+
+面ならスケッチ・押し出し・切り抜き・穴・厚み、辺なら丸め・面取りが出る（一番上の画像）。
+「穴」は、クリックした位置にそのまま開く（本家は先にスケッチに点を描く必要がある）。
+カーソルの下の物は `Preselected: Unnamed.Body.Pad.Face6` ではなく、名前と場所で出る。
+面をダブルクリックすると、その面を作った手順（押し出し・丸め…）の編集が開く。
+
+![カーソルの下の表示](docs/images/08b_hover.png)
+
+### 設計の検査と「直す」
+
+基板 CAD の DRC のように、モデル全体の間違いを一覧にする。失敗した手順・部品どうしの干渉・スケッチの拘束の矛盾・
+浮いた部品・形を見失った図面の寸法など。行を選ぶと部品に寄って、場所に赤い印が出る。
+ステータスバーには常に結果（「検査: エラー 2・警告 2」）が出る。
+
+![設計の検査](docs/images/09_design_check.png)
+
+直し方がはっきりしているもの（重複・矛盾した拘束、浮いた部品、重なった部品、空の投影図）は「直す」で直る。
+下は「直せるものを全部直す」を押した後。「元に戻す」1 回で全部戻る。
+
+![直した後](docs/images/10_design_fixed.png)
+
+### AI に頼む
+
+右の「AI」パネルで頼むと、AI（Claude）がモデルを見て、直して、設計の検査と画面で確かめて報告する。
+面や辺を選んで「AI に頼む」を押せば、選んだ物も一緒に伝わる。AI が実行するコードは毎回表示され、
+「実行する」を押したときだけ動く。1 回ごとに「元に戻す」の 1 段になる。
+
+![AI のコードを承認する](docs/images/11_ai_approve.png)
+
+![AI が丸めを付けて確かめた](docs/images/12_ai_done.png)
+
+### 失敗の知らせも日本語で
+
+本家では英語のままの失敗の文（`BRep_API: command not done` など）も、何が悪いか・どうすればよいかを日本語で出す。
+拘束の番号や辺の番号が入る文も訳す。
+
+![失敗の知らせ](docs/images/13_error_ja.png)
+
+### ナビキューブ
+
+右上の向きを変える立方体は、ふだんは立方体だけ。マウスを乗せると矢印などが現れ、
+面の縁や隅に近い所を押せばその辺・角の向きになる（押しやすい）。何が起きるかはツールチップで出る。
+
+![ナビキューブの前後](docs/images/14_navicube.png)
+
+## 本家との違い（一覧）
 
 | | 本家 FreeCAD | このパッチ |
 |---|---|---|
@@ -47,7 +130,7 @@ Windows のインストーラーは本家の開発版（26.3）と同じ場所�
 | AI に頼む | 無し | 右の「AI」パネルで、AI（Claude）がモデルを見て・直して・検査と画面で確かめる。面や辺を選んだときの候補と、設計の検査の一覧に「AI に頼む」。AI が実行するコードは毎回見せて、承認してから実行（1 回ごとに元に戻す 1 段）。使うには自分の Anthropic API キーが要る（下記） |
 | メニュー | 「マクロ」や開発者向けの道具が上に並ぶ | 上のメニューを 1 つ減らし、表示・ツールの上級者向けはサブメニューへ |
 | 直線配列の最初の間隔 | 常に 100 mm（小さい部品だと複製が画面の外） | 並べる形の大きさの 2 倍 |
-| マウス操作 | 7 種類から選ぶ | 1 種類（右ドラッグで回転、中ドラッグで移動、ホイールで拡大縮小）に固定 |
+| マウス操作 | 7 種類から選ぶ | 既定は 1 種類（右ドラッグで回転、中ドラッグで移動、ホイールで拡大縮小）。選ぶ画面は出さない |
 | 作業パネル | 常に場所をとる | 道具を使っている間だけ出る。終わったらモデルが見えるように視点を合わせる |
 | 右クリックメニュー | 項目が多い | モデリングに要るものだけ（ほかは上のメニューに残る） |
 | 設定画面 | BIM・アドオンなど使わない頁もある | 使う頁だけ |
@@ -100,30 +183,48 @@ AI が実行しようとするコードは毎回表示され、「実行する�
 | `--hidden` の実行 | 最近使ったファイル・ウィンドウ配置を書き換える | 書き換えない |
 | Python の `saveImage()` | ナビゲーションキューブが写り込む | 写らない（「画像を保存」メニューと同じ） |
 
-## 本家でまだ取り込まれていない直し
+## 本家から取り込んだ修正（PR 一覧）
 
-本家 FreeCAD に出されていて、まだ取り込まれていない PR のうち、精査して入れたもの（作者の名前はそのまま残している）。
-541 件から、統合環境が使う部分の不具合・落ちる・退行を中心に絞り、中身を読み、パッチに当たることと試験を確かめた。
+本家 FreeCAD に出されていて、まだ本家に入っていない PR のうち、精査して取り込んだもの（作者の名前はコミットにそのまま残している）。
+開いている 541 件から、この画面が使う部分の落ちる・不具合・退行を中心に絞り、中身を読み、パッチに当たることと試験を確かめた。
 
-| PR | 直すこと |
-|---|---|
-| [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) | スケッチの編集に入るとき・マウスを動かしたときに落ちる |
-| [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) | スケッチの事前選択で範囲外を読む |
-| [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) | スケッチの反転で落ちる |
-| [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) | ライト／ダークのテーマで結合の色が崩れる |
-| [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) | 位置をロックした図面のビューが読み込み時に原点へ飛ぶ |
-| [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) | 図面の寸法の修復が壊れた参照で失敗する |
-| [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) | ASCII の STL（長い名前・末尾の改行なし）が読めない |
-| [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) | 選択の表示の奥行きの退行 |
-| [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) | プロパティ欄の選択肢で日本語などが化ける |
-| [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) | 外部参照のファイルを開くと落ちる |
-| [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) | ポリラインを角丸めすると最後の点が消える |
-| [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) | キーボードでツリーを選んだときにステータスバーを更新 |
-| [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) | 曲線どうしの点で角丸めできない理由を表示 |
-| [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) | 起動直後の SpaceMouse の操作で落ちる |
-| [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) | 部品に固定ジョイントを付けるとエラー |
-| [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) | 親を失ったジョイントのグループを消せない |
-| [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) | ラックとピニオンの誤動作 |
+**落ちる（クラッシュ）**
+
+- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) スケッチの編集に入るとき・マウスを動かしたときに落ちる（@alfrix）
+- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) スケッチの事前選択で範囲外を読んで落ちる（@alexdremov）
+- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) スケッチの反転で落ちる（@alfrix）
+- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) 作業パネルを閉じるときに、解放済みのメモリを触って落ちる（@alexdremov）
+- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) プロパティ欄で編集中に 3D 画面をクリックするなどして落ちる（6 種類。作業パネルの 1 か所は #32970 と重なるので除いた）（@oursland）
+- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) 外部参照のファイルを開くと落ちる（@chennes）
+- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) 起動直後の SpaceMouse の操作で落ちる（@Maik-0000FF）
+
+**形・スケッチ**
+
+- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) ポリラインを角丸めすると最後の点が消える（@alfrix）
+- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) 曲線どうしの点で角丸めできないとき、その理由を出す（@VishalRamKN）
+- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) 丸め・面取りが失敗したとき、原因（半径が大きすぎる・面がねじれる…）と直し方を出す（@paragforwork）
+
+**図面**
+
+- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) 位置をロックしたビューが、読み込むと原点に飛ぶ（@WandererFan）
+- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) 寸法の参照の修復が、壊れた参照で失敗する（@WandererFan）
+
+**組立**
+
+- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) 部品に固定ジョイントを付けるとエラー（@ryneeverett）
+- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) 親を失ったジョイントのグループを消せない（@PaddleStroke）
+- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) ラックとピニオンの誤動作（@PaddleStroke）
+
+**表示・画面**
+
+- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) ライト／ダークのテーマで、結合した形の色が崩れる（@chennes）
+- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) 選択の表示の奥行きの退行（@Connor9220）
+- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) プロパティ欄の選択肢で日本語などが化ける（@maxwxyz）
+- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) キーボードでツリーを選んだときにステータスバーを更新する（@007stevendigar-lgtm）
+
+**ファイル**
+
+- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII の STL（長い名前・末尾の改行なし）が読めない（@maxwxyz）
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。

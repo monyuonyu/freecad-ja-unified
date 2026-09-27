@@ -1,0 +1,56 @@
+From da27866f1ac5cec7ef521b558f061266162bca66 Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Tue, 7 Jul 2026 18:20:08 -0700
+Subject: [PATCH 147/158] Gui: Fix property-editor UAF from combo-box popup
+ destroyed by rebuild
+
+An enum property is edited with a QComboBox whose drop-down auto-opens on
+FocusIn (PropertyItemDelegate). The drop-down is a top-level popup window Qt
+registers in its active-popup list. When the property editor rebuilds
+(PropertyModel::buildUp model reset, or row removal) it destroys the persistent
+combo-box editor while the popup is still open, freeing the popup without Qt's
+normal closePopup() teardown. A queued window-system mouse event is then
+delivered to the freed popup and routed back into QComboBoxPrivate::itemSelected
+on the dangling combo box, crashing with EXC_BAD_ACCESS (doActivate sender=0x400).
+
+Close the popup in releaseEditorFocus() while the combo box is still alive so Qt
+deregisters it and releases the mouse grab before the widget is freed. All
+full-reset and row-removal paths already route through releaseEditorFocus().
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index 1600aef80..e2d0bbf67 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -25,6 +25,7 @@
+ #include <boost/algorithm/string/predicate.hpp>
+ #include <QApplication>
+ #include <QClipboard>
++#include <QComboBox>
+ #include <QCompleter>
+ #include <QInputDialog>
+ #include <QHeaderView>
+@@ -477,6 +478,15 @@ void PropertyEditor::releaseEditorFocus()
+     if (!activeEditor) {
+         return;
+     }
++
++    // An enum property is edited with a QComboBox whose drop-down is auto-opened by
++    // PropertyItemDelegate. Destroying the combo with the popup still open skips Qt's
++    // closePopup() teardown and leaves queued mouse events aimed at the freed popup,
++    // so close it while the combo is alive.
++    if (auto* combo = qobject_cast<QComboBox*>(activeEditor.data())) {
++        combo->hidePopup();
++    }
++
+     for (QWidget* w = qApp->focusWidget(); w; w = w->parentWidget()) {
+         if (w == activeEditor) {
+             // setFocus() delivers a synchronous FocusOut that would otherwise cascade
+-- 
+2.43.0
+

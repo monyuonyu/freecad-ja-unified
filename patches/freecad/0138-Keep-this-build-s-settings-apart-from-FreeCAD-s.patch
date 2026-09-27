@@ -1,0 +1,174 @@
+From 707a3e9a90ac00ced6b6eb6dc34020a0c8e61128 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 19:21:51 +0900
+Subject: [PATCH 138/158] Keep this build's settings apart from FreeCAD's
+
+The integrated environment writes defaults of its own, but its settings,
+macros, add-ons and window layout were FreeCAD's (~/.config/FreeCAD),
+so they would change FreeCAD's behavior when both are used; the defaults
+were therefore only applied when reading, which left the stored values
+and the preference pages out of step.
+
+A build may now set Config 'UserDataDirName' to name the user data and
+settings directories (default: ExeName); this build uses
+'FreeCAD-ja-unified', also for the Qt settings with the window layout.
+The mouse navigation is written on the first start as FreeCAD does for a
+first run, so the override that ignored the stored style is removed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/ApplicationDirectories.cpp               | 16 +++++++++++++---
+ src/Gui/MainWindow.cpp                           | 12 +++++++++++-
+ .../DlgSettingsCacheDirectory.cpp                | 12 +++++++++++-
+ src/Gui/View3DSettings.cpp                       |  5 -----
+ src/Main/MainCmd.cpp                             |  3 +++
+ src/Main/MainGui.cpp                             |  8 ++++++--
+ 6 files changed, 44 insertions(+), 12 deletions(-)
+
+diff --git a/src/App/ApplicationDirectories.cpp b/src/App/ApplicationDirectories.cpp
+index ed101dfbc..a479a72c5 100644
+--- a/src/App/ApplicationDirectories.cpp
++++ b/src/App/ApplicationDirectories.cpp
+@@ -391,6 +391,16 @@ QString ApplicationDirectories::getOldGenericDataLocation()
+ }
+ #endif
+ 
++namespace {
++// The directory with the user's settings, macros and add-ons: named after the application unless
++// a build sets 'UserDataDirName' (a product built from FreeCAD that keeps its settings apart)
++std::string userDataDirName(const std::map<std::string,std::string>& mConfig)
++{
++    auto it = mConfig.find("UserDataDirName");
++    return it != mConfig.end() && !it->second.empty() ? it->second : mConfig.at("ExeName");
++}
++}
++
+ void ApplicationDirectories::getSubDirectories(const std::map<std::string,std::string>& mConfig,
+                                                std::vector<std::string>& appData)
+ {
+@@ -399,7 +409,7 @@ void ApplicationDirectories::getSubDirectories(const std::map<std::string,std::s
+     if (!mConfig.contains("AppDataSkipVendor") && mConfig.contains("ExeVendor")) {
+         appData.push_back(mConfig.at("ExeVendor"));
+     }
+-    appData.push_back(mConfig.at("ExeName"));
++    appData.push_back(userDataDirName(mConfig));
+ }
+ 
+ void ApplicationDirectories::getOldDataLocation(const std::map<std::string,std::string>& mConfig,
+@@ -412,9 +422,9 @@ void ApplicationDirectories::getOldDataLocation(const std::map<std::string,std::
+     // the path.
+     if (!mConfig.contains("AppDataSkipVendor")) {
+         appData.push_back(std::string(".") + mConfig.at("ExeVendor"));
+-        appData.push_back(mConfig.at("ExeName"));
++        appData.push_back(userDataDirName(mConfig));
+     } else {
+-        appData.push_back(std::string(".") + mConfig.at("ExeName"));
++        appData.push_back(std::string(".") + userDataDirName(mConfig));
+     }
+ 
+ #elif defined(FC_OS_MACOSX) || defined(FC_OS_WIN32)
+diff --git a/src/Gui/MainWindow.cpp b/src/Gui/MainWindow.cpp
+index f3b853f09..67f57e655 100644
+--- a/src/Gui/MainWindow.cpp
++++ b/src/Gui/MainWindow.cpp
+@@ -2131,7 +2131,17 @@ void MainWindow::switchToDockedMode()
+ void MainWindow::loadWindowSettings()
+ {
+     QString vendor = QString::fromStdString(App::Application::Config()["ExeVendor"]);
+-    QString application = QString::fromStdString(App::Application::getExecutableName());
++    // Kept with the user's settings: apart from FreeCAD's when the build names its own
++    // settings directory (UserDataDirName)
++    const auto& cfg = App::Application::Config();
++    auto dirName = cfg.find("UserDataDirName");
++    QString application = QString::fromStdString(
++        dirName != cfg.end() && !dirName->second.empty() ? dirName->second
++                                                         : App::Application::getExecutableName()
++    );
++    if (dirName != cfg.end() && !dirName->second.empty()) {
++        vendor = application;  // all in the build's own directory
++    }
+     int major = (QT_VERSION >> 0x10) & 0xff;
+     int minor = (QT_VERSION >> 0x08) & 0xff;
+     QString qtver = QStringLiteral("Qt%1.%2").arg(major).arg(minor);
+diff --git a/src/Gui/PreferencePages/DlgSettingsCacheDirectory.cpp b/src/Gui/PreferencePages/DlgSettingsCacheDirectory.cpp
+index 652338be0..0ccb435e4 100644
+--- a/src/Gui/PreferencePages/DlgSettingsCacheDirectory.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsCacheDirectory.cpp
+@@ -204,7 +204,17 @@ void ApplicationCache::setLimit(qint64 value)
+ bool ApplicationCache::periodicCheckOfSize() const
+ {
+     QString vendor = QString::fromLatin1(App::Application::Config()["ExeVendor"].c_str());
+-    QString application = QString::fromStdString(App::Application::getExecutableName());
++    // Kept with the user's settings: apart from FreeCAD's when the build names its own
++    // settings directory (UserDataDirName)
++    const auto& cfg = App::Application::Config();
++    auto dirName = cfg.find("UserDataDirName");
++    QString application = QString::fromStdString(
++        dirName != cfg.end() && !dirName->second.empty() ? dirName->second
++                                                         : App::Application::getExecutableName()
++    );
++    if (dirName != cfg.end() && !dirName->second.empty()) {
++        vendor = application;  // all in the build's own directory
++    }
+ 
+     QSettings settings(vendor, application);
+     QString key = QStringLiteral("LastCacheCheck");
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index b004c5017..62c1c9f20 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -287,11 +287,6 @@ void View3DSettings::OnChange(ParameterGrp::SubjectType& rCaller, ParameterGrp::
+                 "NavigationStyle",
+                 std::string {CADNavigationStyle::getClassTypeId().getName()}.c_str()
+             );
+-            // The integrated environment has one way of navigating, whatever is stored
+-            const auto& cfg = App::Application::Config();
+-            if (App::isSingleWorkbench() && cfg.contains("NavigationStyle")) {
+-                model = cfg.at("NavigationStyle");
+-            }
+             Base::Type type = Base::Type::fromName(model.c_str());
+             for (auto _viewer : _viewers) {
+                 _viewer->setNavigationType(type);
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 262b14d97..46956618d 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -91,6 +91,9 @@ int main(int argc, char** argv)
+     App::Application::Config()["ExeName"] = "FreeCAD";
+     App::Application::Config()["ExeVendor"] = "FreeCAD";
+     App::Application::Config()["AppDataSkipVendor"] = "true";
++    // Settings, macros and add-ons of their own, apart from those of FreeCAD: the integrated
++    // environment writes defaults of its own (mouse navigation, sketch editing, ...)
++    App::Application::Config()["UserDataDirName"] = "FreeCAD-ja-unified";
+ 
+     // set the banner (for logging and console)
+     App::Application::Config()["CopyrightInfo"] = sBanner;
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index a1bd9d259..c528f977a 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -224,6 +224,9 @@ int main(int argc, char** argv)
+     App::Application::Config()["ExeName"] = "FreeCAD";
+     App::Application::Config()["ExeVendor"] = "FreeCAD";
+     App::Application::Config()["AppDataSkipVendor"] = "true";
++    // Settings, macros and add-ons of their own, apart from those of FreeCAD: the integrated
++    // environment writes defaults of its own (mouse navigation, sketch editing, ...)
++    App::Application::Config()["UserDataDirName"] = "FreeCAD-ja-unified";
+     App::Application::Config()["MaintainerUrl"] = "https://freecad.org";
+ 
+     // set the banner (for logging and console)
+@@ -234,8 +237,9 @@ int main(int argc, char** argv)
+     App::Application::Config()["StartWorkbench"] = "UnifiedWorkbench";
+     App::Application::Config()["SingleWorkbench"] = "UnifiedWorkbench";
+     // Mouse like most applications: left selects, right drag orbits (right click opens the
+-    // context menu), middle drag pans, the wheel zooms at the cursor. Applied on the first
+-    // start only; a style chosen by the user is kept.
++    // context menu), middle drag pans, the wheel zooms at the cursor. Written into the
++    // settings on the first start (they are this build's own, see UserDataDirName); a style
++    // set later, e.g. by a macro, is kept.
+     App::Application::Config()["NavigationStyle"] = "Gui::TinkerCADNavigationStyle";
+     // App::Application::Config()["HiddenDockWindow"] = "Property editor";
+     App::Application::Config()["SplashAlignment"] = "Bottom|Left";
+-- 
+2.43.0
+

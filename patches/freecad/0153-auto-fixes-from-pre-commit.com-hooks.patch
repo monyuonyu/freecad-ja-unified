@@ -1,0 +1,32 @@
+From 05c57ae3eaed6b1c44d372ccad900dbec3c2bb0d Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Tue, 10 Mar 2026 14:08:16 +0000
+Subject: [PATCH 153/158] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/PartDesign/App/FeatureChamfer.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/PartDesign/App/FeatureChamfer.cpp b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+index f0b8242d7..bf5f3cfe2 100644
+--- a/src/Mod/PartDesign/App/FeatureChamfer.cpp
++++ b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+@@ -218,9 +218,11 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+         return new App::DocumentObjectExecReturn(e.what());
+     }
+     catch (...) {
+-        return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP("Exception",
++        return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
++            "Exception",
+             "Chamfer failed: size may be too large for adjacent edges sharing a vertex. "
+-            "Reduce the size or chamfer edges individually."));
++            "Reduce the size or chamfer edges individually."
++        ));
+     }
+ }
+ 
+-- 
+2.43.0
+

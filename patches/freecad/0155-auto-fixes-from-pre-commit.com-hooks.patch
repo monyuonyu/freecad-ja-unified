@@ -1,0 +1,68 @@
+From 9b4ab09308c781b7f53bbeb73620ab3ebadef4e0 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Wed, 11 Mar 2026 18:37:42 +0000
+Subject: [PATCH 155/158] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/Part/App/FeatureChamfer.cpp     | 6 ++++--
+ src/Mod/Part/App/FeatureFillet.cpp      | 3 ++-
+ src/Mod/Part/App/TopoShapeExpansion.cpp | 6 ++++--
+ 3 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Part/App/FeatureChamfer.cpp b/src/Mod/Part/App/FeatureChamfer.cpp
+index c2fa86dc3..ed7e2bf4c 100644
+--- a/src/Mod/Part/App/FeatureChamfer.cpp
++++ b/src/Mod/Part/App/FeatureChamfer.cpp
+@@ -108,9 +108,11 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+         Part::SignalException sig;
+         mkChamfer.Build();
+         if (!mkChamfer.IsDone()) {
+-            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP("Exception",
++            return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP(
++                "Exception",
+                 "Chamfer failed: size is incompatible with the shape geometry. "
+-                "Reduce the size, select fewer edges, or ensure edges have sufficient width."));
++                "Reduce the size, select fewer edges, or ensure edges have sufficient width."
++            ));
+         }
+         TopoDS_Shape shape = mkChamfer.Shape();
+         if (shape.IsNull()) {
+diff --git a/src/Mod/Part/App/FeatureFillet.cpp b/src/Mod/Part/App/FeatureFillet.cpp
+index 5d525c733..4eece423f 100644
+--- a/src/Mod/Part/App/FeatureFillet.cpp
++++ b/src/Mod/Part/App/FeatureFillet.cpp
+@@ -165,7 +165,8 @@ App::DocumentObjectExecReturn* Fillet::execute()
+                 );
+             }
+             return new App::DocumentObjectExecReturn(
+-                "Fillet failed: the radius may be too large or incompatible with the selected edges. "
++                "Fillet failed: the radius may be too large or incompatible with the selected "
++                "edges. "
+                 "Reduce the radius or select fewer edges."
+             );
+         }
+diff --git a/src/Mod/Part/App/TopoShapeExpansion.cpp b/src/Mod/Part/App/TopoShapeExpansion.cpp
+index 30ef34c0f..124df15d3 100644
+--- a/src/Mod/Part/App/TopoShapeExpansion.cpp
++++ b/src/Mod/Part/App/TopoShapeExpansion.cpp
+@@ -4185,11 +4185,13 @@ TopoShape& TopoShape::makeElementFillet(
+             int ic = mkFillet.FaultyContour(1);
+             switch (mkFillet.StripeStatus(ic)) {
+                 case ChFiDS_WalkingFailure:
+-                    FC_THROWM(Base::CADKernelError,
++                    FC_THROWM(
++                        Base::CADKernelError,
+                         "Fillet failed: could not trace the blending surface along edge contour "
+                             << ic
+                             << ". The radius may be too large or the edge geometry too complex. "
+-                               "Try reducing the radius or selecting fewer edges.");
++                               "Try reducing the radius or selecting fewer edges."
++                    );
+                 case ChFiDS_StartsolFailure:
+                     FC_THROWM(
+                         Base::CADKernelError,
+-- 
+2.43.0
+

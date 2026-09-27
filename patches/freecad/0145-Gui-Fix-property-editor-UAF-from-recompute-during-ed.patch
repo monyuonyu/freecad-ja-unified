@@ -1,0 +1,90 @@
+From 2e1b68d2decc7a0cf2830b27ac76ed3ffaa2215c Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Fri, 3 Jul 2026 14:30:13 -0700
+Subject: [PATCH 145/158] Gui: Fix property-editor UAF from recompute during
+ editor close
+
+A second focus-out use-after-free in the property editor, sibling to the
+commitData()/buildUp() deferral in c180ca3db9. Clicking the 3D view while an
+inline editor has focus delivers a FocusOut to the editor. The item delegate's
+eventFilter emits closeEditor(), and PropertyEditor::closeEditor() calls
+closeTransaction() -> recomputeDocument() -> Document::recompute(). If that
+recompute deletes a document object, PropertyView::slotDeleted*() calls
+buildUp() synchronously, which performs a full model reset that destroys the
+persistent editor in place -- while Qt is still iterating that widget's event
+filters in sendThroughObjectEventFilters(), a use-after-free that crashes with
+EXC_BAD_ACCESS.
+
+The existing committing guard in buildUp() does not cover this because
+committing is already false by the time closeTransaction() runs.
+
+Mark the recompute region in closeTransaction() with a recomputing flag and, in
+buildUp(), defer the model reset via a queued invocation when that flag is set,
+so the rebuild (and editor teardown) runs after control returns to the event
+loop, when the editor is no longer the receiver of an event being dispatched.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 18 ++++++++++++++++++
+ src/Gui/propertyeditor/PropertyEditor.h   |  1 +
+ 2 files changed, 19 insertions(+)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index 40da16cb2..f8e0e9f06 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -68,6 +68,7 @@ PropertyEditor::PropertyEditor(QWidget* parent)
+     , binding(false)
+     , checkDocument(false)
+     , closingEditor(false)
++    , recomputing(false)
+     , dragInProgress(false)
+ {
+     propertyModel = new PropertyModel(this);
+@@ -470,6 +471,10 @@ void PropertyEditor::closeTransaction()
+     }
+     if (doc->getBookedTransactionID() == transactionID) {
+         if (autoupdate) {
++            // A recompute can delete objects, which re-enters buildUp() synchronously
++            // while the editor being closed is still receiving its FocusOut. Mark it
++            // so buildUp() defers the model reset.
++            Base::StateLocker guard(recomputing);
+             recomputeDocument(doc);
+         }
+         doc->commitTransaction();
+@@ -694,6 +699,19 @@ void PropertyEditor::buildUp(PropertyModel::PropertyList&& props, bool _checkDoc
+         return;
+     }
+ 
++    if (recomputing) {
++        // Re-entered from the recompute in closeTransaction(): resetting the model now
++        // would destroy an editor that is still mid event-dispatch, so defer.
++        QMetaObject::invokeMethod(
++            this,
++            [this, props = std::move(props), checkDoc = _checkDocument]() mutable {
++                buildUp(std::move(props), checkDoc);
++            },
++            Qt::QueuedConnection
++        );
++        return;
++    }
++
+     // Do not close transaction here, because we are now doing incremental
+     // update in PropertyModel::buildUp()
+     //
+diff --git a/src/Gui/propertyeditor/PropertyEditor.h b/src/Gui/propertyeditor/PropertyEditor.h
+index f22573324..7e60955ae 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.h
++++ b/src/Gui/propertyeditor/PropertyEditor.h
+@@ -179,6 +179,7 @@ private:
+     bool binding;
+     bool checkDocument;
+     bool closingEditor;
++    bool recomputing;
+     bool dragInProgress;
+ 
+     // max distance between mouse and a cell, small enough to trigger resize
+-- 
+2.43.0
+

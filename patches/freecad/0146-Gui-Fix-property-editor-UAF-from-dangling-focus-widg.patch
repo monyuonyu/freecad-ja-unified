@@ -1,0 +1,106 @@
+From a7c2e298e7fab87fe5a05c5c79086b698d71474e Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Fri, 3 Jul 2026 15:08:19 -0700
+Subject: [PATCH 146/158] Gui: Fix property-editor UAF from dangling focus
+ widget after row removal
+
+A third focus-out use-after-free in the property editor, sibling to the
+deferral fixes in c180ca3db9 and a764778db5. Those deferred the editor's
+destruction out of event dispatch, but the editor is still destroyed while it
+holds the keyboard focus.
+
+When a recompute deletes the object being edited, the deferred buildUp removes
+the inline editor's row. PropertyEditor::rowsAboutToBeRemoved() for the editing
+row itself only called closeTransaction() -- it never moved focus off the
+editor. QTreeView then destroys the persistent editor, but Qt does not reliably
+clear the raw global QApplicationPrivate::focus_widget on this row-removal path
+(unlike our activeEditor, a QPointer that self-nulls). The global focus widget
+is left dangling at the freed editor; the next mouse click routes through
+QApplicationPrivate::setFocusWidget(), which delivers a FocusOut event to the
+dead editor and crashes with EXC_BAD_ACCESS while iterating its event filters in
+sendThroughObjectEventFilters().
+
+Add releaseEditorFocus(): if the active editor (or a child) currently holds the
+keyboard focus, move focus back to the tree while the editor is still alive, so
+the global focus widget stays valid. Guard the move with closingEditor so the
+synchronous FocusOut does not cascade into a re-entrant closeEditor()/
+closePersistentEditor() during the model's row removal. Call it from the
+rowsAboutToBeRemoved editing-row branch and from the commitData delaybuild
+deferred lambda before the full model reset.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/propertyeditor/PropertyEditor.cpp | 29 ++++++++++++++++++++++-
+ src/Gui/propertyeditor/PropertyEditor.h   |  1 +
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index f8e0e9f06..1600aef80 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -287,7 +287,11 @@ void PropertyEditor::commitData(QWidget* editor)
+         // rebuild until control returns to the event loop.
+         QMetaObject::invokeMethod(
+             this,
+-            [this]() { propertyModel->buildUp(PropertyModel::PropertyList()); },
++            [this]() {
++                // The model reset destroys every persistent editor.
++                releaseEditorFocus();
++                propertyModel->buildUp(PropertyModel::PropertyList());
++            },
+             Qt::QueuedConnection
+         );
+     }
+@@ -463,6 +467,27 @@ void PropertyEditor::recomputeDocument(App::Document* doc)
+     }
+ }
+ 
++void PropertyEditor::releaseEditorFocus()
++{
++    // Call before the persistent editor is destroyed by a row removal or model reset.
++    // Qt does not reliably clear QApplicationPrivate::focus_widget when a focused
++    // editor is torn down that way, leaving the global focus widget -- a raw pointer,
++    // unlike our QPointer -- dangling. Move the focus back to the tree while the
++    // editor is still alive.
++    if (!activeEditor) {
++        return;
++    }
++    for (QWidget* w = qApp->focusWidget(); w; w = w->parentWidget()) {
++        if (w == activeEditor) {
++            // setFocus() delivers a synchronous FocusOut that would otherwise cascade
++            // into a re-entrant closeEditor() while the model is mid row-removal.
++            Base::StateLocker guard(closingEditor);
++            setFocus();
++            break;
++        }
++    }
++}
++
+ void PropertyEditor::closeTransaction()
+ {
+     App::Document* doc = App::GetApplication().getActiveDocument();
+@@ -637,6 +662,8 @@ void PropertyEditor::rowsAboutToBeRemoved(const QModelIndex& parent, int start,
+ 
+     if (editingIndex.isValid()) {
+         if (editingIndex.row() >= start && editingIndex.row() <= end) {
++            // QTreeView is about to destroy the persistent editor of this row.
++            releaseEditorFocus();
+             closeTransaction();
+         }
+         else {
+diff --git a/src/Gui/propertyeditor/PropertyEditor.h b/src/Gui/propertyeditor/PropertyEditor.h
+index 7e60955ae..7555fc934 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.h
++++ b/src/Gui/propertyeditor/PropertyEditor.h
+@@ -140,6 +140,7 @@ private:
+     QMenu* setupExpansionSubmenu(QWidget* parent);
+     void collapseAll();
+     void setEditorMode(const QModelIndex& parent, int start, int end);
++    void releaseEditorFocus();
+     void closeTransaction();
+     void recomputeDocument(App::Document*);
+     std::unordered_set<App::Property*> acquireSelectedProperties() const;
+-- 
+2.43.0
+

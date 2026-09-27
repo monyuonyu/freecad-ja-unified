@@ -1,0 +1,62 @@
+From c995069008fa16fcca5f7a96c011f71f35cb1895 Mon Sep 17 00:00:00 2001
+From: Parag Debnath <paragforwork@gmail.com>
+Date: Tue, 10 Mar 2026 19:31:58 +0530
+Subject: [PATCH 152/158] Part/Part Design : Further improved the chamfer
+ errors
+
+---
+ src/Mod/Part/App/FeatureChamfer.cpp       | 7 ++++++-
+ src/Mod/PartDesign/App/FeatureChamfer.cpp | 9 ++++++---
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Part/App/FeatureChamfer.cpp b/src/Mod/Part/App/FeatureChamfer.cpp
+index 74f239ba2..648b5a1db 100644
+--- a/src/Mod/Part/App/FeatureChamfer.cpp
++++ b/src/Mod/Part/App/FeatureChamfer.cpp
+@@ -32,6 +32,7 @@
+ 
+ 
+ #include <SignalException.h>
++#include <Base/Exception.h>
+ #include "FeatureChamfer.h"
+ #include "TopoShapeOpCode.h"
+ 
+@@ -124,9 +125,13 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
++    catch (Base::Exception& e) {
++        return new App::DocumentObjectExecReturn(e.what());
++    }
+     catch (...) {
+         return new App::DocumentObjectExecReturn(
+-            "Chamfer failed: OCC kernel error in chamfer computation"
++            "Chamfer failed: size may be too large for adjacent edges sharing a vertex. "
++            "Reduce the size or chamfer edges individually."
+         );
+     }
+ }
+diff --git a/src/Mod/PartDesign/App/FeatureChamfer.cpp b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+index 54e7efca2..f0b8242d7 100644
+--- a/src/Mod/PartDesign/App/FeatureChamfer.cpp
++++ b/src/Mod/PartDesign/App/FeatureChamfer.cpp
+@@ -214,10 +214,13 @@ App::DocumentObjectExecReturn* Chamfer::execute()
+         }
+         return new App::DocumentObjectExecReturn(msg.c_str());
+     }
++    catch (Base::Exception& e) {
++        return new App::DocumentObjectExecReturn(e.what());
++    }
+     catch (...) {
+-        return new App::DocumentObjectExecReturn(
+-            QT_TRANSLATE_NOOP("Exception", "Chamfer failed: OCC kernel error in chamfer computation")
+-        );
++        return new App::DocumentObjectExecReturn(QT_TRANSLATE_NOOP("Exception",
++            "Chamfer failed: size may be too large for adjacent edges sharing a vertex. "
++            "Reduce the size or chamfer edges individually."));
+     }
+ }
+ 
+-- 
+2.43.0
+

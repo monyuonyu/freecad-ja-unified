@@ -1,7 +1,7 @@
 From ae2eac85300a273be8ca8670338dee9095522dd0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 17:08:07 +0900
-Subject: [PATCH 108/137] Gui: render the thumbnail offscreen when the main
+Subject: [PATCH 108/158] Gui: render the thumbnail offscreen when the main
  window is hidden
 
 Saving a document from a script with --hidden warned 'renderToImage failed

@@ -1,0 +1,57 @@
+From fcbc3ac7975e3ca401d0c1edc41f6dcc525d78f0 Mon Sep 17 00:00:00 2001
+From: Jacob Oursland <jacob.oursland@gmail.com>
+Date: Thu, 2 Jul 2026 10:11:41 -0700
+Subject: [PATCH 144/158] Gui: Don't throw from getPointOnXYPlaneOfPlacement
+ during assembly drag
+
+Dragging an assembly part while the joint's drag plane is viewed edge-on
+crashed with SIGABRT. getPointOnXYPlaneOfPlacement() threw
+Base::RuntimeError("No intersection found") when the pick ray is parallel to
+the plane. It is called from ViewProviderAssembly drag handling, which runs
+inside a Coin SoHandleEventAction traversal; a C++ exception thrown there does
+not reliably reach the try/catch guards further out and escapes to
+std::terminate().
+
+Make the method non-throwing, matching its siblings getPointOnLine() and
+getPointOnFocalPlane(): return an invalid point when there is no camera, and
+fall back to the point on the view ray closest to the plane origin when the ray
+is parallel to the plane. "No intersection" is a routine degenerate case here,
+not an error.
+
+Assisted-by: Claude Opus 4.8 (claude-opus-4-8)
+Assisted-by: Claude Opus 5 (claude-opus-5)
+---
+ src/Gui/View3DInventorViewer.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/View3DInventorViewer.cpp b/src/Gui/View3DInventorViewer.cpp
+index c3296fd67..2b6bda935 100644
+--- a/src/Gui/View3DInventorViewer.cpp
++++ b/src/Gui/View3DInventorViewer.cpp
+@@ -3795,8 +3795,11 @@ SbVec3f View3DInventorViewer::getPointOnXYPlaneOfPlacement(
+     SbVec2f pnt2d = getNormalizedPosition(pnt);
+     SoCamera* pCam = this->getSoRenderManager()->getCamera();
+ 
++    // Called from assembly drag handling inside a Coin event traversal, which cannot
++    // propagate C++ exceptions out to the callers' guards. Report degenerate cases
++    // with a fallback point instead of throwing, as getPointOnLine() does.
+     if (!pCam) {
+-        throw Base::RuntimeError("No camera node found");
++        return {};  // return invalid point
+     }
+ 
+     SbViewVolume vol = pCam->getViewVolume();
+@@ -3818,7 +3821,9 @@ SbVec3f View3DInventorViewer::getPointOnXYPlaneOfPlacement(
+         return pt;  // Intersection point on the XY plane
+     }
+ 
+-    throw Base::RuntimeError("No intersection found");
++    // Pick ray parallel to the plane (viewed edge-on): fall back to the point on the
++    // ray closest to the plane origin, which is finite and close enough for one frame.
++    return line.getClosestPoint(planePosition);
+ }
+ 
+ SbVec3f projectPointOntoPlane(const SbVec3f& point, const SbPlane& plane)
+-- 
+2.43.0
+
