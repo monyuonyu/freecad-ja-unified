@@ -1,7 +1,7 @@
 From 6445f5a857ab05c60306a3afa88a2f5a789288b4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 01:12:31 +0900
-Subject: [PATCH 14/83] Main: TinkerCAD-like mouse navigation by default
+Subject: [PATCH 14/84] Main: TinkerCAD-like mouse navigation by default
 
 Left button selects, right drag orbits around the point under the cursor
 (a right click without dragging opens the context menu), middle drag pans

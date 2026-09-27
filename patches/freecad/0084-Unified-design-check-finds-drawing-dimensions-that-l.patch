@@ -1,0 +1,201 @@
+From 5c063cd6cbff88432d025ac4be4983625dc72205 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 11:51:57 +0900
+Subject: [PATCH 84/84] Unified: design check finds drawing dimensions that
+ lost their geometry
+
+TechDraw dimensions whose edge or vertex is gone keep showing an old
+value (or silently stop drawing). Expose DrawViewDimension
+getReferenceState() ("ok", "broken", "unknown") to Python and report
+broken dimensions and drawing views whose source part was deleted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawViewDimension.pyi    |  4 +++
+ .../TechDraw/App/DrawViewDimensionPyImp.cpp   | 23 ++++++++++++
+ src/Mod/Unified/DesignCheck.py                | 35 ++++++++++++++++++-
+ src/Mod/Unified/DesignCheckGui.py             |  2 +-
+ .../Gui/Resources/translations/Unified_ja.ts  | 20 +++++++++--
+ 5 files changed, 80 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/DrawViewDimension.pyi b/src/Mod/TechDraw/App/DrawViewDimension.pyi
+index 80db3445f..ef057a7e4 100644
+--- a/src/Mod/TechDraw/App/DrawViewDimension.pyi
++++ b/src/Mod/TechDraw/App/DrawViewDimension.pyi
+@@ -48,3 +48,7 @@ class DrawViewDimension(DrawView):
+     def getArrowPositions(self) -> Any:
+         """getArrowPositions() - returns list of locations or Dimension Arrowheads. Locations are in unscaled coordinates of parent View"""
+         ...
++
++    def getReferenceState(self) -> str:
++        """getReferenceState() - "ok", "broken" (the geometry this dimension points to is gone or changed), or "unknown" (the view has not been computed yet)"""
++        ...
+diff --git a/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp b/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
+index 4d8080ef5..af824f078 100644
+--- a/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
++++ b/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
+@@ -27,6 +27,7 @@
+ #include <Base/VectorPy.h>
+ 
+ #include "DrawViewDimension.h"
++#include "DrawViewPart.h"
+ // inclusion of the generated files (generated out of DrawViewDimensionPy.xml)
+ #include <Mod/TechDraw/App/DrawViewDimensionPy.h>
+ #include <Mod/TechDraw/App/DrawViewDimensionPy.cpp>
+@@ -65,6 +66,28 @@ PyObject* DrawViewDimensionPy::getText(PyObject* args)
+     return pyText;
+ }
+ 
++PyObject* DrawViewDimensionPy::getReferenceState(PyObject* args)
++{
++    if (!PyArg_ParseTuple(args, "")) {
++        return nullptr;
++    }
++
++    DrawViewDimension* dvd = getDrawViewDimensionPtr();
++    const char* state = "ok";
++    DrawViewPart* dvp = dvd->getViewPart();
++    if (dvd->hasBroken3dReferences()) {
++        state = "broken";
++    }
++    else if (!dvp || dvp->waitingForResult() || !dvp->hasGeometry()) {
++        state = "unknown";
++    }
++    else if (!dvd->hasGoodReferences()
++             || (dvd->References3D.getValues().empty() && !dvd->checkReferences2D())) {
++        state = "broken";
++    }
++    return Py::new_reference_to(Py::String(state));
++}
++
+ PyObject* DrawViewDimensionPy::getLinearPoints(PyObject* args)
+ {
+     if (!PyArg_ParseTuple(args, "")) {
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index b50fe1446..631e2fb5a 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -44,6 +44,10 @@ _JA = {'Step failed to compute': '計算に失敗した手順',
+  '{0} has {1} edges shorter than {2} mm': '{0} に {2} mm より短い辺が {1} 本ある（作図のミスの跡かも）',
+  '{0} and {1} overlap by {2:.1f} mm³': '{0} と {1} が {2:.1f} mm³ 重なっている',
+  '{0} touches no other part (floating?)': '{0} がどの部品にも接していない（浮いていないか）',
++ 'Drawing dimension lost its geometry': '図面の寸法が形を見失った',
++ 'Drawing view shows nothing': '何も映っていない図面の投影図',
++ '{0}: the edge or point it measures is gone (the value may be wrong; pick the geometry again)': '{0}: 測っていた辺や点が無くなった（値が違っているかもしれない。測る所を選び直す）',
++ '{0}: the part it shows was deleted': '{0}: 映していた部品が消されている',
+  '{0}: constraints {1} contradict each other': '{0}: 拘束 {1} がぶつかっている',
+  '{0}: constraints {1} are malformed': '{0}: 拘束 {1} が不正',
+  '{0}: constraints {1} say the same thing twice': '{0}: 拘束 {1} が同じことを二重に決めている',
+@@ -61,7 +65,11 @@ _JA = {'Step failed to compute': '計算に失敗した手順',
+  'No problems found.': '問題は見つかりませんでした。',
+  'Result of the design check. Click to see the list.': '設計の検査の結果。押すと一覧を開きます。',
+  'Check: OK': '検査: OK',
+- 'Check: ': '検査: '}
++ 'Check: ': '検査: ',
++ 'Ignore this one': 'この指摘を無視',
++ 'Mark the selected problem as intended. It is recorded in the file and not shown again.': '選んだ指摘を「わざと」として記録し、以後は出さない（ファイルに残る）',
++ '({0} ignored as intended)': '（わざととして無視した指摘 {0} 件）',
++ 'Ignore a design check problem': '設計の検査の指摘を無視'}
+ 
+ ERROR, WARNING, INFO = "error", "warning", "info"
+ 
+@@ -85,6 +93,8 @@ RULES = {
+     "tiny_edge": QT_TRANSLATE_NOOP("DesignCheck", "Very short edges"),
+     "sketch_free": QT_TRANSLATE_NOOP("DesignCheck", "Sketch not fully constrained"),
+     "floating": QT_TRANSLATE_NOOP("DesignCheck", "Part touches no other part"),
++    "drawing_dim": QT_TRANSLATE_NOOP("DesignCheck", "Drawing dimension lost its geometry"),
++    "drawing_view": QT_TRANSLATE_NOOP("DesignCheck", "Drawing view shows nothing"),
+ }
+ 
+ 
+@@ -286,6 +296,28 @@ def iter_interference(doc, issues, opt, shapes):
+                                     [n], shapes[n].BoundBox.Center))
+ 
+ 
++def check_drawings(doc, issues, opt):
++    """図面: 形を変えたあと、寸法が指す辺や点を見失っていないか。元の部品を消した投影図が無いか"""
++    for o in doc.Objects:
++        if o.isDerivedFrom("TechDraw::DrawViewDimension") and hasattr(o, "getReferenceState"):
++            try:
++                state = o.getReferenceState()
++            except Exception:
++                continue
++            if state == "broken":
++                issues.append(Issue(ERROR, "drawing_dim",
++                                    translate("DesignCheck", "{0}: the edge or point it measures is gone "
++                                              "(the value may be wrong; pick the geometry again)").format(o.Label),
++                                    [o.Name]))
++        elif (o.isDerivedFrom("TechDraw::DrawViewPart") and not o.isDerivedFrom("TechDraw::DrawProjGroupItem")) \
++                or o.isDerivedFrom("TechDraw::DrawProjGroup"):
++            src = list(getattr(o, "Source", [])) + list(getattr(o, "XSource", []))
++            if not src:
++                issues.append(Issue(WARNING, "drawing_view",
++                                    translate("DesignCheck", "{0}: the part it shows was deleted").format(o.Label),
++                                    [o.Name]))
++
++
+ def check_sketches(doc, issues, opt):
+     for o in doc.Objects:
+         if not o.isDerivedFrom("Sketcher::SketchObject"):
+@@ -362,6 +394,7 @@ def iter_run(doc=None, **options):
+     check_features(doc, issues, opt)
+     check_shapes(doc, issues, opt, shapes)
+     check_sketches(doc, issues, opt)
++    check_drawings(doc, issues, opt)
+     yield None
+     yield from iter_interference(doc, issues, opt, shapes)
+     kept = [i for i in issues if not _is_ignored(doc, i)]
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index eb21eb13d..8b24a3c83 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -205,7 +205,7 @@ class DesignCheckCommand:
+                 "Unified_DesignCheck",
+                 "Checks the whole model for mistakes, like the design rule check of a circuit board tool: "
+                 "failed steps, broken or split shapes, overlapping parts, sketch constraint problems, "
+-                "very short edges and floating parts",
++                "very short edges, floating parts and drawing dimensions that lost their geometry",
+             ),
+         }
+ 
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index e7f8aa42b..26f226cd5 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -436,6 +436,22 @@
+         <source>{0} touches no other part (floating?)</source>
+         <translation>{0} がどの部品にも接していない（浮いていないか）</translation>
+     </message>
++    <message>
++        <source>Drawing dimension lost its geometry</source>
++        <translation>図面の寸法が形を見失った</translation>
++    </message>
++    <message>
++        <source>Drawing view shows nothing</source>
++        <translation>何も映っていない図面の投影図</translation>
++    </message>
++    <message>
++        <source>{0}: the edge or point it measures is gone (the value may be wrong; pick the geometry again)</source>
++        <translation>{0}: 測っていた辺や点が無くなった（値が違っているかもしれない。測る所を選び直す）</translation>
++    </message>
++    <message>
++        <source>{0}: the part it shows was deleted</source>
++        <translation>{0}: 映していた部品が消されている</translation>
++    </message>
+     <message>
+         <source>{0}: constraints {1} contradict each other</source>
+         <translation>{0}: 拘束 {1} がぶつかっている</translation>
+@@ -532,8 +548,8 @@
+         <translation>設計の検査</translation>
+     </message>
+     <message>
+-        <source>Checks the whole model for mistakes, like the design rule check of a circuit board tool: failed steps, broken or split shapes, overlapping parts, sketch constraint problems, very short edges and floating parts</source>
+-        <translation>モデル全体の間違いを一括で調べる（基板 CAD の DRC のようなもの）: 計算に失敗した手順、壊れた・ばらばらの形、部品の干渉、スケッチの拘束の問題、極端に短い辺、浮いた部品</translation>
++        <source>Checks the whole model for mistakes, like the design rule check of a circuit board tool: failed steps, broken or split shapes, overlapping parts, sketch constraint problems, very short edges, floating parts and drawing dimensions that lost their geometry</source>
++        <translation>モデル全体の間違いを一括で調べる（基板 CAD の DRC のようなもの）: 計算に失敗した手順、壊れた・ばらばらの形、部品の干渉、スケッチの拘束の問題、極端に短い辺、浮いた部品、形を見失った図面の寸法</translation>
+     </message>
+ </context>
+ </TS>
+-- 
+2.43.0
+

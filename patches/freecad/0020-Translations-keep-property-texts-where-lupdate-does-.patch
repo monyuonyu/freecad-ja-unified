@@ -1,7 +1,7 @@
 From 2ecbaac07d7b96c6af56ce8296a068cf073cb773 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:02:24 +0900
-Subject: [PATCH 20/83] Translations: keep property texts where lupdate does
+Subject: [PATCH 20/84] Translations: keep property texts where lupdate does
  not remove them; add missing Japanese texts
 
 - Property names, groups, tooltips and enumeration values are built at

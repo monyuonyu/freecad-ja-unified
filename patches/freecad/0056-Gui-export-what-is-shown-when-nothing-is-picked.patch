@@ -1,7 +1,7 @@
 From 660614ac059611c44427bb588711402f009a1de3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:02:31 +0900
-Subject: [PATCH 56/83] Gui: export what is shown when nothing is picked
+Subject: [PATCH 56/84] Gui: export what is shown when nothing is picked
 
 In the integrated environment, File > Export with nothing selected
 exports the visible parts at the top of the document (e.g. for a 3D
