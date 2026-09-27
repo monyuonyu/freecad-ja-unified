@@ -1,0 +1,121 @@
+From 1028b96a7c2a7ddbf61099e6762de9a6fdfa1494 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:13 +0900
+Subject: [PATCH 86/90] Sketcher: show the real default of 'Esc leaves the
+ sketch' in the preferences
+
+In the integrated environment Esc does not leave the sketch by default, but
+the preference page showed the .ui default (checked), so pressing OK on the
+page stored true and changed the behavior. One function gives the default to
+the sketch, its task dialog and the preference page.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/Gui/SketcherSettings.cpp   | 3 +++
+ src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp  | 6 ++----
+ src/Mod/Sketcher/Gui/Utils.cpp              | 6 ++++++
+ src/Mod/Sketcher/Gui/Utils.h                | 4 ++++
+ src/Mod/Sketcher/Gui/ViewProviderSketch.cpp | 5 +----
+ 5 files changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/src/Mod/Sketcher/Gui/SketcherSettings.cpp b/src/Mod/Sketcher/Gui/SketcherSettings.cpp
+index f9c1e3d7d..ae5220c13 100644
+--- a/src/Mod/Sketcher/Gui/SketcherSettings.cpp
++++ b/src/Mod/Sketcher/Gui/SketcherSettings.cpp
+@@ -35,6 +35,7 @@
+ 
+ #include "SketcherSettings.h"
+ #include "ui_SketcherSettings.h"
++#include "Utils.h"
+ #include "ui_SketcherSettingsAppearance.h"
+ #include "ui_SketcherSettingsDisplay.h"
+ #include "ui_SketcherSettingsGrid.h"
+@@ -209,6 +210,8 @@ void SketcherSettings::loadSettings()
+     // Sketch editing
+     ui->checkBoxAdvancedSolverTaskBox->onRestore();
+     ui->checkBoxRecalculateInitialSolutionWhileDragging->onRestore();
++    // The widget's own state is the default for a preference that was never saved
++    ui->checkBoxEnableEscape->setChecked(leaveSketchWithEscapeDefault());
+     ui->checkBoxEnableEscape->onRestore();
+     ui->checkBoxNotifyConstraintSubstitutions->onRestore();
+     ui->checkBoxAutoRemoveRedundants->onRestore();
+diff --git a/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp b/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
+index a26ed0256..174d9b709 100644
+--- a/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
++++ b/src/Mod/Sketcher/Gui/TaskDlgEditSketch.cpp
+@@ -27,6 +27,7 @@
+ #include <Gui/Command.h>
+ 
+ #include "TaskDlgEditSketch.h"
++#include "Utils.h"
+ #include "ViewProviderSketch.h"
+ 
+ 
+@@ -55,10 +56,7 @@ TaskDlgEditSketch::TaskDlgEditSketch(ViewProviderSketch* sketchView)
+     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
+         "User parameter:BaseApp/Preferences/Mod/Sketcher"
+     );
+-    // See ViewProviderSketch: in the integrated working environment Escape does not close the sketch
+-    setEscapeButtonEnabled(
+-        hGrp->GetBool("LeaveSketchWithEscape", !App::Application::Config().contains("SingleWorkbench"))
+-    );
++    setEscapeButtonEnabled(hGrp->GetBool("LeaveSketchWithEscape", leaveSketchWithEscapeDefault()));
+     setAutoCloseOnResetEdit(true);
+ 
+     Content.push_back(Messages);
+diff --git a/src/Mod/Sketcher/Gui/Utils.cpp b/src/Mod/Sketcher/Gui/Utils.cpp
+index 53d3de497..c3739f004 100644
+--- a/src/Mod/Sketcher/Gui/Utils.cpp
++++ b/src/Mod/Sketcher/Gui/Utils.cpp
+@@ -31,6 +31,7 @@
+ 
+ #include <App/Application.h>
+ #include <App/Transactions.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Quantity.h>
+ #include <Base/UnitsApi.h>
+ #include <Gui/CommandT.h>
+@@ -1056,3 +1057,8 @@ QMap<QString, QString> SketcherGui::findAvailableFontFiles()
+     }
+     return fontMap;
+ }
++
++bool SketcherGui::leaveSketchWithEscapeDefault()
++{
++    return !App::isSingleWorkbench();
++}
+diff --git a/src/Mod/Sketcher/Gui/Utils.h b/src/Mod/Sketcher/Gui/Utils.h
+index c642d6443..2eeea6a60 100644
+--- a/src/Mod/Sketcher/Gui/Utils.h
++++ b/src/Mod/Sketcher/Gui/Utils.h
+@@ -237,6 +237,10 @@ inline void scrollTo(QListWidget* list, int i, bool select)
+ 
+ QMap<QString, QString> findAvailableFontFiles();
+ 
++/// Default of the preference "Esc key can leave sketch edit mode": off in the integrated
++/// working environment, where Esc only cancels the current tool as in most drawing programs
++bool leaveSketchWithEscapeDefault();
++
+ }  // namespace SketcherGui
+ 
+ /// converts a 2D vector into a 3D vector in the XY plane
+diff --git a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+index c9ae471ee..004f66887 100644
+--- a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
++++ b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+@@ -231,11 +231,8 @@ void ViewProviderSketch::ParameterObserver::updateEscapeKeyBehaviour(const std::
+ 
+     ParameterGrp::handle hSketch = App::GetApplication().GetParameterGroupByPath(
+         "User parameter:BaseApp/Preferences/Mod/Sketcher");
+-    // In the integrated working environment Escape only cancels the current tool, like in
+-    // most drawing programs; the sketch is closed with its OK button
+-    bool leaveDefault = !App::Application::Config().contains("SingleWorkbench");
+     Client.viewProviderParameters.handleEscapeButton =
+-        !hSketch->GetBool("LeaveSketchWithEscape", leaveDefault);
++        !hSketch->GetBool("LeaveSketchWithEscape", leaveSketchWithEscapeDefault());
+ }
+ 
+ void ViewProviderSketch::ParameterObserver::updateAutoRecompute(const std::string& string,
+-- 
+2.43.0
+

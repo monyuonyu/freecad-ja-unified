@@ -1,0 +1,166 @@
+From d27350d14facd758c5e271cc63cc790b8f8fd6b5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:29 +0900
+Subject: [PATCH 88/90] Fix three behaviors of the integrated environment
+
+- 'New part' goes on to the sketch plane choice only when run from the
+  toolbar or menu, not from a script (where the dialog stopped the script).
+  The start page asks for the sketch plane itself.
+- The '(double-click to edit)' hint is shown for faces and edges only;
+  double-clicking a vertex does nothing.
+- Pressing 'Hole' twice with nothing picked no longer waits for the face
+  twice (and made two holes).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Selection/Selection.cpp        | 12 +++++++++---
+ src/Mod/PartDesign/Gui/CommandBody.cpp | 11 +++++++----
+ src/Mod/Start/Gui/StartView.cpp        | 11 ++++++++---
+ src/Mod/Unified/UnifiedCommands.py     |  7 ++++++-
+ 4 files changed, 30 insertions(+), 11 deletions(-)
+
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index 436d4fc99..78b9c6bf2 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -34,7 +34,8 @@
+ #include <App/DocumentObject.h>
+ #include <App/DocumentObjectPy.h>
+ #include <App/GeoFeature.h>
+-#include <App/Link.h>
++#include <App/Link.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/Exception.h>
+ #include <Base/Tools.h>
+@@ -1084,7 +1085,7 @@ QString getPreselectionInfo(
+     // In the integrated working environment: the name shown in the tree and the kind of
+     // element in the user's language, e.g. "Pad, face 6 (x, y, z)", instead of the internal
+     // names used by scripts
+-    if (App::Application::Config().contains("SingleWorkbench")) {
++    if (App::isSingleWorkbench()) {
+         App::Document* doc = App::GetApplication().getDocument(documentName);
+         App::DocumentObject* obj = doc ? doc->getObject(objectName) : nullptr;
+         const char* element = nullptr;
+@@ -1112,8 +1113,13 @@ QString getPreselectionInfo(
+                 what = QApplication::translate("Gui::SelectionSingleton", "%1, %2")
+                            .arg(what, kindText);
+             }
+-            // The steps of a part and sketches open for editing on a double-click in the view
++            // The steps of a part and sketches open for editing on a double-click on one of
++            // their faces or edges in the view (not on a vertex)
++            const bool pickable = kind == "Face" || kind == "Edge";
+             for (const char* editable : {"PartDesign::Feature", "Sketcher::SketchObject"}) {
++                if (!pickable) {
++                    break;
++                }
+                 Base::Type type = Base::Type::fromName(editable);
+                 if (!type.isBad() && leaf->getTypeId().isDerivedFrom(type)) {
+                     what += QApplication::translate(
+diff --git a/src/Mod/PartDesign/Gui/CommandBody.cpp b/src/Mod/PartDesign/Gui/CommandBody.cpp
+index 47bb1abe4..d7bd601e7 100644
+--- a/src/Mod/PartDesign/Gui/CommandBody.cpp
++++ b/src/Mod/PartDesign/Gui/CommandBody.cpp
+@@ -36,6 +36,7 @@
+ #include <App/GeoFeatureGroupExtension.h>
+ #include <App/Origin.h>
+ #include <App/Part.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/Tools.h>
+ #include <Gui/CommandT.h>
+@@ -125,7 +126,7 @@ void CmdPartDesignBody::activated(int iMsg)
+     std::vector<App::DocumentObject*> features = getSelection().getObjectsOfType(
+         App::DocumentObject::getClassTypeId()
+     );
+-    const bool singleWorkbench = App::Application::Config().contains("SingleWorkbench");
++    const bool singleWorkbench = App::isSingleWorkbench();
+     if (singleWorkbench && features.size() == 1) {
+         // In the integrated environment "New part" takes only a solid outside any part as
+         // its base (e.g. an imported shape). Whatever else is picked (a sketch, a feature of
+@@ -387,9 +388,11 @@ void CmdPartDesignBody::activated(int iMsg)
+         commitCommand();
+     }
+ 
+-    // An empty new part in the integrated environment: go on to choose where to draw its
+-    // first sketch, as the start page does
+-    if (singleWorkbench && !baseFeature && !Gui::Control().activeDialog()) {
++    // An empty new part made from the toolbar or menu in the integrated environment: go on to
++    // choose where to draw its first sketch, as the start page does. Not when run from a
++    // script or another command (TriggerNone), which would be stopped by the dialog.
++    if (singleWorkbench && !baseFeature && triggerSource() != TriggerNone
++        && !Gui::Control().activeDialog()) {
+         QTimer::singleShot(0, []() {
+             if (!Gui::Control().activeDialog()) {
+                 Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index ed9f524f6..c00c912b3 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -46,11 +46,13 @@
+ #include <App/Document.h>
+ #include <App/DocumentObject.h>
+ #include <App/DocumentSettings.h>
+-#include <App/Application.h>
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Interpreter.h>
+ #include <Base/Tools.h>
+ #include <Gui/Action.h>
+ #include <Gui/Application.h>
++#include <Gui/Control.h>
+ #include <Gui/Command.h>
+ #include <Gui/Document.h>
+ #include <Gui/MainWindow.h>
+@@ -69,7 +71,7 @@ namespace
+ // FreeCAD runs with one integrated working environment (see Gui::Application::activateWorkbench)
+ bool singleWorkbenchMode()
+ {
+-    return App::Application::Config().contains("SingleWorkbench");
++    return App::isSingleWorkbench();
+ }
+ }  // namespace
+ 
+@@ -327,8 +329,11 @@ void StartView::newPartDesignFile()
+     Gui::Application::Instance->commandManager().runCommandByName("Std_New");
+     Gui::Application::Instance->activateWorkbench("PartDesignWorkbench");
+     Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
+-    // In the integrated environment "New part" goes on to ask where to draw the first sketch
+     postStart(PostStartBehavior::doNotSwitchWorkbench);
++    // In the integrated environment "New part" goes on to ask where to draw the first sketch
++    if (App::isSingleWorkbench() && !Gui::Control().activeDialog()) {
++        Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
++    }
+ }
+ 
+ void StartView::openExistingFile()
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 2babdf91e..986a04c9e 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -36,8 +36,11 @@ def _picked_plane_face():
+ class _WaitForFace:
+     """After "Hole" with nothing picked: the next face clicked in the view gets the hole."""
+ 
++    waiting = None  # the one waiting now: pressing "Hole" again does not add a second
++
+     def addSelection(self, doc, obj, sub, pnt):
+         FreeCADGui.Selection.removeObserver(self)
++        _WaitForFace.waiting = None
+         if sub and sub.startswith("Face"):
+             # After the selection has been completed
+             QtCore.QTimer.singleShot(0, lambda: FreeCADGui.runCommand("Unified_Hole"))
+@@ -72,7 +75,9 @@ class HoleCommand:
+     def Activated(self):
+         if not FreeCADGui.Selection.getSelectionEx():
+             # Nothing picked: ask for the face instead of opening an empty list of sketches
+-            FreeCADGui.Selection.addObserver(_WaitForFace())
++            if _WaitForFace.waiting is None:
++                _WaitForFace.waiting = _WaitForFace()
++                FreeCADGui.Selection.addObserver(_WaitForFace.waiting)
+             FreeCADGui.getMainWindow().showMessage(
+                 translate("Unified_Hole", "Click the flat face where the hole should go")
+             )
+-- 
+2.43.0
+

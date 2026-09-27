@@ -1,0 +1,1773 @@
+From 1d216249efb087480426df80b2d5149470f8d78e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:36 +0900
+Subject: [PATCH 90/90] Unified: AI chat, and fix buttons in the design check
+
+AI chat (right dock, toolbar and Model menu 'AI'): Claude, through the Agent
+SDK in a separate process (AIAgentBridge.py, Python with claude-agent-sdk),
+looks at the document, runs Python in FreeCAD, takes screenshots and runs
+the design check. Each code the AI wants to run is shown to the user and
+runs only when approved; each run is one undo step and is rolled back on an
+error. Authentication is the user's own Anthropic API key, kept in the
+system key store (a file only the user can read where there is none); a
+hidden preference uses the local claude login instead. 'Set up the AI'
+makes a venv with claude-agent-sdk and keyring.
+
+- 'Ask AI' at the end of the actions offered next to a picked face, edge,
+  sketch or part, and in the design check panel for the selected problem.
+- Design check panel: 'Fix', 'Fix all that can be fixed' (one undo step).
+- Menus that cannot be inserted before 'Windows' are appended with a
+  warning instead of being dropped; an optional module that fails to load
+  does not stop the next ones.
+- Localized default labels for boxes, cylinders, drawings and more.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py              | 246 ++++++++
+ src/Mod/Unified/AIChat.svg                    |   7 +
+ src/Mod/Unified/AIChatGui.py                  | 547 ++++++++++++++++++
+ src/Mod/Unified/AITools.py                    | 243 ++++++++
+ src/Mod/Unified/CMakeLists.txt                |   4 +-
+ src/Mod/Unified/DesignCheckGui.py             |  95 ++-
+ src/Mod/Unified/Gui/ContextBar.cpp            |   5 +
+ .../Gui/Resources/translations/Unified_ja.ts  | 341 +++++++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |  26 +-
+ src/Mod/Unified/InitGui.py                    |  13 +-
+ 10 files changed, 1511 insertions(+), 16 deletions(-)
+ create mode 100644 src/Mod/Unified/AIAgentBridge.py
+ create mode 100644 src/Mod/Unified/AIChat.svg
+ create mode 100644 src/Mod/Unified/AIChatGui.py
+ create mode 100644 src/Mod/Unified/AITools.py
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+new file mode 100644
+index 000000000..ca6bcdac1
+--- /dev/null
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -0,0 +1,246 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""FreeCAD の AI チャットの仲介役（FreeCAD の外の Python で動く。claude-agent-sdk が要る）
++
++FreeCAD（AIChatGui）とは標準入出力の JSON 行でやり取りする。
++  FreeCAD → ここ: {"type": "user", "text"} / {"type": "result", "id", "content", "is_error"} /
++                  {"type": "interrupt"} / {"type": "reset"}
++  ここ → FreeCAD: {"type": "ready"} / {"type": "text", "text"} / {"type": "call", "id", "tool", "args"} /
++                  {"type": "done", "error"} / {"type": "fatal", "text"}
++AI の道具（FreeCAD を見る・動かす）は、呼ばれるたびに FreeCAD へ頼んで結果を待つ。
++"""
++
++import argparse
++import asyncio
++import itertools
++import json
++import os
++import sys
++
++# API キーの置き場所: OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）。
++# 使えない環境（鍵保管庫の無い Linux など）では、本人だけが読めるファイル
++KEY_SERVICE = "freecad-ja-unified"
++KEY_USER = "anthropic-api-key"
++
++
++def _key_file(datadir):
++    return os.path.join(datadir, "ai-api-key")
++
++
++def store_key(key, datadir):
++    try:
++        import keyring
++        keyring.set_password(KEY_SERVICE, KEY_USER, key)
++        return "keyring"
++    except Exception:
++        path = _key_file(datadir)
++        os.makedirs(datadir, exist_ok=True)
++        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
++        with os.fdopen(fd, "w") as f:
++            f.write(key)
++        return "file"
++
++
++def load_key(datadir):
++    try:
++        import keyring
++        k = keyring.get_password(KEY_SERVICE, KEY_USER)
++        if k:
++            return k
++    except Exception:
++        pass
++    try:
++        with open(_key_file(datadir)) as f:
++            return f.read().strip() or None
++    except OSError:
++        return None
++
++
++def delete_key(datadir):
++    try:
++        import keyring
++        keyring.delete_password(KEY_SERVICE, KEY_USER)
++    except Exception:
++        pass
++    try:
++        os.remove(_key_file(datadir))
++    except OSError:
++        pass
++
++SYSTEM = """あなたは FreeCAD（日本語の統合環境）に組み込まれた設計の助手です。利用者と同じ画面を見ながら、
++モデルを調べ、直し、作ります。答えは日本語で、短く具体的に。
++
++道具（mcp__freecad__*）:
++- get_document: 開いている文書の物の一覧（名前・ラベル・種類・親・妥当性・大きさ）と、今の選択
++- run_python: FreeCAD の中で Python を実行する。App/FreeCAD, Gui/FreeCADGui, Part, Sketcher, doc（開いている文書）が使える。
++  1 回の実行が「元に戻す」の 1 段になり、エラーが起きたらその回の変更は取り消される。最後に doc.recompute() は自動で行う
++- screenshot: 3D の画面を撮って見る（向きを指定できる。利用者の視点は元に戻す）
++- design_check: 設計の検査（失敗した手順・干渉・スケッチの拘束の矛盾・浮いた部品など）の結果
++
++進め方:
++- 変える前に get_document で今の状態を見る。物は Name（内部名）で指し、利用者にはラベルで伝える
++- 部品は PartDesign の Body の中で、スケッチ→押し出し…の手順で作るのが基本（後から直せるように）。
++  新しい物のラベルは日本語で付ける
++- 変えたら design_check と screenshot で確かめてから「できた」と言う。確かめていないことは、確かめていないと言う
++- 利用者のファイルを保存・上書き・削除するのは、頼まれたときだけ
++- 何をしたかは、利用者が「元に戻す」で戻せることも含めて一言で伝える"""
++
++TOOLS = [
++    ("get_document", "開いている文書の物の一覧と、今の選択を返す", {}, []),
++    ("run_python", "FreeCAD の中で Python を実行する（1 回が元に戻すの 1 段。エラーなら取り消す）。"
++                   "print の出力と、最後の式の値を返す",
++     {"code": {"type": "string", "description": "実行する Python"},
++      "description": {"type": "string", "description": "何をするか（元に戻すの一覧に出る。日本語で短く）"}},
++     ["code", "description"]),
++    ("screenshot", "3D の画面を撮って画像で返す",
++     {"view": {"type": "string", "enum": ["current", "isometric", "front", "back", "top", "bottom", "left", "right"],
++               "description": "向き（current は利用者が見ている向き）"},
++      "fit": {"type": "boolean", "description": "全体が収まるように寄せる"}},
++     []),
++    ("design_check", "設計の検査を行い、問題の一覧を返す", {}, []),
++]
++
++
++class Bridge:
++    def __init__(self, args):
++        self.args = args
++        self.ids = itertools.count(1)
++        self.pending = {}
++        self.inbox = asyncio.Queue()
++        self.client = None
++        self.busy = False
++
++    def send(self, **msg):
++        sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
++        sys.stdout.flush()
++
++    async def call_freecad(self, name, args):
++        n = next(self.ids)
++        fut = asyncio.get_running_loop().create_future()
++        self.pending[n] = fut
++        self.send(type="call", id=n, tool=name, args=args)
++        res = await fut
++        return {"content": res.get("content", []), "is_error": bool(res.get("is_error"))}
++
++    def make_server(self):
++        def handler(name):
++            async def run(args):
++                return await self.call_freecad(name, args)
++            return run
++        tools = [tool(n, d, {"type": "object", "properties": p, "required": r, "additionalProperties": False})(handler(n))
++                 for n, d, p, r in TOOLS]
++        return create_sdk_mcp_server("freecad", tools=tools)
++
++    def options(self):
++        env = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
++        if self.api_key:
++            env["ANTHROPIC_API_KEY"] = self.api_key
++        os.makedirs(self.args.workdir, exist_ok=True)
++        return ClaudeAgentOptions(
++            model=self.args.model, system_prompt=SYSTEM,
++            cli_path=self.args.claude or None,
++            tools=[], allowed_tools=["mcp__freecad__*"], mcp_servers={"freecad": self.make_server()},
++            strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=40, env=env)
++
++    def _stdin_thread(self, loop):
++        # Windows でも動くように、標準入力はスレッドで読む（asyncio のパイプは Windows で使えない）
++        for line in sys.stdin:
++            try:
++                msg = json.loads(line)
++            except ValueError:
++                continue
++            asyncio.run_coroutine_threadsafe(self.dispatch(msg), loop)
++        asyncio.run_coroutine_threadsafe(self.inbox.put(None), loop)
++
++    async def dispatch(self, msg):
++        if msg.get("type") == "result":
++            fut = self.pending.pop(msg.get("id"), None)
++            if fut and not fut.done():
++                fut.set_result(msg)
++        elif msg.get("type") == "interrupt":
++            if self.client is not None and self.busy:
++                try:
++                    await self.client.interrupt()
++                except Exception:
++                    pass
++        else:
++            await self.inbox.put(msg)
++
++    async def turn(self, text):
++        self.busy = True
++        error = None
++        try:
++            await self.client.query(text)
++            async for m in self.client.receive_response():
++                if isinstance(m, AssistantMessage):
++                    for b in m.content:
++                        if isinstance(b, TextBlock) and b.text.strip():
++                            self.send(type="text", text=b.text)
++                elif isinstance(m, ResultMessage) and m.is_error:
++                    error = m.subtype or "error"
++        except Exception as e:
++            error = "%s: %s" % (type(e).__name__, e)
++        finally:
++            self.busy = False
++        self.send(type="done", error=error)
++
++    async def main(self):
++        # 認証: 利用者自身の API キー。--local-login のときだけ、この PC の claude のログインを使う（本人の利用に限る）
++        self.api_key = None if self.args.local_login else load_key(self.args.datadir)
++        if not self.args.local_login and not self.api_key:
++            self.send(type="need_key")
++            return
++        import threading
++        threading.Thread(target=self._stdin_thread, args=(asyncio.get_running_loop(),), daemon=True).start()
++        while True:
++            self.client = ClaudeSDKClient(options=self.options())
++            try:
++                await self.client.connect()
++            except Exception as e:
++                self.send(type="fatal", text="Claude に接続できない: %s" % e)
++                return
++            self.send(type="ready")
++            reset = False
++            while not reset:
++                msg = await self.inbox.get()
++                if msg is None:
++                    await self.client.disconnect()
++                    return
++                if msg.get("type") == "reset":
++                    reset = True
++                elif msg.get("type") == "user":
++                    await self.turn(msg["text"])
++            await self.client.disconnect()
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--datadir", default=os.path.join(os.path.expanduser("~"), ".local", "share", "freecad-ai"))
++    ap.add_argument("--local-login", action="store_true", help="API キーではなく、この PC の claude のログインを使う")
++    ap.add_argument("--store-key", action="store_true", help="標準入力の API キーを保管して終わる")
++    ap.add_argument("--delete-key", action="store_true", help="保管した API キーを消して終わる")
++    ap.add_argument("--model", default="opus")
++    ap.add_argument("--claude", default="", help="claude の実行ファイル（空なら SDK に同梱のもの）")
++    ap.add_argument("--workdir", default=os.path.join(os.path.expanduser("~"), ".cache", "freecad-ai"))
++    args = ap.parse_args()
++    if args.store_key:
++        key = sys.stdin.read().strip()
++        if not key:
++            sys.exit("キーが空")
++        print(store_key(key, args.datadir))
++        return
++    if args.delete_key:
++        delete_key(args.datadir)
++        return
++    global AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, TextBlock
++    global create_sdk_mcp_server, tool
++    try:
++        from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage,
++                                      TextBlock, create_sdk_mcp_server, tool)
++    except ImportError as e:  # 準備ができていない
++        print(json.dumps({"type": "fatal", "text": "claude-agent-sdk が見つからない: %s" % e}), flush=True)
++        sys.exit(2)
++    asyncio.run(Bridge(args).main())
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/Mod/Unified/AIChat.svg b/src/Mod/Unified/AIChat.svg
+new file mode 100644
+index 000000000..6b67638b1
+--- /dev/null
++++ b/src/Mod/Unified/AIChat.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M10 10h44a6 6 0 0 1 6 6v24a6 6 0 0 1-6 6H30l-12 10v-10h-8a6 6 0 0 1-6-6V16a6 6 0 0 1 6-6z"
++        fill="#5b8def" stroke="#2f5fb3" stroke-width="2.5" stroke-linejoin="round"/>
++  <path d="M32 17l2.6 6.4L41 26l-6.4 2.6L32 35l-2.6-6.4L23 26l6.4-2.6z" fill="#ffffff"/>
++  <circle cx="45" cy="19" r="2.6" fill="#ffffff"/>
++  <circle cx="19" cy="33" r="2" fill="#ffffff"/>
++</svg>
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+new file mode 100644
+index 000000000..9d4f31f9c
+--- /dev/null
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -0,0 +1,547 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""AI チャット（右側のドック）。Claude（Agent SDK）が FreeCAD を見て、直して、作る。
++
++AI は別のプロセス（AIAgentBridge.py、claude-agent-sdk の入った Python）で動き、
++FreeCAD を見る・動かす道具（AITools）を呼ぶたびに、ここへ頼みに来る。
++AI が形を変えるたびに「元に戻す」の 1 段になる。
++"""
++
++import html
++import json
++import os
++import shutil
++import sys
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import AITools
++
++translate = App.Qt.translate
++QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++PARAMS = "User parameter:BaseApp/Preferences/Mod/Unified/AI"
++
++
++def _params():
++    return App.ParamGet(PARAMS)
++
++
++def _venv_dir():
++    return os.path.join(App.getUserAppDataDir(), "ai-venv")
++
++
++def _venv_python(d):
++    return os.path.join(d, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(d, "bin", "python")
++
++
++def find_python():
++    """claude-agent-sdk の入った Python。設定 → 準備で作った venv の順"""
++    p = _params().GetString("PythonPath", "")
++    if p and os.path.exists(p):
++        return p
++    v = _venv_python(_venv_dir())
++    return v if os.path.exists(v) else None
++
++
++def _datadir():
++    return os.path.join(App.getUserAppDataDir(), "ai")
++
++
++def find_claude():
++    """claude の実行ファイル。見つからなければ空（SDK に同梱のものを使う）"""
++    p = _params().GetString("ClaudePath", "")
++    if p and os.path.exists(p):
++        return p
++    w = shutil.which("claude")
++    if w:
++        return w
++    home = os.path.expanduser("~")
++    for c in (os.path.join(home, ".local", "bin", "claude"), os.path.join(home, ".local", "bin", "claude.exe"),
++              os.path.join(home, ".claude", "local", "claude")):
++        if os.path.exists(c):
++            return c
++    return ""
++
++
++def _base_python():
++    """venv を作るための Python（システムのもの。無ければ FreeCAD に同梱のもの）"""
++    for name in ("python3", "python"):
++        w = shutil.which(name)
++        if w and "WindowsApps" not in w:
++            return w
++    exe = os.path.join(os.path.dirname(sys.executable), "python.exe" if sys.platform == "win32" else "python")
++    return exe if os.path.exists(exe) else sys.executable
++
++
++def _selection_note():
++    sel = AITools._selection()
++    if not sel:
++        return ""
++    parts = []
++    for s in sel:
++        if s["sub"]:
++            parts.append("%s（%s）の %s" % (s["name"], s["label"], ", ".join(s["sub"])))
++        else:
++            parts.append("%s（%s）" % (s["name"], s["label"]))
++    return "\n\n［今の選択: " + "; ".join(parts) + "］"
++
++
++class ChatPanel(QtWidgets.QWidget):
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        self.proc = None
++        self.buffer = b""
++        self.ready = False
++        self.busy = False
++        self.queue = []
++        self.codes = []
++        self.in_call = False
++        self.later = []        # 道具を実行している間に届いたもの（入れ子にしない）
++        lay = QtWidgets.QVBoxLayout(self)
++        lay.setContentsMargins(4, 4, 4, 4)
++        self.view = QtWidgets.QTextBrowser()
++        self.view.setOpenLinks(False)
++        self.view.anchorClicked.connect(self.on_link)
++        lay.addWidget(self.view, 1)
++        self.status = QtWidgets.QLabel()
++        self.status.setWordWrap(True)
++        lay.addWidget(self.status)
++        self.setup_btn = QtWidgets.QPushButton(translate("AIChat", "Set up the AI (install claude-agent-sdk)"))
++        self.setup_btn.clicked.connect(self.setup)
++        self.setup_btn.hide()
++        lay.addWidget(self.setup_btn)
++        self.input = QtWidgets.QPlainTextEdit()
++        self.input.setPlaceholderText(translate("AIChat", "Ask or instruct (Ctrl+Enter to send). "
++                                                          "What you have selected is passed along."))
++        self.input.setMaximumHeight(90)
++        self.input.installEventFilter(self)
++        lay.addWidget(self.input)
++        row = QtWidgets.QHBoxLayout()
++        self.send_btn = QtWidgets.QPushButton(translate("AIChat", "Send"))
++        self.send_btn.clicked.connect(self.on_send)
++        row.addWidget(self.send_btn)
++        self.stop_btn = QtWidgets.QPushButton(translate("AIChat", "Stop"))
++        self.stop_btn.setEnabled(False)
++        self.stop_btn.clicked.connect(self.on_stop)
++        row.addWidget(self.stop_btn)
++        new = QtWidgets.QPushButton(translate("AIChat", "New conversation"))
++        new.clicked.connect(self.on_new)
++        row.addWidget(new)
++        self.key_btn = QtWidgets.QPushButton(translate("AIChat", "API key…"))
++        self.key_btn.setToolTip(translate("AIChat", "Set or remove your Anthropic API key"))
++        self.key_btn.clicked.connect(self.on_key)
++        row.addWidget(self.key_btn)
++        lay.addLayout(row)
++        self._note(translate("AIChat", "The AI looks at the model, changes it and checks the result. "
++                                       "Every change it makes is one step in Undo."))
++
++    # ---------------------------------------------------------------- 表示
++    def _new_block(self):
++        """末尾に、前の段落の書式（AI の返事の箇条書きなど）を引き継がない段落を足す"""
++        c = self.view.textCursor()
++        c.movePosition(QtGui.QTextCursor.End)
++        c.insertBlock(QtGui.QTextBlockFormat(), QtGui.QTextCharFormat())
++        lst = c.currentList()
++        if lst is not None:
++            lst.remove(c.block())
++        return c
++
++    def _append_html(self, h):
++        c = self._new_block()
++        c.insertHtml(h)
++        self.view.setTextCursor(c)
++        self.view.ensureCursorVisible()
++
++    def _note(self, text):
++        self._append_html('<span style="color:#888">%s</span>' % html.escape(text))
++
++    def _user(self, text):
++        self._append_html('<div style="color:#2f5fb3"><b>%s</b> %s</div>' % (
++            html.escape(translate("AIChat", "You:")), html.escape(text).replace("\n", "<br>")))
++
++    def _assistant(self, text):
++        c = self._new_block()
++        c.insertHtml("<b>AI:</b> ")
++        if hasattr(c, "insertMarkdown"):
++            c.insertMarkdown(text)
++        else:
++            c.insertText(text)
++        self.view.setTextCursor(c)
++        self.view.ensureCursorVisible()
++
++    def _tool(self, name, args):
++        labels = {
++            "get_document": translate("AIChat", "Looking at the model"),
++            "run_python": translate("AIChat", "Changing: {0}"),
++            "screenshot": translate("AIChat", "Taking a look at the view"),
++            "design_check": translate("AIChat", "Running the design check"),
++        }
++        text = labels.get(name, name)
++        if name == "run_python":
++            text = text.format(args.get("description", ""))
++            self.codes.append(args.get("code", ""))
++            link = ' <a href="code:%d">%s</a>' % (len(self.codes) - 1, html.escape(translate("AIChat", "code")))
++        else:
++            link = ""
++        self._append_html('<span style="color:#888">🔧 %s%s</span>' % (html.escape(text), link))
++
++    def approve(self, args):
++        """AI のコードを実行する前に、利用者に見せて承認を取る（任意の Python なので、黙っては実行しない）"""
++        dlg = QtWidgets.QDialog(self)
++        dlg.setWindowTitle(translate("AIChat", "Run the AI's code?"))
++        v = QtWidgets.QVBoxLayout(dlg)
++        head = QtWidgets.QLabel(translate("AIChat", "The AI wants to run this code: {0}").format(
++            args.get("description", "")))
++        head.setWordWrap(True)
++        v.addWidget(head)
++        t = QtWidgets.QPlainTextEdit(args.get("code", ""))
++        t.setReadOnly(True)
++        t.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
++        v.addWidget(t)
++        note = QtWidgets.QLabel(translate("AIChat", "Changes to the model can be undone in one step. "
++                                                    "The code can also do things outside FreeCAD, so read it first."))
++        note.setWordWrap(True)
++        v.addWidget(note)
++        bb = QtWidgets.QDialogButtonBox()
++        run = bb.addButton(translate("AIChat", "Run"), QtWidgets.QDialogButtonBox.AcceptRole)
++        bb.addButton(translate("AIChat", "Don't run"), QtWidgets.QDialogButtonBox.RejectRole)
++        bb.accepted.connect(dlg.accept)
++        bb.rejected.connect(dlg.reject)
++        v.addWidget(bb)
++        run.setDefault(True)
++        dlg.resize(720, 480)
++        return dlg.exec() == QtWidgets.QDialog.Accepted
++
++    def on_link(self, url):
++        s = url.toString()
++        if s.startswith("code:"):
++            code = self.codes[int(s[5:])]
++            dlg = QtWidgets.QDialog(self)
++            dlg.setWindowTitle(translate("AIChat", "Code the AI ran"))
++            v = QtWidgets.QVBoxLayout(dlg)
++            t = QtWidgets.QPlainTextEdit(code)
++            t.setReadOnly(True)
++            t.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
++            v.addWidget(t)
++            dlg.resize(700, 450)
++            dlg.exec()
++
++    def _set_busy(self, busy):
++        self.busy = busy
++        self.stop_btn.setEnabled(busy)
++        self.status.setText(translate("AIChat", "Thinking…") if busy else "")
++
++    # ---------------------------------------------------------------- 仲介役のプロセス
++    def ensure_started(self):
++        if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
++            return True
++        py = find_python()
++        if py is None:
++            self.status.setText(translate("AIChat", "The AI is not set up yet: it needs claude-agent-sdk "
++                                                     "(installed with the button below) and your Anthropic API key."))
++            self.setup_btn.show()
++            return False
++        self.setup_btn.hide()
++        self.proc = QtCore.QProcess(self)
++        self.proc.setProcessChannelMode(QtCore.QProcess.SeparateChannels)
++        self.proc.readyReadStandardOutput.connect(self.on_stdout)
++        self.proc.readyReadStandardError.connect(self.on_stderr)
++        self.proc.finished.connect(self.on_finished)
++        self.ready = False
++        self.buffer = b""
++        args = [os.path.join(HERE, "AIAgentBridge.py"),
++                "--model", _params().GetString("Model", "opus"),
++                "--claude", find_claude(),
++                "--workdir", os.path.join(App.getUserCachePath(), "ai-work"),
++                "--datadir", _datadir()]
++        # 隠し設定: API キーではなく、この PC の claude のログインを使う（本人の利用に限る。配る版の既定は API キー）
++        if _params().GetBool("UseLocalClaudeLogin", False):
++            args.append("--local-login")
++        self.status.setText(translate("AIChat", "Starting the AI…"))
++        self.proc.start(py, args)
++        return True
++
++    def send_json(self, **msg):
++        if self.proc is not None:
++            self.proc.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
++
++    def on_stdout(self):
++        self.buffer += bytes(self.proc.readAllStandardOutput())
++        while b"\n" in self.buffer:
++            line, self.buffer = self.buffer.split(b"\n", 1)
++            try:
++                msg = json.loads(line.decode("utf-8"))
++            except ValueError:
++                continue
++            self.handle(msg)
++
++    def on_stderr(self):
++        err = bytes(self.proc.readAllStandardError()).decode("utf-8", "replace")
++        App.Console.PrintLog("AIChat: " + err)
++
++    def on_finished(self, *args):
++        self.ready = False
++        self._set_busy(False)
++        self._note(translate("AIChat", "The AI stopped."))
++
++    def handle(self, msg):
++        if self.in_call:
++            self.later.append(msg)
++            return
++        self._handle(msg)
++        while self.later and not self.in_call:
++            self._handle(self.later.pop(0))
++
++    def _handle(self, msg):
++        t = msg.get("type")
++        if t == "ready":
++            self.ready = True
++            self.status.setText("")
++            if self.queue:
++                self._start_turn(self.queue.pop(0))
++        elif t == "text":
++            self._assistant(msg.get("text", ""))
++        elif t == "call":
++            self._tool(msg.get("tool"), msg.get("args") or {})
++            self.in_call = True
++            try:
++                QtWidgets.QApplication.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
++                if msg.get("tool") == "run_python" and not self.approve(msg.get("args") or {}):
++                    res = {"content": [{"type": "text", "text": "利用者が実行を断った。何を変えようとしたか説明し、指示を待つ"}],
++                           "is_error": True}
++                else:
++                    res = AITools.call(msg.get("tool"), msg.get("args"))
++            finally:
++                self.in_call = False
++            self.send_json(type="result", id=msg.get("id"), **res)
++        elif t == "done":
++            self._set_busy(False)
++            if msg.get("error"):
++                self._note(translate("AIChat", "Stopped with an error: {0}").format(msg["error"]))
++            if self.queue:
++                self._start_turn(self.queue.pop(0))
++        elif t == "need_key":
++            self._set_busy(False)
++            self.ready = False
++            self._note(translate("AIChat", "An Anthropic API key is needed. Create one at "
++                                           "console.anthropic.com (usage is billed to your account) "
++                                           "and enter it with “API key…”. It is kept in the key store of "
++                                           "your system, not in the FreeCAD settings."))
++            self.key_btn.setFocus()
++        elif t == "fatal":
++            self._set_busy(False)
++            self._note(msg.get("text", ""))
++            if "claude-agent-sdk" in msg.get("text", ""):
++                self.setup_btn.show()
++
++    # ---------------------------------------------------------------- 操作
++    def eventFilter(self, obj, ev):
++        if obj is self.input and ev.type() == QtCore.QEvent.KeyPress \
++                and ev.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) \
++                and ev.modifiers() & QtCore.Qt.ControlModifier:
++            self.on_send()
++            return True
++        return super().eventFilter(obj, ev)
++
++    def ask(self, text):
++        """外から頼む（設計の検査の「AI に相談」など）"""
++        self.input.setPlainText(text)
++        self.on_send()
++
++    def on_send(self):
++        text = self.input.toPlainText().strip()
++        if not text:
++            return
++        self.input.clear()
++        self._user(text)
++        full = text + _selection_note()
++        if not self.ensure_started():
++            return
++        if self.ready and not self.busy:
++            self._start_turn(full)
++        else:
++            self.queue.append(full)
++
++    def _start_turn(self, text):
++        self._set_busy(True)
++        self.send_json(type="user", text=text)
++
++    def on_stop(self):
++        self.send_json(type="interrupt")
++
++    def on_new(self):
++        self.queue.clear()
++        self.codes.clear()
++        self.view.clear()
++        AITools.reset()
++        if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
++            self.ready = False
++            self.send_json(type="reset")
++        self._note(translate("AIChat", "New conversation."))
++
++    def shutdown(self):
++        if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
++            self.proc.closeWriteChannel()
++            if not self.proc.waitForFinished(3000):
++                self.proc.kill()
++
++    # ---------------------------------------------------------------- API キー
++    def on_key(self):
++        py = find_python()
++        if py is None:
++            self.setup_btn.show()
++            self._note(translate("AIChat", "Set up the AI first."))
++            return
++        key, ok = QtWidgets.QInputDialog.getText(
++            self, translate("AIChat", "Anthropic API key"),
++            translate("AIChat", "Your API key (sk-ant-…). Leave empty to remove the stored key."),
++            QtWidgets.QLineEdit.Password)
++        if not ok:
++            return
++        key = key.strip()
++        p = QtCore.QProcess(self)
++        p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
++        bridge = os.path.join(HERE, "AIAgentBridge.py")
++
++        def done(code, *rest):
++            out = bytes(p.readAll()).decode("utf-8", "replace").strip()
++            if code != 0:
++                self._note(translate("AIChat", "Could not store the key: {0}").format(out))
++                return
++            if not key:
++                self._note(translate("AIChat", "The stored API key was removed."))
++            elif out == "file":
++                self._note(translate("AIChat", "Stored (no key store on this system: in a file only you can read)."))
++            else:
++                self._note(translate("AIChat", "Stored in the key store of the system."))
++            # 新しいキーで始め直す
++            self.shutdown()
++            self.proc = None
++            if key and self.queue:
++                self.ensure_started()
++        p.finished.connect(done)
++        # キーはコマンドラインに載せない（他のプロセスから見える）。標準入力で渡す
++        if key:
++            p.start(py, [bridge, "--store-key", "--datadir", _datadir()])
++            p.waitForStarted(5000)
++            p.write(key.encode("utf-8"))
++            p.closeWriteChannel()
++        else:
++            p.start(py, [bridge, "--delete-key", "--datadir", _datadir()])
++
++    # ---------------------------------------------------------------- 準備（venv に SDK を入れる）
++    def setup(self):
++        d = _venv_dir()
++        steps = []
++        if not os.path.exists(_venv_python(d)):
++            steps.append((_base_python(), ["-m", "venv", d]))
++        steps.append((_venv_python(d), ["-m", "pip", "install", "--upgrade", "claude-agent-sdk", "keyring"]))
++        self.setup_btn.setEnabled(False)
++        self._note(translate("AIChat", "Setting up in {0} …").format(d))
++        self._run_steps(steps)
++
++    def _run_steps(self, steps):
++        if not steps:
++            self.setup_btn.setEnabled(True)
++            self.setup_btn.hide()
++            self._note(translate("AIChat", "Set up. Next, enter your Anthropic API key with “API key…”."))
++            self.status.setText("")
++            return
++        prog, args = steps[0]
++        p = QtCore.QProcess(self)
++        p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
++
++        def done(code, *rest):
++            out = bytes(p.readAll()).decode("utf-8", "replace").strip().splitlines()
++            if code != 0:
++                self.setup_btn.setEnabled(True)
++                self._note(translate("AIChat", "Setup failed: {0}").format("\n".join(out[-5:])))
++                return
++            self._run_steps(steps[1:])
++        p.finished.connect(done)
++        self.status.setText(" ".join([os.path.basename(prog)] + args[:3]) + " …")
++        p.start(prog, args)
++
++
++class Chat:
++    """ドックの出し入れ"""
++
++    def __init__(self):
++        self.dock = None
++        self.panel = None
++
++    def show(self):
++        mw = Gui.getMainWindow()
++        if self.dock is None:
++            self.dock = QtWidgets.QDockWidget(translate("AIChat", "AI"), mw)
++            self.dock.setObjectName("Unified AI chat")
++            self.panel = ChatPanel(self.dock)
++            self.dock.setWidget(self.panel)
++            mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.dock)
++            QtWidgets.QApplication.instance().aboutToQuit.connect(self.panel.shutdown)
++        self.dock.show()
++        self.dock.raise_()
++        self.panel.input.setFocus()
++        return self.panel
++
++    def toggle(self):
++        if self.dock is not None and self.dock.isVisible():
++            self.dock.hide()
++        else:
++            self.show()
++
++    def ask(self, text):
++        self.show().ask(text)
++
++
++chat = Chat()
++
++
++class AIChatCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "AIChat.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_AIChat", "AI"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_AIChat",
++                "Chat with an AI that looks at the model, changes it and checks the result. "
++                "Needs your Anthropic API key"),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        chat.toggle()
++
++
++Gui.addCommand("Unified_AIChat", AIChatCommand())
++
++
++class AIChatAskCommand:
++    """選んだものについて AI に頼む（面や辺をクリックしたときに出る候補の最後）。選択は送るときに自動で添える"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "AIChat.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_AIChatAsk", "Ask AI"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_AIChatAsk",
++                                         "Opens the AI chat to ask about what is picked, "
++                                         "e.g. “make this hole 6 mm and add a counterbore”"),
++        }
++
++    def IsActive(self):
++        return bool(Gui.Selection.getSelectionEx())
++
++    def Activated(self):
++        panel = chat.show()
++        sel = AITools._selection()
++        names = "; ".join("%s%s" % (s["label"], (" の " + ", ".join(s["sub"])) if s["sub"] else "") for s in sel)
++        panel.input.setPlaceholderText(translate("AIChat", "What should be done with {0}?").format(names))
++        panel.input.setFocus()
++
++
++Gui.addCommand("Unified_AIChatAsk", AIChatAskCommand())
+diff --git a/src/Mod/Unified/AITools.py b/src/Mod/Unified/AITools.py
+new file mode 100644
+index 000000000..5b2984445
+--- /dev/null
++++ b/src/Mod/Unified/AITools.py
+@@ -0,0 +1,243 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""AI チャットの道具の中身（FreeCAD の中で動く）。AIAgentBridge から頼まれて実行し、MCP の content を返す。
++
++GUI が無くても get_document / run_python / design_check は動く（試験用）。screenshot だけ GUI が要る。
++"""
++
++import ast
++import base64
++import contextlib
++import io
++import os
++import tempfile
++import traceback
++
++import FreeCAD as App
++
++MAX_TEXT = 12000
++
++# run_python の名前空間は会話のあいだ続く（前の回で作った変数を次の回で使える）
++_namespace = {}
++
++
++def _text(t, is_error=False):
++    if len(t) > MAX_TEXT:
++        t = t[:MAX_TEXT] + "\n…（長いので %d 文字で切った）" % MAX_TEXT
++    return {"content": [{"type": "text", "text": t}], "is_error": is_error}
++
++
++def _gui():
++    try:
++        import FreeCADGui as Gui
++        return Gui if App.GuiUp else None
++    except ImportError:
++        return None
++
++
++def _selection():
++    Gui = _gui()
++    if Gui is None:
++        return []
++    out = []
++    for s in Gui.Selection.getSelectionEx("", 0):
++        # "Body" + "Sketch.Edge3" のような道のりを、実際に選んだ物（Sketch）と要素（Edge3）に直す
++        leaves = {}
++        for sub in s.SubElementNames or [""]:
++            leaf = s.Object.getSubObject(sub, 1) if sub else s.Object
++            leaf = leaf or s.Object
++            element = sub.split(".")[-1] if sub else ""
++            entry = leaves.setdefault(leaf.Name, {"name": leaf.Name, "label": leaf.Label, "sub": []})
++            if element:
++                entry["sub"].append(element)
++        out.extend(leaves.values())
++    return out
++
++
++def _parent(o):
++    for p in o.InList:
++        if p.isDerivedFrom("App::DocumentObjectGroup") or p.isDerivedFrom("App::Part") \
++                or p.isDerivedFrom("PartDesign::Body"):
++            if o in getattr(p, "Group", []):
++                return p.Name
++    return None
++
++
++def _describe(o):
++    d = {"name": o.Name, "label": o.Label, "type": o.TypeId}
++    par = _parent(o)
++    if par:
++        d["parent"] = par
++    try:
++        d["visible"] = bool(o.Visibility)
++    except Exception:
++        pass
++    try:
++        if not o.isValid():
++            d["error"] = " ".join((o.getStatusString() or "").split())
++    except Exception:
++        pass
++    if o.isDerivedFrom("Sketcher::SketchObject"):
++        d["geometry"] = len(o.Geometry)
++        d["constraints"] = len(o.Constraints)
++        d["dof"] = getattr(o, "DoF", None)
++        sup = getattr(o, "AttachmentSupport", None)
++        if sup:
++            d["on"] = ["%s:%s" % (x[0].Name, ",".join(x[1])) for x in sup]
++    elif o.isDerivedFrom("PartDesign::Body"):
++        d["tip"] = o.Tip.Name if o.Tip else None
++    elif o.isDerivedFrom("PartDesign::Feature"):
++        prof = getattr(o, "Profile", None)
++        if prof:
++            d["profile"] = prof[0].Name
++        for p in ("Length", "Length2", "Angle", "Radius", "Size", "Occurrences", "Type"):
++            if hasattr(o, p):
++                v = getattr(o, p)
++                d[p.lower()] = str(v) if not isinstance(v, (int, float, str)) else v
++    if hasattr(o, "Shape") and not o.isDerivedFrom("Sketcher::SketchObject"):
++        try:
++            s = o.Shape
++            if not s.isNull():
++                bb = s.BoundBox
++                d["bbox"] = [round(v, 2) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)]
++                if s.Solids:
++                    d["volume"] = round(s.Volume, 2)
++                    d["solids"] = len(s.Solids)
++        except Exception:
++            pass
++    return d
++
++
++def get_document(args):
++    doc = App.ActiveDocument
++    if doc is None:
++        return _text("開いている文書は無い")
++    import json
++    info = {
++        "document": doc.Name, "label": doc.Label, "file": doc.FileName or None,
++        "objects": [_describe(o) for o in doc.Objects[:400]],
++        "selection": _selection(),
++    }
++    if len(doc.Objects) > 400:
++        info["note"] = "物が %d 個あるので最初の 400 個だけ" % len(doc.Objects)
++    return _text(json.dumps(info, ensure_ascii=False))
++
++
++def run_python(args):
++    code = args.get("code", "")
++    desc = (args.get("description") or "AI").strip()[:60]
++    doc = App.ActiveDocument
++    ns = _namespace
++    ns.update({"App": App, "FreeCAD": App, "doc": doc})
++    Gui = _gui()
++    if Gui is not None:
++        ns.update({"Gui": Gui, "FreeCADGui": Gui})
++    for mod in ("Part", "Sketcher"):
++        if mod not in ns:
++            try:
++                ns[mod] = __import__(mod)
++            except ImportError:
++                pass
++    try:
++        tree = ast.parse(code, "<AI>", "exec")
++    except SyntaxError as e:
++        return _text("文法の誤り: %s" % e, True)
++    last = None
++    if tree.body and isinstance(tree.body[-1], ast.Expr):
++        last = ast.Expression(tree.body.pop().value)
++    out = io.StringIO()
++    if doc is not None:
++        doc.openTransaction("AI: " + desc)
++    before = set(o.Name for o in doc.Objects) if doc else set()
++    value = None
++    try:
++        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
++            exec(compile(tree, "<AI>", "exec"), ns)
++            if last is not None:
++                value = eval(compile(last, "<AI>", "eval"), ns)
++            cur = App.ActiveDocument
++            if cur is not None:
++                cur.recompute()
++    except Exception:
++        if doc is not None and App.getDocument(doc.Name) is not None:
++            doc.abortTransaction()
++        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（この回の変更は取り消した）", True)
++    if doc is not None and App.getDocument(doc.Name) is not None:
++        doc.commitTransaction()
++    lines = []
++    if out.getvalue():
++        lines.append(out.getvalue().rstrip())
++    if value is not None:
++        lines.append(repr(value))
++    cur = App.ActiveDocument
++    if cur is not None:
++        after = set(o.Name for o in cur.Objects)
++        added = sorted(after - before) if cur is doc else []
++        removed = sorted(before - after) if cur is doc else []
++        if added:
++            lines.append("増えた物: " + ", ".join("%s（%s）" % (n, cur.getObject(n).Label) for n in added))
++        if removed:
++            lines.append("消えた物: " + ", ".join(removed))
++        bad = [o for o in cur.Objects if not o.isValid() and not o.isDerivedFrom("Sketcher::SketchObject")]
++        if bad:
++            lines.append("計算に失敗している物: " + "; ".join(
++                "%s（%s）: %s" % (o.Name, o.Label, " ".join((o.getStatusString() or "").split())) for o in bad))
++    return _text("\n".join(lines) or "（出力なし）")
++
++
++_VIEWS = {"isometric": "viewIsometric", "front": "viewFront", "back": "viewRear", "top": "viewTop",
++          "bottom": "viewBottom", "left": "viewLeft", "right": "viewRight"}
++
++
++def screenshot(args):
++    Gui = _gui()
++    if Gui is None or Gui.ActiveDocument is None:
++        return _text("画面が無い（GUI が無いか、文書が開いていない）", True)
++    view = Gui.ActiveDocument.ActiveView
++    if not hasattr(view, "saveImage"):
++        return _text("今の画面は 3D の画面ではない", True)
++    cam = view.getCamera()
++    try:
++        name = args.get("view") or "current"
++        if name in _VIEWS:
++            getattr(view, _VIEWS[name])()
++        if args.get("fit") or name in _VIEWS:
++            view.fitAll()
++        fd, path = tempfile.mkstemp(suffix=".png")
++        os.close(fd)
++        view.saveImage(path, 1000, 750, "Current")
++        with open(path, "rb") as f:
++            data = base64.b64encode(f.read()).decode("ascii")
++        os.remove(path)
++    finally:
++        view.setCamera(cam)
++    return {"content": [{"type": "image", "data": data, "mimeType": "image/png"}], "is_error": False}
++
++
++def design_check(args):
++    import json
++    import DesignCheck
++    doc = App.ActiveDocument
++    if doc is None:
++        return _text("開いている文書は無い")
++    issues = DesignCheck.run(doc)
++    return _text(json.dumps({"summary": DesignCheck.summary(issues),
++                             "ignored": issues.ignored,
++                             "issues": [i.as_dict(doc) for i in issues]}, ensure_ascii=False))
++
++
++TOOLS = {"get_document": get_document, "run_python": run_python, "screenshot": screenshot,
++         "design_check": design_check}
++
++
++def call(name, args):
++    fn = TOOLS.get(name)
++    if fn is None:
++        return _text("知らない道具: %s" % name, True)
++    try:
++        return fn(args or {})
++    except Exception:
++        return _text(traceback.format_exc(limit=6), True)
++
++
++def reset():
++    _namespace.clear()
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 0f8ecbdfd..e4ac090ba 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -8,10 +8,12 @@ endif(BUILD_GUI)
+ set(Unified_Scripts
+     Init.py
+     DesignCheck.py
++    AITools.py
++    AIAgentBridge.py
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py)
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py AIChat.svg)
+ endif(BUILD_GUI)
+ 
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index 8b24a3c83..de4d91b11 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -120,6 +120,26 @@ class Panel:
+         hint = QtWidgets.QLabel(translate("DesignCheck", "Pick a line to select and show the parts it is about."))
+         hint.setWordWrap(True)
+         lay.addWidget(hint)
++        fixrow = QtWidgets.QHBoxLayout()
++        self.fix_btn = QtWidgets.QPushButton(translate("DesignCheck", "Fix"))
++        self.fix_btn.setEnabled(False)
++        self.fix_btn.clicked.connect(self.on_fix)
++        fixrow.addWidget(self.fix_btn)
++        self.fix_all_btn = QtWidgets.QPushButton(translate("DesignCheck", "Fix all that can be fixed"))
++        self.fix_all_btn.setToolTip(translate("DesignCheck",
++            "Fixes every problem that has an automatic fix, one by one. One undo step reverts all of them."))
++        self.fix_all_btn.clicked.connect(self.on_fix_all)
++        fixrow.addWidget(self.fix_all_btn)
++        self.ai_btn = QtWidgets.QPushButton(translate("DesignCheck", "Ask AI"))
++        self.ai_btn.setToolTip(translate("DesignCheck", "Hand the selected problem to the AI chat"))
++        self.ai_btn.setEnabled(False)
++        self.ai_btn.clicked.connect(self.on_ai)
++        fixrow.addWidget(self.ai_btn)
++        lay.addLayout(fixrow)
++        self.done = QtWidgets.QLabel()
++        self.done.setWordWrap(True)
++        self.done.hide()
++        lay.addWidget(self.done)
+         row = QtWidgets.QHBoxLayout()
+         self.ignore_btn = QtWidgets.QPushButton(translate("DesignCheck", "Ignore this one"))
+         self.ignore_btn.setToolTip(translate("DesignCheck",
+@@ -131,7 +151,7 @@ class Panel:
+         again.clicked.connect(self.refresh)
+         row.addWidget(again)
+         lay.addLayout(row)
+-        self.issues = []
++        self.issues = DesignCheck.Issues()
+         self.refresh()
+ 
+     def refresh(self):
+@@ -146,10 +166,11 @@ class Panel:
+             QtWidgets.QApplication.restoreOverrideCursor()
+         self.tree.clear()
+         for i in self.issues:
+-            it = QtWidgets.QTreeWidgetItem([
+-                _severity_text(i.severity),
+-                translate("DesignCheck", DesignCheck.RULES[i.rule]) + "\n" + i.message,
+-            ])
++            text = translate("DesignCheck", DesignCheck.RULES[i.rule]) + "\n" + i.message
++            if i.fix:
++                text += "\n" + translate("DesignCheck", "→ Can be fixed: {0}").format(
++                    translate("DesignCheck", DesignCheck.FIXES[i.fix][0]))
++            it = QtWidgets.QTreeWidgetItem([_severity_text(i.severity), text])
+             it.setIcon(0, _dot(_COLORS[i.severity]))
+             self.tree.addTopLevelItem(it)
+         self.tree.resizeColumnToContents(0)
+@@ -158,10 +179,14 @@ class Panel:
+             self.head.setText(translate("DesignCheck", "No problems found."))
+         else:
+             self.head.setText(_summary_text(sm))
+-        n_ign = getattr(DesignCheck.run, "ignored", 0)
++        n_ign = self.issues.ignored
+         if n_ign:
+             self.head.setText(self.head.text() + "\n" + translate("DesignCheck", "({0} ignored as intended)").format(n_ign))
+         indicator.update_from(sm)
++        self.fix_all_btn.setEnabled(any(i.fix for i in self.issues))
++        self.fix_btn.setEnabled(False)
++        self.ignore_btn.setEnabled(False)
++        self.ai_btn.setEnabled(False)
+ 
+     def on_select(self):
+         items = self.tree.selectedItems()
+@@ -169,8 +194,64 @@ class Panel:
+             return
+         k = self.tree.indexOfTopLevelItem(items[0])
+         if 0 <= k < len(self.issues):
+-            show_issue(self.doc, self.issues[k])
++            issue = self.issues[k]
++            show_issue(self.doc, issue)
++            self.fix_btn.setEnabled(issue.fix is not None)
++            self.fix_btn.setToolTip(translate("DesignCheck", DesignCheck.FIXES[issue.fix][0]) if issue.fix else "")
+         self.ignore_btn.setEnabled(bool(items))
++        self.ai_btn.setEnabled(bool(items) and Gui.Command.get("Unified_AIChat") is not None)
++
++    def on_ai(self):
++        items = self.tree.selectedItems()
++        if not items:
++            return
++        k = self.tree.indexOfTopLevelItem(items[0])
++        if not (0 <= k < len(self.issues)):
++            return
++        i = self.issues[k]
++        text = translate("DesignCheck", "The design check reports: {0} — {1}. Find the cause and fix it.").format(
++            translate("DesignCheck", DesignCheck.RULES[i.rule]), i.message)
++        import AIChatGui
++        # 検査の作業パネルは閉じる（AI は作業パネルが開いていると手順を編集しにくい）
++        self.reject()
++        AIChatGui.chat.ask(text)
++
++    def _report(self, lines):
++        self.done.setText("\n".join(lines))
++        self.done.setVisible(bool(lines))
++
++    def on_fix(self):
++        items = self.tree.selectedItems()
++        if not items:
++            return
++        k = self.tree.indexOfTopLevelItem(items[0])
++        if not (0 <= k < len(self.issues)):
++            return
++        self.doc.openTransaction(translate("DesignCheck", "Fix a design check problem"))
++        try:
++            msg = DesignCheck.fix(self.doc, self.issues[k])
++        except Exception as e:
++            self.doc.abortTransaction()
++            self._report([translate("DesignCheck", "Could not fix: {0}").format(e)])
++            return
++        self.doc.commitTransaction()
++        marker.clear()
++        self.refresh()
++        self._report([translate("DesignCheck", "Fixed: {0}").format(msg)])
++
++    def on_fix_all(self):
++        self.doc.openTransaction(translate("DesignCheck", "Fix all design check problems"))
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        try:
++            done = DesignCheck.fix_all(self.doc)
++        finally:
++            QtWidgets.QApplication.restoreOverrideCursor()
++        self.doc.commitTransaction()
++        marker.clear()
++        self.refresh()
++        self._report([translate("DesignCheck", "Fixed: {0}").format(d["message"]) if d["ok"]
++                      else translate("DesignCheck", "Could not fix: {0}").format(d["message"]) for d in done]
++                     or [translate("DesignCheck", "Nothing to fix.")])
+ 
+     def on_ignore(self):
+         items = self.tree.selectedItems()
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 28f1e73c7..40252ae94 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -227,6 +227,11 @@ void ContextBar::refresh()
+     bool usable = view && inView && !Gui::Control().activeDialog()
+         && !Gui::Application::Instance->editDocument();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
++    if (!actions.empty()) {
++        // Last: hand what is picked to the AI chat, for whatever the buttons do not cover
++        // (skipped when the chat is not available)
++        actions.push_back({"Unified_AIChatAsk", label("Ask AI")});
++    }
+     if (actions.empty()) {
+         dismiss();
+         return;
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 26f226cd5..927b19f3c 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -145,6 +145,10 @@
+         <source>Hole</source>
+         <translation>穴</translation>
+     </message>
++    <message>
++        <source>Ask AI</source>
++        <translation>AI に頼む</translation>
++    </message>
+ </context>
+ <context>
+     <name>PartDesignGui::SketchPlanePicker</name>
+@@ -291,6 +295,58 @@
+         <source>Part</source>
+         <translation>組</translation>
+     </message>
++    <message>
++        <source>Box</source>
++        <translation>直方体</translation>
++    </message>
++    <message>
++        <source>Cylinder</source>
++        <translation>円柱</translation>
++    </message>
++    <message>
++        <source>Sphere</source>
++        <translation>球</translation>
++    </message>
++    <message>
++        <source>Cone</source>
++        <translation>円錐</translation>
++    </message>
++    <message>
++        <source>Torus</source>
++        <translation>トーラス</translation>
++    </message>
++    <message>
++        <source>Fusion</source>
++        <translation>結合</translation>
++    </message>
++    <message>
++        <source>Cut</source>
++        <translation>切り取り</translation>
++    </message>
++    <message>
++        <source>Common</source>
++        <translation>共通部分</translation>
++    </message>
++    <message>
++        <source>Group</source>
++        <translation>フォルダー</translation>
++    </message>
++    <message>
++        <source>Page</source>
++        <translation>図面</translation>
++    </message>
++    <message>
++        <source>View</source>
++        <translation>投影図</translation>
++    </message>
++    <message>
++        <source>ProjGroup</source>
++        <translation>投影図群</translation>
++    </message>
++    <message>
++        <source>Dimension</source>
++        <translation>寸法</translation>
++    </message>
+ </context>
+ <context>
+     <name>QObject</name>
+@@ -540,6 +596,110 @@
+         <source>Ignore a design check problem</source>
+         <translation>設計の検査の指摘を無視</translation>
+     </message>
++    <message>
++        <source>Fix</source>
++        <translation>直す</translation>
++    </message>
++    <message>
++        <source>Fix all that can be fixed</source>
++        <translation>直せるものを全部直す</translation>
++    </message>
++    <message>
++        <source>Fixes every problem that has an automatic fix, one by one. One undo step reverts all of them.</source>
++        <translation>自動で直せる問題を 1 つずつ全部直す。「元に戻す」1 回で全部戻る</translation>
++    </message>
++    <message>
++        <source>→ Can be fixed: {0}</source>
++        <translation>→ 直せる: {0}</translation>
++    </message>
++    <message>
++        <source>Fix a design check problem</source>
++        <translation>設計の検査の指摘を直す</translation>
++    </message>
++    <message>
++        <source>Fix all design check problems</source>
++        <translation>設計の検査の指摘をまとめて直す</translation>
++    </message>
++    <message>
++        <source>Fixed: {0}</source>
++        <translation>直した: {0}</translation>
++    </message>
++    <message>
++        <source>Could not fix: {0}</source>
++        <translation>直せなかった: {0}</translation>
++    </message>
++    <message>
++        <source>Nothing to fix.</source>
++        <translation>直せるものは無かった。</translation>
++    </message>
++    <message>
++        <source>Deleted {0} constraints in {1}</source>
++        <translation>{1} の拘束を {0} 個消した</translation>
++    </message>
++    <message>
++        <source>Deleted constraint {0} in {1}</source>
++        <translation>{1} の拘束 {0} を消した</translation>
++    </message>
++    <message>
++        <source>There is no other part to move it to</source>
++        <translation>寄せる先の部品が無い</translation>
++    </message>
++    <message>
++        <source>Moved {0} by {1:.2f} mm onto {2}</source>
++        <translation>{0} を {1:.2f} mm 動かして {2} に付けた</translation>
++    </message>
++    <message>
++        <source>Moved {0} by {1:.2f} mm</source>
++        <translation>{0} を {1:.2f} mm 動かした</translation>
++    </message>
++    <message>
++        <source>Could not find a short move that separates them</source>
++        <translation>短い移動では離せなかった</translation>
++    </message>
++    <message>
++        <source>Deleted {0}</source>
++        <translation>{0} を消した</translation>
++    </message>
++    <message>
++        <source>This problem cannot be fixed automatically</source>
++        <translation>この問題は自動では直せない</translation>
++    </message>
++    <message>
++        <source>Delete the constraints that say the same thing twice</source>
++        <translation>重複した拘束を消す</translation>
++    </message>
++    <message>
++        <source>Delete the last added of the contradicting constraints</source>
++        <translation>ぶつかる拘束のうち、最後に足したものを消す</translation>
++    </message>
++    <message>
++        <source>Delete the malformed constraints</source>
++        <translation>壊れた拘束を消す</translation>
++    </message>
++    <message>
++        <source>Move it until it touches the nearest part</source>
++        <translation>いちばん近い部品に接するまで動かす</translation>
++    </message>
++    <message>
++        <source>Move the smaller part the shortest way out of the other</source>
++        <translation>小さい方の部品を、重ならなくなるいちばん短い向きへ動かす</translation>
++    </message>
++    <message>
++        <source>Delete the empty view</source>
++        <translation>空の投影図を消す</translation>
++    </message>
++    <message>
++        <source>Ask AI</source>
++        <translation>AI に相談</translation>
++    </message>
++    <message>
++        <source>Hand the selected problem to the AI chat</source>
++        <translation>選んだ指摘を AI のチャットに渡す</translation>
++    </message>
++    <message>
++        <source>The design check reports: {0} — {1}. Find the cause and fix it.</source>
++        <translation>設計の検査で指摘が出ています: {0} — {1}。原因を調べて直してください。</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_DesignCheck</name>
+@@ -552,4 +712,185 @@
+         <translation>モデル全体の間違いを一括で調べる（基板 CAD の DRC のようなもの）: 計算に失敗した手順、壊れた・ばらばらの形、部品の干渉、スケッチの拘束の問題、極端に短い辺、浮いた部品、形を見失った図面の寸法</translation>
+     </message>
+ </context>
++<context>
++    <name>AIChat</name>
++    <message>
++        <source>Set up the AI (install claude-agent-sdk)</source>
++        <translation>AI の準備をする（claude-agent-sdk を入れる）</translation>
++    </message>
++    <message>
++        <source>Ask or instruct (Ctrl+Enter to send). What you have selected is passed along.</source>
++        <translation>質問や指示（Ctrl+Enter で送る）。選んでいる物も一緒に伝わります</translation>
++    </message>
++    <message>
++        <source>Send</source>
++        <translation>送る</translation>
++    </message>
++    <message>
++        <source>Stop</source>
++        <translation>止める</translation>
++    </message>
++    <message>
++        <source>New conversation</source>
++        <translation>新しい会話</translation>
++    </message>
++    <message>
++        <source>API key…</source>
++        <translation>API キー…</translation>
++    </message>
++    <message>
++        <source>Set or remove your Anthropic API key</source>
++        <translation>Anthropic の API キーを設定・削除する</translation>
++    </message>
++    <message>
++        <source>The AI looks at the model, changes it and checks the result. Every change it makes is one step in Undo.</source>
++        <translation>AI がモデルを見て、直して、結果を確かめます。AI の変更は 1 回ごとに「元に戻す」の 1 段になります。</translation>
++    </message>
++    <message>
++        <source>You:</source>
++        <translation>あなた:</translation>
++    </message>
++    <message>
++        <source>Looking at the model</source>
++        <translation>モデルを見ています</translation>
++    </message>
++    <message>
++        <source>Changing: {0}</source>
++        <translation>変更: {0}</translation>
++    </message>
++    <message>
++        <source>Taking a look at the view</source>
++        <translation>画面を見ています</translation>
++    </message>
++    <message>
++        <source>Running the design check</source>
++        <translation>設計の検査をしています</translation>
++    </message>
++    <message>
++        <source>code</source>
++        <translation>コード</translation>
++    </message>
++    <message>
++        <source>Run the AI's code?</source>
++        <translation>AI のコードを実行しますか？</translation>
++    </message>
++    <message>
++        <source>The AI wants to run this code: {0}</source>
++        <translation>AI が次のコードを実行しようとしています: {0}</translation>
++    </message>
++    <message>
++        <source>Changes to the model can be undone in one step. The code can also do things outside FreeCAD, so read it first.</source>
++        <translation>モデルの変更は「元に戻す」1 回で戻せます。コードは FreeCAD の外のこと（ファイルの削除など）もできるので、読んでから実行してください。</translation>
++    </message>
++    <message>
++        <source>Run</source>
++        <translation>実行する</translation>
++    </message>
++    <message>
++        <source>Don't run</source>
++        <translation>実行しない</translation>
++    </message>
++    <message>
++        <source>Code the AI ran</source>
++        <translation>AI が実行したコード</translation>
++    </message>
++    <message>
++        <source>Thinking…</source>
++        <translation>考えています…</translation>
++    </message>
++    <message>
++        <source>The AI is not set up yet: it needs claude-agent-sdk (installed with the button below) and your Anthropic API key.</source>
++        <translation>AI の準備がまだです。claude-agent-sdk（下のボタンで入ります）と、あなたの Anthropic の API キーが要ります。</translation>
++    </message>
++    <message>
++        <source>Starting the AI…</source>
++        <translation>AI を起動しています…</translation>
++    </message>
++    <message>
++        <source>The AI stopped.</source>
++        <translation>AI が止まりました。</translation>
++    </message>
++    <message>
++        <source>Stopped with an error: {0}</source>
++        <translation>エラーで止まりました: {0}</translation>
++    </message>
++    <message>
++        <source>An Anthropic API key is needed. Create one at console.anthropic.com (usage is billed to your account) and enter it with “API key…”. It is kept in the key store of your system, not in the FreeCAD settings.</source>
++        <translation>Anthropic の API キーが要ります。console.anthropic.com で作り（使った分はあなたのアカウントに請求されます）、「API キー…」で入れてください。キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。</translation>
++    </message>
++    <message>
++        <source>New conversation.</source>
++        <translation>新しい会話です。</translation>
++    </message>
++    <message>
++        <source>Set up the AI first.</source>
++        <translation>先に AI の準備をしてください。</translation>
++    </message>
++    <message>
++        <source>Anthropic API key</source>
++        <translation>Anthropic の API キー</translation>
++    </message>
++    <message>
++        <source>Your API key (sk-ant-…). Leave empty to remove the stored key.</source>
++        <translation>API キー（sk-ant-…）。空で OK を押すと、しまってあるキーを消します。</translation>
++    </message>
++    <message>
++        <source>Could not store the key: {0}</source>
++        <translation>キーをしまえませんでした: {0}</translation>
++    </message>
++    <message>
++        <source>The stored API key was removed.</source>
++        <translation>しまってあった API キーを消しました。</translation>
++    </message>
++    <message>
++        <source>Stored (no key store on this system: in a file only you can read).</source>
++        <translation>しまいました（この OS には鍵保管庫が無いので、あなただけが読めるファイルに）。</translation>
++    </message>
++    <message>
++        <source>Stored in the key store of the system.</source>
++        <translation>OS の鍵保管庫にしまいました。</translation>
++    </message>
++    <message>
++        <source>Setting up in {0} …</source>
++        <translation>{0} に準備しています…</translation>
++    </message>
++    <message>
++        <source>Set up. Next, enter your Anthropic API key with “API key…”.</source>
++        <translation>準備ができました。次に「API キー…」で Anthropic の API キーを入れてください。</translation>
++    </message>
++    <message>
++        <source>Setup failed: {0}</source>
++        <translation>準備に失敗しました: {0}</translation>
++    </message>
++    <message>
++        <source>AI</source>
++        <translation>AI</translation>
++    </message>
++    <message>
++        <source>What should be done with {0}?</source>
++        <translation>{0} をどうしますか？</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_AIChat</name>
++    <message>
++        <source>AI</source>
++        <translation>AI</translation>
++    </message>
++    <message>
++        <source>Chat with an AI that looks at the model, changes it and checks the result. Needs your Anthropic API key</source>
++        <translation>モデルを見て、直して、確かめる AI と話す。Anthropic の API キーが要ります</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_AIChatAsk</name>
++    <message>
++        <source>Ask AI</source>
++        <translation>AI に頼む</translation>
++    </message>
++    <message>
++        <source>Opens the AI chat to ask about what is picked, e.g. “make this hole 6 mm and add a counterbore”</source>
++        <translation>選んだ物について AI に頼む（例:「この穴を 6 mm にして座ぐりを付けて」）</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 89c86202a..2ff2c0c56 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -5,6 +5,7 @@
+ #include <QTimer>
+ #include <QToolBar>
+ 
++#include <Base/Console.h>
+ #include <Gui/Application.h>
+ #include <Gui/MainWindow.h>
+ #include <Gui/Command.h>
+@@ -77,6 +78,19 @@ void Workbench::activated()
+     });
+ }
+ 
++namespace
++{
++// Put a menu before another one; at the end if that one is not there (renamed upstream),
++// instead of silently dropping the menu
++void insertMenu(Gui::MenuItem* root, Gui::MenuItem* before, Gui::MenuItem* item)
++{
++    if (!before || !root->insertItem(before, item)) {
++        Base::Console().warning("Unified: menu to insert before not found; appending\n");
++        root->appendItem(item);
++    }
++}
++}  // namespace
++
+ Gui::MenuItem* Workbench::setupMenuBar() const
+ {
+     Gui::MenuItem* root = StdWorkbench::setupMenuBar();
+@@ -84,7 +98,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+ 
+     // Sketch: everything about 2D drawing. The frequently used tools are also on the toolbars.
+     auto sketch = new Gui::MenuItem;
+-    root->insertItem(windows, sketch);
++    insertMenu(root, windows, sketch);
+     sketch->setCommand("&Sketch");
+     *sketch << "PartDesign_NewSketch"
+             << "Sketcher_EditSketch"
+@@ -113,7 +127,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+ 
+     // Part: all modelling tools, including the ones that are not on the toolbars
+     auto part = new Gui::MenuItem;
+-    root->insertItem(windows, part);
++    insertMenu(root, windows, part);
+     part->setCommand("&Model");
+     auto additives = new Gui::MenuItem;
+     additives->setCommand("Unified Add");
+@@ -153,11 +167,12 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+           << "PartDesign_Clone"
+           << "Separator"
+           << "Unified_DesignCheck"
++          << "Unified_AIChat"
+           << "Part_CheckGeometry";
+ 
+     // Technical drawings: used now and then, so in a menu instead of on the toolbars
+     auto drawing = new Gui::MenuItem;
+-    root->insertItem(windows, drawing);
++    insertMenu(root, windows, drawing);
+     drawing->setCommand("&Drawing");
+     auto dims = new Gui::MenuItem;
+     dims->setCommand("Dimensions");
+@@ -184,7 +199,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+ 
+     // Assemblies: parts connected by joints
+     auto assembly = new Gui::MenuItem;
+-    root->insertItem(windows, assembly);
++    insertMenu(root, windows, assembly);
+     assembly->setCommand("&Assemblies");
+     auto joints = new Gui::MenuItem;
+     joints->setCommand("Joints");
+@@ -338,7 +353,8 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     auto check = new Gui::ToolBarItem(root);
+     check->setCommand("Unified Check");
+     *check << "Std_Measure"
+-           << "Unified_DesignCheck";
++           << "Unified_DesignCheck"
++           << "Unified_AIChat";
+ 
+     // Sketch tools: the toolbars of Sketcher, shown only while a sketch is edited
+     using Vis = Gui::ToolBarItem::DefaultVisibility;
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 9edf12b7c..2e5cfd3eb 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -17,14 +17,19 @@ class UnifiedWorkbench(Workbench):
+         import importlib
+ 
+         def load_optional(*modules):
+-            # Import modules that may not be built; continue if one is missing
++            # Import modules that may not be built. One that fails does not stop the others;
++            # returns True only if all of them loaded
++            ok = True
+             for name in modules:
+                 try:
+                     importlib.import_module(name)
+                 except ImportError as err:
+                     FreeCAD.Console.PrintLog("Unified: {} not available ({})\n".format(name, err))
+-                    return False
+-            return True
++                    ok = False
++                except Exception as err:
++                    FreeCAD.Console.PrintWarning("Unified: loading {} failed: {}\n".format(name, err))
++                    ok = False
++            return ok
+ 
+         # Load the modules whose commands are used here. Their workbenches are never shown.
+         import PartGui
+@@ -51,6 +56,8 @@ class UnifiedWorkbench(Workbench):
+         # Commands of this environment written in Python (after PartDesign, which they use)
+         import UnifiedCommands
+         import DesignCheckGui
++        # AI チャット（右のドック）。AI が実行するコードは毎回、利用者の承認を取ってから
++        import AIChatGui  # noqa: F401  (Unified_AIChat, Unified_AIChatAsk)
+ 
+         # 設計の検査の結果をステータスバーに常に出す（計算し直すたびに更新）
+         DesignCheckGui.indicator.install()
+-- 
+2.43.0
+

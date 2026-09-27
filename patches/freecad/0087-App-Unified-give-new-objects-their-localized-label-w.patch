@@ -1,0 +1,323 @@
+From 01a1b53f6c0ea8fa6712ab81f07f289859465e52 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:13 +0900
+Subject: [PATCH 87/90] App, Unified: give new objects their localized label
+ when they are added
+
+The labels were changed after the fact by a zero timer on signalNewObject,
+which also fired for restored files (renaming labels of English files and
+marking them modified) and happened outside the transaction. Add
+App::Document::setDefaultLabelFunction(), called in _addObject for new
+objects only, and use it for the localized default labels (also for boxes,
+cylinders, drawings, ...). Hiding the origin in the tree now uses the GUI's
+signalNewObject instead of a timer. Remove the second, PartDesign-only way
+of labeling bodies and do not overwrite the label of new sketches with the
+English 'Sketch' in the integrated environment.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Document.cpp                          | 22 +++++++-
+ src/App/Document.h                            | 10 ++++
+ .../Resources/translations/PartDesign_ja.ts   |  2 +-
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp     | 23 ++++++--
+ src/Mod/PartDesign/Gui/Utils.cpp              | 13 +----
+ src/Mod/Unified/Gui/Labels.cpp                | 54 +++++++++++--------
+ 6 files changed, 85 insertions(+), 39 deletions(-)
+
+diff --git a/src/App/Document.cpp b/src/App/Document.cpp
+index 46c55b47e..e9bd13df6 100644
+--- a/src/App/Document.cpp
++++ b/src/App/Document.cpp
+@@ -3424,6 +3424,20 @@ void Document::addObject(DocumentObject* obj, const char* name)
+     _addObject(obj, name, AddObjectOption::SetNewStatus | AddObjectOption::ActivateObject);
+ }
+ 
++namespace
++{
++Document::DefaultLabelFunction& defaultLabelFunction()
++{
++    static Document::DefaultLabelFunction func;
++    return func;
++}
++}  // namespace
++
++void Document::setDefaultLabelFunction(DefaultLabelFunction func)
++{
++    defaultLabelFunction() = std::move(func);
++}
++
+ void Document::_addObject(DocumentObject* pcObject, const char* pObjectName, AddObjectOptions options, const char* viewType)
+ {
+     // get unique name
+@@ -3462,9 +3476,15 @@ void Document::_addObject(DocumentObject* pcObject, const char* pObjectName, Add
+     // If we are restoring, don't set the Label object now; it will be restored later. This is to
+     // avoid potential duplicate label conflicts later.
+     if (options.testFlag(AddObjectOption::SetNewStatus) && !d->StatusBits.test(Restoring)) {
+-        const std::string labelName = Base::Tools::isNullOrEmpty(pObjectName)
++        std::string labelName = Base::Tools::isNullOrEmpty(pObjectName)
+             ? ObjectName
+             : Base::Tools::getIdentifier(pObjectName);
++        if (const auto& func = defaultLabelFunction()) {
++            std::string custom = func(*pcObject, labelName);
++            if (!custom.empty()) {
++                labelName = std::move(custom);
++            }
++        }
+         pcObject->Label.setValue(labelName);
+     }
+ 
+diff --git a/src/App/Document.h b/src/App/Document.h
+index 563276cbe..58a8b5706 100644
+--- a/src/App/Document.h
++++ b/src/App/Document.h
+@@ -39,6 +39,7 @@
+ #include "ExportInfo.h"
+ #include "TransactionDefs.h"
+ 
++#include <functional>
+ #include <map>
+ #include <vector>
+ #include <utility>
+@@ -1285,6 +1286,15 @@ public:
+     /// Check if there is any document restoring/importing.
+     static bool isAnyRestoring();
+ 
++    /**
++     * Function that gives new objects their default label, for example in the user's language.
++     * It gets the object and the label it would get (its name, like "Pad001") and returns the
++     * label to use, or an empty string to keep it. Not used for objects restored from a file.
++     */
++    using DefaultLabelFunction =
++        std::function<std::string(const DocumentObject& obj, const std::string& label)>;
++    static void setDefaultLabelFunction(DefaultLabelFunction func);
++
+     /// Register a new label.
+     void registerLabel(std::string_view newLabel);
+     /// Unregister a label.
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 71080d612..2596043ed 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -3750,7 +3750,7 @@ This may lead to unexpected results.</source>
+     <message>
+       <location filename="../../CommandBody.cpp" line="234"/>
+       <source>Body</source>
+-      <translation>Body</translation>
++      <translation>部品</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="427"/>
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index b3ecbff7a..1121b99f7 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -56,6 +56,7 @@
+ #include <App/Origin.h>
+ #include <App/Datums.h>
+ #include <App/Part.h>
++#include <App/SingleWorkbench.h>
+ #include <Gui/Application.h>
+ #include <Gui/Command.h>
+ #include <Gui/Control.h>
+@@ -273,7 +274,11 @@ public:
+         guidocument->openCommand(QT_TRANSLATE_NOOP("Command", "Sketch on Face"));
+         FCMD_OBJ_CMD(activeBody, "newObject('Sketcher::SketchObject','" << FeatName << "')");
+         auto Feat = activeBody->getDocument()->getObject(FeatName.c_str());
+-        FCMD_OBJ_CMD(Feat, "Label = 'Sketch'");
++        // In the integrated environment the new object already has its label in the user's
++        // language (App::Document::setDefaultLabelFunction)
++        if (!App::isSingleWorkbench()) {
++            FCMD_OBJ_CMD(Feat, "Label = 'Sketch'");
++        }
+         FCMD_OBJ_CMD(Feat, "AttachmentSupport = " << supportString);
+         if (sketchFilter.match()) {
+             FCMD_OBJ_CMD(
+@@ -708,7 +713,11 @@ private:
+         std::string FeatName = doc->getUniqueObjectName("Sketch");
+         FCMD_OBJ_CMD(activeBody, "newObject('Sketcher::SketchObject','" << FeatName << "')");
+         auto sketch = doc->getObject(FeatName.c_str());
+-        FCMD_OBJ_CMD(sketch, "Label = 'Sketch'");
++        // In the integrated environment the new object already has its label in the user's
++        // language (App::Document::setDefaultLabelFunction)
++        if (!App::isSingleWorkbench()) {
++            FCMD_OBJ_CMD(sketch, "Label = 'Sketch'");
++        }
+ 
+         if (!hasSketch && support.getSize() > 0) {
+             if (auto* pcAttach = sketch->getExtensionByType<Part::AttachExtension>()) {
+@@ -742,7 +751,7 @@ private:
+ 
+         // Integrated working environment: nothing was picked beforehand, so ask for a plane
+         // or face with one click instead of showing the full attachment editor
+-        if (App::Application::Config().contains("SingleWorkbench") && support.getSize() == 0) {
++        if (App::isSingleWorkbench() && support.getSize() == 0) {
+             Gui::Control().showDialog(
+                 new SketchPlanePicker(guidocument, activeBody, sketch, onAccept, onReject)
+             );
+@@ -929,7 +938,11 @@ private:
+ 
+         FCMD_OBJ_CMD(partDesignBody, "newObject('Sketcher::SketchObject','" << FeatName << "')");
+         auto Feat = doc->getObject(FeatName.c_str());
+-        FCMD_OBJ_CMD(Feat, "Label = 'Sketch'");
++        // In the integrated environment the new object already has its label in the user's
++        // language (App::Document::setDefaultLabelFunction)
++        if (!App::isSingleWorkbench()) {
++            FCMD_OBJ_CMD(Feat, "Label = 'Sketch'");
++        }
+         FCMD_OBJ_CMD(Feat, "AttachmentSupport = " << supportString);
+         FCMD_OBJ_CMD(
+             Feat,
+@@ -991,7 +1004,7 @@ void SketchWorkflow::createSketch()
+ 
+ void SketchWorkflow::tryCreateSketch()
+ {
+-    if (App::Application::Config().contains("SingleWorkbench")) {
++    if (App::isSingleWorkbench()) {
+         sketchOnLooseSolid();
+     }
+     auto result = shouldCreateBody();
+diff --git a/src/Mod/PartDesign/Gui/Utils.cpp b/src/Mod/PartDesign/Gui/Utils.cpp
+index 72e4d6448..0d4005113 100644
+--- a/src/Mod/PartDesign/Gui/Utils.cpp
++++ b/src/Mod/PartDesign/Gui/Utils.cpp
+@@ -32,7 +32,7 @@
+ #include <App/Origin.h>
+ #include <App/Datums.h>
+ #include <App/Part.h>
+-#include <Base/Tools.h>
++#include <App/SingleWorkbench.h>
+ #include <Gui/Application.h>
+ #include <Gui/CommandT.h>
+ #include <Gui/MainWindow.h>
+@@ -142,7 +142,7 @@ PartDesign::Body* getBody(
+             if (autoActivate && (bodies.size() == 1)) {
+                 activeBody = makeBodyActive(bodies[0], doc, topParent, subname);
+             }
+-            else if (messageIfNot && App::Application::Config().contains("SingleWorkbench")
++            else if (messageIfNot && App::isSingleWorkbench()
+                      && (activeBody = adoptPickedLooseSolid())) {
+                 // Picked elements of an imported solid: it became a part
+             }
+@@ -266,15 +266,6 @@ PartDesign::Body* makeBody(App::Document* doc)
+         bodyName.c_str(),
+         Gui::asString(allowCompound)
+     );
+-    // Label in the user's language, as "New body" does
+-    std::string label = Base::Tools::escapeEncodeString(QObject::tr("Body").toUtf8().toStdString());
+-    Gui::Command::doCommand(
+-        Gui::Command::Doc,
+-        "App.getDocument('%s').getObject('%s').Label = '%s'",
+-        doc->getName(),
+-        bodyName.c_str(),
+-        label.c_str()
+-    );
+ 
+ 
+     auto body = dynamic_cast<PartDesign::Body*>(doc->getObject(bodyName.c_str()));
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+index fab36bca2..5e9dc31f9 100644
+--- a/src/Mod/Unified/Gui/Labels.cpp
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -2,7 +2,6 @@
+ 
+ #include <QApplication>
+ #include <QRegularExpression>
+-#include <QTimer>
+ 
+ #include <App/Application.h>
+ #include <App/Document.h>
+@@ -10,7 +9,7 @@
+ #include <App/DocumentObserver.h>
+ #include <Base/Type.h>
+ #include <Gui/Application.h>
+-#include <Gui/ViewProvider.h>
++#include <Gui/ViewProviderDocumentObject.h>
+ #include <App/PropertyStandard.h>
+ 
+ #include "Labels.h"
+@@ -57,6 +56,21 @@ const DefaultLabel defaultLabels[] = {
+     {"App::Part", "Part"},
+     {"Assembly::AssemblyObject", "Assembly"},
+     {"Assembly::JointGroup", "Joints"},
++    {"Part::Box", "Box"},
++    {"Part::Cylinder", "Cylinder"},
++    {"Part::Sphere", "Sphere"},
++    {"Part::Cone", "Cone"},
++    {"Part::Torus", "Torus"},
++    {"Part::Fuse", "Fusion"},
++    {"Part::MultiFuse", "Fusion"},
++    {"Part::Cut", "Cut"},
++    {"Part::Common", "Common"},
++    {"Part::MultiCommon", "Common"},
++    {"App::DocumentObjectGroup", "Group"},
++    {"TechDraw::DrawPage", "Page"},
++    {"TechDraw::DrawViewPart", "View"},
++    {"TechDraw::DrawProjGroup", "ProjGroup"},
++    {"TechDraw::DrawViewDimension", "Dimension"},
+ };
+ // clang-format on
+ 
+@@ -75,43 +89,41 @@ void hideOriginInTree(const App::DocumentObject* obj)
+     }
+ }
+ 
+-void localize(const App::DocumentObject* obj)
++// The label in the user's language for the English default label of the type
++// ("Pad001" → "押し出し001"), or an empty string to keep it
++std::string localize(const App::DocumentObject& obj, const std::string& label)
+ {
+     for (const auto& entry : defaultLabels) {
+         Base::Type type = Base::Type::fromName(entry.type);
+-        if (type.isBad() || obj->getTypeId() != type) {
++        if (type.isBad() || obj.getTypeId() != type) {
+             continue;
+         }
+-        // Only the untouched English default, with the number FreeCAD adds for uniqueness
++        // Only the English default, with the number FreeCAD adds for uniqueness
+         QString base = QString::fromLatin1(entry.label);
+-        QString label = QString::fromUtf8(obj->Label.getValue());
+         QRegularExpression pattern(QStringLiteral("^%1(\\d*)$").arg(QRegularExpression::escape(base)));
+-        auto match = pattern.match(label);
++        auto match = pattern.match(QString::fromUtf8(label.c_str()));
+         if (!match.hasMatch()) {
+-            return;
++            return {};
+         }
+         QString translated = QApplication::translate("UnifiedGui::Labels", entry.label);
+         if (translated == base) {
+-            return;  // no translation for the current language
++            return {};  // no translation for the current language
+         }
+-        const_cast<App::DocumentObject*>(obj)->Label.setValue(
+-            (translated + match.captured(1)).toUtf8().constData()
+-        );
+-        return;
++        return (translated + match.captured(1)).toStdString();
+     }
++    return {};
+ }
+ }  // namespace
+ 
+ void UnifiedGui::installLocalizedLabels()
+ {
+-    App::GetApplication().signalNewObject.connect([](const App::DocumentObject& obj) {
+-        // After the command that created the object has set its label
+-        App::DocumentObjectT ref(&obj);
+-        QTimer::singleShot(0, [ref]() {
+-            if (App::DocumentObject* o = ref.getObject()) {
+-                localize(o);
+-                hideOriginInTree(o);
++    // The label is given when the object is added, inside the same transaction
++    App::Document::setDefaultLabelFunction(localize);
++    Gui::Application::Instance->signalNewObject.connect([](const Gui::ViewProvider& vp) {
++        if (auto* vpd = dynamic_cast<const Gui::ViewProviderDocumentObject*>(&vp)) {
++            if (App::DocumentObject* obj = vpd->getObject()) {
++                hideOriginInTree(obj);
+             }
+-        });
++        }
+     });
+ }
+-- 
+2.43.0
+

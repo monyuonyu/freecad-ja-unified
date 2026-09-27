@@ -1,0 +1,433 @@
+From 09cc074fcca21616fb3784f2d853f24c31240422 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:13 +0900
+Subject: [PATCH 85/90] App: one function for the integrated working
+ environment check
+
+Replace the 26 copies of App::Application::Config().contains("SingleWorkbench")
+with App::isSingleWorkbench() from App/SingleWorkbench.h.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/CMakeLists.txt                          |  1 +
+ src/App/SingleWorkbench.h                       | 17 +++++++++++++++++
+ src/Gui/Action.cpp                              |  5 +++--
+ src/Gui/CommandDoc.cpp                          |  5 +++--
+ src/Gui/Dialogs/DlgPreferencesImp.cpp           |  5 +++--
+ src/Gui/OverlayWidgets.cpp                      |  5 +++--
+ src/Gui/PreferencePages/DlgSettingsGeneral.cpp  |  5 +++--
+ .../PreferencePages/DlgSettingsNavigation.cpp   |  3 ++-
+ src/Gui/View3DSettings.cpp                      |  3 ++-
+ src/Gui/Workbench.cpp                           |  7 ++++---
+ src/Gui/propertyeditor/PropertyEditor.cpp       |  5 +++--
+ src/Gui/resource.cpp                            |  3 ++-
+ src/Mod/PartDesign/Gui/Command.cpp              |  3 ++-
+ src/Mod/Sketcher/Gui/Command.cpp                |  5 +++--
+ src/Mod/Sketcher/Gui/SnapManager.cpp            |  5 +++--
+ src/Mod/Start/Gui/GeneralSettingsWidget.cpp     |  3 ++-
+ src/Mod/Start/Gui/ThemeSelectorWidget.cpp       |  3 ++-
+ src/Mod/TechDraw/App/Preferences.cpp            |  3 ++-
+ 18 files changed, 60 insertions(+), 26 deletions(-)
+ create mode 100644 src/App/SingleWorkbench.h
+
+diff --git a/src/App/CMakeLists.txt b/src/App/CMakeLists.txt
+index ffab48c77..ad974a88f 100644
+--- a/src/App/CMakeLists.txt
++++ b/src/App/CMakeLists.txt
+@@ -361,6 +361,7 @@ SET(FreeCADApp_HPP_SRCS
+     ElementNamingUtils.h
+     ProgramInformation.h
+     Services.h
++    SingleWorkbench.h
+     StringHasher.h
+     MainThreadSignal.h
+ )
+diff --git a/src/App/SingleWorkbench.h b/src/App/SingleWorkbench.h
+new file mode 100644
+index 000000000..0459a84da
+--- /dev/null
++++ b/src/App/SingleWorkbench.h
+@@ -0,0 +1,17 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++#include <App/Application.h>
++
++namespace App
++{
++
++/// True in the integrated working environment: one workbench (Config "SingleWorkbench")
++/// instead of a choice of workbenches. Behavior that differs from standard FreeCAD asks here.
++inline bool isSingleWorkbench()
++{
++    return Application::Config().contains("SingleWorkbench");
++}
++
++}  // namespace App
+diff --git a/src/Gui/Action.cpp b/src/Gui/Action.cpp
+index d7b800160..002aef8b7 100644
+--- a/src/Gui/Action.cpp
++++ b/src/Gui/Action.cpp
+@@ -39,7 +39,8 @@
+ #include <Base/Exception.h>
+ #include <Base/Interpreter.h>
+ #include <Base/Tools.h>
+-#include <App/Document.h>
++#include <App/Document.h>
++#include <App/SingleWorkbench.h>
+ 
+ #include "Action.h"
+ #include "BitmapFactory.h"
+@@ -363,7 +364,7 @@ QString Action::createToolTip(
+     QString cmdName;
+     // The internal command name helps macro writers; the integrated environment is for
+     // modelling and leaves it out of the tooltips
+-    if (command && command->getName() && !App::Application::Config().contains("SingleWorkbench")) {
++    if (command && command->getName() && !App::isSingleWorkbench()) {
+         cmdName = QString::fromLatin1(command->getName());
+         if (auto groupcmd = dynamic_cast<const GroupCommand*>(command)) {
+             if (auto act = command->getAction()) {
+diff --git a/src/Gui/CommandDoc.cpp b/src/Gui/CommandDoc.cpp
+index dc1c0553a..a058217fc 100644
+--- a/src/Gui/CommandDoc.cpp
++++ b/src/Gui/CommandDoc.cpp
+@@ -41,7 +41,8 @@
+ #include <App/Application.h>
+ #include <App/Datums.h>
+ #include <App/GeoFeature.h>
+-#include <App/GeoFeatureGroupExtension.h>
++#include <App/GeoFeatureGroupExtension.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Exception.h>
+ #include <Base/FileInfo.h>
+ #include <Base/Stream.h>
+@@ -515,7 +516,7 @@ void StdCmdExport::activated(int iMsg)
+     auto selection = Gui::Selection().getObjectsOfType(App::DocumentObject::getClassTypeId());
+     App::Document* activeDoc = App::GetApplication().getActiveDocument();
+     if (selection.empty() && activeDoc
+-        && App::Application::Config().contains("SingleWorkbench")) {
++        && App::isSingleWorkbench()) {
+         // Nothing picked: export what is shown, i.e. the visible parts at the top of the
+         // document (e.g. for a 3D printer), instead of asking to pick them first
+         for (App::DocumentObject* obj : activeDoc->getObjects()) {
+diff --git a/src/Gui/Dialogs/DlgPreferencesImp.cpp b/src/Gui/Dialogs/DlgPreferencesImp.cpp
+index 71778b6df..8f8531496 100644
+--- a/src/Gui/Dialogs/DlgPreferencesImp.cpp
++++ b/src/Gui/Dialogs/DlgPreferencesImp.cpp
+@@ -61,7 +61,8 @@
+ #include <QStyledItemDelegate>
+ #include <QPainter>
+ 
+-#include <App/Application.h>
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/Exception.h>
+ #include <Base/Tools.h>
+@@ -401,7 +402,7 @@ void DlgPreferencesImp::setupPages()
+     GetWidgetFactorySupplier();
+ 
+     // The integrated environment has no BIM workbench and no add-ons: leave out their pages
+-    const bool single = App::Application::Config().contains("SingleWorkbench");
++    const bool single = App::isSingleWorkbench();
+     auto leftOut = [single](const std::string& group, const std::string& page) {
+         if (!single) {
+             return false;
+diff --git a/src/Gui/OverlayWidgets.cpp b/src/Gui/OverlayWidgets.cpp
+index eacd062b8..84578abd9 100644
+--- a/src/Gui/OverlayWidgets.cpp
++++ b/src/Gui/OverlayWidgets.cpp
+@@ -52,7 +52,8 @@
+ 
+ #include <Base/Tools.h>
+ #include <Base/Console.h>
+-#include <App/Application.h>
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include "Application.h"
+ #include "BitmapFactory.h"
+ #include "Clipping.h"
+@@ -866,7 +867,7 @@ void OverlayTabWidget::restore(ParameterGrp::handle handle)
+     // In the integrated environment the task panel is on the right while a tool is used:
+     // wide enough for the panels with the most fields (e.g. the hole) without cutting them off
+     if (getDockArea() == Qt::RightDockWidgetArea
+-        && App::Application::Config().contains("SingleWorkbench")) {
++        && App::isSingleWorkbench()) {
+         defaultWidth = std::max(defaultWidth, 440);  // NOLINT(*-avoid-magic-numbers)
+     }
+     int width = handle->GetInt("Width", defaultWidth);
+diff --git a/src/Gui/PreferencePages/DlgSettingsGeneral.cpp b/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
+index c0cb1922b..7c32a6c58 100644
+--- a/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
+@@ -32,7 +32,8 @@
+ #include <QString>
+ #include <algorithm>
+ 
+-#include <App/Document.h>
++#include <App/Document.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Parameter.h>
+ #include <Base/UnitsApi.h>
+ 
+@@ -151,7 +152,7 @@ DlgSettingsGeneral::DlgSettingsGeneral(QWidget* parent)
+         Application::Instance->commandManager().getCommandByName("Std_AddonMgr") != nullptr
+     );
+     // No add-on manager in the integrated environment: no hint that points to it
+-    ui->moreThemesLabel->setVisible(!App::Application::Config().contains("SingleWorkbench"));
++    ui->moreThemesLabel->setVisible(!App::isSingleWorkbench());
+ }
+ 
+ /**
+diff --git a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+index b47f9b34f..1a0805748 100644
+--- a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+@@ -28,6 +28,7 @@
+ 
+ 
+ #include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Parameter.h>
+ #include <Base/Tools.h>
+ #include <Gui/MainWindow.h>
+@@ -67,7 +68,7 @@ DlgSettingsNavigation::DlgSettingsNavigation(QWidget* parent)
+     ui->naviCubeBaseColor->setAllowTransparency(true);
+     ui->rotationCenterColor->setAllowTransparency(true);
+     ui->checkBoxTouchpadScrollPans->setChecked(NavigationStyle::touchpadScrollPansByDefault());
+-    if (App::Application::Config().contains("SingleWorkbench")) {
++    if (App::isSingleWorkbench()) {
+         // One way of navigating in the integrated environment: nothing to choose
+         ui->navigationLabel->hide();
+         ui->comboNavigationStyle->hide();
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index a91e668e9..5491d22c3 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -22,6 +22,7 @@
+ 
+ 
+ #include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Inventor/fields/SoSFColor.h>
+ #include <Inventor/nodes/SoDirectionalLight.h>
+ #include <Inventor/nodes/SoOrthographicCamera.h>
+@@ -288,7 +289,7 @@ void View3DSettings::OnChange(ParameterGrp::SubjectType& rCaller, ParameterGrp::
+             );
+             // The integrated environment has one way of navigating, whatever is stored
+             const auto& cfg = App::Application::Config();
+-            if (cfg.contains("SingleWorkbench") && cfg.contains("NavigationStyle")) {
++            if (App::isSingleWorkbench() && cfg.contains("NavigationStyle")) {
+                 model = cfg.at("NavigationStyle");
+             }
+             Base::Type type = Base::Type::fromName(model.c_str());
+diff --git a/src/Gui/Workbench.cpp b/src/Gui/Workbench.cpp
+index a098e266e..681ad1d1c 100644
+--- a/src/Gui/Workbench.cpp
++++ b/src/Gui/Workbench.cpp
+@@ -45,7 +45,8 @@
+ 
+ #include <App/Application.h>
+ #include <App/DocumentObject.h>
+-#include <App/SuppressibleExtension.h>
++#include <App/SuppressibleExtension.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Interpreter.h>
+ #include <Gui/ComboView.h>
+ #include <Gui/TaskView/TaskView.h>
+@@ -778,7 +779,7 @@ MenuItem* StdWorkbench::setupMenuBar() const
+           << "Std_Workbench"
+           << "Std_ToolBarMenu"
+           << "Std_DockViewMenu";
+-    if (App::Application::Config().contains("SingleWorkbench")) {
++    if (App::isSingleWorkbench()) {
+         // Single workbench mode: there is no workbench to choose
+         if (MenuItem* item = view->findItem("Std_Workbench")) {
+             view->removeItem(item);
+@@ -876,7 +877,7 @@ ToolBarItem* StdWorkbench::setupToolBars() const
+     *clipboard << "Std_Cut" << "Std_Copy" << "Std_Paste";
+ 
+     // Workbench switcher (not in single workbench mode, where there is nothing to switch to)
+-    if (!App::Application::Config().contains("SingleWorkbench")) {
++    if (!App::isSingleWorkbench()) {
+         auto wb = new ToolBarItem(root);
+         wb->setCommand("Workbench");
+         *wb << "Std_Workbench";
+diff --git a/src/Gui/propertyeditor/PropertyEditor.cpp b/src/Gui/propertyeditor/PropertyEditor.cpp
+index bd6820369..5066c2171 100644
+--- a/src/Gui/propertyeditor/PropertyEditor.cpp
++++ b/src/Gui/propertyeditor/PropertyEditor.cpp
+@@ -36,7 +36,8 @@
+ #include <QTextBrowser>
+ 
+ #include <App/Application.h>
+-#include <App/Document.h>
++#include <App/Document.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/Tools.h>
+ #include <Gui/Command.h>
+@@ -115,7 +116,7 @@ PropertyEditor::PropertyEditor(QWidget* parent)
+     // kept as before)
+     int firstColumnSize = hGrp->GetInt(
+         "FirstColumnSize",
+-        App::Application::Config().contains("SingleWorkbench") ? 130 : 0
++        App::isSingleWorkbench() ? 130 : 0
+     );
+     if (firstColumnSize != 0) {
+         header()->resizeSection(0, firstColumnSize);
+diff --git a/src/Gui/resource.cpp b/src/Gui/resource.cpp
+index b23522e47..e01e48c50 100644
+--- a/src/Gui/resource.cpp
++++ b/src/Gui/resource.cpp
+@@ -22,6 +22,7 @@
+ 
+ 
+ #include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ 
+ #include "BitmapFactory.h"
+ #include "WidgetFactory.h"
+@@ -88,7 +89,7 @@ WidgetFactorySupplier::WidgetFactorySupplier()
+     new PrefPageProducer<DlgSettingsNavigation>       ( QT_TRANSLATE_NOOP("QObject","Display") );
+     new PrefPageProducer<DlgSettingsViewColor>        ( QT_TRANSLATE_NOOP("QObject","Display") );
+     new PrefPageProducer<DlgSettingsAdvanced>         ( QT_TRANSLATE_NOOP("QObject","Display") );
+-    if (!App::Application::Config().contains("SingleWorkbench")) {
++    if (!App::isSingleWorkbench()) {
+         // Only one integrated workbench in single workbench mode: nothing to choose
+         new PrefPageProducer<DlgSettingsWorkbenchesImp>   ( QT_TRANSLATE_NOOP("QObject","Workbenches") );
+     }
+diff --git a/src/Mod/PartDesign/Gui/Command.cpp b/src/Mod/PartDesign/Gui/Command.cpp
+index d14cb1879..bc84992c1 100644
+--- a/src/Mod/PartDesign/Gui/Command.cpp
++++ b/src/Mod/PartDesign/Gui/Command.cpp
+@@ -42,6 +42,7 @@
+ #include <App/ObjectIdentifier.h>
+ #include <App/Origin.h>
+ #include <App/Part.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Tools.h>
+ #include <Gui/Application.h>
+ #include <Gui/Command.h>
+@@ -1108,7 +1109,7 @@ void prepareProfileBased(
+     }
+ 
+     if (sketches.empty()) {
+-        if (App::Application::Config().contains("SingleWorkbench")) {
++        if (App::isSingleWorkbench()) {
+             // Nothing drawn yet: start with the sketch (it is offered to be extruded, cut, ...
+             // when it is closed) instead of stopping with a message
+             Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
+diff --git a/src/Mod/Sketcher/Gui/Command.cpp b/src/Mod/Sketcher/Gui/Command.cpp
+index 316b187c4..e4cb70a4b 100644
+--- a/src/Mod/Sketcher/Gui/Command.cpp
++++ b/src/Mod/Sketcher/Gui/Command.cpp
+@@ -35,7 +35,8 @@
+ 
+ 
+ #include <App/DocumentObjectGroup.h>
+-#include <App/Datums.h>
++#include <App/Datums.h>
++#include <App/SingleWorkbench.h>
+ #include <Gui/Action.h>
+ #include <Gui/Application.h>
+ #include <Gui/BitmapFactory.h>
+@@ -1491,7 +1492,7 @@ void GridSpaceAction::updateWidget()
+         ParameterGrp::handle hGrp = getParameterPath();
+         updateCheckBox(
+             snapToGrid,
+-            hGrp->GetBool("SnapToGrid", App::Application::Config().contains("SingleWorkbench"))
++            hGrp->GetBool("SnapToGrid", App::isSingleWorkbench())
+         );
+ 
+         gridSizeBox->setValue(sketchView->GridSize.getValue());
+diff --git a/src/Mod/Sketcher/Gui/SnapManager.cpp b/src/Mod/Sketcher/Gui/SnapManager.cpp
+index 9e3e23051..ebcb64348 100644
+--- a/src/Mod/Sketcher/Gui/SnapManager.cpp
++++ b/src/Mod/Sketcher/Gui/SnapManager.cpp
+@@ -24,7 +24,8 @@
+ 
+ #include <QApplication>
+ 
+-#include <App/Application.h>
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Tools.h>
+ #include <Mod/Sketcher/App/SketchObject.h>
+ 
+@@ -108,7 +109,7 @@ void SnapManager::ParameterObserver::updateSnapToGridParameter(const std::string
+     // near a grid point land on it, which gives round dimensions when drawing by mouse
+     client.snapToGridRequested = hGrp->GetBool(
+         parametername.c_str(),
+-        App::Application::Config().contains("SingleWorkbench")
++        App::isSingleWorkbench()
+     );
+ }
+ 
+diff --git a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+index c4f4a4b30..c3aa735d8 100644
+--- a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
++++ b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+@@ -35,6 +35,7 @@
+ #include "GeneralSettingsWidget.h"
+ #include <gsl/pointers>
+ #include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Parameter.h>
+ #include <Base/UnitsApi.h>
+ #include <Gui/Language/Translator.h>
+@@ -84,7 +85,7 @@ void GeneralSettingsWidget::createHorizontalUi()
+     mainLayout->addSpacing(extraSpace);
+     mainLayout->addWidget(_navigationStyleLabel);
+     mainLayout->addWidget(_navigationStyleComboBox);
+-    if (App::Application::Config().contains("SingleWorkbench")) {
++    if (App::isSingleWorkbench()) {
+         // One way of navigating in the integrated environment: nothing to choose
+         _navigationStyleLabel->hide();
+         _navigationStyleComboBox->hide();
+diff --git a/src/Mod/Start/Gui/ThemeSelectorWidget.cpp b/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
+index 959ffcc96..67b3c1724 100644
+--- a/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
++++ b/src/Mod/Start/Gui/ThemeSelectorWidget.cpp
+@@ -32,6 +32,7 @@
+ #include "ThemeSelectorWidget.h"
+ #include <gsl/pointers>
+ #include <App/Application.h>
++#include <App/SingleWorkbench.h>
+ #include <Gui/Command.h>
+ #include <Gui/PreferencePackManager.h>
+ #include <Gui/Utilities.h>
+@@ -251,7 +252,7 @@ void ThemeSelectorWidget::retranslateUi()
+     _titleLabel->setText(QLatin1String("<h2>") + tr("Theme") + QLatin1String("</h2>"));
+     // No add-on manager in the integrated environment (it only adds workbenches there)
+     bool addons = Gui::Application::Instance->commandManager().getCommandByName("Std_AddonMgr")
+-        && !App::Application::Config().contains("SingleWorkbench");
++        && !App::isSingleWorkbench();
+     if (addons) {
+         _descriptionLabel->setText(
+             tr("Looking for more themes? You can obtain them using "
+diff --git a/src/Mod/TechDraw/App/Preferences.cpp b/src/Mod/TechDraw/App/Preferences.cpp
+index 7192f1035..f48da16bd 100644
+--- a/src/Mod/TechDraw/App/Preferences.cpp
++++ b/src/Mod/TechDraw/App/Preferences.cpp
+@@ -29,6 +29,7 @@
+ 
+ #include <App/Application.h>
+ #include <App/Material.h>
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/FileInfo.h>
+ #include <Base/Parameter.h>
+@@ -155,7 +156,7 @@ int Preferences::projectionAngle()
+ {
+     // The integrated working environment is made for Japanese users first: Japanese
+     // drawings (JIS B 0001) use third-angle projection
+-    int defaultConvention = App::Application::Config().contains("SingleWorkbench")
++    int defaultConvention = App::isSingleWorkbench()
+         ? (int)DrawProjGroup::ViewProjectionConvention::ThirdAngle
+         : (int)DrawProjGroup::ViewProjectionConvention::FirstAngle;
+     return getPreferenceGroup("General")->GetInt("ProjectionAngle",
+-- 
+2.43.0
+

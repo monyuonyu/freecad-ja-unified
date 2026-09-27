@@ -1,0 +1,362 @@
+From c3f7279ec23f92f74b93da74cd6639a553da0a7c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 12:51:29 +0900
+Subject: [PATCH 89/90] Unified: automatic fixes in the design check, and no
+ side effects
+
+- Problems that have a clear fix carry one: redundant, conflicting (the last
+  added) and malformed constraints are deleted, a floating part is moved
+  onto the nearest part, the smaller of two overlapping parts is moved the
+  shortest way out, an empty drawing view is deleted. fix() and fix_all();
+  main(path, fix=True) saves the fixed file.
+- The check no longer solves sketches: solve() touched every sketch and the
+  steps after it, so each check marked the document modified.
+- run() returns an Issues list that carries the ignored count, instead of an
+  attribute on the function.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py | 232 ++++++++++++++++++++++++++++++---
+ 1 file changed, 211 insertions(+), 21 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 631e2fb5a..ec13bdb0d 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -69,7 +69,33 @@ _JA = {'Step failed to compute': '計算に失敗した手順',
+  'Ignore this one': 'この指摘を無視',
+  'Mark the selected problem as intended. It is recorded in the file and not shown again.': '選んだ指摘を「わざと」として記録し、以後は出さない（ファイルに残る）',
+  '({0} ignored as intended)': '（わざととして無視した指摘 {0} 件）',
+- 'Ignore a design check problem': '設計の検査の指摘を無視'}
++ 'Ignore a design check problem': '設計の検査の指摘を無視',
++ 'Fix': '直す',
++ 'Fix all that can be fixed': '直せるものを全部直す',
++ 'Fixes every problem that has an automatic fix, one by one. One undo step reverts all of them.': '自動で直せる問題を 1 つずつ全部直す。「元に戻す」1 回で全部戻る',
++ '→ Can be fixed: {0}': '→ 直せる: {0}',
++ 'Fix a design check problem': '設計の検査の指摘を直す',
++ 'Fix all design check problems': '設計の検査の指摘をまとめて直す',
++ 'Fixed: {0}': '直した: {0}',
++ 'Could not fix: {0}': '直せなかった: {0}',
++ 'Nothing to fix.': '直せるものは無かった。',
++ 'Deleted {0} constraints in {1}': '{1} の拘束を {0} 個消した',
++ 'Deleted constraint {0} in {1}': '{1} の拘束 {0} を消した',
++ 'There is no other part to move it to': '寄せる先の部品が無い',
++ 'Moved {0} by {1:.2f} mm onto {2}': '{0} を {1:.2f} mm 動かして {2} に付けた',
++ 'Moved {0} by {1:.2f} mm': '{0} を {1:.2f} mm 動かした',
++ 'Could not find a short move that separates them': '短い移動では離せなかった',
++ 'Deleted {0}': '{0} を消した',
++ 'This problem cannot be fixed automatically': 'この問題は自動では直せない',
++ 'Delete the constraints that say the same thing twice': '重複した拘束を消す',
++ 'Delete the last added of the contradicting constraints': 'ぶつかる拘束のうち、最後に足したものを消す',
++ 'Delete the malformed constraints': '壊れた拘束を消す',
++ 'Move it until it touches the nearest part': 'いちばん近い部品に接するまで動かす',
++ 'Move the smaller part the shortest way out of the other': '小さい方の部品を、重ならなくなるいちばん短い向きへ動かす',
++ 'Delete the empty view': '空の投影図を消す',
++ 'Ask AI': 'AI に相談',
++ 'Hand the selected problem to the AI chat': '選んだ指摘を AI のチャットに渡す',
++ 'The design check reports: {0} — {1}. Find the cause and fix it.': '設計の検査で指摘が出ています: {0} — {1}。原因を調べて直してください。'}
+ 
+ ERROR, WARNING, INFO = "error", "warning", "info"
+ 
+@@ -99,12 +125,13 @@ RULES = {
+ 
+ 
+ class Issue:
+-    def __init__(self, severity, rule, message, objects=(), location=None):
++    def __init__(self, severity, rule, message, objects=(), location=None, fix=None):
+         self.severity = severity
+         self.rule = rule
+         self.message = message
+         self.objects = list(objects)          # 関係する物の名前（ドキュメント内の Name）
+         self.location = location              # App.Vector（その場所に寄せるため）か None
++        self.fix = fix                        # 自動で直す方法（FIXES の名前）か None
+ 
+     def as_dict(self, doc=None):
+         def label(n):
+@@ -117,6 +144,7 @@ class Issue:
+             "message": self.message,
+             "objects": [label(n) for n in self.objects],
+             "location": None if self.location is None else [round(v, 3) for v in self.location],
++            "fix": None if self.fix is None else translate("DesignCheck", FIXES[self.fix][0]),
+         }
+ 
+ 
+@@ -283,7 +311,8 @@ def iter_interference(doc, issues, opt, shapes):
+                 issues.append(Issue(ERROR, "interference",
+                                     translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
+                                         doc.getObject(na).Label, doc.getObject(nb).Label, v),
+-                                    [na, nb], center))
++                                    [na, nb], center,
++                                    fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None))
+             if t:
+                 touch[na] = touch[nb] = True
+             yield
+@@ -293,7 +322,8 @@ def iter_interference(doc, issues, opt, shapes):
+                 issues.append(Issue(INFO, "floating",
+                                     translate("DesignCheck", "{0} touches no other part (floating?)").format(
+                                         doc.getObject(n).Label),
+-                                    [n], shapes[n].BoundBox.Center))
++                                    [n], shapes[n].BoundBox.Center,
++                                    fix="snap" if _movable(doc.getObject(n)) else None))
+ 
+ 
+ def check_drawings(doc, issues, opt):
+@@ -315,34 +345,184 @@ def check_drawings(doc, issues, opt):
+             if not src:
+                 issues.append(Issue(WARNING, "drawing_view",
+                                     translate("DesignCheck", "{0}: the part it shows was deleted").format(o.Label),
+-                                    [o.Name]))
++                                    [o.Name], fix="delete_view"))
+ 
+ 
+ def check_sketches(doc, issues, opt):
+     for o in doc.Objects:
+         if not o.isDerivedFrom("Sketcher::SketchObject"):
+             continue
+-        try:
+-            o.solve()
+-        except Exception:
+-            pass
+-        for attr, rule, sev, text in (
++        # 拘束の問題は再計算のときに解いた結果を読む（ここで solve すると、スケッチと
++        # それに続く手順が全部「要再計算」になり、文書も変更ありになる）
++        for attr, rule, sev, text, fix in (
+             ("ConflictingConstraints", "sketch_conflict", ERROR,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} contradict each other")),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} contradict each other"), "remove_conflict_last"),
+             ("MalformedConstraints", "sketch_malformed", ERROR,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} are malformed")),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} are malformed"), "remove_malformed"),
+             ("RedundantConstraints", "sketch_redundant", WARNING,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} say the same thing twice")),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} say the same thing twice"), "remove_redundant"),
+         ):
+             ids = list(getattr(o, attr, []) or [])
+             if ids:
+-                issues.append(Issue(sev, rule, translate("DesignCheck", text).format(o.Label, ", ".join(map(str, ids))), [o.Name]))
++                issues.append(Issue(sev, rule, translate("DesignCheck", text).format(o.Label, ", ".join(map(str, ids))),
++                                    [o.Name], fix=fix))
+         dof = getattr(o, "DoF", 0) or 0
+         if dof > 0 and len(o.Geometry) > 0:
+             issues.append(Issue(INFO, "sketch_free",
+                                 translate("DesignCheck", "{0}: {1} places are not fixed yet").format(o.Label, dof), [o.Name]))
+ 
+ 
++# ------------------------------------------------------------------ 自動で直す
++def _movable(o):
++    """位置を動かして直してよい物か: 配置があり、何かに取り付けられておらず、式で決まっていない"""
++    if o is None or not hasattr(o, "Placement"):
++        return False
++    if "ReadOnly" in o.getPropertyStatus("Placement"):
++        return False
++    if getattr(o, "MapMode", "Deactivated") != "Deactivated" and getattr(o, "AttachmentSupport", None):
++        return False
++    try:
++        if any(p.startswith("Placement") for p, _ in o.ExpressionEngine):
++            return False
++    except Exception:
++        pass
++    return True
++
++
++def _move_global(o, delta):
++    """物を全体の座標で delta だけ動かす（App::Part の中でも正しい向きに）"""
++    parent = o.getGlobalPlacement().multiply(o.Placement.inverse())
++    local = parent.Rotation.inverted().multVec(delta)
++    pl = o.Placement
++    pl.Base = pl.Base + local
++    o.Placement = pl
++
++
++def _global_shape(o):
++    import Part
++    s = Part.getShape(o, "", needSubElement=False, transform=False).copy()
++    s.Placement = o.getGlobalPlacement()
++    return s
++
++
++def _fix_redundant(doc, issue):
++    sk = doc.getObject(issue.objects[0])
++    n = len(sk.RedundantConstraints)
++    sk.autoRemoveRedundants()
++    return translate("DesignCheck", "Deleted {0} constraints in {1}").format(n, sk.Label)
++
++
++def _fix_conflict_last(doc, issue):
++    # ぶつかる拘束のうち、いちばん後に足したもの（たいてい今足した寸法）を消す。番号は 1 から
++    sk = doc.getObject(issue.objects[0])
++    last = max(sk.ConflictingConstraints)
++    sk.delConstraint(last - 1)
++    return translate("DesignCheck", "Deleted constraint {0} in {1}").format(last, sk.Label)
++
++
++def _fix_malformed(doc, issue):
++    sk = doc.getObject(issue.objects[0])
++    ids = sorted(sk.MalformedConstraints, reverse=True)
++    for i in ids:
++        sk.delConstraint(i - 1)
++    return translate("DesignCheck", "Deleted {0} constraints in {1}").format(len(ids), sk.Label)
++
++
++def _fix_snap(doc, issue):
++    """浮いた部品を、いちばん近い部品に接するまで（最短の向きに）動かす"""
++    o = doc.getObject(issue.objects[0])
++    me = _global_shape(o)
++    best = None
++    for n, s in parts(doc).items():
++        if n == o.Name:
++            continue
++        d, pairs, _ = me.distToShape(s)
++        if best is None or d < best[0]:
++            best = (d, pairs[0], doc.getObject(n))
++    if best is None:
++        raise ValueError(translate("DesignCheck", "There is no other part to move it to"))
++    d, (p_me, p_other), other = best
++    _move_global(o, p_other - p_me)
++    return translate("DesignCheck", "Moved {0} by {1:.2f} mm onto {2}").format(o.Label, d, other.Label)
++
++
++def _fix_separate(doc, issue):
++    """重なった 2 つのうち小さい方（動かせる方）を、重なりが無くなるいちばん短い向きへ動かす"""
++    a, b = (doc.getObject(n) for n in issue.objects)
++    sa, sb = _global_shape(a), _global_shape(b)
++    if _movable(a) and (not _movable(b) or sa.Volume <= sb.Volume):
++        mover, ms, other = a, sa, sb
++    else:
++        mover, ms, other = b, sb, sa
++    common = ms.common(other).BoundBox
++    tol = DEFAULTS["interference_mm3"]
++    tries = []
++    for ax, ext in zip((App.Vector(1, 0, 0), App.Vector(0, 1, 0), App.Vector(0, 0, 1)),
++                       (common.XLength, common.YLength, common.ZLength)):
++        for sign in (1, -1):
++            tries.append((ext, ax * sign))
++    tries.sort(key=lambda t: t[0])
++    for ext, direction in tries:
++        # 重なりの厚みだけ動かしても離れない形（斜めの面など）では、少しずつ延ばす
++        for scale in (1.0, 1.5, 2.5, 4.0):
++            delta = direction * (ext * scale)
++            moved = ms.copy()
++            moved.translate(delta)
++            if moved.common(other).Volume <= tol:
++                _move_global(mover, delta)
++                return translate("DesignCheck", "Moved {0} by {1:.2f} mm").format(mover.Label, delta.Length)
++    raise ValueError(translate("DesignCheck", "Could not find a short move that separates them"))
++
++
++def _fix_delete_view(doc, issue):
++    o = doc.getObject(issue.objects[0])
++    label = o.Label
++    doc.removeObject(o.Name)
++    return translate("DesignCheck", "Deleted {0}").format(label)
++
++
++# 直し方: 名前 → (ボタンの説明, 関数)
++FIXES = {
++    "remove_redundant": (QT_TRANSLATE_NOOP("DesignCheck", "Delete the constraints that say the same thing twice"),
++                         _fix_redundant),
++    "remove_conflict_last": (QT_TRANSLATE_NOOP("DesignCheck", "Delete the last added of the contradicting constraints"),
++                             _fix_conflict_last),
++    "remove_malformed": (QT_TRANSLATE_NOOP("DesignCheck", "Delete the malformed constraints"), _fix_malformed),
++    "snap": (QT_TRANSLATE_NOOP("DesignCheck", "Move it until it touches the nearest part"), _fix_snap),
++    "separate": (QT_TRANSLATE_NOOP("DesignCheck", "Move the smaller part the shortest way out of the other"),
++                 _fix_separate),
++    "delete_view": (QT_TRANSLATE_NOOP("DesignCheck", "Delete the empty view"), _fix_delete_view),
++}
++
++
++def fix(doc, issue):
++    """issue を自動で直して、したことの説明を返す。直せなければ ValueError。元に戻す単位は呼ぶ側で開く"""
++    if issue.fix is None:
++        raise ValueError(translate("DesignCheck", "This problem cannot be fixed automatically"))
++    msg = FIXES[issue.fix][1](doc, issue)
++    doc.recompute()
++    return msg
++
++
++def fix_all(doc, **options):
++    """直せるものを 1 つずつ直す（1 つ直すと他の結果も変わるので、そのたびに検査し直す）。
++    したことを [{"ok": 直せたか, "message": 説明}] で返す"""
++    done = []
++    tried = set()
++    for _ in range(50):
++        todo = [i for i in run(doc, **options)
++                if i.fix is not None and (i.rule, tuple(i.objects)) not in tried]
++        if not todo:
++            break
++        i = todo[0]
++        tried.add((i.rule, tuple(i.objects)))
++        try:
++            done.append({"ok": True, "message": fix(doc, i)})
++        except Exception as e:
++            done.append({"ok": False, "message": "{0} ({1})".format(i.message, e)})
++    return done
++
++
+ ORDER = {ERROR: 0, WARNING: 1, INFO: 2}
+ 
+ IGNORE_PROP = "DesignCheckIgnore"
+@@ -373,9 +553,14 @@ def _is_ignored(doc, issue):
+     return bool(objs) and all(issue.rule in ignored_rules(o) for o in objs)
+ 
+ 
++class Issues(list):
++    """検査の結果（Issue のリスト）。ignored は「わざと」として無視した指摘の数"""
++    ignored = 0
++
++
+ def run(doc=None, **options):
+     """doc を検査して Issue のリストを返す（重い順）"""
+-    result = []
++    result = Issues()
+     for r in iter_run(doc, **options):
+         if r is not None:
+             result = r
+@@ -386,7 +571,7 @@ def iter_run(doc=None, **options):
+     """run を少しずつ進める版。途中は None を、最後に Issue のリストを yield する"""
+     doc = doc or App.ActiveDocument
+     if doc is None:
+-        yield []
++        yield Issues()
+         return
+     opt = dict(DEFAULTS, **options)
+     issues = []
+@@ -397,8 +582,8 @@ def iter_run(doc=None, **options):
+     check_drawings(doc, issues, opt)
+     yield None
+     yield from iter_interference(doc, issues, opt, shapes)
+-    kept = [i for i in issues if not _is_ignored(doc, i)]
+-    run.ignored = len(issues) - len(kept)          # 無視した数（一覧の見出しに出す）
++    kept = Issues(i for i in issues if not _is_ignored(doc, i))
++    kept.ignored = len(issues) - len(kept)
+     kept.sort(key=lambda i: ORDER[i.severity])
+     yield kept
+ 
+@@ -407,16 +592,21 @@ def summary(issues):
+     return {s: sum(1 for i in issues if i.severity == s) for s in (ERROR, WARNING, INFO)}
+ 
+ 
+-def main(path):
++def main(path, fix=False):
+     """コマンドラインから: FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')" 。
+-    エラーがあれば終了コード 1"""
++    fix=True なら直せるものを直して上書き保存する。エラーが残れば終了コード 1"""
+     import json
+     import sys
+     doc = App.openDocument(path)
++    fixed = []
+     try:
+         doc.recompute()
++        if fix:
++            fixed = fix_all(doc)
++            if any(d["ok"] for d in fixed):
++                doc.save()
+         issues = run(doc)
+-        print(json.dumps({"summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
++        print(json.dumps({"fixed": fixed, "summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
+                          ensure_ascii=False, indent=1))
+     finally:
+         App.closeDocument(doc.Name)
+-- 
+2.43.0
+
