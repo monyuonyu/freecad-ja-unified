@@ -1,0 +1,38 @@
+From fc9a0d2f1b66326ed056ffdae8b53b56e9ed199c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:25:53 +0900
+Subject: [PATCH 71/73] PartDesign: show the planes fully when choosing where
+ to draw on a new part
+
+The enlarged origin planes of a new part were partly under the task
+panel on smaller screens. Fit the view to them when the part has no
+shape yet; with a shape the view is left as it is.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 3d33c9bbb..b3ecbff7a 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -753,6 +753,15 @@ private:
+                 )) {
+                 vpo->setTemporaryScale(4.0);
+             }
++            // A new part: show the planes fully, not partly under the task panel
++            if (!activeBody->Tip.getValue()) {
++                Gui::Document* gdoc = guidocument;
++                QTimer::singleShot(0, [gdoc]() {
++                    if (auto* view = dynamic_cast<Gui::View3DInventor*>(gdoc->getActiveView())) {
++                        view->getViewer()->viewAll();
++                    }
++                });
++            }
+             return;
+         }
+ 
+-- 
+2.43.0
+

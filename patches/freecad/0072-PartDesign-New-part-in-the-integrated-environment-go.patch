@@ -1,0 +1,90 @@
+From df0294f7e09d0a4b1333b54a7f2d037f293b238f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:33:13 +0900
+Subject: [PATCH 72/73] PartDesign: "New part" in the integrated environment
+ goes on to the first sketch
+
+"New part" warned when a sketch or a feature of another part happened to
+be selected, as it tried to use it as the base of the new part. In the
+integrated environment only a solid outside any part is taken as the
+base; anything else is ignored. An empty new part goes on to ask where to
+draw its first sketch, as the start page did (which now relies on it).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/CommandBody.cpp | 25 +++++++++++++++++++++++++
+ src/Mod/Start/Gui/StartView.cpp        |  5 +----
+ 2 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/CommandBody.cpp b/src/Mod/PartDesign/Gui/CommandBody.cpp
+index 2d2a48d9e..47bb1abe4 100644
+--- a/src/Mod/PartDesign/Gui/CommandBody.cpp
++++ b/src/Mod/PartDesign/Gui/CommandBody.cpp
+@@ -26,8 +26,10 @@
+ #include <QApplication>
+ #include <QInputDialog>
+ #include <QMessageBox>
++#include <QTimer>
+ #include <TopExp_Explorer.hxx>
+ 
++#include <App/Application.h>
+ #include <App/Datums.h>
+ #include <App/Document.h>
+ #include <App/GeoFeature.h>
+@@ -123,6 +125,19 @@ void CmdPartDesignBody::activated(int iMsg)
+     std::vector<App::DocumentObject*> features = getSelection().getObjectsOfType(
+         App::DocumentObject::getClassTypeId()
+     );
++    const bool singleWorkbench = App::Application::Config().contains("SingleWorkbench");
++    if (singleWorkbench && features.size() == 1) {
++        // In the integrated environment "New part" takes only a solid outside any part as
++        // its base (e.g. an imported shape). Whatever else is picked (a sketch, a feature of
++        // another part, ...) is not meant as a base: ignore it instead of warning about it.
++        App::DocumentObject* obj = features.front();
++        bool looseSolid = obj->isDerivedFrom<Part::Feature>()
++            && !obj->isDerivedFrom<PartDesign::Feature>() && !obj->isDerivedFrom<Part::Part2DObject>()
++            && !obj->isDerivedFrom<Part::BodyBase>() && !PartDesign::Body::findBodyOf(obj);
++        if (!looseSolid) {
++            features.clear();
++        }
++    }
+     App::DocumentObject* baseFeature = nullptr;
+     bool addtogroup = false;
+ 
+@@ -371,6 +386,16 @@ void CmdPartDesignBody::activated(int iMsg)
+     if (!openedModal) {
+         commitCommand();
+     }
++
++    // An empty new part in the integrated environment: go on to choose where to draw its
++    // first sketch, as the start page does
++    if (singleWorkbench && !baseFeature && !Gui::Control().activeDialog()) {
++        QTimer::singleShot(0, []() {
++            if (!Gui::Control().activeDialog()) {
++                Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
++            }
++        });
++    }
+ }
+ 
+ bool CmdPartDesignBody::isActive()
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index 77e60cee9..ed9f524f6 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -327,11 +327,8 @@ void StartView::newPartDesignFile()
+     Gui::Application::Instance->commandManager().runCommandByName("Std_New");
+     Gui::Application::Instance->activateWorkbench("PartDesignWorkbench");
+     Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
++    // In the integrated environment "New part" goes on to ask where to draw the first sketch
+     postStart(PostStartBehavior::doNotSwitchWorkbench);
+-    if (singleWorkbenchMode()) {
+-        // The first thing to do in an empty part is a sketch: ask where to draw it right away
+-        Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
+-    }
+ }
+ 
+ void StartView::openExistingFile()
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 3f29e099a9795035ee0170f0cbf0e60e9fde3622 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 01:39:56 +0900
-Subject: [PATCH 18/68] Unified: one way of navigating the 3D view
+Subject: [PATCH 18/73] Unified: one way of navigating the 3D view
 
 In single workbench mode the navigation style is fixed to the default of
 FreeCAD's main (TinkerCAD-like) whatever is stored in the preferences,

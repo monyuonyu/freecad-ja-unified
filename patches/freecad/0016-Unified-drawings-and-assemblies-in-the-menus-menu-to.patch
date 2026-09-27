@@ -1,7 +1,7 @@
 From 66f4231a2893bba485bf42ed24d7db267c643168 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 01:22:10 +0900
-Subject: [PATCH 16/68] Unified: drawings and assemblies in the menus; menu
+Subject: [PATCH 16/73] Unified: drawings and assemblies in the menus; menu
  tooltips
 
 - The Drawing and Assemblies menus give access to TechDraw and Assembly

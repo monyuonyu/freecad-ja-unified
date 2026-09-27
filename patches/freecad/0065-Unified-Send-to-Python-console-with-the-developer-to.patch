@@ -1,7 +1,7 @@
 From c0e1451f349c11154d8633b708168f3417129754 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:16:22 +0900
-Subject: [PATCH 65/68] Unified: "Send to Python console" with the developer
+Subject: [PATCH 65/73] Unified: "Send to Python console" with the developer
  tools
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

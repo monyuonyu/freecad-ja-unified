@@ -1,7 +1,7 @@
 From 842c6dc2e73969814083372d89c7f35bce109dce Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 01:55:13 +0900
-Subject: [PATCH 19/68] Gui: translate enumeration values in the property
+Subject: [PATCH 19/73] Gui: translate enumeration values in the property
  editor; Japanese property texts
 
 - Enumeration values were shown as the raw strings of the property

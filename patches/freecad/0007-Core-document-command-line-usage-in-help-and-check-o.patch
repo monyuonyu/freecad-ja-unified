@@ -1,7 +1,7 @@
 From 8b3a7b2b4ed44618bd6358324d10a376c99d6d8e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:24:09 +0900
-Subject: [PATCH 07/68] Core: document command line usage in --help and check
+Subject: [PATCH 07/73] Core: document command line usage in --help and check
  --output exports
 
 - --help shows the name the program was started with (e.g. FreeCADCmd),

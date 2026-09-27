@@ -1,0 +1,46 @@
+From b365369073cc8a2e3c593de8eaa90542a2647949 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:33:13 +0900
+Subject: [PATCH 73/73] PartDesign: label a body made for a new sketch in the
+ user's language
+
+A new sketch in a document without a body makes one; it was labelled
+"Body" in English (only kept Japanese by a later rename that cancelling
+the sketch undid). Label it like "New body" does.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/Utils.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/Utils.cpp b/src/Mod/PartDesign/Gui/Utils.cpp
+index bc235eccc..72e4d6448 100644
+--- a/src/Mod/PartDesign/Gui/Utils.cpp
++++ b/src/Mod/PartDesign/Gui/Utils.cpp
+@@ -32,6 +32,7 @@
+ #include <App/Origin.h>
+ #include <App/Datums.h>
+ #include <App/Part.h>
++#include <Base/Tools.h>
+ #include <Gui/Application.h>
+ #include <Gui/CommandT.h>
+ #include <Gui/MainWindow.h>
+@@ -265,6 +266,15 @@ PartDesign::Body* makeBody(App::Document* doc)
+         bodyName.c_str(),
+         Gui::asString(allowCompound)
+     );
++    // Label in the user's language, as "New body" does
++    std::string label = Base::Tools::escapeEncodeString(QObject::tr("Body").toUtf8().toStdString());
++    Gui::Command::doCommand(
++        Gui::Command::Doc,
++        "App.getDocument('%s').getObject('%s').Label = '%s'",
++        doc->getName(),
++        bodyName.c_str(),
++        label.c_str()
++    );
+ 
+ 
+     auto body = dynamic_cast<PartDesign::Body*>(doc->getObject(bodyName.c_str()));
+-- 
+2.43.0
+

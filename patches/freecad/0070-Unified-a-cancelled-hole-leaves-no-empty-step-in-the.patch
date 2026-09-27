@@ -1,0 +1,44 @@
+From ac5af27a328312dc26a24d4c58541301a90b1639 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:24:09 +0900
+Subject: [PATCH 70/73] Unified: a cancelled hole leaves no empty step in the
+ undo list
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedCommands.py | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index a213a6ad9..515153dcd 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -68,7 +68,8 @@ class HoleCommand:
+             FreeCADGui.runCommand("PartDesign_Hole")
+             return
+ 
+-        doc.openTransaction(translate("Unified_Hole", "Hole position"))
++        transaction = translate("Unified_Hole", "Hole position")
++        doc.openTransaction(transaction)
+         sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+         sketch.AttachmentSupport = [(obj, face_name)]
+         sketch.MapMode = "FlatFace"
+@@ -93,8 +94,13 @@ class HoleCommand:
+             except Exception:
+                 return  # already deleted
+             if unused:
+-                doc.removeObject(sketch.Name)
+-                doc.recompute()
++                # Take back the step that made the sketch, so that the undo list does not
++                # keep an empty "hole position"
++                if doc.UndoNames and doc.UndoNames[0] == transaction:
++                    doc.undo()
++                else:
++                    doc.removeObject(sketch.Name)
++                    doc.recompute()
+ 
+         QtCore.QTimer.singleShot(300, remove_if_unused)
+ 
+-- 
+2.43.0
+

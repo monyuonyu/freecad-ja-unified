@@ -1,0 +1,92 @@
+From 23fc306e20c45eb9339aa62848e76d25e117308e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:23:17 +0900
+Subject: [PATCH 69/73] Unified: "About this edition" in the Help menu
+
+This FreeCAD has the changes of freecad-ja-unified; the Help menu says so
+and opens its page with the list of changes and where to report problems
+with them, which FreeCAD itself does not have.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  | 11 +++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |  5 ++++
+ src/Mod/Unified/UnifiedCommands.py            | 29 +++++++++++++++++++
+ 3 files changed, 45 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index c55a5b7cc..450dc22ce 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -347,4 +347,15 @@
+         <translation>穴の位置</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_About</name>
++    <message>
++        <source>About this edition (freecad-ja-unified)</source>
++        <translation>この版について（freecad-ja-unified）</translation>
++    </message>
++    <message>
++        <source>This FreeCAD is changed by freecad-ja-unified (one working environment, Japanese). Opens its page, with the list of changes and where to report problems</source>
++        <translation>この FreeCAD は freecad-ja-unified による改造版（一つの画面・日本語）です。変更点の一覧と、不具合の報告先のページを開きます</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index cbf4afb9c..9ef05e369 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -270,6 +270,11 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+         *toolsMenu << developer;
+     }
+ 
++    // Help: what this edition is and where to report problems with it
++    if (Gui::MenuItem* help = root->findItem("&Help")) {
++        *help << "Separator" << "Unified_About";
++    }
++
+     // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
+     Gui::MenuItem* edit = root->findItem("&Edit");
+     if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 2ff7626bc..a213a6ad9 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -100,3 +100,32 @@ class HoleCommand:
+ 
+ 
+ FreeCADGui.addCommand("Unified_Hole", HoleCommand())
++
++
++class AboutCommand:
++    """This build is FreeCAD with the patches of freecad-ja-unified: say so, and where to
++    report problems with it (not to FreeCAD, which does not have these changes)."""
++
++    URL = "https://github.com/monyuonyu/freecad-ja-unified"
++
++    def GetResources(self):
++        return {
++            "Pixmap": "freecad",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_About", "About this edition (freecad-ja-unified)"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_About",
++                "This FreeCAD is changed by freecad-ja-unified (one working environment, Japanese). "
++                "Opens its page, with the list of changes and where to report problems",
++            ),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        from PySide import QtGui
++
++        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.URL))
++
++
++FreeCADGui.addCommand("Unified_About", AboutCommand())
+-- 
+2.43.0
+
