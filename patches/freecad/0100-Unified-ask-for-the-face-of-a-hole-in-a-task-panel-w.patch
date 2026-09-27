@@ -1,7 +1,7 @@
 From 41c618a93a086937cb322b9ce67d2a9fec634670 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:44:48 +0900
-Subject: [PATCH 100/106] Unified: ask for the face of a hole in a task panel
+Subject: [PATCH 100/107] Unified: ask for the face of a hole in a task panel
  with Cancel
 
 With nothing picked, 'Hole' waited for a face with a bare selection

@@ -1,7 +1,7 @@
 From f3bebc12faab0daa51eaea722aced5188fd7cded Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 14:11:48 +0900
-Subject: [PATCH 101/106] Gui: widgets can stay usable while the application is
+Subject: [PATCH 101/107] Gui: widgets can stay usable while the application is
  busy
 
 The wait cursor and the progress bar swallow mouse clicks while an

@@ -1,7 +1,7 @@
 From e654dce2eacc8982981885aeb97392fc6efa09c2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:43:38 +0900
-Subject: [PATCH 099/106] Unified: the design check reads its translations from
+Subject: [PATCH 099/107] Unified: the design check reads its translations from
  the .qm without the GUI
 
 Without the GUI the Qt translations are not loaded, so DesignCheck kept a

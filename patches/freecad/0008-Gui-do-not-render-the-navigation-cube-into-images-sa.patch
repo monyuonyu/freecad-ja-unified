@@ -1,7 +1,7 @@
 From 3f8b50c3b208981bf66f677b7c432701b96c92a0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:49:51 +0900
-Subject: [PATCH 008/106] Gui: do not render the navigation cube into images
+Subject: [PATCH 008/107] Gui: do not render the navigation cube into images
  saved with saveImage()
 
 View3DInventorPy::saveImage() called savePicture() with the default

@@ -1,7 +1,7 @@
 From 0f913211a36b6e0ba223749f574e71693a1bb543 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:42:31 +0900
-Subject: [PATCH 076/106] Gui: tell in the status bar that a step of a part
+Subject: [PATCH 076/107] Gui: tell in the status bar that a step of a part
  opens on a double-click
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

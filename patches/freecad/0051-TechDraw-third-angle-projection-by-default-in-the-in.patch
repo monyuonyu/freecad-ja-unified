@@ -1,7 +1,7 @@
 From ec49205df88c99ac43c0cdcfc408bb04150c8a7f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:45:46 +0900
-Subject: [PATCH 051/106] TechDraw: third-angle projection by default in the
+Subject: [PATCH 051/107] TechDraw: third-angle projection by default in the
  integrated environment, plainer projection texts
 
 Japanese drawings (JIS B 0001) use third-angle projection. The

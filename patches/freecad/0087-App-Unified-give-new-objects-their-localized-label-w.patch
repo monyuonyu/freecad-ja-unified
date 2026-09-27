@@ -1,7 +1,7 @@
 From 01a1b53f6c0ea8fa6712ab81f07f289859465e52 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 12:51:13 +0900
-Subject: [PATCH 087/106] App, Unified: give new objects their localized label
+Subject: [PATCH 087/107] App, Unified: give new objects their localized label
  when they are added
 
 The labels were changed after the fact by a zero timer on signalNewObject,

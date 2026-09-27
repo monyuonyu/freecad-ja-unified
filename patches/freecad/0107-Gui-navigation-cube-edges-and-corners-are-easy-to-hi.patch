@@ -1,0 +1,444 @@
+From ce9f82af9111a7514fdf9dda73bde88f34af5847 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:47:34 +0900
+Subject: [PATCH 107/107] Gui: navigation cube edges and corners are easy to
+ hit, and tooltips say what a click does
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SoNaviCube::pickZones: a pick near the border of a face (the outer part of
+each side) counts as the edge or corner next to it, so they are easy to
+hit however thin their chamfer is drawn. On a grid over the cube, edges
+are hit from 3.4 times the area and corners from twice the area.
+
+A tooltip tells what a click on the part under the mouse does ('View from
+the front, top and right corner', 'Turn up by 45°', 'Home view') and that
+the cube can be dragged and double-clicked. Parameters PickZones and
+ShowTips, on by default in the integrated environment.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Inventor/SoNaviCube.cpp               |  60 ++++++++-
+ src/Gui/Inventor/SoNaviCube.h                 |   5 +
+ src/Gui/NaviCube.cpp                          | 117 ++++++++++++++++++
+ src/Gui/NaviCube.h                            |   4 +
+ src/Gui/View3DSettings.cpp                    |   8 ++
+ .../translations/UnifiedWording_ja.ts         |  79 ++++++++++++
+ 6 files changed, 272 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Inventor/SoNaviCube.cpp b/src/Gui/Inventor/SoNaviCube.cpp
+index 8cd966b7b..93bbac1b4 100644
+--- a/src/Gui/Inventor/SoNaviCube.cpp
++++ b/src/Gui/Inventor/SoNaviCube.cpp
+@@ -406,6 +406,7 @@ SoNaviCube::SoNaviCube()
+     SO_NODE_ADD_FIELD(viewportRect, (SbVec4f(0.0F, 0.0F, 0.0F, 0.0F)));
+     SO_NODE_ADD_FIELD(showButtons, (TRUE));
+     SO_NODE_ADD_FIELD(faceShading, (FALSE));
++    SO_NODE_ADD_FIELD(pickZones, (FALSE));
+ }
+ 
+ SoNaviCube::~SoNaviCube()
+@@ -1547,7 +1548,7 @@ SoNaviCube::PickId SoNaviCube::pickAt(const SbVec2s& point) const
+         if (detail && detail->isOfType(SoFaceDetail::getClassTypeId())) {
+             const PickId id = resolveHit(hit);
+             if (id != PickId::None) {
+-                return id;
++                return refineByZone(id, hit->getPoint());
+             }
+         }
+     }
+@@ -1562,6 +1563,63 @@ SoNaviCube::PickId SoNaviCube::pickAt(const SbVec2s& point) const
+     return PickId::None;
+ }
+ 
++SoNaviCube::PickId SoNaviCube::refineByZone(PickId face, const SbVec3f& point) const
++{
++    if (!pickZones.getValue()) {
++        return face;
++    }
++    const int faceIndex = static_cast<int>(face);
++    if (faceIndex < static_cast<int>(PickId::Front) || faceIndex > static_cast<int>(PickId::Left)) {
++        return face;  // only the main faces have border zones
++    }
++    // Back into the coordinates of the cube (-1..1): the cube is turned into the view by the
++    // inverse of the camera orientation and moved away from the camera
++    SbVec3f p;
++    cameraOrientation.getValue().multVec(point - SbVec3f(0.0F, 0.0F, OVERLAY_CUBE_Z), p);
++
++    const auto centroid = [this](PickId id) {
++        SbVec3f c(0.0F, 0.0F, 0.0F);
++        for (const SbVec3f& v : faces[pickIndex(id)]) {
++            c += v;
++        }
++        if (c.length() > 0.0F) {
++            c.normalize();
++        }
++        return c;
++    };
++    const SbVec3f normal = centroid(face);
++    // Outer part of each side of the face (of the half size 1) that counts as the next edge
++    constexpr float zone = 0.62F;
++    SbVec3f direction = normal;
++    bool border = false;
++    for (int axis = 0; axis < 3; ++axis) {
++        if (std::abs(normal[axis]) > 0.5F) {
++            continue;  // the axis the face is on
++        }
++        if (std::abs(p[axis]) > zone) {
++            SbVec3f step(0.0F, 0.0F, 0.0F);
++            step[axis] = p[axis] > 0.0F ? 1.0F : -1.0F;
++            direction += step;
++            border = true;
++        }
++    }
++    if (!border) {
++        return face;
++    }
++    direction.normalize();
++    // The edge or corner face that points that way
++    PickId best = face;
++    float bestDot = -2.0F;
++    for (PickId id : kCubeFacePickOrder) {
++        const float d = centroid(id).dot(direction);
++        if (d > bestDot) {
++            bestDot = d;
++            best = id;
++        }
++    }
++    return best;
++}
++
+ void SoNaviCube::generatePrimitives(SoAction* action)
+ {
+     (void)action;
+diff --git a/src/Gui/Inventor/SoNaviCube.h b/src/Gui/Inventor/SoNaviCube.h
+index a0807fbf2..85b3a0a61 100644
+--- a/src/Gui/Inventor/SoNaviCube.h
++++ b/src/Gui/Inventor/SoNaviCube.h
+@@ -124,6 +124,8 @@ public:
+     void setLabelImage(PickId id, const SbVec2s& size, int numComponents, const unsigned char* pixels);
+     void clearLabelTextures();
+     [[nodiscard]] PickId pickAt(const SbVec2s& point) const;
++    /// With pickZones: the edge or corner next to a point near the border of a face
++    [[nodiscard]] PickId refineByZone(PickId face, const SbVec3f& point) const;
+ 
+ protected:
+     ~SoNaviCube() override;
+@@ -323,6 +325,9 @@ public:
+     SoSFBool showButtons;
+     /// Shade the faces by their direction to the viewer, lit from the upper left
+     SoSFBool faceShading;
++    /// Pick the edges and corners also in the border zones of the faces next to them, so
++    /// that they are easy to hit however small their chamfer is drawn
++    SoSFBool pickZones;
+ };
+ 
+ }  // namespace Gui
+diff --git a/src/Gui/NaviCube.cpp b/src/Gui/NaviCube.cpp
+index d2283aa1d..49b615c16 100644
+--- a/src/Gui/NaviCube.cpp
++++ b/src/Gui/NaviCube.cpp
+@@ -24,6 +24,7 @@
+ #include <FCConfig.h>
+ 
+ #include <algorithm>
++#include <array>
+ #include <cmath>
+ #include <cstdlib>
+ #include <cstring>
+@@ -52,6 +53,7 @@
+ #include <QImage>
+ #include <QMenu>
+ #include <QPainterPath>
++#include <QToolTip>
+ 
+ #include <App/SingleWorkbench.h>
+ #include <Base/Color.h>
+@@ -157,6 +159,11 @@ public:
+     float inactiveOpacity = 0.5;
+     bool buttonsOnHover = false;
+     bool faceShading = false;
++    bool pickZones = false;
++    bool showTips = false;
++    PickId tipId = PickId::None;
++    void showTip(PickId pick);
++    QString tipText(PickId pick) const;
+     SbVec2s posOffset = SbVec2s(0, 0);
+ 
+     Base::Color xColor {1.0F, 0.0F, 0.0F};
+@@ -374,6 +381,16 @@ void NaviCube::setButtonsOnHover(bool onHover)
+     naviCubeImplementation->requestRedraw();
+ }
+ 
++void NaviCube::setPickZones(bool zones)
++{
++    naviCubeImplementation->pickZones = zones;
++}
++
++void NaviCube::setShowTips(bool show)
++{
++    naviCubeImplementation->showTips = show;
++}
++
+ void NaviCube::setFaceShading(bool shading)
+ {
+     naviCubeImplementation->faceShading = shading;
+@@ -865,6 +882,7 @@ bool NaviCubeImplementation::populateRenderParams(
+     soNaviCube->showCoordinateSystem = showCS;
+     soNaviCube->showButtons = hovering || !buttonsOnHover;
+     soNaviCube->faceShading = faceShading;
++    soNaviCube->pickZones = pickZones;
+     soNaviCube->hiliteId = static_cast<int>(hiliteId);
+     soNaviCube->baseColor.setValue(baseColor.redF(), baseColor.greenF(), baseColor.blueF());
+     soNaviCube->baseAlpha = static_cast<float>(baseColor.alphaF());
+@@ -1269,11 +1287,15 @@ bool NaviCubeImplementation::mouseMoved(short x, short y)
+         PickId pick = pickFace(x, y);
+         if (!mouseDown) {
+             setHiliteWithHysteresis(pick);
++            showTip(pick);
+         }
+         else {
+             setHilite(pick);
+         }
+     }
++    else {
++        showTip(PickId::None);
++    }
+ 
+     if (mouseDown && dragMode == MouseDragMode::MoveNaviCube) {
+         const int dx = x - pressPos[0];
+@@ -1307,6 +1329,101 @@ bool NaviCubeImplementation::mouseMoved(short x, short y)
+     return mouseDown;
+ }
+ 
++// What a click on each part of the cube does, for the tooltip. The faces, edges and corners
++// are named by the sides they are between.
++QString NaviCubeImplementation::tipText(PickId pick) const
++{
++    struct Sides
++    {
++        PickId id;
++        std::array<const char*, 3> sides;
++    };
++    // clang-format off
++    static const Sides table[] = {
++        {PickId::Front, {"front"}}, {PickId::Top, {"top"}}, {PickId::Right, {"right"}},
++        {PickId::Rear, {"rear"}}, {PickId::Bottom, {"bottom"}}, {PickId::Left, {"left"}},
++        {PickId::FrontTop, {"front", "top"}}, {PickId::FrontBottom, {"front", "bottom"}},
++        {PickId::FrontRight, {"front", "right"}}, {PickId::FrontLeft, {"front", "left"}},
++        {PickId::RearTop, {"rear", "top"}}, {PickId::RearBottom, {"rear", "bottom"}},
++        {PickId::RearRight, {"rear", "right"}}, {PickId::RearLeft, {"rear", "left"}},
++        {PickId::TopRight, {"top", "right"}}, {PickId::TopLeft, {"top", "left"}},
++        {PickId::BottomRight, {"bottom", "right"}}, {PickId::BottomLeft, {"bottom", "left"}},
++        {PickId::FrontTopRight, {"front", "top", "right"}}, {PickId::FrontTopLeft, {"front", "top", "left"}},
++        {PickId::FrontBottomRight, {"front", "bottom", "right"}},
++        {PickId::FrontBottomLeft, {"front", "bottom", "left"}},
++        {PickId::RearTopRight, {"rear", "top", "right"}}, {PickId::RearTopLeft, {"rear", "top", "left"}},
++        {PickId::RearBottomRight, {"rear", "bottom", "right"}},
++        {PickId::RearBottomLeft, {"rear", "bottom", "left"}},
++    };
++    // clang-format on
++    // For lupdate: the names of the sides
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "front");
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "rear");
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "top");
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "bottom");
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "left");
++    (void)QT_TRANSLATE_NOOP("Gui::NaviCube", "right");
++    const auto tr = [](const char* text) {
++        return QApplication::translate("Gui::NaviCube", text);
++    };
++    for (const Sides& entry : table) {
++        if (entry.id != pick) {
++            continue;
++        }
++        QString view;
++        if (!entry.sides[1]) {
++            view = tr("View from the %1").arg(tr(entry.sides[0]));
++        }
++        else if (!entry.sides[2]) {
++            view = tr("View from between %1 and %2").arg(tr(entry.sides[0]), tr(entry.sides[1]));
++        }
++        else {
++            view = tr("View from the %1, %2 and %3 corner")
++                       .arg(tr(entry.sides[0]), tr(entry.sides[1]), tr(entry.sides[2]));
++        }
++        return view + QLatin1Char('\n')
++            + tr("Drag to turn freely, double-click to also center the model");
++    }
++    const int degrees = 360 / static_cast<int>(Base::clamp(long(naviStepByTurn), 4L, 36L));
++    switch (pick) {
++        case PickId::ArrowNorth:
++            return tr("Turn up by %1°").arg(degrees);
++        case PickId::ArrowSouth:
++            return tr("Turn down by %1°").arg(degrees);
++        case PickId::ArrowEast:
++            return tr("Turn right by %1°").arg(degrees);
++        case PickId::ArrowWest:
++            return tr("Turn left by %1°").arg(degrees);
++        case PickId::ArrowRight:
++            return tr("Roll clockwise by %1°").arg(degrees);
++        case PickId::ArrowLeft:
++            return tr("Roll counterclockwise by %1°").arg(degrees);
++        case PickId::Backside:
++            return tr("View from the opposite side");
++        case PickId::Home:
++            return tr("Home view");
++        case PickId::ViewMenu:
++            return tr("More views and settings");
++        default:
++            return {};
++    }
++}
++
++void NaviCubeImplementation::showTip(PickId pick)
++{
++    if (!showTips || pick == tipId) {
++        return;
++    }
++    tipId = pick;
++    QString text = tipText(pick);
++    if (text.isEmpty()) {
++        QToolTip::hideText();
++    }
++    else {
++        QToolTip::showText(QCursor::pos() + QPoint(14, 18), text, viewer->getGLWidget());  // NOLINT
++    }
++}
++
+ void NaviCubeImplementation::setHiliteWithHysteresis(PickId hilite)
+ {
+     static const int stableFrames = []() -> int {
+diff --git a/src/Gui/NaviCube.h b/src/Gui/NaviCube.h
+index f2e6b845f..434b124c5 100644
+--- a/src/Gui/NaviCube.h
++++ b/src/Gui/NaviCube.h
+@@ -79,6 +79,10 @@ public:
+     void setButtonsOnHover(bool onHover);
+     /// Shade the faces of the cube by their direction
+     void setFaceShading(bool shading);
++    /// Pick edges and corners also near the borders of the faces next to them
++    void setPickZones(bool zones);
++    /// Tell in a tooltip what a click on the part under the mouse does
++    void setShowTips(bool show);
+     // Label order: front, top, right, rear, bottom, left
+     void setNaviCubeLabels(const std::vector<std::string>& labels);
+     static void setNaviCubeCommands(const std::vector<std::string>& cmd);
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index bc3dbbaf9..b004c5017 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -607,6 +607,8 @@ void NaviCubeSettings::applySettings()
+     parameterChanged("InactiveOpacity");
+     parameterChanged("ButtonsOnHover");
+     parameterChanged("FaceShading");
++    parameterChanged("PickZones");
++    parameterChanged("ShowTips");
+     parameterChanged("TextFront");  // Updates all labels
+ }
+ 
+@@ -626,6 +628,12 @@ void NaviCubeSettings::parameterChanged(const char* Name)
+     else if (strcmp(Name, "FaceShading") == 0) {
+         nc->setFaceShading(hGrp->GetBool("FaceShading", modern));
+     }
++    else if (strcmp(Name, "PickZones") == 0) {
++        nc->setPickZones(hGrp->GetBool("PickZones", modern));
++    }
++    else if (strcmp(Name, "ShowTips") == 0) {
++        nc->setShowTips(hGrp->GetBool("ShowTips", modern));
++    }
+     else if (strcmp(Name, "CornerNaviCube") == 0) {
+         nc->setCorner(static_cast<NaviCube::Corner>(hGrp->GetInt("CornerNaviCube", 1)));
+     }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index e0dffb0bb..3ad3c010b 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -8553,4 +8553,83 @@ Each unit is approximately 0.1mm wide</source>
+         <translation>エラー</translation>
+     </message>
+ </context>
++<context>
++    <name>Gui::NaviCube</name>
++    <message>
++        <source>front</source>
++        <translation>前</translation>
++    </message>
++    <message>
++        <source>rear</source>
++        <translation>後ろ</translation>
++    </message>
++    <message>
++        <source>top</source>
++        <translation>上</translation>
++    </message>
++    <message>
++        <source>bottom</source>
++        <translation>下</translation>
++    </message>
++    <message>
++        <source>left</source>
++        <translation>左</translation>
++    </message>
++    <message>
++        <source>right</source>
++        <translation>右</translation>
++    </message>
++    <message>
++        <source>View from the %1</source>
++        <translation>%1から見る</translation>
++    </message>
++    <message>
++        <source>View from between %1 and %2</source>
++        <translation>%1と%2の間から見る</translation>
++    </message>
++    <message>
++        <source>View from the %1, %2 and %3 corner</source>
++        <translation>%1・%2・%3の角から見る</translation>
++    </message>
++    <message>
++        <source>Drag to turn freely, double-click to also center the model</source>
++        <translation>ドラッグで自由に回す・ダブルクリックでモデルを真ん中にも寄せる</translation>
++    </message>
++    <message>
++        <source>Turn up by %1°</source>
++        <translation>上へ %1° 回す</translation>
++    </message>
++    <message>
++        <source>Turn down by %1°</source>
++        <translation>下へ %1° 回す</translation>
++    </message>
++    <message>
++        <source>Turn right by %1°</source>
++        <translation>右へ %1° 回す</translation>
++    </message>
++    <message>
++        <source>Turn left by %1°</source>
++        <translation>左へ %1° 回す</translation>
++    </message>
++    <message>
++        <source>Roll clockwise by %1°</source>
++        <translation>時計回りに %1° 回す</translation>
++    </message>
++    <message>
++        <source>Roll counterclockwise by %1°</source>
++        <translation>反時計回りに %1° 回す</translation>
++    </message>
++    <message>
++        <source>View from the opposite side</source>
++        <translation>裏側から見る</translation>
++    </message>
++    <message>
++        <source>Home view</source>
++        <translation>ホームの向き（最初の視点）</translation>
++    </message>
++    <message>
++        <source>More views and settings</source>
++        <translation>ほかの向きと設定</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

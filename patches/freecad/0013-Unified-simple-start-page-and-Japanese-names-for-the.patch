@@ -1,7 +1,7 @@
 From 1ab39979d45dea77d10bad2d60afa1e3ea0914f3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 01:11:01 +0900
-Subject: [PATCH 013/106] Unified: simple start page and Japanese names for the
+Subject: [PATCH 013/107] Unified: simple start page and Japanese names for the
  integrated environment
 
 - In single workbench mode the start page offers only 'New Part' and
