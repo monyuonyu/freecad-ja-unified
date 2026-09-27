@@ -1,7 +1,7 @@
 From 45b6a93721f09ac5525736ad96eb76b70bd54d3c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 07:55:30 +0900
-Subject: [PATCH 033/104] Unified: fewer toolbar buttons, clearer first start
+Subject: [PATCH 033/106] Unified: fewer toolbar buttons, clearer first start
  page
 
 Measuring was on two toolbars; the structure tools (containers, groups,

@@ -1,7 +1,7 @@
 From 5fcd23ea104d06f2b5a422c712d32f1e90a4de07 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:54:39 +0900
-Subject: [PATCH 054/104] Unified: a hole where a flat face was clicked
+Subject: [PATCH 054/106] Unified: a hole where a flat face was clicked
 
 PartDesign's hole needs a sketch with circles or points; on a plain face
 it failed with "no axis found". The hole of the integrated environment

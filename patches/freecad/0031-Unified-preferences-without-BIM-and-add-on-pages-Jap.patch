@@ -1,7 +1,7 @@
 From d8410a10a803a7cffb8a9b66a2bfa81b2f4de1bc Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:30:07 +0900
-Subject: [PATCH 031/104] Unified: preferences without BIM and add-on pages;
+Subject: [PATCH 031/106] Unified: preferences without BIM and add-on pages;
  Japanese group names
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

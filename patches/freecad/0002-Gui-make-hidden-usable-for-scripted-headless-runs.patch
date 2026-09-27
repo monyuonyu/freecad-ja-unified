@@ -1,7 +1,7 @@
 From f39222844357e4922030148c6293770367d7c43f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:13:30 +0900
-Subject: [PATCH 002/104] Gui: make '--hidden' usable for scripted, headless
+Subject: [PATCH 002/106] Gui: make '--hidden' usable for scripted, headless
  runs
 
 - Return exit code 1 when a command line file fails with a hidden main

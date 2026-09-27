@@ -1,0 +1,404 @@
+From 356486d38254ee7c6b36d9ba69923e7d04f947ca Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:22:16 +0900
+Subject: [PATCH 105/106] Gui: a flat, lightly shaded navigation cube whose
+ buttons show under the mouse
+
+SoNaviCube gets faceShading (faces shaded by their direction to the
+viewer, lit from the upper left) and showButtons (the arrows, home and
+menu buttons). NaviCube parameters FaceShading and ButtonsOnHover; the
+buttons show while the mouse is over the cube.
+
+The integrated environment defaults to the modern look: smaller chamfer
+and cube, light gray faces, dark bold labels, thin edges, no coordinate
+axes, shading and buttons on hover. These are defaults when reading the
+parameters only (the stored settings are shared with FreeCAD); the
+preference page shows the same defaults, so pressing OK keeps the look.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Inventor/SoNaviCube.cpp               | 76 ++++++++++++++++++-
+ src/Gui/Inventor/SoNaviCube.h                 | 14 ++++
+ src/Gui/NaviCube.cpp                          | 32 ++++++++
+ src/Gui/NaviCube.h                            |  9 +++
+ .../PreferencePages/DlgSettingsNavigation.cpp |  8 ++
+ src/Gui/View3DSettings.cpp                    | 34 ++++++---
+ 6 files changed, 161 insertions(+), 12 deletions(-)
+
+diff --git a/src/Gui/Inventor/SoNaviCube.cpp b/src/Gui/Inventor/SoNaviCube.cpp
+index fdb4ef39b..8cd966b7b 100644
+--- a/src/Gui/Inventor/SoNaviCube.cpp
++++ b/src/Gui/Inventor/SoNaviCube.cpp
+@@ -404,6 +404,8 @@ SoNaviCube::SoNaviCube()
+     SO_NODE_ADD_FIELD(cameraOrientation, (SbRotation()));
+     SO_NODE_ADD_FIELD(cameraIsOrthographic, (TRUE));
+     SO_NODE_ADD_FIELD(viewportRect, (SbVec4f(0.0F, 0.0F, 0.0F, 0.0F)));
++    SO_NODE_ADD_FIELD(showButtons, (TRUE));
++    SO_NODE_ADD_FIELD(faceShading, (FALSE));
+ }
+ 
+ SoNaviCube::~SoNaviCube()
+@@ -528,6 +530,8 @@ void SoNaviCube::resetSceneGraph() const
+     edges = nullptr;
+     labelsSep = nullptr;
+     buttonsSep = nullptr;
++    buttonsSwitch = nullptr;
++    style.shaded = false;
+ }
+ 
+ void SoNaviCube::buildCamerasAndStyle() const
+@@ -817,8 +821,12 @@ void SoNaviCube::buildButtonsSection() const
+         return;
+     }
+ 
++    buttonsSwitch = new SoSwitch;
++    buttonsSwitch->whichChild = showButtons.getValue() ? SO_SWITCH_ALL : SO_SWITCH_NONE;
++    sceneRoot->addChild(buttonsSwitch);
++
+     auto* buttonsGroup = new SoSeparator;
+-    sceneRoot->addChild(buttonsGroup);
++    buttonsSwitch->addChild(buttonsGroup);
+ 
+     buttonsSep = new SoSeparator;
+     buttonsGroup->addChild(buttonsSep);
+@@ -1041,6 +1049,10 @@ void SoNaviCube::updateCameraAndTransform(const RenderParams& params) const
+ 
+ void SoNaviCube::updateCube(const RenderParams& params) const
+ {
++    if (faceShading.getValue() && cubeMaterial && cubeFaces) {
++        updateShadedCube(params);
++        return;
++    }
+     if (cubeMaterial) {
+         cubeMaterial->diffuseColor.setNum(2);
+         cubeMaterial->diffuseColor.set1Value(0, params.baseRgb);
+@@ -1055,6 +1067,11 @@ void SoNaviCube::updateCube(const RenderParams& params) const
+     }
+ 
+     const int count = static_cast<int>(kCubeFacePickOrder.size());
++    if (style.shaded) {
++        // back from shaded faces: one material for all faces again
++        style.shaded = false;
++        cubeFaces->materialIndex.setNum(0);
++    }
+     if (cubeFaces->materialIndex.getNum() != count) {
+         cubeFaces->materialIndex.setNum(count);
+         for (int i = 0; i < count; ++i) {
+@@ -1084,6 +1101,56 @@ void SoNaviCube::updateCube(const RenderParams& params) const
+     style.lastHilitePick = params.hilitePick;
+ }
+ 
++void SoNaviCube::updateShadedCube(const RenderParams& params) const
++{
++    // The cube is turned into the view by the inverse of the camera orientation
++    const SbRotation rotation = cameraOrientation.getValue().inverse();
++    const bool changed = !style.shaded || !rotation.equals(style.shadeRotation, 1e-6F)
++        || !nearlyEqual(style.shadeBaseRgb, params.baseRgb)
++        || !nearlyEqual(style.shadeHiliteRgb, params.hiliteRgb)
++        || !nearlyEqual(style.shadeBaseTr, params.baseTr)
++        || !nearlyEqual(style.shadeHiliteTr, params.hiliteTr)
++        || style.shadeHilitePick != params.hilitePick;
++    if (!changed) {
++        return;
++    }
++
++    SbVec3f light(-0.35F, 0.55F, 0.76F);  // from the upper left, towards the viewer
++    light.normalize();
++    const int count = static_cast<int>(kCubeFacePickOrder.size());
++    cubeMaterial->diffuseColor.setNum(count);
++    cubeMaterial->transparency.setNum(count);
++    cubeFaces->materialIndex.setNum(count);
++    for (int i = 0; i < count; ++i) {
++        const PickId id = kCubeFacePickOrder[i];
++        SbVec3f normal(0.0F, 0.0F, 0.0F);
++        for (const SbVec3f& v : faces[pickIndex(id)]) {
++            normal += v;
++        }
++        if (normal.length() > 0.0F) {
++            normal.normalize();
++        }
++        rotation.multVec(normal, normal);
++        const float brightness = 0.80F + 0.20F * std::max(0.0F, normal.dot(light));
++        const bool hilite = (id == params.hilitePick);
++        const SbColor color = hilite ? params.hiliteRgb : SbColor(params.baseRgb * brightness);
++        cubeMaterial->diffuseColor.set1Value(i, color);
++        cubeMaterial->transparency.set1Value(i, hilite ? params.hiliteTr : params.baseTr);
++        cubeFaces->materialIndex.set1Value(i, i);
++    }
++
++    style.shaded = true;
++    style.shadeRotation = rotation;
++    style.shadeBaseRgb = params.baseRgb;
++    style.shadeHiliteRgb = params.hiliteRgb;
++    style.shadeBaseTr = params.baseTr;
++    style.shadeHiliteTr = params.hiliteTr;
++    style.shadeHilitePick = params.hilitePick;
++    // the unshaded update starts over when shading is turned off
++    style.lastHiliteFaceIndex = -1;
++    style.lastHilitePick = PickId::None;
++}
++
+ void SoNaviCube::updateEdges(const RenderParams& params) const
+ {
+     if (edgeMaterial) {
+@@ -1140,6 +1207,13 @@ void SoNaviCube::updateAxes(const RenderParams& params) const
+ 
+ void SoNaviCube::updateButtons(const RenderParams& params) const
+ {
++    if (buttonsSwitch) {
++        const int which = showButtons.getValue() ? SO_SWITCH_ALL : SO_SWITCH_NONE;
++        if (buttonsSwitch->whichChild.getValue() != which) {
++            buttonsSwitch->whichChild = which;
++        }
++    }
++
+     for (PickId pickId : kButtonPickIds) {
+         ButtonNodes& nodes = buttonNodes[pickIndex(pickId)];
+         if (nodes.coordsSwitch && nodes.coordsSwitch->whichChild.getValue() != params.coordChild) {
+diff --git a/src/Gui/Inventor/SoNaviCube.h b/src/Gui/Inventor/SoNaviCube.h
+index 4c80f5bd7..a0807fbf2 100644
+--- a/src/Gui/Inventor/SoNaviCube.h
++++ b/src/Gui/Inventor/SoNaviCube.h
+@@ -168,6 +168,7 @@ private:
+     void updateSceneGraph(const RenderParams& params) const;
+     void updateCameraAndTransform(const RenderParams& params) const;
+     void updateCube(const RenderParams& params) const;
++    void updateShadedCube(const RenderParams& params) const;
+     void updateEdges(const RenderParams& params) const;
+     void updateAxes(const RenderParams& params) const;
+     void updateButtons(const RenderParams& params) const;
+@@ -246,6 +247,7 @@ private:
+     mutable SoIndexedLineSet* edges {nullptr};
+     mutable SoSeparator* labelsSep {nullptr};
+     mutable SoSeparator* buttonsSep {nullptr};
++    mutable class SoSwitch* buttonsSwitch {nullptr};
+     mutable std::array<LabelNodes, kPickIdCount> labelNodes;
+     mutable std::array<ButtonNodes, kPickIdCount> buttonNodes;
+ 
+@@ -274,6 +276,14 @@ private:
+         float axisTr {0.0F};
+         float axisBw {0.0F};
+         bool showCS {false};
++        // face shading (see faceShading)
++        bool shaded {false};
++        SbRotation shadeRotation;
++        SbColor shadeBaseRgb {0.0F, 0.0F, 0.0F};
++        SbColor shadeHiliteRgb {0.0F, 0.0F, 0.0F};
++        float shadeBaseTr {-1.0F};
++        float shadeHiliteTr {-1.0F};
++        PickId shadeHilitePick {PickId::None};
+     };
+ 
+     mutable StyleState style;
+@@ -309,6 +319,10 @@ public:
+     SoSFRotation cameraOrientation;
+     SoSFBool cameraIsOrthographic;
+     SoSFVec4f viewportRect;
++    /// Show the buttons around the cube (arrows, home, menu); off to show only the cube
++    SoSFBool showButtons;
++    /// Shade the faces by their direction to the viewer, lit from the upper left
++    SoSFBool faceShading;
+ };
+ 
+ }  // namespace Gui
+diff --git a/src/Gui/NaviCube.cpp b/src/Gui/NaviCube.cpp
+index 0136731fa..d2283aa1d 100644
+--- a/src/Gui/NaviCube.cpp
++++ b/src/Gui/NaviCube.cpp
+@@ -53,6 +53,7 @@
+ #include <QMenu>
+ #include <QPainterPath>
+ 
++#include <App/SingleWorkbench.h>
+ #include <Base/Color.h>
+ #include <Base/Tools.h>
+ #include "NaviCube.h"
+@@ -154,6 +155,8 @@ public:
+     int fontWeight = 0;
+     int fontStretch = 0;
+     float inactiveOpacity = 0.5;
++    bool buttonsOnHover = false;
++    bool faceShading = false;
+     SbVec2s posOffset = SbVec2s(0, 0);
+ 
+     Base::Color xColor {1.0F, 0.0F, 0.0F};
+@@ -350,6 +353,33 @@ void NaviCube::setNaviCubeLabels(const std::vector<std::string>& labels)
+     naviCubeImplementation->setLabels(labels);
+ }
+ 
++int NaviCube::defaultCubeSize()
++{
++    return App::isSingleWorkbench() ? 110 : 132;  // NOLINT(*-avoid-magic-numbers)
++}
++
++unsigned long NaviCube::defaultBaseColor()
++{
++    return App::isSingleWorkbench() ? 0xE4E8EDFFUL : 3806916544UL;  // NOLINT(*-avoid-magic-numbers)
++}
++
++int NaviCube::defaultInactiveOpacity()
++{
++    return App::isSingleWorkbench() ? 85 : 50;  // NOLINT(*-avoid-magic-numbers)
++}
++
++void NaviCube::setButtonsOnHover(bool onHover)
++{
++    naviCubeImplementation->buttonsOnHover = onHover;
++    naviCubeImplementation->requestRedraw();
++}
++
++void NaviCube::setFaceShading(bool shading)
++{
++    naviCubeImplementation->faceShading = shading;
++    naviCubeImplementation->requestRedraw();
++}
++
+ void NaviCube::setInactiveOpacity(float opacity)
+ {
+     naviCubeImplementation->inactiveOpacity = opacity;
+@@ -833,6 +863,8 @@ bool NaviCubeImplementation::populateRenderParams(
+     soNaviCube->opacity = opacity;
+     soNaviCube->borderWidth = static_cast<float>(borderWidth);
+     soNaviCube->showCoordinateSystem = showCS;
++    soNaviCube->showButtons = hovering || !buttonsOnHover;
++    soNaviCube->faceShading = faceShading;
+     soNaviCube->hiliteId = static_cast<int>(hiliteId);
+     soNaviCube->baseColor.setValue(baseColor.redF(), baseColor.greenF(), baseColor.blueF());
+     soNaviCube->baseAlpha = static_cast<float>(baseColor.alphaF());
+diff --git a/src/Gui/NaviCube.h b/src/Gui/NaviCube.h
+index c795beef2..f2e6b845f 100644
+--- a/src/Gui/NaviCube.h
++++ b/src/Gui/NaviCube.h
+@@ -70,6 +70,15 @@ public:
+     void setBorderWidth(double BorderWidth);
+     void setShowCS(bool showCS);
+     void setInactiveOpacity(float opacity);
++    /// Defaults of the settings shown on the preference page (they differ in the integrated
++    /// working environment, where the cube is flat and lightly shaded)
++    static int defaultCubeSize();
++    static unsigned long defaultBaseColor();
++    static int defaultInactiveOpacity();
++    /// Show the buttons around the cube only while the mouse is over it
++    void setButtonsOnHover(bool onHover);
++    /// Shade the faces of the cube by their direction
++    void setFaceShading(bool shading);
+     // Label order: front, top, right, rear, bottom, left
+     void setNaviCubeLabels(const std::vector<std::string>& labels);
+     static void setNaviCubeCommands(const std::vector<std::string>& cmd);
+diff --git a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+index 1a0805748..080a9d624 100644
+--- a/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsNavigation.cpp
+@@ -29,6 +29,8 @@
+ 
+ #include <App/Application.h>
+ #include <App/SingleWorkbench.h>
++#include <Base/Color.h>
++#include <Gui/NaviCube.h>
+ #include <Base/Parameter.h>
+ #include <Base/Tools.h>
+ #include <Gui/MainWindow.h>
+@@ -174,6 +176,12 @@ void DlgSettingsNavigation::loadSettings()
+     ui->prefStepByTurn->onRestore();
+     ui->naviCubeCorner->onRestore();
+     ui->naviCubeToNearest->onRestore();
++    // The widgets' own values are the defaults for settings that were never saved
++    ui->prefCubeSize->setValue(NaviCube::defaultCubeSize());
++    ui->naviCubeBaseColor->setColor(
++        Base::Color::fromPackedRGBA<QColor>(static_cast<uint32_t>(NaviCube::defaultBaseColor()))
++    );
++    ui->naviCubeInactiveOpacity->setValue(NaviCube::defaultInactiveOpacity());
+     ui->prefCubeSize->onRestore();
+     ui->naviCubeBaseColor->onRestore();
+     ui->naviCubeInactiveOpacity->onRestore();
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index 5491d22c3..bc3dbbaf9 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -605,6 +605,8 @@ void NaviCubeSettings::applySettings()
+     parameterChanged("FontStretch");
+     parameterChanged("ShowCS");
+     parameterChanged("InactiveOpacity");
++    parameterChanged("ButtonsOnHover");
++    parameterChanged("FaceShading");
+     parameterChanged("TextFront");  // Updates all labels
+ }
+ 
+@@ -614,17 +616,27 @@ void NaviCubeSettings::parameterChanged(const char* Name)
+         return;
+     }
+     NaviCube* nc = _viewer->getNaviCube();
+-    if (strcmp(Name, "CornerNaviCube") == 0) {
++    // The integrated environment defaults to a flat, lightly shaded cube whose buttons show
++    // only under the mouse (defaults only: the stored settings are shared with FreeCAD)
++    const bool modern = App::isSingleWorkbench();
++    const unsigned long baseColorDefault = NaviCube::defaultBaseColor();
++    if (strcmp(Name, "ButtonsOnHover") == 0) {
++        nc->setButtonsOnHover(hGrp->GetBool("ButtonsOnHover", modern));
++    }
++    else if (strcmp(Name, "FaceShading") == 0) {
++        nc->setFaceShading(hGrp->GetBool("FaceShading", modern));
++    }
++    else if (strcmp(Name, "CornerNaviCube") == 0) {
+         nc->setCorner(static_cast<NaviCube::Corner>(hGrp->GetInt("CornerNaviCube", 1)));
+     }
+     else if (strcmp(Name, "OffsetX") == 0 || strcmp(Name, "OffsetY") == 0) {
+         nc->setOffset(hGrp->GetInt("OffsetX", 0), hGrp->GetInt("OffsetY", 0));
+     }
+     else if (strcmp(Name, "ChamferSize") == 0) {
+-        nc->setChamfer(hGrp->GetFloat("ChamferSize", 0.12f));
++        nc->setChamfer(hGrp->GetFloat("ChamferSize", modern ? 0.06f : 0.12f));
+     }
+     else if (strcmp(Name, "CubeSize") == 0) {
+-        nc->setSize(hGrp->GetInt("CubeSize", 132));
++        nc->setSize(hGrp->GetInt("CubeSize", NaviCube::defaultCubeSize()));
+     }
+     else if (strcmp(Name, "NaviRotateToNearest") == 0) {
+         nc->setNaviRotateToNearest(hGrp->GetBool("NaviRotateToNearest", true));
+@@ -639,35 +651,35 @@ void NaviCubeSettings::parameterChanged(const char* Name)
+         nc->setFont(hGrp->GetASCII("FontString"));
+     }
+     else if (strcmp(Name, "FontWeight") == 0) {
+-        nc->setFontWeight(hGrp->GetInt("FontWeight", 0));
++        nc->setFontWeight(hGrp->GetInt("FontWeight", modern ? 700 : 0));
+     }
+     else if (strcmp(Name, "FontStretch") == 0) {
+         nc->setFontStretch(hGrp->GetInt("FontStretch", 0));
+     }
+     else if (strcmp(Name, "BaseColor") == 0) {
+-        unsigned long col = hGrp->GetUnsigned("BaseColor", 3806916544);
++        unsigned long col = hGrp->GetUnsigned("BaseColor", baseColorDefault);
+         nc->setBaseColor(Base::Color::fromPackedRGBA<QColor>(col));
+         // update default contrast colors
+         parameterChanged("EmphaseColor");
+     }
+     else if (strcmp(Name, "EmphaseColor") == 0) {
+-        Base::Color bc((uint32_t)hGrp->GetUnsigned("BaseColor", 3806916544));
+-        unsigned long d = bc.r + bc.g + bc.b >= 1.5f ? 255 : 4294967295;
++        Base::Color bc((uint32_t)hGrp->GetUnsigned("BaseColor", baseColorDefault));
++        unsigned long d = modern ? 977555711 : bc.r + bc.g + bc.b >= 1.5f ? 255 : 4294967295;
+         unsigned long col = hGrp->GetUnsigned("EmphaseColor", d);
+         nc->setEmphaseColor(Base::Color::fromPackedRGBA<QColor>(col));
+     }
+     else if (strcmp(Name, "HiliteColor") == 0) {
+-        unsigned long col = hGrp->GetUnsigned("HiliteColor", 2867003391);
++        unsigned long col = hGrp->GetUnsigned("HiliteColor", modern ? 2361720831 : 2867003391);
+         nc->setHiliteColor(Base::Color::fromPackedRGBA<QColor>(col));
+     }
+     else if (strcmp(Name, "BorderWidth") == 0) {
+-        nc->setBorderWidth(hGrp->GetFloat("BorderWidth", 1.1));
++        nc->setBorderWidth(hGrp->GetFloat("BorderWidth", modern ? 0.9 : 1.1));
+     }
+     else if (strcmp(Name, "ShowCS") == 0) {
+-        nc->setShowCS(hGrp->GetBool("ShowCS", true));
++        nc->setShowCS(hGrp->GetBool("ShowCS", !modern));
+     }
+     else if (strcmp(Name, "InactiveOpacity") == 0) {
+-        float opacity = static_cast<float>(hGrp->GetInt("InactiveOpacity", 50)) / 100;
++        float opacity = static_cast<float>(hGrp->GetInt("InactiveOpacity", NaviCube::defaultInactiveOpacity())) / 100;
+         nc->setInactiveOpacity(opacity);
+     }
+     else if (
+-- 
+2.43.0
+

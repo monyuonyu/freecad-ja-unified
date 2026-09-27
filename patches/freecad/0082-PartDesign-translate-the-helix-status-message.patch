@@ -1,7 +1,7 @@
 From 08194d09f40b2abfc8733f7f0fa79d43febe1885 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 10:07:16 +0900
-Subject: [PATCH 082/104] PartDesign: translate the helix status message
+Subject: [PATCH 082/106] PartDesign: translate the helix status message
 
 The helix panel showed feature errors other than the two it knew
 untranslated ("Error: Result is self intersecting"). Translate them in

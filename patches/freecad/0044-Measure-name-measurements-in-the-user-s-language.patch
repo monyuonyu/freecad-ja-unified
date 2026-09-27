@@ -1,7 +1,7 @@
 From f213a9c78ba84278a127373e2f1a218e64342564 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:23:58 +0900
-Subject: [PATCH 044/104] Measure: name measurements in the user's language
+Subject: [PATCH 044/106] Measure: name measurements in the user's language
 
 A new measurement was labelled with the English name of its kind
 ("Area: 100 mm^2"). Use the translated name, which the view provider

@@ -1,0 +1,1622 @@
+From 55e10390d775a567eb6f0e73364eddc69f6fd687 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 14:40:08 +0900
+Subject: [PATCH 106/106] Unified: error messages of features in the user's
+ language
+
+Many messages thrown by FreeCAD and OCC are not marked for translation
+('Wire is not closed.', 'BRep_API: command not done', attacher and
+pattern errors), and some carry numbers or names ('... conflicting
+constraints: 5, 6', 'subshape not found Pad.Face9'). A translator
+installed ahead of the others (Gui::Translator::addOverride takes a
+QTranslator now) translates them in the error contexts: 'Exception',
+'Notifications' and the object's type (the tree's tooltip). It uses the
+module's own translation of the whole message first, then the
+'UnifiedErrors' context: the message worded for the type of object (a
+fillet that fails suggests a smaller radius), the message, patterns with
+numbers or names, and a known beginning followed by a name. 290 messages
+of PartDesign, Sketcher and Part are translated into Japanese.
+
+The notification area looks the object up by the label in front of the
+message to word it for its type; the design check does the same.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/Translator.cpp               |   11 +
+ src/Gui/Language/Translator.h                 |    5 +
+ src/Gui/NotificationArea.cpp                  |   20 +-
+ src/Mod/Unified/DesignCheck.py                |    5 +-
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp         |    4 +
+ src/Mod/Unified/Gui/CMakeLists.txt            |    2 +
+ src/Mod/Unified/Gui/ErrorMessages.cpp         |  172 +++
+ src/Mod/Unified/Gui/ErrorMessages.h           |   18 +
+ .../translations/UnifiedWording_ja.ts         | 1223 +++++++++++++++++
+ 9 files changed, 1458 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Unified/Gui/ErrorMessages.cpp
+ create mode 100644 src/Mod/Unified/Gui/ErrorMessages.h
+
+diff --git a/src/Gui/Language/Translator.cpp b/src/Gui/Language/Translator.cpp
+index d32c758bf..71e80f830 100644
+--- a/src/Gui/Language/Translator.cpp
++++ b/src/Gui/Language/Translator.cpp
+@@ -170,6 +170,7 @@ public:
+     std::vector<QTranslator*> translators; /**< A list of all created translators */
+     QStringList paths;
+     QStringList overrides; /**< Base names of .qm files that win over all others */
++    std::vector<QTranslator*> overrideTranslators; /**< Translators that win over all others */
+ };
+ }  // namespace Gui
+ 
+@@ -453,6 +454,12 @@ void Translator::addOverride(const QString& baseName)
+     }
+ }
+ 
++void Translator::addOverride(QTranslator* translator)
++{
++    d->overrideTranslators.push_back(translator);
++    qApp->installTranslator(translator);
++}
++
+ void Translator::installQMFiles(const QDir& dir, const char* locale)
+ {
+     const QString filter = QStringLiteral("*_%1.qm").arg(QLatin1String(locale));
+@@ -509,6 +516,10 @@ void Translator::refresh()
+             }
+         }
+     }
++    for (QTranslator* translator : d->overrideTranslators) {
++        qApp->removeTranslator(translator);
++        qApp->installTranslator(translator);
++    }
+ }
+ 
+ /**
+diff --git a/src/Gui/Language/Translator.h b/src/Gui/Language/Translator.h
+index 26be2a5b5..1a4d6b2e5 100644
+--- a/src/Gui/Language/Translator.h
++++ b/src/Gui/Language/Translator.h
+@@ -34,6 +34,8 @@
+ 
+ class QDir;
+ 
++class QTranslator;
++
+ namespace Gui
+ {
+ 
+@@ -98,6 +100,9 @@ public:
+      * Unified_ja.qm) take precedence over all others, whenever the others were loaded.
+      * For modules that deliberately word things differently from the modules they use. */
+     void addOverride(const QString& baseName);
++    /** A translator of its own (e.g. one that translates messages by pattern) that takes
++     * precedence over all others, like the overrides above. Not owned. */
++    void addOverride(QTranslator* translator);
+     /** eventFilter used to convert decimal separator **/
+     bool eventFilter(QObject* obj, QEvent* ev) override;
+     /** Enables/disables decimal separator conversion **/
+diff --git a/src/Gui/NotificationArea.cpp b/src/Gui/NotificationArea.cpp
+index 1113c07bb..3f49784c2 100644
+--- a/src/Gui/NotificationArea.cpp
++++ b/src/Gui/NotificationArea.cpp
+@@ -40,6 +40,8 @@
+ 
+ 
+ #include <App/Application.h>
++#include <App/Document.h>
++#include <App/DocumentObject.h>
+ #include <Base/Console.h>
+ 
+ #include "Application.h"
+@@ -325,7 +327,23 @@ void NotificationAreaObserver::sendLog(
+             int colon = simplifiedstring.indexOf(QLatin1String(": "));
+             if (colon > 0) {
+                 QString message = simplifiedstring.mid(colon + 2);
+-                QString translatedMessage = translate(message);
++                // Worded for the kind of object when it is found by its label, e.g. a fillet
++                QString translatedMessage = message;
++                if (App::Document* doc = App::GetApplication().getActiveDocument()) {
++                    const std::string label = simplifiedstring.left(colon).toStdString();
++                    for (App::DocumentObject* obj : doc->getObjects()) {
++                        if (label == obj->Label.getValue()) {
++                            translatedMessage = QCoreApplication::translate(
++                                std::string {obj->getTypeId().getName()}.c_str(),
++                                message.toUtf8()
++                            );
++                            break;
++                        }
++                    }
++                }
++                if (translatedMessage == message) {
++                    translatedMessage = translate(message);
++                }
+                 if (translatedMessage != message) {
+                     translated = simplifiedstring.left(colon + 2) + translatedMessage;
+                 }
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index a9a54e50c..d0830deb3 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -179,7 +179,10 @@ def check_features(doc, issues, opt):
+             if o.isDerivedFrom("Sketcher::SketchObject"):
+                 continue   # スケッチの問題は check_sketches が拘束の番号つきで出す
+             msg = o.getStatusString() if hasattr(o, "getStatusString") else ""
+-            msg = translate("Exception", msg) if msg else msg      # 形のエラー文は "Exception" の文脈で訳されている
++            if msg:
++                # 手順の種類ごとの言い方（丸めなら「半径が大きすぎるか…」）、無ければ "Exception" の文脈の訳
++                typed = translate(o.TypeId, msg)
++                msg = typed if typed != msg else translate("Exception", msg)
+             msg = " ".join(msg.split())
+             issues.append(Issue(ERROR, "feature_error", translate("DesignCheck", "{0}: {1}").format(o.Label, msg), [o.Name]))
+ 
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index 2462dd853..676fd01da 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -7,6 +7,7 @@
+ #include <Gui/Language/Translator.h>
+ 
+ #include "ContextBar.h"
++#include "ErrorMessages.h"
+ #include "Labels.h"
+ #include "TaskPanel.h"
+ #include "Workbench.h"
+@@ -58,6 +59,9 @@ PyMOD_INIT_FUNC(UnifiedGui)
+     Gui::Translator::instance()->addOverride(QStringLiteral("UnifiedWording"));
+     Gui::Translator::instance()->refresh();
+ 
++    // Error messages of features in the user's language, also those with numbers or names
++    UnifiedGui::installErrorMessages();
++
+     PyObject* mod = UnifiedGui::initModule();
+     Base::Console().log("Loading GUI of Unified module… done\n");
+     PyMOD_Return(mod);
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index f9c7ab111..501b48c8c 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -28,6 +28,8 @@ SET(UnifiedGui_SRCS
+     AppUnifiedGui.cpp
+     ContextBar.cpp
+     ContextBar.h
++    ErrorMessages.cpp
++    ErrorMessages.h
+     Labels.cpp
+     Labels.h
+     TaskPanel.cpp
+diff --git a/src/Mod/Unified/Gui/ErrorMessages.cpp b/src/Mod/Unified/Gui/ErrorMessages.cpp
+new file mode 100644
+index 000000000..9c39e5059
+--- /dev/null
++++ b/src/Mod/Unified/Gui/ErrorMessages.cpp
+@@ -0,0 +1,172 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <cstring>
++
++#include <QCoreApplication>
++#include <QRegularExpression>
++#include <QTranslator>
++
++#include <App/DocumentObject.h>
++#include <Base/Type.h>
++#include <Gui/Language/Translator.h>
++
++#include "ErrorMessages.h"
++
++namespace
++{
++constexpr const char* errorContext = "UnifiedErrors";
++
++// Messages with numbers or names in them: the pattern, and the English text of the message whose
++// translation is used ("%1" is the captured part)
++struct Pattern
++{
++    const char* regex;
++    const char* text;
++};
++// clang-format off
++const Pattern patterns[] = {
++    {R"(Sketch with conflicting constraints\s*Remove at least one of the following conflicting constraints:\s*([\d\s,]+))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Conflicting constraints; remove one of: %1")},
++    {R"(Sketch with redundant constraints\s*Remove the following redundant constraints?:\s*([\d\s,]+))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Redundant constraints; remove: %1")},
++    {R"(Sketch with partially redundant constraints\s*.*?:\s*([\d\s,]+))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Partially redundant constraints: %1")},
++    {R"(Sketch with malformed constraints\s*.*?:\s*([\d\s,]+))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Malformed constraints; remove: %1")},
++    {R"(AttachEngine\w*: subshape not found (\S+))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Attachment target %1 not found")},
++    {R"(AttachEngine\w*::calculateAttachedPlacement:\s*(.*))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Attachment placement cannot be calculated (%1)")},
++    {R"(makeOffset2D:\s*(.*))",
++     QT_TRANSLATE_NOOP("UnifiedErrors", "Offset failed (%1)")},
++};
++// clang-format on
++
++QString lookup(const QString& text, const char* disambiguation = nullptr)
++{
++    const QByteArray utf8 = text.toUtf8();
++    QString result = QCoreApplication::translate(errorContext, utf8.constData(), disambiguation);
++    return result == text ? QString() : result;
++}
++
++// "5\n, 6\n" -> "5, 6"
++QString tidyList(QString list)
++{
++    static const QRegularExpression separators(QStringLiteral(R"(\s*,\s*|\s+)"));
++    return list.trimmed().split(separators, Qt::SkipEmptyParts).join(QStringLiteral(", "));
++}
++
++class ErrorTranslator: public QTranslator
++{
++public:
++    using QTranslator::QTranslator;
++
++    bool isEmpty() const override
++    {
++        return false;
++    }
++
++    QString translate(const char* context, const char* source, const char* disambiguation, int n)
++        const override
++    {
++        (void)disambiguation;
++        (void)n;
++        if (busy || !context || !source || !isErrorContext(context)) {
++            return {};
++        }
++        // The lookups below go through all translators again, this one included
++        busy = true;
++        QString result;
++        const QString text = QString::fromUtf8(source);
++        // A translation of the whole message in the module's own files comes first
++        if (QCoreApplication::translate(context, source) == text) {
++            // The tree asks with the object's type as context, the modules declare their
++            // messages in the "Exception" context
++            QString exception = std::strstr(context, "::") ? QCoreApplication::translate("Exception", source)
++                                                             : text;
++            result = exception != text ? exception : translateMessage(text.trimmed(), context);
++        }
++        busy = false;
++        return result;
++    }
++
++private:
++    // Error messages are translated in these contexts: "Exception" (task panels, the design
++    // check), "Notifications" (the notification area) and the type of the object (its tooltip
++    // in the tree)
++    static bool isErrorContext(const char* context)
++    {
++        if (std::strcmp(context, "Exception") == 0 || std::strcmp(context, "Notifications") == 0) {
++            return true;
++        }
++        if (!std::strstr(context, "::")) {
++            return false;
++        }
++        Base::Type type = Base::Type::fromName(context);
++        return !type.isBad() && type.isDerivedFrom(App::DocumentObject::getClassTypeId());
++    }
++
++    static QString translateMessage(const QString& message, const char* context)
++    {
++        if (message.isEmpty()) {
++            return {};
++        }
++        // Worded for the kind of object, e.g. OCC's "command not done" for a fillet
++        if (std::strstr(context, "::")) {
++            if (QString t = lookup(message, context); !t.isEmpty()) {
++                return t;
++            }
++        }
++        if (QString t = lookup(message); !t.isEmpty()) {
++            return t;
++        }
++        for (const Pattern& pattern : patterns) {
++            const QRegularExpression regex(
++                QStringLiteral("^%1$").arg(QString::fromLatin1(pattern.regex)),
++                QRegularExpression::DotMatchesEverythingOption
++            );
++            QRegularExpressionMatch match = regex.match(message);
++            if (match.hasMatch()) {
++                QString t = lookup(QString::fromLatin1(pattern.text));
++                if (t.isEmpty()) {
++                    return {};
++                }
++                QString captured = match.captured(1);
++                if (captured.contains(QLatin1Char(',')) || captured.contains(QLatin1Char('\n'))) {
++                    captured = tidyList(captured);
++                }
++                return t.arg(captured.trimmed());
++            }
++        }
++        // A known message followed by a name or a number: "Sub shape not found: Face3". Try the
++        // text before each ": " or quote, then shorter and shorter beginnings at word breaks
++        // (messages put together from several strings)
++        for (int i = message.size() - 1; i > 0; --i) {
++            const QChar c = message.at(i);
++            const bool colon = c == QLatin1Char(':');
++            const bool quote = c == QLatin1Char('\'');
++            if (!colon && !quote && c != QLatin1Char(' ')) {
++                continue;
++            }
++            const QString head = message.left(colon || quote ? i + 1 : i).trimmed();
++            if (head.size() < 8) {  // NOLINT(*-avoid-magic-numbers)
++                break;
++            }
++            if (QString t = lookup(head); !t.isEmpty()) {
++                return t + QLatin1Char(' ') + message.mid(colon || quote ? i + 1 : i).trimmed();
++            }
++        }
++        return {};
++    }
++
++    static thread_local bool busy;
++};
++
++thread_local bool ErrorTranslator::busy = false;
++}  // namespace
++
++void UnifiedGui::installErrorMessages()
++{
++    static ErrorTranslator translator;
++    Gui::Translator::instance()->addOverride(&translator);
++}
+diff --git a/src/Mod/Unified/Gui/ErrorMessages.h b/src/Mod/Unified/Gui/ErrorMessages.h
+new file mode 100644
+index 000000000..35618cb42
+--- /dev/null
++++ b/src/Mod/Unified/Gui/ErrorMessages.h
+@@ -0,0 +1,18 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++namespace UnifiedGui
++{
++
++/**
++ * Error messages of features in the user's language. Many messages thrown by FreeCAD and OCC
++ * are not marked for translation, and some carry numbers or names ("... constraints: 5, 6",
++ * "subshape not found Pad.Face9"). A translator installed ahead of the others translates them
++ * wherever they are shown with QApplication::translate: in the notification area, the tree's
++ * tooltips and the task panels. The texts are in the "UnifiedErrors" context of the
++ * translation files.
++ */
++void installErrorMessages();
++
++}  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index bbf6007d9..e0dffb0bb 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -7330,4 +7330,1227 @@ Each unit is approximately 0.1mm wide</source>
+         <translation>変換形</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedErrors</name>
++    <message>
++        <source>A fatal error occurred when making fillets</source>
++        <translation>丸めを作る途中で失敗しました</translation>
++    </message>
++    <message>
++        <source>A fatal error occurred when making the sweep</source>
++        <translation>スイープを作る途中で失敗しました</translation>
++    </message>
++    <message>
++        <source>A fatal error occurred when running boolean operation</source>
++        <translation>形の足し引きの途中で失敗しました</translation>
++    </message>
++    <message>
++        <source>At least one occurrence required</source>
++        <translation>個数は 1 以上にしてください</translation>
++    </message>
++    <message>
++        <source>At least two concentric circles are required</source>
++        <translation>同心の円が 2 つ以上要ります</translation>
++    </message>
++    <message>
++        <source>At least two occurrences required</source>
++        <translation>個数は 2 以上にしてください</translation>
++    </message>
++    <message>
++        <source>AttachExtension cannot find placement property</source>
++        <translation>取り付けに使う配置のプロパティが見つかりません</translation>
++    </message>
++    <message>
++        <source>AttachExtension: can't positionBySupport, because no AttachEngine is set.</source>
++        <translation>取り付けの方式が決まっていないので、位置を計算できません</translation>
++    </message>
++    <message>
++        <source>Axis must not be parallel to the sketch plane</source>
++        <translation>軸がスケッチの面と平行です。平行でない軸を選んでください</translation>
++    </message>
++    <message>
++        <source>Axis must not be perpendicular to the sketch plane</source>
++        <translation>軸がスケッチの面と垂直です。垂直でない軸を選んでください</translation>
++    </message>
++    <message>
++        <source>Axis reference must be an edge</source>
++        <translation>軸には辺を選んでください</translation>
++    </message>
++    <message>
++        <source>Axis reference must be edge of a feature or datum line</source>
++        <translation>軸には、形の辺か基準線を選んでください</translation>
++    </message>
++    <message>
++        <source>AxisLink edge is neither line nor arc of circle.</source>
++        <translation>軸の辺が直線でも円弧でもありません</translation>
++    </message>
++    <message>
++        <source>AxisLink shape is not an edge</source>
++        <translation>軸に選んだものが辺ではありません</translation>
++    </message>
++    <message>
++        <source>AxisLink shape is null</source>
++        <translation>軸に選んだものの形が空です</translation>
++    </message>
++    <message>
++        <source>BRepFeat_MakePrism: extrusion failed</source>
++        <translation>押し出しに失敗しました</translation>
++    </message>
++    <message>
++        <source>BRepOffsetAPI_MakeOffsetShape not done</source>
++        <translation>厚みを付ける計算に失敗しました（厚みが大きすぎるか、形が複雑すぎます）</translation>
++    </message>
++    <message>
++        <source>Base feature's TopoShape is invalid</source>
++        <translation>元の形が壊れています</translation>
++    </message>
++    <message>
++        <source>Base feature's shape is invalid</source>
++        <translation>元の形が壊れています</translation>
++    </message>
++    <message>
++        <source>Base feature's shape is not a solid</source>
++        <translation>元の形が立体になっていません</translation>
++    </message>
++    <message>
++        <source>Base feature's shape is not defined</source>
++        <translation>元の形がありません</translation>
++    </message>
++    <message>
++        <source>Base shape of shape binder cannot be used</source>
++        <translation>形の参照の元になっている形が使えません</translation>
++    </message>
++    <message>
++        <source>Body: object is not allowed</source>
++        <translation>この物は部品の中に入れられません</translation>
++    </message>
++    <message>
++        <source>Body: the feature we should insert relative to is not part of that body</source>
++        <translation>挿入する位置の手順が、この部品のものではありません</translation>
++    </message>
++    <message>
++        <source>Can't find normal direction, because the shape is not on a plane.</source>
++        <translation>形が 1 つの平面の上に無いので、向きを決められません</translation>
++    </message>
++    <message>
++        <source>Cannot create a revolution with zero angle.</source>
++        <translation>角度が 0 なので回転できません</translation>
++    </message>
++    <message>
++        <source>Cannot find additive or subtractive support for</source>
++        <translation>足す・引く元の形が見つかりません:</translation>
++    </message>
++    <message>
++        <source>Cannot make face from profile</source>
++        <translation>輪郭から面を作れません（輪郭が閉じていないか、線が交差しています）</translation>
++    </message>
++    <message>
++        <source>Cannot make shell without face</source>
++        <translation>面が無いので殻を作れません</translation>
++    </message>
++    <message>
++        <source>Cannot revolve infinite shape</source>
++        <translation>無限に広がる形は回転できません</translation>
++    </message>
++    <message>
++        <source>Cannot revolve null shape</source>
++        <translation>空の形は回転できません</translation>
++    </message>
++    <message>
++        <source>Cannot sweep with empty spine or empty shape</source>
++        <translation>経路か断面が空なので、スイープできません</translation>
++    </message>
++    <message>
++        <source>Chamfer failed: OCC kernel error in chamfer computation</source>
++        <translation>面取りに失敗しました（大きさが大きすぎるか、この辺は面取りできません）</translation>
++    </message>
++    <message>
++        <source>Circular pattern would create more than</source>
++        <translation>円周の配列の数が多すぎます（上限:</translation>
++    </message>
++    <message>
++        <source>Circumradius of the polygon is too small</source>
++        <translation>多角形の外接円の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Circumradius of the polygon, of the prism, is too small</source>
++        <translation>角柱の多角形の外接円の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Could not determine the sketch plane!</source>
++        <translation>スケッチの面を決められません</translation>
++    </message>
++    <message>
++        <source>Could not extract generated groove tool!</source>
++        <translation>回転切り抜きの形を取り出せません</translation>
++    </message>
++    <message>
++        <source>Could not extract generated revolution tool!</source>
++        <translation>回転の形を取り出せません</translation>
++    </message>
++    <message>
++        <source>Could not revolve the sketch!</source>
++        <translation>スケッチを回転できません</translation>
++    </message>
++    <message>
++        <source>Creating face failed (null shape result)</source>
++        <translation>面を作れませんでした</translation>
++    </message>
++    <message>
++        <source>Cut type '</source>
++        <translation>切り方の種類が正しくありません: '</translation>
++    </message>
++    <message>
++        <source>Cyclic reference to</source>
++        <translation>参照が輪になっています:</translation>
++    </message>
++    <message>
++        <source>Datum feature type is not yet supported as external geometry for a sketch</source>
++        <translation>この種類の基準は、スケッチの外部の図形にはまだ使えません</translation>
++    </message>
++    <message>
++        <source>DirLink edge is not a line.</source>
++        <translation>向きに選んだ辺が直線ではありません</translation>
++    </message>
++    <message>
++        <source>DirLink shape is not an edge</source>
++        <translation>向きに選んだものが辺ではありません</translation>
++    </message>
++    <message>
++        <source>DirLink shape is null</source>
++        <translation>向きに選んだものの形が空です</translation>
++    </message>
++    <message>
++        <source>DirMode is set to use edge, but no edge is linked.</source>
++        <translation>向きを辺で決める設定ですが、辺が選ばれていません</translation>
++    </message>
++    <message>
++        <source>Direction edge must be a straight line</source>
++        <translation>向きには直線の辺を選んでください</translation>
++    </message>
++    <message>
++        <source>Direction face must be planar</source>
++        <translation>向きには平らな面を選んでください</translation>
++    </message>
++    <message>
++        <source>Direction is zero-length</source>
++        <translation>向きの長さが 0 です</translation>
++    </message>
++    <message>
++        <source>Direction reference must be edge or face</source>
++        <translation>向きには辺か面を選んでください</translation>
++    </message>
++    <message>
++        <source>Direction reference must be edge/face of a feature or a datum line/plane</source>
++        <translation>向きには、形の辺・面か、基準線・基準面を選んでください</translation>
++    </message>
++    <message>
++        <source>Edge is infinite</source>
++        <translation>辺が無限に長いです</translation>
++    </message>
++    <message>
++        <source>Edge link size mismatch</source>
++        <translation>選んだ辺の数が合いません</translation>
++    </message>
++    <message>
++        <source>Edge must be a straight line, circle or arc of circle</source>
++        <translation>辺は直線・円・円弧のどれかにしてください</translation>
++    </message>
++    <message>
++        <source>Error in transferring STEP</source>
++        <translation>STEP の読み込み中に失敗しました</translation>
++    </message>
++    <message>
++        <source>Expect the profile to be a planar wire or a face or a line</source>
++        <translation>断面は、平らな輪郭か面か線にしてください</translation>
++    </message>
++    <message>
++        <source>Expect the spine to be a planar wire or face</source>
++        <translation>経路は、平らな輪郭か面にしてください</translation>
++    </message>
++    <message>
++        <source>Extrude: Can only offset one face</source>
++        <translation>押し出しでずらせる面は 1 つだけです</translation>
++    </message>
++    <message>
++        <source>Extrude: Unable to reach the selected shape, please select faces</source>
++        <translation>選んだ形まで押し出せません。面を選んでください</translation>
++    </message>
++    <message>
++        <source>Face unable to be constructed</source>
++        <translation>面を作れません</translation>
++    </message>
++    <message>
++        <source>Failed to calculate AddSub shape:</source>
++        <translation>足す・引く形を計算できません:</translation>
++    </message>
++    <message>
++        <source>Failed to convert edge to bspline</source>
++        <translation>辺を B スプラインに変換できません</translation>
++    </message>
++    <message>
++        <source>Failed to create a solid in makeElementSolid!</source>
++        <translation>立体を作れませんでした</translation>
++    </message>
++    <message>
++        <source>Failed to create edge</source>
++        <translation>辺を作れませんでした</translation>
++    </message>
++    <message>
++        <source>Failed to created face by filling edges</source>
++        <translation>辺で囲んで面を作れませんでした</translation>
++    </message>
++    <message>
++        <source>Failed to evaluate point on path</source>
++        <translation>経路の上の点を計算できません</translation>
++    </message>
++    <message>
++        <source>Failed to extract axis edge</source>
++        <translation>軸の辺を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract direction edge</source>
++        <translation>向きの辺を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract direction plane</source>
++        <translation>向きの面を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract mirror plane</source>
++        <translation>鏡像の面を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract neutral plane reference edge</source>
++        <translation>中立面の辺を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract neutral plane reference face</source>
++        <translation>中立面の面を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract pull direction reference edge</source>
++        <translation>抜く向きの辺を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to extract rotation edge</source>
++        <translation>回転の辺を取り出せません</translation>
++    </message>
++    <message>
++        <source>Failed to get intersection</source>
++        <translation>交わる所を求められません</translation>
++    </message>
++    <message>
++        <source>Failed to make shell:</source>
++        <translation>殻を作れません:</translation>
++    </message>
++    <message>
++        <source>Failed to make shell: unexpected output shape type</source>
++        <translation>殻を作れません（思っていない種類の形になりました）</translation>
++    </message>
++    <message>
++        <source>Failed to make thick solid</source>
++        <translation>厚みを付けた立体を作れません（厚みが大きすぎるか、選んだ面が合っていません）</translation>
++    </message>
++    <message>
++        <source>Failed to split edge</source>
++        <translation>辺を分けられません</translation>
++    </message>
++    <message>
++        <source>Failed to xor extrusion sides (OCC):</source>
++        <translation>押し出しの両側を組み合わせられません:</translation>
++    </message>
++    <message>
++        <source>Failed to xor extrusion sides:</source>
++        <translation>押し出しの両側を組み合わせられません:</translation>
++    </message>
++    <message>
++        <source>Feature: Could not create shape from base plane</source>
++        <translation>基準の面から形を作れません</translation>
++    </message>
++    <message>
++        <source>Feature: Null object</source>
++        <translation>物が空です</translation>
++    </message>
++    <message>
++        <source>FeatureExtrusion: Length: Could not extrude the sketch!</source>
++        <translation>スケッチを押し出せません</translation>
++    </message>
++    <message>
++        <source>General error in RuledSurface::execute()</source>
++        <translation>線織面を作る途中で失敗しました</translation>
++    </message>
++    <message>
++        <source>GeneralFuse failed</source>
++        <translation>形の組み合わせに失敗しました</translation>
++    </message>
++    <message>
++        <source>Height of box too small</source>
++        <translation>直方体の高さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Height of cone too small</source>
++        <translation>円錐の高さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Height of cylinder too small</source>
++        <translation>円柱の高さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Height of prism is too small</source>
++        <translation>角柱の高さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Inconsistency with external geometries</source>
++        <translation>外部の図形と合わない所があります</translation>
++    </message>
++    <message>
++        <source>Input shape forms more than one wire</source>
++        <translation>入力の形が 2 つ以上の輪郭に分かれています</translation>
++    </message>
++    <message>
++        <source>Input shape has no edge</source>
++        <translation>入力の形に辺がありません</translation>
++    </message>
++    <message>
++        <source>Input shape is null</source>
++        <translation>入力の形が空です</translation>
++    </message>
++    <message>
++        <source>Input shape is null.</source>
++        <translation>入力の形が空です</translation>
++    </message>
++    <message>
++        <source>Invalid bounding box</source>
++        <translation>外形の箱が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid document object</source>
++        <translation>物が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid edge link</source>
++        <translation>選んだ辺が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid edge link:</source>
++        <translation>選んだ辺が正しくありません:</translation>
++    </message>
++    <message>
++        <source>Invalid face selection</source>
++        <translation>選んだ面が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid input shape for boolean</source>
++        <translation>足し引きに使えない形です</translation>
++    </message>
++    <message>
++        <source>Invalid link.</source>
++        <translation>リンクが正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid section link</source>
++        <translation>選んだ断面が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid shape type</source>
++        <translation>形の種類が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid source link</source>
++        <translation>元の選択が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid source shape</source>
++        <translation>元の形が正しくありません</translation>
++    </message>
++    <message>
++        <source>Invalid spine</source>
++        <translation>経路が正しくありません</translation>
++    </message>
++    <message>
++        <source>Length of box too small</source>
++        <translation>直方体の長さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Length of plane too small</source>
++        <translation>平面の長さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>Linked object is not a Part object</source>
++        <translation>選んだ物に形がありません</translation>
++    </message>
++    <message>
++        <source>Linked object is not a Part object (has no Shape).</source>
++        <translation>選んだ物に形がありません</translation>
++    </message>
++    <message>
++        <source>Linked shape object is empty</source>
++        <translation>選んだ物の形が空です</translation>
++    </message>
++    <message>
++        <source>Linked shape object is not a wire</source>
++        <translation>選んだ物が輪郭（つながった線）ではありません</translation>
++    </message>
++    <message>
++        <source>Magnitude of taper angle matches or exceeds 90 degrees. That is too much.</source>
++        <translation>テーパーの角度が 90° 以上です。小さくしてください</translation>
++    </message>
++    <message>
++        <source>Mapped element not found:</source>
++        <translation>要素が見つかりません:</translation>
++    </message>
++    <message>
++        <source>Minor radius greater than major radius</source>
++        <translation>小さい方の半径が大きい方の半径より大きくなっています</translation>
++    </message>
++    <message>
++        <source>Minor radius of ellipse too small</source>
++        <translation>楕円の短い方の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Mirror face must be planar</source>
++        <translation>鏡像の面には平らな面を選んでください</translation>
++    </message>
++    <message>
++        <source>Mirror plane reference must be a sketch axis, a face of a feature or a datum plane</source>
++        <translation>鏡像の面には、スケッチの軸か、形の面か、基準面を選んでください</translation>
++    </message>
++    <message>
++        <source>Missing external geometry reference</source>
++        <translation>外部の図形の参照先がありません（元の辺や面が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Mode 'Recto-Verso' is not supported for 2D offset.</source>
++        <translation>両側の厚み（Recto-Verso）は、平面のオフセットでは使えません</translation>
++    </message>
++    <message>
++        <source>Multi common failed</source>
++        <translation>共通部分を求められませんでした</translation>
++    </message>
++    <message>
++        <source>Multi cut failed</source>
++        <translation>切り取りに失敗しました</translation>
++    </message>
++    <message>
++        <source>Multi fuse failed</source>
++        <translation>結合に失敗しました</translation>
++    </message>
++    <message>
++        <source>Multi section failed</source>
++        <translation>断面を求められませんでした</translation>
++    </message>
++    <message>
++        <source>MultiFusion failed</source>
++        <translation>結合に失敗しました</translation>
++    </message>
++    <message>
++        <source>Need at least two vertices, edges or wires to create loft face</source>
++        <translation>ロフトには点・辺・輪郭が 2 つ以上要ります</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference can only be an edge if pull direction is defined</source>
++        <translation>中立面に辺を使えるのは、抜く向きを決めたときだけです</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference edge must be linear</source>
++        <translation>中立面の辺は直線にしてください</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference edge must be normal to pull direction</source>
++        <translation>中立面の辺は、抜く向きと垂直にしてください</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference face must be planar</source>
++        <translation>中立面には平らな面を選んでください</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference must be a face</source>
++        <translation>中立面には面を選んでください</translation>
++    </message>
++    <message>
++        <source>Neutral plane reference must be face of a feature or a datum plane</source>
++        <translation>中立面には、形の面か基準面を選んでください</translation>
++    </message>
++    <message>
++        <source>No axis reference specified</source>
++        <translation>軸が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No boundary wire</source>
++        <translation>外側の輪郭がありません</translation>
++    </message>
++    <message>
++        <source>No direction reference specified</source>
++        <translation>向きが選ばれていません</translation>
++    </message>
++    <message>
++        <source>No input shapes!</source>
++        <translation>入力の形がありません</translation>
++    </message>
++    <message>
++        <source>No mirror plane reference specified</source>
++        <translation>鏡像の面が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No neutral plane reference specified</source>
++        <translation>中立面が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No neutral plane specified and none can be guessed</source>
++        <translation>中立面が選ばれておらず、決めることもできません</translation>
++    </message>
++    <message>
++        <source>No object linked</source>
++        <translation>物が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No part object linked.</source>
++        <translation>形のある物が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No planar face in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先が平らな面ではありません</translation>
++    </message>
++    <message>
++        <source>No planar face in SketchBased::getSupportFace()!</source>
++        <translation>スケッチの取り付け先が平らな面ではありません</translation>
++    </message>
++    <message>
++        <source>No planar support</source>
++        <translation>取り付け先が平らではありません</translation>
++    </message>
++    <message>
++        <source>No profile</source>
++        <translation>輪郭がありません</translation>
++    </message>
++    <message>
++        <source>No profile linked</source>
++        <translation>輪郭（スケッチ）が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No pull direction reference specified</source>
++        <translation>抜く向きが選ばれていません</translation>
++    </message>
++    <message>
++        <source>No rotation axis reference specified</source>
++        <translation>回転の軸が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No sections linked.</source>
++        <translation>断面が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No shape linked.</source>
++        <translation>形が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No shapes linked</source>
++        <translation>形が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No shells or compsolids found in shape</source>
++        <translation>形に殻がありません</translation>
++    </message>
++    <message>
++        <source>No solid</source>
++        <translation>立体がありません</translation>
++    </message>
++    <message>
++        <source>No source shape linked.</source>
++        <translation>元の形が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No spine</source>
++        <translation>経路がありません</translation>
++    </message>
++    <message>
++        <source>No support linked</source>
++        <translation>取り付け先が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No valid axis specified</source>
++        <translation>正しい軸が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No valid profile linked</source>
++        <translation>正しい輪郭が選ばれていません</translation>
++    </message>
++    <message>
++        <source>No valid subelement linked in Part::Feature</source>
++        <translation>形の中の正しい要素が選ばれていません</translation>
++    </message>
++    <message>
++        <source>Not enough input shapes</source>
++        <translation>入力の形が足りません</translation>
++    </message>
++    <message>
++        <source>Not enough shape objects linked</source>
++        <translation>選んだ形が足りません</translation>
++    </message>
++    <message>
++        <source>Not exactly one sub-shape linked.</source>
++        <translation>要素はちょうど 1 つ選んでください</translation>
++    </message>
++    <message>
++        <source>Not yet supported geometry for external geometry</source>
++        <translation>この図形は外部の図形にはまだ使えません</translation>
++    </message>
++    <message>
++        <source>Null edge in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の辺が空です（元の辺が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null edge in AttachEngineLine::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の辺が空です（元の辺が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null edge in AttachEnginePoint::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の辺が空です（元の辺が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null face in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の面が空です（元の面が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null face in SketchBased::getSupportFace()!</source>
++        <translation>スケッチの取り付け先の面が空です（元の面が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null path in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の経路が空です</translation>
++    </message>
++    <message>
++        <source>Null shape in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の形が空です（元の形が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null shape in AttachEngineLine::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の形が空です（元の形が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null shape in AttachEnginePoint::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の形が空です（元の形が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Null shape in SketchBased::getSupportFace()!</source>
++        <translation>スケッチの取り付け先の形が空です</translation>
++    </message>
++    <message>
++        <source>Null vertex in AttachEngine3D::calculateAttachedPlacement()!</source>
++        <translation>取り付け先の点が空です（元の点が無くなっています）</translation>
++    </message>
++    <message>
++        <source>Number of occurrences must be a divisor of previous</source>
++        <translation>個数は、前の個数を割り切れる数にしてください</translation>
++    </message>
++    <message>
++        <source>Only one compsolid can be accepted.</source>
++        <translation>複合立体は 1 つだけにしてください</translation>
++    </message>
++    <message>
++        <source>Part::FaceMaker: return shape is not a single face.</source>
++        <translation>1 つの面になりませんでした</translation>
++    </message>
++    <message>
++        <source>Path does not contain edges</source>
++        <translation>経路に辺がありません</translation>
++    </message>
++    <message>
++        <source>Path edges must form one connected path</source>
++        <translation>経路の辺は、1 本につながるようにしてください</translation>
++    </message>
++    <message>
++        <source>Path length must be greater than zero</source>
++        <translation>経路の長さは 0 より大きくしてください</translation>
++    </message>
++    <message>
++        <source>Path must reference an object with a shape</source>
++        <translation>経路には形のある物を選んでください</translation>
++    </message>
++    <message>
++        <source>Path offsets cannot be negative</source>
++        <translation>経路のずらしは負にできません</translation>
++    </message>
++    <message>
++        <source>Path offsets exceed the path length</source>
++        <translation>経路のずらしが経路の長さを超えています</translation>
++    </message>
++    <message>
++        <source>Path pattern produced no occurrences</source>
++        <translation>経路に沿った配列の個数が 0 になりました</translation>
++    </message>
++    <message>
++        <source>Path pattern would create more than</source>
++        <translation>経路に沿った配列の数が多すぎます（上限:</translation>
++    </message>
++    <message>
++        <source>Path shape is empty</source>
++        <translation>経路の形が空です</translation>
++    </message>
++    <message>
++        <source>Path spacing must be greater than zero</source>
++        <translation>経路の間隔は 0 より大きくしてください</translation>
++    </message>
++    <message>
++        <source>Path subelements must be edges</source>
++        <translation>経路には辺を選んでください</translation>
++    </message>
++    <message>
++        <source>Path tangent is null</source>
++        <translation>経路の向きを求められません</translation>
++    </message>
++    <message>
++        <source>Pattern angle can't be null</source>
++        <translation>配列の角度は 0 にできません</translation>
++    </message>
++    <message>
++        <source>Pattern length too small</source>
++        <translation>配列の長さが小さすぎます（0 より大きくしてください）</translation>
++    </message>
++    <message>
++        <source>Pipe: Sections need to have the same amount of inner wires (except</source>
++        <translation>スイープ: 断面の内側の輪郭の数をそろえてください（</translation>
++    </message>
++    <message>
++        <source>Point object does not contain vertices</source>
++        <translation>点に選んだ物に点がありません</translation>
++    </message>
++    <message>
++        <source>Point object must reference an object with a shape</source>
++        <translation>点には形のある物を選んでください</translation>
++    </message>
++    <message>
++        <source>Point object shape is empty</source>
++        <translation>点に選んだ物の形が空です</translation>
++    </message>
++    <message>
++        <source>Polygon of prism is invalid, must have 3 or more sides</source>
++        <translation>角柱の多角形は 3 辺以上にしてください</translation>
++    </message>
++    <message>
++        <source>Profile shape is not a single vertex, edge, wire nor face.</source>
++        <translation>輪郭が、1 つの点・辺・輪郭・面のどれでもありません</translation>
++    </message>
++    <message>
++        <source>Pull direction reference edge must be linear</source>
++        <translation>抜く向きの辺は直線にしてください</translation>
++    </message>
++    <message>
++        <source>Pull direction reference must be an edge of a feature or a datum line</source>
++        <translation>抜く向きには、形の辺か基準線を選んでください</translation>
++    </message>
++    <message>
++        <source>Pull direction reference must be an edge or a datum line</source>
++        <translation>抜く向きには、辺か基準線を選んでください</translation>
++    </message>
++    <message>
++        <source>Radial distance must be greater than zero</source>
++        <translation>半径方向の間隔は 0 より大きくしてください</translation>
++    </message>
++    <message>
++        <source>Radius of cone too small</source>
++        <translation>円錐の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Radius of cylinder too small</source>
++        <translation>円柱の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Radius of ellipsoid too small</source>
++        <translation>楕円体の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Radius of sphere too small</source>
++        <translation>球の半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Radius of torus too small</source>
++        <translation>トーラスの半径が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Recto-verso half-thickness must exceed the modeling tolerance</source>
++        <translation>両側の厚みの半分が、計算の許容差より小さすぎます</translation>
++    </message>
++    <message>
++        <source>Recto-verso thickness produced an invalid solid</source>
++        <translation>両側の厚みを付けたら、壊れた立体になりました</translation>
++    </message>
++    <message>
++        <source>Require minimum two, maximum four edges</source>
++        <translation>辺は 2 本以上 4 本以下にしてください</translation>
++    </message>
++    <message>
++        <source>Resulting Face is null</source>
++        <translation>できた面が空です</translation>
++    </message>
++    <message>
++        <source>Resulting shape is invalid</source>
++        <translation>できた形が壊れています</translation>
++    </message>
++    <message>
++        <source>Resulting shape is null</source>
++        <translation>できた形が空です</translation>
++    </message>
++    <message>
++        <source>Revolution: Up to face: Could not revolve the sketch!</source>
++        <translation>面まで回転: スケッチを回転できません</translation>
++    </message>
++    <message>
++        <source>Revolved: Cannot determine the profile path around the axis</source>
++        <translation>軸のまわりに回す道筋を決められません</translation>
++    </message>
++    <message>
++        <source>Revolved: Start reference does not intersect the profile path</source>
++        <translation>始まりの基準が、回す道筋と交わりません</translation>
++    </message>
++    <message>
++        <source>Rotation angle of cylinder too small</source>
++        <translation>円柱の角度が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Rotation edge must be a straight line, circle or arc of circle</source>
++        <translation>回転の辺は直線・円・円弧のどれかにしてください</translation>
++    </message>
++    <message>
++        <source>Scaling factor too small</source>
++        <translation>拡大率が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Section failed</source>
++        <translation>断面を求められませんでした</translation>
++    </message>
++    <message>
++        <source>Segments of a loft do not have sufficient separation</source>
++        <translation>ロフトの断面どうしが近すぎます</translation>
++    </message>
++    <message>
++        <source>Shape is null.</source>
++        <translation>形が空です</translation>
++    </message>
++    <message>
++        <source>Sketch support shape is empty!</source>
++        <translation>スケッチの取り付け先の形が空です</translation>
++    </message>
++    <message>
++        <source>Sketch::addConstraint. Can't add constraint to a sketch with no geometry!</source>
++        <translation>図形の無いスケッチに拘束は付けられません</translation>
++    </message>
++    <message>
++        <source>SketchBased: Failed to extract face</source>
++        <translation>面を取り出せません</translation>
++    </message>
++    <message>
++        <source>SketchBased: Must be face of a feature</source>
++        <translation>形の面を選んでください</translation>
++    </message>
++    <message>
++        <source>SketchBased: No face selected</source>
++        <translation>面が選ばれていません</translation>
++    </message>
++    <message>
++        <source>SketchBased: No faces found in this direction</source>
++        <translation>この向きに面が見つかりません</translation>
++    </message>
++    <message>
++        <source>SketchBased: Start reference does not intersect the profile direction</source>
++        <translation>始まりの基準が、押し出す向きと交わりません</translation>
++    </message>
++    <message>
++        <source>SketchBased: Up to face: Failed to extract face</source>
++        <translation>面まで: 面を取り出せません</translation>
++    </message>
++    <message>
++        <source>SketchBased: Up to face: Must not be normal to rotation axis!</source>
++        <translation>面まで: 面が回転の軸と垂直です</translation>
++    </message>
++    <message>
++        <source>SketchBased: Up to face: Must not be parallel to extrusion direction!</source>
++        <translation>面まで: 面が押し出す向きと平行です</translation>
++    </message>
++    <message>
++        <source>SketchBased: Up to face: Must not intersect sketch!</source>
++        <translation>面まで: 面がスケッチと交わっています</translation>
++    </message>
++    <message>
++        <source>SketchBased: Up to face: No face found</source>
++        <translation>面まで: 面が見つかりません</translation>
++    </message>
++    <message>
++        <source>SketchObject::projectShape - OCC error</source>
++        <translation>外部の図形を投影できませんでした</translation>
++    </message>
++    <message>
++        <source>SketchObject::projectShape - OCC error occurred while extracting edges</source>
++        <translation>外部の図形の辺を取り出せませんでした</translation>
++    </message>
++    <message>
++        <source>SketchObject::projectShape - unknown error</source>
++        <translation>外部の図形を投影できませんでした</translation>
++    </message>
++    <message>
++        <source>SketchObject::projectShape - unknown error occurred while extracting edges</source>
++        <translation>外部の図形の辺を取り出せませんでした</translation>
++    </message>
++    <message>
++        <source>Sketcher: addExternal(): Failed to build edge from App::Line</source>
++        <translation>基準線から辺を作れません</translation>
++    </message>
++    <message>
++        <source>Sketcher: addExternal(): Failed to build edge from Part::DatumLine</source>
++        <translation>基準線から辺を作れません</translation>
++    </message>
++    <message>
++        <source>Sketcher: addExternal(): Failed to build face from App::Plane</source>
++        <translation>基準面から面を作れません</translation>
++    </message>
++    <message>
++        <source>Sketcher: addExternal(): Failed to build vertex from App::Point</source>
++        <translation>基準点から点を作れません</translation>
++    </message>
++    <message>
++        <source>Sketcher: addExternal(): Failed to build vertex from Part::DatumPoint</source>
++        <translation>基準点から点を作れません</translation>
++    </message>
++    <message>
++        <source>Solving the sketch failed</source>
++        <translation>スケッチを解けませんでした（拘束がぶつかっていないか見直してください）</translation>
++    </message>
++    <message>
++        <source>Source shape is not single solid.</source>
++        <translation>元の形が 1 つの立体ではありません</translation>
++    </message>
++    <message>
++        <source>Spine shape cannot form a single wire</source>
++        <translation>経路が 1 本の輪郭になりません</translation>
++    </message>
++    <message>
++        <source>Spine shape is not a wire</source>
++        <translation>経路が輪郭（つながった線）ではありません</translation>
++    </message>
++    <message>
++        <source>Sub shape not found:</source>
++        <translation>要素が見つかりません:</translation>
++    </message>
++    <message>
++        <source>Sweep needs a spine and a shape</source>
++        <translation>スイープには経路と断面が要ります</translation>
++    </message>
++    <message>
++        <source>Tangential distance must be greater than zero</source>
++        <translation>接線方向の間隔は 0 より大きくしてください</translation>
++    </message>
++    <message>
++        <source>Thread fit out of range</source>
++        <translation>ねじのはめあいが範囲外です</translation>
++    </message>
++    <message>
++        <source>Thread size out of range</source>
++        <translation>ねじの大きさが範囲外です</translation>
++    </message>
++    <message>
++        <source>Thread type '</source>
++        <translation>ねじの種類が正しくありません: '</translation>
++    </message>
++    <message>
++        <source>Thread type out of range</source>
++        <translation>ねじの種類が範囲外です</translation>
++    </message>
++    <message>
++        <source>ThruSections failed</source>
++        <translation>ロフトに失敗しました</translation>
++    </message>
++    <message>
++        <source>Tool shape is null</source>
++        <translation>道具の形が空です</translation>
++    </message>
++    <message>
++        <source>Total length of extrusion is zero.</source>
++        <translation>押し出しの長さの合計が 0 です</translation>
++    </message>
++    <message>
++        <source>Unsupported depth type</source>
++        <translation>この深さの種類は使えません</translation>
++    </message>
++    <message>
++        <source>Unsupported thread depth type</source>
++        <translation>このねじの深さの種類は使えません</translation>
++    </message>
++    <message>
++        <source>User aborted</source>
++        <translation>中止しました</translation>
++    </message>
++    <message>
++        <source>Width of box too small</source>
++        <translation>直方体の幅が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Width of plane too small</source>
++        <translation>平面の幅が小さすぎます</translation>
++    </message>
++    <message>
++        <source>Wire is not closed.</source>
++        <translation>輪郭が閉じていません（線の端どうしがつながっていない所があります）</translation>
++    </message>
++    <message>
++        <source>Wires are not coplanar</source>
++        <translation>輪郭が同じ平面の上にありません</translation>
++    </message>
++    <message>
++        <source>Wrong number of input shapes</source>
++        <translation>入力の形の数が合いません</translation>
++    </message>
++    <message>
++        <source>chamfer edge has no adjacent face</source>
++        <translation>面取りする辺に隣の面がありません</translation>
++    </message>
++    <message>
++        <source>chamfer edge is degenerated</source>
++        <translation>面取りする辺の長さが 0 です</translation>
++    </message>
++    <message>
++        <source>defeaturing face does not belong to the shape</source>
++        <translation>除く面が、この形のものではありません</translation>
++    </message>
++    <message>
++        <source>defeaturing input shape is not a face</source>
++        <translation>除くものが面ではありません</translation>
++    </message>
++    <message>
++        <source>delta x of wedge too small</source>
++        <translation>くさびの X の長さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>delta x2 of wedge is negative</source>
++        <translation>くさびの X2 が負です</translation>
++    </message>
++    <message>
++        <source>delta y of wedge too small</source>
++        <translation>くさびの Y の長さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>delta z of wedge too small</source>
++        <translation>くさびの Z の長さが小さすぎます</translation>
++    </message>
++    <message>
++        <source>delta z2 of wedge is negative</source>
++        <translation>くさびの Z2 が負です</translation>
++    </message>
++    <message>
++        <source>edge does not belong to the shape</source>
++        <translation>辺が、この形のものではありません</translation>
++    </message>
++    <message>
++        <source>face does not belong to the shape</source>
++        <translation>面が、この形のものではありません</translation>
++    </message>
++    <message>
++        <source>makeOffset2D: offset distance is zero. Can't fill offset.</source>
++        <translation>オフセットの距離が 0 なので、塗りつぶせません</translation>
++    </message>
++    <message>
++        <source>makeOffset2D: wires are nonplanar or noncoplanar</source>
++        <translation>オフセット: 輪郭が平らでないか、同じ平面の上にありません</translation>
++    </message>
++    <message>
++        <source>makeOffset2D: input shape is null!</source>
++        <translation>オフセット: 入力の形が空です</translation>
++    </message>
++    <message>
++        <source>makeOffsetFace: input shape is null!</source>
++        <translation>オフセット: 入力の形が空です</translation>
++    </message>
++    <message>
++        <source>makeOffsetFace: missing outer wire!</source>
++        <translation>オフセット: 外側の輪郭がありません</translation>
++    </message>
++    <message>
++        <source>makeOffsetFace: no face found</source>
++        <translation>オフセット: 面が見つかりません</translation>
++    </message>
++    <message>
++        <source>missing shape element:</source>
++        <translation>形の要素がありません:</translation>
++    </message>
++    <message>
++        <source>no closed bounds</source>
++        <translation>閉じた境界がありません</translation>
++    </message>
++    <message>
++        <source>no faces can be used</source>
++        <translation>使える面がありません</translation>
++    </message>
++    <message>
++        <source>the polygon is invalid, must have 3 or more sides</source>
++        <translation>多角形は 3 辺以上にしてください</translation>
++    </message>
++    <message>
++        <source>BRep_API: command not done</source>
++        <translation>形の計算に失敗しました（大きさや、選んだ辺・面を見直してください）</translation>
++    </message>
++    <message>
++        <source>StdFail_NotDone</source>
++        <translation>形の計算に失敗しました（大きさや、選んだ辺・面を見直してください）</translation>
++    </message>
++    <message>
++        <source>BRep_API: command not done</source>
++        <comment>PartDesign::Fillet</comment>
++        <translation>丸めを作れません。半径が大きすぎるか、この辺は丸められない形です</translation>
++    </message>
++    <message>
++        <source>BRep_API: command not done</source>
++        <comment>PartDesign::Chamfer</comment>
++        <translation>面取りを作れません。大きさが大きすぎるか、この辺は面取りできない形です</translation>
++    </message>
++    <message>
++        <source>BRep_API: command not done</source>
++        <comment>PartDesign::Thickness</comment>
++        <translation>厚みを付けられません。厚みが大きすぎるか、選んだ面が合っていません</translation>
++    </message>
++    <message>
++        <source>BRep_API: command not done</source>
++        <comment>PartDesign::Draft</comment>
++        <translation>抜き勾配を付けられません。角度が大きすぎるか、選んだ面が合っていません</translation>
++    </message>
++    <message>
++        <source>Conflicting constraints; remove one of: %1</source>
++        <translation>拘束がぶつかっています。次の拘束のどれか 1 つを消してください: %1</translation>
++    </message>
++    <message>
++        <source>Redundant constraints; remove: %1</source>
++        <translation>同じことを二重に決めている拘束があります。次を消してください: %1</translation>
++    </message>
++    <message>
++        <source>Partially redundant constraints: %1</source>
++        <translation>一部が重なっている拘束があります: %1</translation>
++    </message>
++    <message>
++        <source>Malformed constraints; remove: %1</source>
++        <translation>壊れた拘束があります。次を消してください: %1</translation>
++    </message>
++    <message>
++        <source>Attachment target %1 not found</source>
++        <translation>取り付け先の面や辺（%1）が見つかりません。形を変えたために無くなったかもしれません。取り付け先を選び直してください</translation>
++    </message>
++    <message>
++        <source>Attachment placement cannot be calculated (%1)</source>
++        <translation>取り付け位置を計算できません。取り付けの方式と、取り付け先（面・辺・点）の選び方を見直してください（%1）</translation>
++    </message>
++    <message>
++        <source>Offset failed (%1)</source>
++        <translation>オフセットできません（%1）</translation>
++    </message>
++    <message>
++        <source>Valid</source>
++        <translation>正常</translation>
++    </message>
++    <message>
++        <source>Touched</source>
++        <translation>再計算が必要</translation>
++    </message>
++    <message>
++        <source>Invalid</source>
++        <translation>エラー</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

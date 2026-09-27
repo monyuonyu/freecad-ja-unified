@@ -1,7 +1,7 @@
 From df0294f7e09d0a4b1333b54a7f2d037f293b238f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:33:13 +0900
-Subject: [PATCH 072/104] PartDesign: "New part" in the integrated environment
+Subject: [PATCH 072/106] PartDesign: "New part" in the integrated environment
  goes on to the first sketch
 
 "New part" warned when a sketch or a feature of another part happened to
