@@ -1,0 +1,167 @@
+From 265c90719dfb3fc499de16f3babfb40e857b6a8d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:13:09 +0900
+Subject: [PATCH 62/68] PartDesign: any tool on an imported solid without
+ asking for a body
+
+The previous change covered only new sketches. In the integrated
+environment getBody() now makes a part from the picked solid whenever a
+tool needs an active body and the picked faces, edges or vertices belong
+to one solid outside any part, so fillets, chamfers, pads from a face,
+... work on imported shapes directly. The same elements are picked on
+the part's base shape.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 38 +++--------------------
+ src/Mod/PartDesign/Gui/Utils.cpp          | 38 +++++++++++++++++++++++
+ src/Mod/PartDesign/Gui/Utils.h            |  5 +++
+ 3 files changed, 47 insertions(+), 34 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 29981a6f7..3d33c9bbb 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -42,7 +42,6 @@
+ #include "WorkflowManager.h"
+ #include "ui_DlgReference.h"
+ #include <Mod/PartDesign/App/Body.h>
+-#include <Mod/PartDesign/App/FeatureBase.h>
+ #include <Mod/PartDesign/App/DatumPlane.h>
+ #include <Mod/PartDesign/App/ShapeBinder.h>
+ #include <Mod/Part/App/AttachExtension.h>
+@@ -1033,39 +1032,10 @@ void SketchWorkflow::tryCreateSketch()
+ void SketchWorkflow::sketchOnLooseSolid()
+ {
+     // A face of a solid that is not in a part (e.g. an imported STEP file) was picked and no
+-    // part is active. Instead of asking for an active body, make a part from that solid, as
+-    // "New part" does with a selected solid, and pick the same face on it.
+-    if (PartDesignGui::getBody(/* messageIfNot = */ false, /* autoActivate = */ false)) {
+-        return;
+-    }
+-    auto selection = Gui::Selection().getSelectionEx();
+-    if (selection.size() != 1 || selection.front().getSubNames().size() != 1) {
+-        return;
+-    }
+-    App::DocumentObject* solid = selection.front().getObject();
+-    const std::string face = selection.front().getSubNames().front();
+-    if (!solid || face.rfind("Face", 0) != 0 || !solid->isDerivedFrom<Part::Feature>()
+-        || solid->isDerivedFrom<PartDesign::Feature>() || solid->isDerivedFrom<Part::Part2DObject>()
+-        || PartDesign::Body::findBodyOf(solid)) {
+-        return;
+-    }
+-    Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
+-    PartDesign::Body* body = PartDesignGui::getBody(false, false);
+-    if (!body) {
+-        return;
+-    }
+-    for (App::DocumentObject* obj : body->Group.getValues()) {
+-        auto* base = dynamic_cast<PartDesign::FeatureBase*>(obj);
+-        if (base && base->BaseFeature.getValue() == solid) {
+-            appdocument->recompute();
+-            Gui::Selection().clearSelection();
+-            Gui::Selection().addSelection(
+-                appdocument->getName(),
+-                base->getNameInDocument(),
+-                face.c_str()
+-            );
+-            return;
+-        }
++    // part is active: make a part from that solid and pick the same face on it, so that the
++    // sketch is made there instead of asking for an active body
++    if (!PartDesignGui::getBody(/* messageIfNot = */ false, /* autoActivate = */ false)) {
++        PartDesignGui::adoptPickedLooseSolid();
+     }
+ }
+ 
+diff --git a/src/Mod/PartDesign/Gui/Utils.cpp b/src/Mod/PartDesign/Gui/Utils.cpp
+index 34a4401a2..bc235eccc 100644
+--- a/src/Mod/PartDesign/Gui/Utils.cpp
++++ b/src/Mod/PartDesign/Gui/Utils.cpp
+@@ -28,6 +28,7 @@
+ #include <Precision.hxx>
+ 
+ 
++#include <App/Application.h>
+ #include <App/Origin.h>
+ #include <App/Datums.h>
+ #include <App/Part.h>
+@@ -35,8 +36,10 @@
+ #include <Gui/CommandT.h>
+ #include <Gui/MainWindow.h>
+ #include <Gui/MDIView.h>
++#include <Gui/Selection/Selection.h>
+ #include <Mod/PartDesign/App/Body.h>
+ #include <Mod/PartDesign/App/Feature.h>
++#include <Mod/PartDesign/App/FeatureBase.h>
+ #include <Mod/PartDesign/App/FeatureSketchBased.h>
+ #include <Mod/PartDesign/App/PartDesignParameter.h>
+ #include <Mod/Sketcher/App/SketchObject.h>
+@@ -138,6 +141,10 @@ PartDesign::Body* getBody(
+             if (autoActivate && (bodies.size() == 1)) {
+                 activeBody = makeBodyActive(bodies[0], doc, topParent, subname);
+             }
++            else if (messageIfNot && App::Application::Config().contains("SingleWorkbench")
++                     && (activeBody = adoptPickedLooseSolid())) {
++                // Picked elements of an imported solid: it became a part
++            }
+             else if (messageIfNot) {
+                 DlgActiveBody dia(
+                     Gui::getMainWindow(),
+@@ -208,6 +215,37 @@ void needActiveBodyError()
+     );
+ }
+ 
++PartDesign::Body* adoptPickedLooseSolid()
++{
++    auto selection = Gui::Selection().getSelectionEx();
++    if (selection.size() != 1 || selection.front().getSubNames().empty()) {
++        return nullptr;
++    }
++    App::DocumentObject* solid = selection.front().getObject();
++    const std::vector<std::string> elements = selection.front().getSubNames();
++    if (!solid || !solid->isDerivedFrom<Part::Feature>() || solid->isDerivedFrom<PartDesign::Feature>()
++        || solid->isDerivedFrom<Part::Part2DObject>() || PartDesign::Body::findBodyOf(solid)) {
++        return nullptr;
++    }
++    Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
++    PartDesign::Body* body = nullptr;
++    App::Document* doc = solid->getDocument();
++    for (App::DocumentObject* obj : doc->getObjectsOfType(PartDesign::FeatureBase::getClassTypeId())) {
++        auto* base = static_cast<PartDesign::FeatureBase*>(obj);
++        if (base->BaseFeature.getValue() != solid) {
++            continue;
++        }
++        body = PartDesign::Body::findBodyOf(base);
++        doc->recompute();
++        Gui::Selection().clearSelection();
++        for (const std::string& element : elements) {
++            Gui::Selection().addSelection(doc->getName(), base->getNameInDocument(), element.c_str());
++        }
++        break;
++    }
++    return body;
++}
++
+ PartDesign::Body* makeBody(App::Document* doc)
+ {
+     bool allowCompound = PartDesign::PartDesignParameter::instance()->getAllowCompoundDefault();
+diff --git a/src/Mod/PartDesign/Gui/Utils.h b/src/Mod/PartDesign/Gui/Utils.h
+index 894a901de..22f15d25c 100644
+--- a/src/Mod/PartDesign/Gui/Utils.h
++++ b/src/Mod/PartDesign/Gui/Utils.h
+@@ -84,6 +84,11 @@ void needActiveBodyError();
+ /// Create a Body object in doc, set it active, and return pointer to it
+ PartDesign::Body* makeBody(App::Document* doc);
+ 
++/// The faces, edges or vertices of one solid outside any part (e.g. an imported file) are
++/// picked: make a part from that solid, as "New part" does with a selected solid, pick the
++/// same elements on it and return the part. Returns nullptr if the selection is not like that.
++PartDesign::Body* adoptPickedLooseSolid();
++
+ /**
+  * Finds a body for the given feature. And shows a message if not found
+  * Also unlike Body::findBodyFor it checks if the active body has the feature first.
+-- 
+2.43.0
+

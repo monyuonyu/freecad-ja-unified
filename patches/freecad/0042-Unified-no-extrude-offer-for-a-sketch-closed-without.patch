@@ -1,7 +1,7 @@
 From 535d76fcb69a2b689b4b0dffdf18e8e426b999a2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:19:35 +0900
-Subject: [PATCH 42/55] Unified: no extrude offer for a sketch closed without
+Subject: [PATCH 42/68] Unified: no extrude offer for a sketch closed without
  drawing anything
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

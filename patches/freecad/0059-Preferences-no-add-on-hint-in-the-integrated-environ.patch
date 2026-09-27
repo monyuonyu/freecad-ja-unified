@@ -1,0 +1,57 @@
+From 55da3ead714af5a02baa28308f400dcda931ad4d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:06:44 +0900
+Subject: [PATCH 59/68] Preferences: no add-on hint in the integrated
+ environment, TechDraw pages as "drawings" in Japanese
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/PreferencePages/DlgSettingsGeneral.cpp             | 2 ++
+ src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts | 2 +-
+ src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts   | 4 ----
+ 3 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/src/Gui/PreferencePages/DlgSettingsGeneral.cpp b/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
+index 01b8be2f8..c0cb1922b 100644
+--- a/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
++++ b/src/Gui/PreferencePages/DlgSettingsGeneral.cpp
+@@ -150,6 +150,8 @@ DlgSettingsGeneral::DlgSettingsGeneral(QWidget* parent)
+     ui->moreThemesLabel->setEnabled(
+         Application::Instance->commandManager().getCommandByName("Std_AddonMgr") != nullptr
+     );
++    // No add-on manager in the integrated environment: no hint that points to it
++    ui->moreThemesLabel->setVisible(!App::Application::Config().contains("SingleWorkbench"));
+ }
+ 
+ /**
+diff --git a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+index 59d8e99f2..2f6e556d9 100644
+--- a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
++++ b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+@@ -4144,7 +4144,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+       <location filename="../../AppTechDrawGui.cpp" line="176"/>
+       <location filename="../../AppTechDrawGui.cpp" line="177"/>
+       <source>TechDraw</source>
+-      <translation>TechDraw</translation>
++      <translation>図面</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCosmeticCircle.cpp" line="126"/>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 7666aeff6..23cfa947d 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -290,10 +290,6 @@
+         <source>Sketcher</source>
+         <translation>スケッチ</translation>
+     </message>
+-    <message>
+-        <source>TechDraw</source>
+-        <translation>図面</translation>
+-    </message>
+     <message>
+         <source>Assembly</source>
+         <translation>組立</translation>
+-- 
+2.43.0
+

@@ -1,0 +1,90 @@
+From ea585c3d24e07a69b0c34801edb3da2b2e3b065b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:17:06 +0900
+Subject: [PATCH 66/68] Translations: plain Japanese for attaching, merging and
+ copying sketches
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Sketcher_ja.ts    | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index 8ec30efac..48d7728b9 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -161,7 +161,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="652"/>
+       <source>Attach Sketch</source>
+-      <translation>スケッチをアタッチ</translation>
++      <translation>スケッチの取り付け先を変える</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="653"/>
+@@ -193,7 +193,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1255"/>
+       <source>Merge Sketches</source>
+-      <translation>スケッチをマージ</translation>
++      <translation>スケッチを一つにまとめる</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1256"/>
+@@ -294,7 +294,7 @@ as mirroring reference</source>
+     <message>
+       <location filename="../../Command.cpp" line="908"/>
+       <source>Validate Sketch</source>
+-      <translation>スケッチを検証</translation>
++      <translation>スケッチの不具合を調べる</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="909"/>
+@@ -687,7 +687,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../Command.cpp" line="834"/>
+       <source>Attach sketch</source>
+-      <translation>スケッチをアタッチ</translation>
++      <translation>スケッチの取り付け先を変える</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="843"/>
+@@ -702,7 +702,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../Command.cpp" line="1281"/>
+       <source>Merge sketches</source>
+-      <translation>スケッチをマージ</translation>
++      <translation>スケッチを一つにまとめる</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLine.h" line="135"/>
+@@ -7052,7 +7052,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1872"/>
+       <source>External Projection</source>
+-      <translation>外部投影</translation>
++      <translation>ほかの形を写す</translation>
+     </message>
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1873"/>
+@@ -7065,7 +7065,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1909"/>
+       <source>External Intersection</source>
+-      <translation>外部交差</translation>
++      <translation>ほかの形との交わりを写す</translation>
+     </message>
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1910"/>
+@@ -7078,7 +7078,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1947"/>
+       <source>Carbon Copy</source>
+-      <translation>カーボンコピー</translation>
++      <translation>ほかのスケッチを丸ごと写す</translation>
+     </message>
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1948"/>
+-- 
+2.43.0
+

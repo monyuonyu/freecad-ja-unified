@@ -1,0 +1,101 @@
+From 2c06d2eb97ea7cff3c2ec5367fba3549999ca9a5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:10:06 +0900
+Subject: [PATCH 60/68] PartDesign: sketch on a face of an imported solid
+ without asking for a body
+
+In the integrated environment, starting a sketch on a face of a solid
+that is not in a part (e.g. an imported STEP file) asked to pick or make
+an active body. Make a part from that solid instead, as "New part" does
+with a selected solid, and start the sketch on the same face of it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 43 +++++++++++++++++++++++
+ src/Mod/PartDesign/Gui/SketchWorkflow.h   |  2 ++
+ 2 files changed, 45 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 43844781f..29981a6f7 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -42,6 +42,7 @@
+ #include "WorkflowManager.h"
+ #include "ui_DlgReference.h"
+ #include <Mod/PartDesign/App/Body.h>
++#include <Mod/PartDesign/App/FeatureBase.h>
+ #include <Mod/PartDesign/App/DatumPlane.h>
+ #include <Mod/PartDesign/App/ShapeBinder.h>
+ #include <Mod/Part/App/AttachExtension.h>
+@@ -982,6 +983,9 @@ void SketchWorkflow::createSketch()
+ 
+ void SketchWorkflow::tryCreateSketch()
+ {
++    if (App::Application::Config().contains("SingleWorkbench")) {
++        sketchOnLooseSolid();
++    }
+     auto result = shouldCreateBody();
+     auto shouldMakeBody = std::get<0>(result);
+     activeBody = std::get<1>(result);
+@@ -1026,6 +1030,45 @@ void SketchWorkflow::tryCreateSketch()
+     requestSelection.findSupport();
+ }
+ 
++void SketchWorkflow::sketchOnLooseSolid()
++{
++    // A face of a solid that is not in a part (e.g. an imported STEP file) was picked and no
++    // part is active. Instead of asking for an active body, make a part from that solid, as
++    // "New part" does with a selected solid, and pick the same face on it.
++    if (PartDesignGui::getBody(/* messageIfNot = */ false, /* autoActivate = */ false)) {
++        return;
++    }
++    auto selection = Gui::Selection().getSelectionEx();
++    if (selection.size() != 1 || selection.front().getSubNames().size() != 1) {
++        return;
++    }
++    App::DocumentObject* solid = selection.front().getObject();
++    const std::string face = selection.front().getSubNames().front();
++    if (!solid || face.rfind("Face", 0) != 0 || !solid->isDerivedFrom<Part::Feature>()
++        || solid->isDerivedFrom<PartDesign::Feature>() || solid->isDerivedFrom<Part::Part2DObject>()
++        || PartDesign::Body::findBodyOf(solid)) {
++        return;
++    }
++    Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
++    PartDesign::Body* body = PartDesignGui::getBody(false, false);
++    if (!body) {
++        return;
++    }
++    for (App::DocumentObject* obj : body->Group.getValues()) {
++        auto* base = dynamic_cast<PartDesign::FeatureBase*>(obj);
++        if (base && base->BaseFeature.getValue() == solid) {
++            appdocument->recompute();
++            Gui::Selection().clearSelection();
++            Gui::Selection().addSelection(
++                appdocument->getName(),
++                base->getNameInDocument(),
++                face.c_str()
++            );
++            return;
++        }
++    }
++}
++
+ std::tuple<bool, PartDesign::Body*> SketchWorkflow::shouldCreateBody()
+ {
+     auto shouldMakeBody {false};
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.h b/src/Mod/PartDesign/Gui/SketchWorkflow.h
+index 05fcfbd14..494e62919 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.h
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.h
+@@ -53,6 +53,8 @@ public:
+ 
+ private:
+     void tryCreateSketch();
++    /// Picked face of a solid outside any part: make a part from the solid first
++    void sketchOnLooseSolid();
+     std::tuple<bool, PartDesign::Body*> shouldCreateBody();
+     bool shouldAbort(bool) const;
+     std::tuple<Gui::SelectionFilter, Gui::SelectionFilter, Gui::SelectionFilter> getFilters() const;
+-- 
+2.43.0
+

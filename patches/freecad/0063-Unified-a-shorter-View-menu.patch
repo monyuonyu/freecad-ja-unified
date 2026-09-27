@@ -1,0 +1,112 @@
+From 4b222c27e4bfb3d8676b63dde847edf8dab5d4f1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:14:42 +0900
+Subject: [PATCH 63/68] Unified: a shorter View menu
+
+The view commands used now and then (new view, freeze views, clipping,
+texture mapping, link and tree actions, ...) move into one "More"
+submenu; the ones used often stay at the top level. "Standard views"
+uses the same plain Japanese as in the context menu.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                |  4 +-
+ .../Gui/Resources/translations/Unified_ja.ts  |  4 ++
+ src/Mod/Unified/Gui/Workbench.cpp             | 44 +++++++++++++++++++
+ 3 files changed, 50 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 69ff7f7fa..944a10e76 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -257,7 +257,7 @@
+     <message>
+       <location filename="../Workbench.cpp" line="585"/>
+       <source>Standard-View</source>
+-      <translation>標準ビュー</translation>
++      <translation>決まった向きから見る</translation>
+     </message>
+     <message>
+       <location filename="../Workbench.cpp" line="586"/>
+@@ -10306,7 +10306,7 @@ Save the document now?</source>
+     <message>
+       <location filename="../Workbench.cpp" line="595"/>
+       <source>Standard &amp;Views</source>
+-      <translation>標準ビュー(&amp;V)</translation>
++      <translation>決まった向きから見る(&amp;V)</translation>
+     </message>
+     <message>
+       <location filename="../Workbench.cpp" line="596"/>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index fcd5162e1..9161c2d6e 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -31,6 +31,10 @@
+         <source>Unified Finish</source>
+         <translation>仕上げ</translation>
+     </message>
++    <message>
++        <source>Unified More View</source>
++        <translation>その他の表示</translation>
++    </message>
+     <message>
+         <source>Unified Arrange</source>
+         <translation>並べる・鏡像</translation>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index ea8b99da9..809da4592 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -186,6 +186,50 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+         }
+     }
+ 
++    // View menu: what is used often stays at the top level, the rest moves into one submenu
++    if (Gui::MenuItem* view = root->findItem("&View")) {
++        auto more = new Gui::MenuItem;
++        more->setCommand("Unified More View");
++        const char* advanced[] = {
++            "Std_ViewCreate",
++            "Std_FreezeViews",
++            "Std_SelBoundingBox",
++            "Std_ViewDockUndockFullscreen",
++            "Std_ViewIvIssueCamPos",
++            "Std_ToggleClipPlane",
++            "Std_TextureMapping",
++            "Std_ToggleNavigation",
++            "Std_RandomColor",
++            "Std_DockOverlay",
++            "Std_LinkSelectActions",
++            "Std_TreeViewActions",
++        };
++        for (const char* name : advanced) {
++            QList<Gui::MenuItem*> items = view->getItems();
++            auto it = std::find_if(items.begin(), items.end(), [name](Gui::MenuItem* m) {
++                return m->command() == name;
++            });
++            if (it != items.end()) {
++                view->removeItem(*it);
++                more->appendItem(*it);
++            }
++        }
++        // No separators at the start, at the end or next to each other
++        QList<Gui::MenuItem*> items = view->getItems();
++        bool lastWasSeparator = true;
++        for (int i = 0; i < items.size(); ++i) {
++            bool isSeparator = items[i]->command() == "Separator";
++            bool atEnd = i == items.size() - 1;
++            if (isSeparator && (lastWasSeparator || atEnd)) {
++                view->removeItem(items[i]);
++                delete items[i];
++                continue;
++            }
++            lastWasSeparator = isSeparator;
++        }
++        *view << "Separator" << more;
++    }
++
+     // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
+     Gui::MenuItem* edit = root->findItem("&Edit");
+     if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
+-- 
+2.43.0
+

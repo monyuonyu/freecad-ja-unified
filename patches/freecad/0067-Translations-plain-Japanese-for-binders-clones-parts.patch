@@ -1,0 +1,92 @@
+From 4ba7d1029980a7aeede47c677e329c47f4e748e3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:18:28 +0900
+Subject: [PATCH 67/68] Translations: plain Japanese for binders, clones, parts
+ and groups
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                         |  8 ++++----
+ .../Gui/Resources/translations/PartDesign_ja.ts        | 10 +++++-----
+ 2 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 944a10e76..b62dae4ec 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -13561,12 +13561,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandStructure.cpp" line="49"/>
+       <source>New Part</source>
+-      <translation>新しいパート</translation>
++      <translation>新しい組（部品をまとめる）</translation>
+     </message>
+     <message>
+       <location filename="../CommandStructure.cpp" line="50"/>
+       <source>Creates a part, which is a general-purpose container to group objects so they act as a unit in the 3D view. It is intended to arrange objects that have a part TopoShape, like part primitives, Part Design bodies, and other parts.</source>
+-      <translation>オブジェクトをまとめて、3D ビューで 1 つの単位として動かせる入れ物（パート）を作ります。部品や基本形状など、形を持つものをまとめて配置するのに使います。</translation>
++      <translation>部品などをまとめて、3D ビューで一つとして動かせる「組」を作る。組み立ての単位に使う</translation>
+     </message>
+   </context>
+   <context>
+@@ -13574,12 +13574,12 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandStructure.cpp" line="131"/>
+       <source>New Group</source>
+-      <translation>新規グループ</translation>
++      <translation>新しいフォルダー</translation>
+     </message>
+     <message>
+       <location filename="../CommandStructure.cpp" line="132"/>
+       <source>Creates a group, which is a general-purpose container to group objects in the tree view, regardless of their data type. It is a simple folder to organize the objects in a model.</source>
+-      <translation>ツリー ビュー内のオブジェクトをグループ化するための汎用コンテナで、データ型に関係なく使用できるグループを作成します。モデル内のオブジェクトを整理するためのシンプルなフォルダーです。</translation>
++      <translation>モデルの木の中で物を整理するためのフォルダーを作る（形には影響しない）</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 329b1f5ad..f208ed833 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -266,12 +266,12 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="517"/>
+       <source>Clone</source>
+-      <translation>クローン</translation>
++      <translation>部品の写し（元に合わせて変わる）</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="518"/>
+       <source>Copies a solid object parametrically as the base feature of a new body</source>
+-      <translation>ソリッドオブジェクトを新しい部品のベース形としてパラメトリックにコピー</translation>
++      <translation>選んだ立体を、新しい部品の土台として写す。元を直すと写しも変わる</translation>
+     </message>
+   </context>
+   <context>
+@@ -662,12 +662,12 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="341"/>
+       <source>Shape Binder</source>
+-      <translation>シェイプバインダー</translation>
++      <translation>ほかの形を参照</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="342"/>
+       <source>Creates a new shape binder</source>
+-      <translation>新しいシェイプバインダーを作成</translation>
++      <translation>ほかの部品の面や辺を、この部品の中で使えるように参照する</translation>
+     </message>
+   </context>
+   <context>
+@@ -680,7 +680,7 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="411"/>
+       <source>Sub-Shape Binder</source>
+-      <translation>サブシェイプバインダー</translation>
++      <translation>ほかの形の一部を参照</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="412"/>
+-- 
+2.43.0
+

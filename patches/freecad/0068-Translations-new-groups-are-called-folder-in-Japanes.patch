@@ -1,0 +1,27 @@
+From 9d444a0bad99aa72814a1e0ee17e408fbdf70d46 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:19:38 +0900
+Subject: [PATCH 68/68] Translations: new groups are called "folder" in
+ Japanese
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index b62dae4ec..8273fdaad 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -10225,7 +10225,7 @@ Save the document now?</source>
+     <message>
+       <location filename="../CommandStructure.cpp" line="150"/>
+       <source>Group</source>
+-      <translation>グループ</translation>
++      <translation>フォルダー</translation>
+     </message>
+   </context>
+   <context>
+-- 
+2.43.0
+

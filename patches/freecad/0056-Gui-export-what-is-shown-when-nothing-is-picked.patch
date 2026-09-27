@@ -1,0 +1,54 @@
+From 660614ac059611c44427bb588711402f009a1de3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:02:31 +0900
+Subject: [PATCH 56/68] Gui: export what is shown when nothing is picked
+
+In the integrated environment, File > Export with nothing selected
+exports the visible parts at the top of the document (e.g. for a 3D
+printer) instead of stopping with "Select objects to export".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/CommandDoc.cpp | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/Gui/CommandDoc.cpp b/src/Gui/CommandDoc.cpp
+index e639a8512..dc1c0553a 100644
+--- a/src/Gui/CommandDoc.cpp
++++ b/src/Gui/CommandDoc.cpp
+@@ -38,7 +38,10 @@
+ #include <App/Document.h>
+ #include <App/DocumentObject.h>
+ #include <App/Expression.h>
++#include <App/Application.h>
++#include <App/Datums.h>
+ #include <App/GeoFeature.h>
++#include <App/GeoFeatureGroupExtension.h>
+ #include <Base/Exception.h>
+ #include <Base/FileInfo.h>
+ #include <Base/Stream.h>
+@@ -510,6 +513,21 @@ void StdCmdExport::activated(int iMsg)
+     Q_UNUSED(iMsg);
+ 
+     auto selection = Gui::Selection().getObjectsOfType(App::DocumentObject::getClassTypeId());
++    App::Document* activeDoc = App::GetApplication().getActiveDocument();
++    if (selection.empty() && activeDoc
++        && App::Application::Config().contains("SingleWorkbench")) {
++        // Nothing picked: export what is shown, i.e. the visible parts at the top of the
++        // document (e.g. for a 3D printer), instead of asking to pick them first
++        for (App::DocumentObject* obj : activeDoc->getObjects()) {
++            if (obj->isDerivedFrom<App::GeoFeature>() && obj->Visibility.getValue()
++                && !App::GeoFeatureGroupExtension::getGroupOfObject(obj)
++                && !obj->isDerivedFrom<App::DatumElement>()
++                && !obj->isDerivedFrom<App::LocalCoordinateSystem>()) {
++                Gui::Selection().addSelection(activeDoc->getName(), obj->getNameInDocument());
++            }
++        }
++        selection = Gui::Selection().getObjectsOfType(App::DocumentObject::getClassTypeId());
++    }
+     if (selection.empty()) {
+         QMessageBox::warning(
+             Gui::getMainWindow(),
+-- 
+2.43.0
+

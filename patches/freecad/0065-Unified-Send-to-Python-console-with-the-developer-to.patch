@@ -1,0 +1,29 @@
+From c0e1451f349c11154d8633b708168f3417129754 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:16:22 +0900
+Subject: [PATCH 65/68] Unified: "Send to Python console" with the developer
+ tools
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/Workbench.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index e579a8339..cbf4afb9c 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -257,6 +257,10 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+             "Std_ProjectUtil",
+             "Std_DlgParameter",
+         });
++        if (Gui::MenuItem* editMenu = root->findItem("&Edit")) {
++            moveIntoSubmenu(editMenu, developer, {"Std_SendToPythonConsole"});
++            tidySeparators(editMenu);
++        }
+         tidySeparators(toolsMenu);
+         *toolsMenu << "Separator";
+         if (Gui::MenuItem* macro = root->findItem("&Macro")) {
+-- 
+2.43.0
+

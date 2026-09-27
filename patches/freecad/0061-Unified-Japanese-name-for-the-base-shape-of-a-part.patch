@@ -1,0 +1,41 @@
+From da0ce0f5708cbebb3e37a2bfaf36931cbef39ba0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:10:06 +0900
+Subject: [PATCH 61/68] Unified: Japanese name for the base shape of a part
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/Labels.cpp                           | 1 +
+ src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+index edbb16844..fab36bca2 100644
+--- a/src/Mod/Unified/Gui/Labels.cpp
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -26,6 +26,7 @@ struct DefaultLabel
+ // clang-format off
+ const DefaultLabel defaultLabels[] = {
+     {"PartDesign::Body", "Body"},
++    {"PartDesign::FeatureBase", "BaseFeature"},
+     {"Sketcher::SketchObject", "Sketch"},
+     {"PartDesign::Pad", "Pad"},
+     {"PartDesign::Pocket", "Pocket"},
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 23cfa947d..fcd5162e1 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -155,6 +155,10 @@
+ </context>
+ <context>
+     <name>UnifiedGui::Labels</name>
++    <message>
++        <source>BaseFeature</source>
++        <translation>元の形</translation>
++    </message>
+     <message>
+         <source>Assembly</source>
+         <translation>組立</translation>
+-- 
+2.43.0
+

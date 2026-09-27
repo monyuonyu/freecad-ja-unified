@@ -1,0 +1,63 @@
+From 35657fe742a97d653be0b89f4cf97c1da1bca364 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:05:02 +0900
+Subject: [PATCH 58/68] Translations: simpler Japanese question when closing an
+ unsaved file
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index b4085be20..69ff7f7fa 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -5784,7 +5784,7 @@ originally selected prior to opening this dialog</source>
+     <message>
+       <location filename="../EditorView.cpp" line="364"/>
+       <source>Unsaved document</source>
+-      <translation>未保存のドキュメント</translation>
++      <translation>保存していないファイル</translation>
+     </message>
+     <message>
+       <location filename="../EditorView.cpp" line="232"/>
+@@ -6240,7 +6240,7 @@ Save all changes?</source>
+       <location filename="../MainWindow.cpp" line="2384"/>
+       <location filename="../MainWindow.cpp" line="2538"/>
+       <source>Unsaved document</source>
+-      <translation>未保存のドキュメント</translation>
++      <translation>保存していないファイル</translation>
+     </message>
+     <message>
+       <location filename="../MainWindow.cpp" line="2385"/>
+@@ -8777,22 +8777,22 @@ Choose 'Abort' to abort</source>
+       <location filename="../MainWindow.cpp" line="1004"/>
+       <location filename="../CommandDoc.cpp" line="1463"/>
+       <source>Unsaved Document</source>
+-      <translation>未保存のドキュメント</translation>
++      <translation>保存していないファイル</translation>
+     </message>
+     <message>
+       <location filename="../MainWindow.cpp" line="1008"/>
+       <source>Save all changes to document '%1' before closing?</source>
+-      <translation>閉じる前にドキュメント「 %1 」の変更をすべて保存しますか？</translation>
++      <translation>閉じる前に「%1」の変更を保存しますか？</translation>
+     </message>
+     <message>
+       <location filename="../MainWindow.cpp" line="1009"/>
+       <source>Save all changes to document before closing?</source>
+-      <translation>閉じる前にすべての変更をドキュメントに保存しますか？</translation>
++      <translation>閉じる前に変更を保存しますか？</translation>
+     </message>
+     <message>
+       <location filename="../MainWindow.cpp" line="1013"/>
+       <source>Otherwise, all changes will be lost.</source>
+-      <translation>そうしない場合、すべての変更が失われます。</translation>
++      <translation>保存しないと、変更は失われます。</translation>
+     </message>
+     <message>
+       <location filename="../MainWindow.cpp" line="1139"/>
+-- 
+2.43.0
+

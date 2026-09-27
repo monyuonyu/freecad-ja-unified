@@ -1,0 +1,171 @@
+From b6ee285d40c577f3de50b83ab7c877c3a00c4891 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 09:15:52 +0900
+Subject: [PATCH 64/68] Unified: macros and developer tools in the Tools menu
+
+The Macro menu moves into the Tools menu, and the tools for developers
+(scene inspector, dependency graph, document utility, parameter editor)
+into a submenu of it: one menu less in the menu bar and a shorter Tools
+menu.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  |   4 +
+ src/Mod/Unified/Gui/Workbench.cpp             | 102 +++++++++++-------
+ 2 files changed, 66 insertions(+), 40 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 9161c2d6e..c55a5b7cc 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -31,6 +31,10 @@
+         <source>Unified Finish</source>
+         <translation>仕上げ</translation>
+     </message>
++    <message>
++        <source>Unified Developer</source>
++        <translation>開発者向け</translation>
++    </message>
+     <message>
+         <source>Unified More View</source>
+         <translation>その他の表示</translation>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 809da4592..e579a8339 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -18,6 +18,43 @@ using namespace UnifiedGui;
+ 
+ TYPESYSTEM_SOURCE(UnifiedGui::Workbench, Gui::StdWorkbench)
+ 
++namespace
++{
++// Move the named commands of a menu, in the given order, into a submenu
++void moveIntoSubmenu(Gui::MenuItem* menu, Gui::MenuItem* submenu, std::initializer_list<const char*> names)
++{
++    for (const char* name : names) {
++        QList<Gui::MenuItem*> items = menu->getItems();
++        auto it = std::find_if(items.begin(), items.end(), [name](Gui::MenuItem* m) {
++            return m->command() == name;
++        });
++        if (it != items.end()) {
++            menu->removeItem(*it);
++            submenu->appendItem(*it);
++        }
++    }
++}
++
++// No separators at the start, at the end or next to each other
++void tidySeparators(Gui::MenuItem* menu)
++{
++    QList<Gui::MenuItem*> items = menu->getItems();
++    bool lastWasSeparator = true;
++    for (int i = 0; i < items.size(); ++i) {
++        bool isSeparator = items[i]->command() == "Separator";
++        bool atEnd = std::all_of(items.begin() + i + 1, items.end(), [](Gui::MenuItem* m) {
++            return m->command() == "Separator";
++        });
++        if (isSeparator && (lastWasSeparator || atEnd)) {
++            menu->removeItem(items[i]);
++            delete items[i];
++            continue;
++        }
++        lastWasSeparator = isSeparator;
++    }
++}
++}  // namespace
++
+ // The toolbar names below are also listed in SketcherGui (nonEditModeToolbarNames) so that
+ // they are hidden while a sketch is edited and only the sketch tools are shown.
+ 
+@@ -190,7 +227,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+     if (Gui::MenuItem* view = root->findItem("&View")) {
+         auto more = new Gui::MenuItem;
+         more->setCommand("Unified More View");
+-        const char* advanced[] = {
++        moveIntoSubmenu(view, more, {
+             "Std_ViewCreate",
+             "Std_FreezeViews",
+             "Std_SelBoundingBox",
+@@ -203,33 +240,32 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+             "Std_DockOverlay",
+             "Std_LinkSelectActions",
+             "Std_TreeViewActions",
+-        };
+-        for (const char* name : advanced) {
+-            QList<Gui::MenuItem*> items = view->getItems();
+-            auto it = std::find_if(items.begin(), items.end(), [name](Gui::MenuItem* m) {
+-                return m->command() == name;
+-            });
+-            if (it != items.end()) {
+-                view->removeItem(*it);
+-                more->appendItem(*it);
+-            }
+-        }
+-        // No separators at the start, at the end or next to each other
+-        QList<Gui::MenuItem*> items = view->getItems();
+-        bool lastWasSeparator = true;
+-        for (int i = 0; i < items.size(); ++i) {
+-            bool isSeparator = items[i]->command() == "Separator";
+-            bool atEnd = i == items.size() - 1;
+-            if (isSeparator && (lastWasSeparator || atEnd)) {
+-                view->removeItem(items[i]);
+-                delete items[i];
+-                continue;
+-            }
+-            lastWasSeparator = isSeparator;
+-        }
++        });
++        tidySeparators(view);
+         *view << "Separator" << more;
+     }
+ 
++    // Tools menu: the tools for developers and macros go into submenus at the end. Macros are
++    // not a menu of their own: fewer menus in the menu bar.
++    if (Gui::MenuItem* toolsMenu = root->findItem("&Tools")) {
++        auto developer = new Gui::MenuItem;
++        developer->setCommand("Unified Developer");
++        moveIntoSubmenu(toolsMenu, developer, {
++            "Std_SceneInspector",
++            "Std_DependencyGraph",
++            "Std_ExportDependencyGraph",
++            "Std_ProjectUtil",
++            "Std_DlgParameter",
++        });
++        tidySeparators(toolsMenu);
++        *toolsMenu << "Separator";
++        if (Gui::MenuItem* macro = root->findItem("&Macro")) {
++            root->removeItem(macro);
++            toolsMenu->appendItem(macro);
++        }
++        *toolsMenu << developer;
++    }
++
+     // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
+     Gui::MenuItem* edit = root->findItem("&Edit");
+     if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
+@@ -336,21 +372,7 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
+             delete found;
+         }
+     }
+-    // No separators at the start, at the end or next to each other
+-    QList<Gui::MenuItem*> items = item->getItems();
+-    bool lastWasSeparator = true;
+-    for (int i = 0; i < items.size(); ++i) {
+-        bool isSeparator = items[i]->command() == "Separator";
+-        bool atEnd = std::all_of(items.begin() + i + 1, items.end(), [](Gui::MenuItem* m) {
+-            return m->command() == "Separator";
+-        });
+-        if (isSeparator && (lastWasSeparator || atEnd)) {
+-            item->removeItem(items[i]);
+-            delete items[i];
+-            continue;
+-        }
+-        lastWasSeparator = isSeparator;
+-    }
++    tidySeparators(item);
+ }
+ 
+ Gui::ToolBarItem* Workbench::setupCommandBars() const
+-- 
+2.43.0
+
