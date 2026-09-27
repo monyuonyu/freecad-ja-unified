@@ -1,7 +1,7 @@
 From 89481e061514bd6286703871535394e5f2310713 Mon Sep 17 00:00:00 2001
 From: Maik-0000FF <Maik-0000FF@users.noreply.github.com>
 Date: Sat, 11 Jul 2026 18:05:13 +0200
-Subject: [PATCH 127/158] Fix crash on spaceball motion before a window is
+Subject: [PATCH 127/197] Fix crash on spaceball motion before a window is
  active
 
 activeWindow() returns nullptr during startup; guard it before

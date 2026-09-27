@@ -1,0 +1,58 @@
+From ecb629823d14401c3c8d1bc1128d9c43d7ba7a9b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 00:04:46 +0900
+Subject: [PATCH 192/197] Installer: Japanese for the remaining messages;
+ remove the cache with the preferences
+
+The uninstaller's confirmation for deleting the user configuration and
+the installer's folder warnings were in English in the Japanese
+language file. Removing the preferences now also removes the cache in
+the temporary folder of the user running the uninstaller, which was
+left behind as an empty folder.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/WindowsInstaller/lang/japanese.nsh   | 14 +++++++-------
+ package/WindowsInstaller/setup/uninstall.nsh |  2 ++
+ 2 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/package/WindowsInstaller/lang/japanese.nsh b/package/WindowsInstaller/lang/japanese.nsh
+index 8f0531f6c..e375e992a 100644
+--- a/package/WindowsInstaller/lang/japanese.nsh
++++ b/package/WindowsInstaller/lang/japanese.nsh
+@@ -61,12 +61,12 @@ ${LangFileString} SecUnPreferencesDescription 'ユーザー共通のFreeCADの
+ 						$AppSuff\$\r$\n\
+ 						${APP_DIR_USERDATA}$\")$\r$\n\
+ 						を削除します。'
+-${LangFileString} DialogUnPreferences 'You chose to delete the FreeCADs user configuration.$\r$\n\
+-						This will also delete all installed FreeCAD addons.$\r$\n\
+-						Do you agree with this?'
++${LangFileString} DialogUnPreferences 'FreeCADのユーザー設定を削除するよう選びました。$\r$\n\
++						インストールしたアドオンもすべて削除されます。$\r$\n\
++						削除してよろしいですか？'
+ ${LangFileString} SecUnProgramFilesDescription "FreeCADとすべての附属コンポーネントの導入解除を行います。"
+ 
+-${LangFileString} DirNotEmptyWarning "The selected folder '$INSTDIR' is not empty.$\r$\n\
+-                        The installer will remove all its content before installing. Continue?"
+-${LangFileString} RMInstDirFailed "Failed to remove '$INSTDIR'.$\r$\n\
+-                        Make sure you have sufficient permissions and that no files are in use."
++${LangFileString} DirNotEmptyWarning "選んだフォルダ '$INSTDIR' は空ではありません。$\r$\n\
++                        インストールの前に、中身をすべて削除します。続けますか？"
++${LangFileString} RMInstDirFailed "'$INSTDIR' を削除できませんでした。$\r$\n\
++                        権限があるか、使用中のファイルがないかを確かめてください。"
+diff --git a/package/WindowsInstaller/setup/uninstall.nsh b/package/WindowsInstaller/setup/uninstall.nsh
+index b9dbffa61..6ac959b65 100644
+--- a/package/WindowsInstaller/setup/uninstall.nsh
++++ b/package/WindowsInstaller/setup/uninstall.nsh
+@@ -90,6 +90,8 @@ Section /o "un.$(UnFreeCADPreferencesTitle)" un.SecUnPreferences
+  Call un.DelAppPathSub # function from Utils.nsh
+  # remove the registry key that stores the main window parameters
+  DeleteRegKey HKCU "SOFTWARE\${APP_NAME}"
++ # and the cache in the temporary folder of the user running the uninstaller
++ RMDir /r "$TEMP\${APP_DIR_USERDATA}"
+  NotPreferences:
+ 
+ SectionEnd
+-- 
+2.43.0
+

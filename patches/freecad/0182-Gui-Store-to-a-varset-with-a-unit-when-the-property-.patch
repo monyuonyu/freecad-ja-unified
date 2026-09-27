@@ -1,0 +1,52 @@
+From 2b32a0645ff5c02ff5ce1579956efda52d8f5396 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 22:08:19 +0900
+Subject: [PATCH 182/197] Gui: Store to a varset with a unit when the
+ property's unit is per instance
+
+App::PropertyQuantity and App::PropertyQuantityConstraint were created
+in the varset without a unit, and setting e.g. "1 mm" failed with "Not
+matching Unit!" (a crash on macOS, FreeCAD issue #32732). The type of
+the expression's unit is used for them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Dialogs/DlgExpressionInput.cpp | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/Gui/Dialogs/DlgExpressionInput.cpp b/src/Gui/Dialogs/DlgExpressionInput.cpp
+index 5bbbf4de9..f27eddca0 100644
+--- a/src/Gui/Dialogs/DlgExpressionInput.cpp
++++ b/src/Gui/Dialogs/DlgExpressionInput.cpp
+@@ -34,6 +34,7 @@
+ #include <App/Document.h>
+ #include <App/DocumentObject.h>
+ #include <App/ExpressionParser.h>
++#include <App/PropertyUnits.h>
+ #include <App/VarSet.h>
+ #include <Base/Console.h>
+ #include <Base/Tools.h>
+@@ -191,6 +192,20 @@ Base::Type DlgExpressionInput::determineTypeVarSet()
+ {
+     Base::Type typePath = getTypePath();
+ 
++    // A quantity property whose unit is set per instance (App::PropertyQuantity,
++    // App::PropertyQuantityConstraint) would be created without a unit in the varset, and
++    // setting "1 mm" then fails with "Not matching Unit!": take the type of the unit instead.
++    const bool unitPerInstance = typePath == App::PropertyQuantity::getClassTypeId()
++        || typePath == App::PropertyQuantityConstraint::getClassTypeId();
++    if (unitPerInstance && !impliedUnit.getTypeString().empty()) {
++        Base::Type byUnit = Base::Type::fromName(
++            ("App::Property" + impliedUnit.getTypeString()).c_str()
++        );
++        if (!byUnit.isBad()) {
++            return byUnit;
++        }
++    }
++
+     // The type of the path is leading.  If it is one of the types below, we
+     // can create a property in the varset.
+     if (typePath == App::PropertyString::getClassTypeId()
+-- 
+2.43.0
+

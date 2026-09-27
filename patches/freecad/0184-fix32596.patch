@@ -1,0 +1,44 @@
+From 0250edebb6c593f14940b76958144017accc59bd Mon Sep 17 00:00:00 2001
+From: Turan Furkan Topak <39885728+Reqrefusion@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 17:52:46 +0300
+Subject: [PATCH 184/197] fix32596
+
+---
+ .../Sketcher/Gui/DrawSketchHandlerDragAutoConstraint.cpp   | 2 ++
+ src/Mod/Sketcher/Gui/ViewProviderSketch.cpp                | 7 +++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/DrawSketchHandlerDragAutoConstraint.cpp b/src/Mod/Sketcher/Gui/DrawSketchHandlerDragAutoConstraint.cpp
+index 61896d82d..67df9a550 100644
+--- a/src/Mod/Sketcher/Gui/DrawSketchHandlerDragAutoConstraint.cpp
++++ b/src/Mod/Sketcher/Gui/DrawSketchHandlerDragAutoConstraint.cpp
+@@ -90,6 +90,8 @@ void DrawSketchHandlerDragAutoConstraint::initDragging(const std::vector<GeoElem
+     }
+ 
+     updateCursor();
++    // Restore the previous cursor, keeping the initialized pixmap for auto-constraint hints.
++    unsetCursor();
+     startPos = toVector2d(obj->getPoint(dragged.front().GeoId, dragged.front().Pos));
+ }
+ 
+diff --git a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+index 8f1104c77..c65d94b64 100644
+--- a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
++++ b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+@@ -1331,6 +1331,13 @@ bool ViewProviderSketch::mouseButtonPressed(int Button, bool pressed, const SbVe
+             }
+         }
+         else {// Button 1 released
++            if (Mode == STATUS_SKETCH_Drag || Mode == STATUS_SKETCH_DragConstraint) {
++                // Use the actual cursor position instead of the picked geometry position.
++                if (!getCoordsOnSketchPlane(
++                        point, normal, snapHandle->cursorPos.x, snapHandle->cursorPos.y)) {
++                    return false;
++                }
++            }
+             // Do things depending on the mode of the user interaction
+             switch (Mode) {
+                 case STATUS_SELECT_Point:
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+From c04f42b5a40ee7e9f34ab4cf8cd7fc87b489ea0d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 22:13:35 +0900
+Subject: [PATCH 191/197] Unified: Japanese for the new thickness errors
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/UnifiedWording_ja.ts       | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 85d551d03..ed50d734b 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -7875,6 +7875,14 @@ Each unit is approximately 0.1mm wide</source>
+         <source>Failed to make shell: unexpected output shape type</source>
+         <translation>殻を作れません（思っていない種類の形になりました）</translation>
+     </message>
++    <message>
++        <source>Thickness error: the thickness did not change the solid; it may be too large</source>
++        <translation>厚みを付けても形が変わりません（厚みが部品より大きすぎる可能性があります）</translation>
++    </message>
++    <message>
++        <source>Thickness error: Resulting shape is invalid</source>
++        <translation>厚みを付けた結果の形が正しくありません（厚みや選んだ面を見直してください）</translation>
++    </message>
+     <message>
+         <source>Failed to make thick solid</source>
+         <translation>厚みを付けた立体を作れません（厚みが大きすぎるか、選んだ面が合っていません）</translation>
+-- 
+2.43.0
+

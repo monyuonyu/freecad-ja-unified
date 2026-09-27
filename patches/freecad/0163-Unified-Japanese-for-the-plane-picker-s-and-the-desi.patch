@@ -1,0 +1,44 @@
+From 3741105cd9bb0b633b0b75ec21a6069308eef984 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:44:22 +0900
+Subject: [PATCH 163/197] Unified: Japanese for the plane picker's and the
+ design check indicator's new messages
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Unified/Gui/Resources/translations/Unified_ja.ts | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 17e6d3389..702957712 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -164,6 +164,10 @@
+         <source>That is not flat. Click a plane or a flat face.</source>
+         <translation>そこは平らではありません。平面か、平らな面をクリックしてください。</translation>
+     </message>
++    <message>
++        <source>That belongs to another part. Click a plane or a flat face of this body.</source>
++        <translation>そこは別の部品です。この部品の平面か、平らな面をクリックしてください。</translation>
++    </message>
+ </context>
+ <context>
+     <name>UnifiedGui::Labels</name>
+@@ -576,6 +580,14 @@
+         <source>Check: OK</source>
+         <translation>検査: OK</translation>
+     </message>
++    <message>
++        <source>Check failed</source>
++        <translation>検査できませんでした</translation>
++    </message>
++    <message>
++        <source>The design check could not finish: {0}</source>
++        <translation>設計の検査が途中で止まりました: {0}</translation>
++    </message>
+     <message>
+         <source>Check: </source>
+         <translation>検査: </translation>
+-- 
+2.43.0
+

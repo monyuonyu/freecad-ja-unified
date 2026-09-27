@@ -1,0 +1,90 @@
+From 24e6819eb3d4f046c0b94bddf437832c01dbb4fe Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:33 +0900
+Subject: [PATCH 169/197] Unified: Compile the error message patterns once;
+ skip other threads and English
+
+The translator runs for every lookup in the error contexts; it compiled
+14 regular expressions each time, and nested lookups from worker threads
+could wait on the translator lock.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ErrorMessages.cpp | 36 +++++++++++++++++++++------
+ 1 file changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/ErrorMessages.cpp b/src/Mod/Unified/Gui/ErrorMessages.cpp
+index 8b08af816..04fd144db 100644
+--- a/src/Mod/Unified/Gui/ErrorMessages.cpp
++++ b/src/Mod/Unified/Gui/ErrorMessages.cpp
+@@ -1,9 +1,11 @@
+ // SPDX-License-Identifier: LGPL-2.1-or-later
+ 
+ #include <cstring>
++#include <vector>
+ 
+ #include <QCoreApplication>
+ #include <QRegularExpression>
++#include <QThread>
+ #include <QTranslator>
+ 
+ #include <App/DocumentObject.h>
+@@ -64,6 +66,22 @@ QString lookup(const QString& text, const char* disambiguation = nullptr)
+     return result == text ? QString() : result;
+ }
+ 
++// The patterns, compiled once
++const std::vector<QRegularExpression>& compiledPatterns()
++{
++    static const std::vector<QRegularExpression> compiled = []() {
++        std::vector<QRegularExpression> list;
++        for (const Pattern& pattern : patterns) {
++            list.emplace_back(
++                QStringLiteral("^%1$").arg(QString::fromLatin1(pattern.regex)),
++                QRegularExpression::DotMatchesEverythingOption
++            );
++        }
++        return list;
++    }();
++    return compiled;
++}
++
+ // "5\n, 6\n" -> "5, 6"
+ QString tidyList(QString list)
+ {
+@@ -86,7 +104,12 @@ public:
+     {
+         (void)disambiguation;
+         (void)n;
+-        if (busy || !context || !source || !isErrorContext(context)) {
++        // Only in the GUI thread: the lookups below ask all translators again, and a nested
++        // lookup in another thread could wait for the translators being changed. Nothing to do
++        // in English.
++        if (busy || !context || !source || QThread::currentThread() != qApp->thread()
++            || Gui::Translator::instance()->activeLanguage() == "English"
++            || !isErrorContext(context)) {
+             return {};
+         }
+         // The lookups below go through all translators again, this one included
+@@ -135,14 +158,11 @@ private:
+         if (QString t = lookup(message); !t.isEmpty()) {
+             return t;
+         }
+-        for (const Pattern& pattern : patterns) {
+-            const QRegularExpression regex(
+-                QStringLiteral("^%1$").arg(QString::fromLatin1(pattern.regex)),
+-                QRegularExpression::DotMatchesEverythingOption
+-            );
+-            QRegularExpressionMatch match = regex.match(message);
++        const auto& regexes = compiledPatterns();
++        for (std::size_t i = 0; i < regexes.size(); ++i) {
++            QRegularExpressionMatch match = regexes[i].match(message);
+             if (match.hasMatch()) {
+-                QString t = lookup(QString::fromLatin1(pattern.text));
++                QString t = lookup(QString::fromLatin1(patterns[i].text));
+                 if (t.isEmpty()) {
+                     return {};
+                 }
+-- 
+2.43.0
+

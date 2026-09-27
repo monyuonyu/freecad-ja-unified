@@ -1,7 +1,7 @@
 From b365369073cc8a2e3c593de8eaa90542a2647949 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:33:13 +0900
-Subject: [PATCH 073/158] PartDesign: label a body made for a new sketch in the
+Subject: [PATCH 073/197] PartDesign: label a body made for a new sketch in the
  user's language
 
 A new sketch in a document without a body makes one; it was labelled

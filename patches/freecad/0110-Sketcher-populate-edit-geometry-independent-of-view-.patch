@@ -1,7 +1,7 @@
 From d9a22f84467c3e015a72187d7e6a74817bbae270 Mon Sep 17 00:00:00 2001
 From: Alfredo Monclus <alfredomonclus@gmail.com>
 Date: Sun, 20 Sep 2026 12:26:12 -0300
-Subject: [PATCH 110/158] Sketcher: populate edit geometry independent of view
+Subject: [PATCH 110/197] Sketcher: populate edit geometry independent of view
  resolution
 
 Call draw() unconditionally in slotSolverUpdate() during edit mode, since

@@ -1,7 +1,7 @@
 From a56ccc5a8fa013b5c7032fe92370247f85ad2fb0 Mon Sep 17 00:00:00 2001
 From: wandererfan <wandererfan@gmail.com>
 Date: Mon, 24 Aug 2026 10:11:12 -0400
-Subject: [PATCH 115/158] handle Dimension with bad reference.
+Subject: [PATCH 115/197] handle Dimension with bad reference.
 
 - prevents a crash if the dimension has a reference that points to
   non-existent geometry

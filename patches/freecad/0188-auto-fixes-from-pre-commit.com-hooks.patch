@@ -1,0 +1,38 @@
+From e266da268da91d121b31434d3f481b437269c908 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 16:23:42 +0000
+Subject: [PATCH 188/197] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/PartDesign/App/FeatureThickness.cpp | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/PartDesign/App/FeatureThickness.cpp b/src/Mod/PartDesign/App/FeatureThickness.cpp
+index 288988f47..35cb2a7b7 100644
+--- a/src/Mod/PartDesign/App/FeatureThickness.cpp
++++ b/src/Mod/PartDesign/App/FeatureThickness.cpp
+@@ -269,12 +269,12 @@ App::DocumentObjectExecReturn* Thickness::execute()
+     // store shape before refinement
+     this->rawShape = result;
+     result = refineShapeIfActive(result);
+-    TopoShape finalShape = getSolid(result);
+-    if (!finalShape.isValid()) {
+-        return new App::DocumentObjectExecReturn(
+-            QT_TRANSLATE_NOOP("Exception", "Thickness error: Resulting shape is invalid")
+-        );
+-    }
+-    this->Shape.setValue(finalShape);
++    TopoShape finalShape = getSolid(result);
++    if (!finalShape.isValid()) {
++        return new App::DocumentObjectExecReturn(
++            QT_TRANSLATE_NOOP("Exception", "Thickness error: Resulting shape is invalid")
++        );
++    }
++    this->Shape.setValue(finalShape);
+     return App::DocumentObject::StdReturn;
+ }
+-- 
+2.43.0
+

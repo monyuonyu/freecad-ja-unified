@@ -1,0 +1,110 @@
+From e409f8bfdcc5a907aaf2407fca699e578b146f8c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:32 +0900
+Subject: [PATCH 165/197] Unified: Keep the zoomed-in view when a tool closes;
+ follow the active document's dialog
+
+The view was fitted to the model whenever part of it was off screen after
+a dialog closed, which is always the case when zoomed in on a detail. It
+is now fitted only if the whole model was on screen when the tool
+started. The task panel is also shown or hidden when another document
+(with or without a dialog of its own) becomes active.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/TaskPanel.cpp | 53 ++++++++++++++++++++++++-------
+ 1 file changed, 41 insertions(+), 12 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/TaskPanel.cpp b/src/Mod/Unified/Gui/TaskPanel.cpp
+index 4ef423a90..0cd77754b 100644
+--- a/src/Mod/Unified/Gui/TaskPanel.cpp
++++ b/src/Mod/Unified/Gui/TaskPanel.cpp
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: LGPL-2.1-or-later
+ 
+ #include <QDockWidget>
++#include <QPointer>
+ #include <QTabWidget>
+ #include <QTimer>
+ 
+@@ -29,19 +30,17 @@ QDockWidget* dockOf(QWidget* widget)
+     return nullptr;
+ }
+ 
+-// After a tool has finished, make sure the model is in view: extruding or patterning often
+-// grows it beyond the part of the scene that was shown. The view is left alone when
+-// everything is visible already.
+-void bringModelIntoView()
++Gui::View3DInventor* active3DView()
++{
++    return dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
++}
++
++// The whole model is on screen
++bool modelInView(Gui::View3DInventorViewer* viewer)
+ {
+-    auto* view = dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
+-    if (!view) {
+-        return;
+-    }
+-    Gui::View3DInventorViewer* viewer = view->getViewer();
+     SbBox3f box;
+     if (!viewer->getSceneBoundBox(box) || box.isEmpty()) {
+-        return;
++        return true;
+     }
+     QSize size = viewer->getGLWidget()->size();
+     SbVec3f lo = box.getMin();
+@@ -50,10 +49,34 @@ void bringModelIntoView()
+         SbVec3f corner(i & 1 ? hi[0] : lo[0], i & 2 ? hi[1] : lo[1], i & 4 ? hi[2] : lo[2]);
+         QPoint p = viewer->toQPoint(viewer->getPointOnViewport(corner));
+         if (p.x() < 0 || p.y() < 0 || p.x() > size.width() || p.y() > size.height()) {
+-            viewer->viewAll();
+-            return;
++            return false;
+         }
+     }
++    return true;
++}
++
++// The view in which the whole model was on screen when the tool started
++QPointer<Gui::View3DInventor> wholeModelShown;
++
++void noteModelInView()
++{
++    Gui::View3DInventor* view = active3DView();
++    wholeModelShown = view && modelInView(view->getViewer()) ? view : nullptr;
++}
++
++// After a tool has finished, make sure the model is in view: extruding or patterning often
++// grows it beyond the part of the scene that was shown. Only when the whole model was shown
++// before the tool: a view zoomed in on a detail is left alone.
++void bringModelIntoView()
++{
++    Gui::View3DInventor* view = active3DView();
++    if (!view || view != wholeModelShown) {
++        return;
++    }
++    wholeModelShown = nullptr;
++    if (!modelInView(view->getViewer())) {
++        view->getViewer()->viewAll();
++    }
+ }
+ 
+ QWidget* overlayOf(QDockWidget* dock)
+@@ -134,6 +157,12 @@ void UnifiedGui::installTaskPanelAutoHide()
+         }
+         auto& control = Gui::Control();
+         QObject::connect(&control, &Gui::ControlSingleton::dialogShown, panel, [panel]() {
++            // Shown from the edit mode's start, before a sketch turns the camera to its plane
++            noteModelInView();
++            scheduleUpdate(panel);
++        });
++        // Each document has its own dialog: show or hide the panel for the one now active
++        Gui::Application::Instance->signalActiveDocument.connect([panel](const Gui::Document&) {
+             scheduleUpdate(panel);
+         });
+         QObject::connect(&control, &Gui::ControlSingleton::dialogClosed, panel, [panel]() {
+-- 
+2.43.0
+

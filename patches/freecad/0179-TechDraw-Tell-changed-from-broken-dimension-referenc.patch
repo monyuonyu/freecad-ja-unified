@@ -1,0 +1,61 @@
+From cf448444418b8cfdfa8e77254ff82e88e887b2fd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:57:10 +0900
+Subject: [PATCH 179/197] TechDraw: Tell changed from broken dimension
+ references
+
+getReferenceState() said "broken" after any ordinary parameter change,
+since the reference check only accepts the geometry saved when the
+references were made. "broken" is now kept for references that no
+longer resolve; the others are "changed".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawViewDimension.pyi    |  2 +-
+ .../TechDraw/App/DrawViewDimensionPyImp.cpp   | 19 ++++++++++++++++---
+ 2 files changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/DrawViewDimension.pyi b/src/Mod/TechDraw/App/DrawViewDimension.pyi
+index ef057a7e4..ab625c8e5 100644
+--- a/src/Mod/TechDraw/App/DrawViewDimension.pyi
++++ b/src/Mod/TechDraw/App/DrawViewDimension.pyi
+@@ -50,5 +50,5 @@ class DrawViewDimension(DrawView):
+         ...
+ 
+     def getReferenceState(self) -> str:
+-        """getReferenceState() - "ok", "broken" (the geometry this dimension points to is gone or changed), or "unknown" (the view has not been computed yet)"""
++        """getReferenceState() - "ok", "broken" (the geometry this dimension points to is gone), "changed" (it is still there but differs from when the dimension was made, e.g. after a parameter change), or "unknown" (the view has not been computed yet)"""
+         ...
+diff --git a/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp b/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
+index af824f078..893abbb60 100644
+--- a/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
++++ b/src/Mod/TechDraw/App/DrawViewDimensionPyImp.cpp
+@@ -81,9 +81,22 @@ PyObject* DrawViewDimensionPy::getReferenceState(PyObject* args)
+     else if (!dvp || dvp->waitingForResult() || !dvp->hasGeometry()) {
+         state = "unknown";
+     }
+-    else if (!dvd->hasGoodReferences()
+-             || (dvd->References3D.getValues().empty() && !dvd->checkReferences2D())) {
+-        state = "broken";
++    else {
++        // "broken" only when a reference no longer resolves to geometry. hasGoodReferences()
++        // is also false after an ordinary parameter change (e.g. a width 40 -> 60): the
++        // autocorrection only accepts the geometry saved when the references were made.
++        bool resolves = !dvd->References3D.getValues().empty() || dvd->checkReferences2D();
++        for (const auto& ref : dvd->getEffectiveReferences()) {
++            if (!ref.getSubName().empty() && !ref.hasGeometry()) {
++                resolves = false;
++            }
++        }
++        if (!resolves) {
++            state = "broken";
++        }
++        else if (!dvd->hasGoodReferences()) {
++            state = "changed";
++        }
+     }
+     return Py::new_reference_to(Py::String(state));
+ }
+-- 
+2.43.0
+

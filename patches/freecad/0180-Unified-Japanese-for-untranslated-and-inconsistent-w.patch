@@ -1,0 +1,385 @@
+From fb63e6cb1751c632e681d0b93a85781b5ac78699 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:57:53 +0900
+Subject: [PATCH 180/197] Unified: Japanese for untranslated and inconsistent
+ wording found in GUI testing
+
+Assembly isolate modes, TechDraw projection view labels and line type
+names, the delete confirmation (question after the list), STEP import
+options and code pages, command groups in the keyboard settings, and
+consistent terms: the sketch's normal axis, mirror, part/group, skin,
+horizontal/vertical length dimensions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../translations/UnifiedWording_ja.ts         | 227 +++++++++++++++++-
+ 1 file changed, 225 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 295c690f6..85d551d03 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -2,6 +2,89 @@
+ <!DOCTYPE TS>
+ <TS version="2.1" language="ja">
+ <!-- 統合環境が上流の訳と違う言い回しにしたもの（上流の *_ja.ts は変えない）。Gui::Translator::addOverride で、あとから読んだ訳より優先される -->
++<context>
++    <name>ASMELineTypeEnum</name>
++    <message>
++        <source>Break 1</source>
++        <translation>破断線 1</translation>
++    </message>
++    <message>
++        <source>Break 2</source>
++        <translation>破断線 2</translation>
++    </message>
++    <message>
++        <source>Break1</source>
++        <translation>破断線 1</translation>
++    </message>
++    <message>
++        <source>Break2</source>
++        <translation>破断線 2</translation>
++    </message>
++    <message>
++        <source>Center</source>
++        <translation>中心線</translation>
++    </message>
++    <message>
++        <source>Chain</source>
++        <translation>鎖線</translation>
++    </message>
++    <message>
++        <source>Cutting-plane</source>
++        <translation>切断線</translation>
++    </message>
++    <message>
++        <source>Dimension</source>
++        <translation>寸法線</translation>
++    </message>
++    <message>
++        <source>Extension</source>
++        <translation>寸法補助線</translation>
++    </message>
++    <message>
++        <source>Other plane</source>
++        <translation>その他の平面線</translation>
++    </message>
++    <message>
++        <source>OtherPlane</source>
++        <translation>その他の平面線</translation>
++    </message>
++    <message>
++        <source>Phantom</source>
++        <translation>想像線</translation>
++    </message>
++    <message>
++        <source>Section</source>
++        <translation>ハッチング線</translation>
++    </message>
++    <message>
++        <source>Stitch 1</source>
++        <translation>縫い目線 1</translation>
++    </message>
++    <message>
++        <source>Stitch 2</source>
++        <translation>縫い目線 2</translation>
++    </message>
++    <message>
++        <source>Stitch1</source>
++        <translation>縫い目線 1</translation>
++    </message>
++    <message>
++        <source>Stitch2</source>
++        <translation>縫い目線 2</translation>
++    </message>
++    <message>
++        <source>Viewing-plane</source>
++        <translation>矢視線</translation>
++    </message>
++    <message>
++        <source>ViewingPlane</source>
++        <translation>矢視線</translation>
++    </message>
++    <message>
++        <source>Visible</source>
++        <translation>外形線</translation>
++    </message>
++</context>
+ <context>
+     <name>App::Property</name>
+     <message>
+@@ -32,9 +115,33 @@ so that self intersection is avoided.</source>
+ </context>
+ <context>
+     <name>Assembly</name>
++    <message>
++        <source>Disabled</source>
++        <translation>そのまま</translation>
++    </message>
++    <message>
++        <source>Hidden</source>
++        <translation>非表示</translation>
++    </message>
+     <message>
+         <source>Only parts: adds only part containers and sub-assemblies to the bill of materials. Solids like Part Design bodies, fasteners, or Part workbench primitives are ignored.</source>
+-        <translation>パーツのみ: パーツコンテナとサブアセンブリのみが部品表に追加されます。 PartDesignの部品、留め具、Partワークベンチのプリミティブといった立体は無視されます。</translation>
++        <translation>組だけ: 組とサブアセンブリだけを部品表に入れます。部品、留め具、Part ワークベンチのプリミティブといった立体は入れません。</translation>
++    </message>
++    <message>
++        <source>Part</source>
++        <translation>組</translation>
++    </message>
++    <message>
++        <source>Part name</source>
++        <translation>組の名前</translation>
++    </message>
++    <message>
++        <source>Transparent</source>
++        <translation>半透明</translation>
++    </message>
++    <message>
++        <source>Wireframe</source>
++        <translation>ワイヤーフレーム</translation>
+     </message>
+ </context>
+ <context>
+@@ -53,6 +160,17 @@ so that self intersection is avoided.</source>
+         <translation>&lt;p&gt;コンポーネントをアクティブなアセンブリに挿入します。これによってパーツ、部品、プリミティブ、アセンブリへの動的リンクが作成されます。外部のコンポーネントを挿入する場合はファイルが&lt;b&gt;現在のセッションで開かれていること&lt;/b&gt;を確認してください。&lt;/p&gt;&lt;ul&gt;&lt;li&gt;リストのアイテムを左クリックして挿入&lt;/li&gt;&lt;li&gt;リストのアイテムを左クリックして削除&lt;/li&gt;&lt;li&gt;Shiftを押しながらビュー上でクリックするとコンポーネントの複数のインスタンスを追加&lt;/li&gt;&lt;/ul&gt;</translation>
+     </message>
+ </context>
++<context>
++    <name>Assembly_InsertNewPart</name>
++    <message>
++        <source>Insert a new part into the active assembly. The new part's origin can be positioned in the assembly.</source>
++        <translation>作業中の組立に新しい組を入れます。新しい組の原点は、組立の中で位置を決められます。</translation>
++    </message>
++    <message>
++        <source>New Part</source>
++        <translation>新しい組</translation>
++    </message>
++</context>
+ <context>
+     <name>Attacher</name>
+     <message>
+@@ -1495,6 +1613,10 @@ invalid constraints, and degenerate geometry</source>
+ </context>
+ <context>
+     <name>CmdTechDrawHorizontalDimension</name>
++    <message>
++        <source>Horizontal Length Dimension</source>
++        <translation>水平の長さ寸法</translation>
++    </message>
+     <message>
+         <source>Inserts a horizontal length dimension of an edge or distance between two points</source>
+         <translation>辺または2点間の距離の水平方向の長さ寸法を挿入</translation>
+@@ -1607,6 +1729,10 @@ invalid constraints, and degenerate geometry</source>
+         <source>Inserts a vertical length dimension of an edge or distance between two points</source>
+         <translation>辺または2点間の距離の垂直方向の長さ寸法を挿入</translation>
+     </message>
++    <message>
++        <source>Vertical Length Dimension</source>
++        <translation>垂直の長さ寸法</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdTechDrawVerticalExtentDimension</name>
+@@ -1787,10 +1913,33 @@ invalid constraints, and degenerate geometry</source>
+ </context>
+ <context>
+     <name>CommandGroup</name>
++    <message>
++        <source>AddonManager</source>
++        <translation>アドオンマネージャー</translation>
++    </message>
++    <message>
++        <source>MassProperties</source>
++        <translation>質量プロパティ</translation>
++    </message>
+     <message>
+         <source>Standard-View</source>
+         <translation>決まった向きから見る</translation>
+     </message>
++    <message>
++        <source>TreeView</source>
++        <translation>ツリービュー</translation>
++    </message>
++    <message>
++        <source>Unified</source>
++        <translation>統合環境</translation>
++    </message>
++</context>
++<context>
++    <name>DrawProjGroupItem</name>
++    <message>
++        <source>View</source>
++        <translation>投影図</translation>
++    </message>
+ </context>
+ <context>
+     <name>EditMode</name>
+@@ -2230,6 +2379,10 @@ A larger value makes it easier to select elements, but may prevent selection of
+ </context>
+ <context>
+     <name>Gui::Dialog::DlgSettingsUI</name>
++    <message>
++        <source>Auto</source>
++        <translation>自動</translation>
++    </message>
+     <message>
+         <source>Style sheet how user interface will look like</source>
+         <translation>ユーザーインター面の外観を指定するスタイルシート</translation>
+@@ -2950,6 +3103,10 @@ Adjust the parameters and try again.</source>
+         <source>Base Z-axis</source>
+         <translation>Z 軸</translation>
+     </message>
++    <message>
++        <source>Normal sketch axis</source>
++        <translation>スケッチの法線軸</translation>
++    </message>
+     <message>
+         <source>Subtraction</source>
+         <translation>切り抜き</translation>
+@@ -3234,10 +3391,18 @@ the sketch plane's normal vector will be used</source>
+         <translation>- 強調表示する項目を選択します
+ - 項目をダブルクリックして形を表示します</translation>
+     </message>
++    <message>
++        <source>Recto verso</source>
++        <translation>表裏</translation>
++    </message>
+     <message>
+         <source>Recto verso applies the thickness equally to both sides</source>
+         <translation>両面は、厚みを両側に同じだけ付けます</translation>
+     </message>
++    <message>
++        <source>Skin</source>
++        <translation>外皮</translation>
++    </message>
+     <message>
+         <source>Total wall thickness; half is applied to each side</source>
+         <translation>壁の厚みの合計。半分ずつ両側に付けます</translation>
+@@ -3268,6 +3433,10 @@ the sketch plane's normal vector will be used</source>
+         <source>Base Z-axis</source>
+         <translation>Z 軸</translation>
+     </message>
++    <message>
++        <source>Normal sketch axis</source>
++        <translation>スケッチの法線軸</translation>
++    </message>
+     <message>
+         <source>Remove Feature</source>
+         <translation>形を削除</translation>
+@@ -3597,6 +3766,18 @@ Select a valid shape in the drop-down box first.</source>
+ </context>
+ <context>
+     <name>PartGui::DlgImportStep</name>
++    <message>
++        <source>Multi-byte UTF-8 encoding</source>
++        <translation>UTF-8（標準）</translation>
++    </message>
++    <message>
++        <source>No conversion</source>
++        <translation>変換しない</translation>
++    </message>
++    <message>
++        <source>SJIS (Shift Japanese Industrial Standards) encoding</source>
++        <translation>シフト JIS</translation>
++    </message>
+     <message>
+         <source>Expand compound shape with multiple solids</source>
+         <translation>複数の立体でコンパウンド形を展開</translation>
+@@ -3605,6 +3786,14 @@ Select a valid shape in the drop-down box first.</source>
+         <source>Merges all shapes into a single compound during import, resolving part instances and applying transforms. Increases import time but does not affect geometry accuracy or rendering quality.</source>
+         <translation>読み込むときに、すべての形を 1 つの複合形状にまとめ、部品のインスタンスを展開して配置を反映します。読み込みは遅くなりますが、形の精度や表示の品質は変わりません。</translation>
+     </message>
++    <message>
++        <source>Select this to use App::LinkGroup as group container, or else use App::Part</source>
++        <translation>読み込んだ構成のまとめに App::LinkGroup を使う。オフのときは組（App::Part）を使う</translation>
++    </message>
++    <message>
++        <source>Use LinkGroup</source>
++        <translation>まとめに LinkGroup を使う</translation>
++    </message>
+ </context>
+ <context>
+     <name>PartGui::DlgPrimitives</name>
+@@ -4776,6 +4965,10 @@ This feature is broken and cannot be edited.</source>
+         <source>Edit Linear Pattern</source>
+         <translation>直線配列を編集</translation>
+     </message>
++    <message>
++        <source>Edit Mirror</source>
++        <translation>鏡像を編集</translation>
++    </message>
+     <message>
+         <source>Edit Pad</source>
+         <translation>押し出しを編集</translation>
+@@ -6412,6 +6605,20 @@ Select the method to attach this sketch to selected objects.</source>
+         <translation>決まった向きから見る(&amp;V)</translation>
+     </message>
+ </context>
++<context>
++    <name>Std_Delete</name>
++    <message>
++        <source>The following referencing objects might break.
++
++Continue?
++</source>
++        <translation>次のオブジェクトが選んだものを参照しているため、削除すると壊れるおそれがあります。
++
++削除しますか？
++
++影響を受けるオブジェクト:</translation>
++    </message>
++</context>
+ <context>
+     <name>Std_Group</name>
+     <message>
+@@ -6428,6 +6635,10 @@ Select the method to attach this sketch to selected objects.</source>
+ </context>
+ <context>
+     <name>TaskAssemblyCreateJoint</name>
++    <message>
++        <source>Isolate</source>
++        <translation>選んだ部品以外</translation>
++    </message>
+     <message>
+         <source>Sets the attachment offset of the joint’s first marker (coordinate system)</source>
+         <translation>ジョイントの1番目のマーカー（座標系）の取り付け・オフセットを設定</translation>
+@@ -6441,12 +6652,16 @@ Select the method to attach this sketch to selected objects.</source>
+     <name>TaskAssemblyCreateView</name>
+     <message>
+         <source>Adds only part containers and sub-assemblies to the bill of materials. Solids (e.g. bodies, fasteners, primitives) are excluded.</source>
+-        <translation>パーツコンテナーとサブアセンブリのみを部品表に追加します。 立体（部品、ファスナー、プリミティブなど）は除外されます。</translation>
++        <translation>組とサブアセンブリだけを部品表に入れます。立体（部品、留め具、プリミティブなど）は入れません。</translation>
+     </message>
+     <message>
+         <source>If checked, parts will be selected as a single solid</source>
+         <translation>チェックされている場合、パーツは単一の立体として選択されます。</translation>
+     </message>
++    <message>
++        <source>Only parts</source>
++        <translation>組だけ</translation>
++    </message>
+     <message>
+         <source>Parts as single solid</source>
+         <translation>パーツを単一の立体として扱う</translation>
+@@ -6481,6 +6696,14 @@ You can change this behavior at any time by either right-clicking the sub-assemb
+ フレキシブルとは、追加されたサブアセンブリが親アセンブリ内で個々のコンポーネントのジョイントを移動できることを意味します。
+ この動作は、ドキュメント ツリーでサブアセンブリを右クリックして「リジッドに切り替え」「フレキシブルに切り替え」のコマンド切り替えを行うか、プロパティエディターでRigidプロパティを編集することでいつでも変更できます。</translation>
+     </message>
++    <message>
++        <source>Show only parts</source>
++        <translation>組だけ表示</translation>
++    </message>
++    <message>
++        <source>Shows only parts in the list</source>
++        <translation>一覧には組だけを表示し、部品や立体は出さない</translation>
++    </message>
+ </context>
+ <context>
+     <name>TaskCheckGeometryResults</name>
+-- 
+2.43.0
+

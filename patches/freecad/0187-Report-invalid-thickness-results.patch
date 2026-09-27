@@ -1,0 +1,31 @@
+From f5689c2f3491dd191e76afe6267a218307b42f6e Mon Sep 17 00:00:00 2001
+From: 007stevendigar-lgtm <007stevendigar@gmail.com>
+Date: Tue, 22 Sep 2026 22:59:48 +0700
+Subject: [PATCH 187/197] Report invalid thickness results
+
+Assisted-by: GPT-5.6 Sol (2026-09-22)
+---
+ src/Mod/PartDesign/App/FeatureThickness.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/PartDesign/App/FeatureThickness.cpp b/src/Mod/PartDesign/App/FeatureThickness.cpp
+index 60847c20b..288988f47 100644
+--- a/src/Mod/PartDesign/App/FeatureThickness.cpp
++++ b/src/Mod/PartDesign/App/FeatureThickness.cpp
+@@ -269,6 +269,12 @@ App::DocumentObjectExecReturn* Thickness::execute()
+     // store shape before refinement
+     this->rawShape = result;
+     result = refineShapeIfActive(result);
+-    this->Shape.setValue(getSolid(result));
++    TopoShape finalShape = getSolid(result);
++    if (!finalShape.isValid()) {
++        return new App::DocumentObjectExecReturn(
++            QT_TRANSLATE_NOOP("Exception", "Thickness error: Resulting shape is invalid")
++        );
++    }
++    this->Shape.setValue(finalShape);
+     return App::DocumentObject::StdReturn;
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,60 @@
+From 405acd297fb3de409ed9de8fff5f668ce060796a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:35 +0900
+Subject: [PATCH 172/197] TechDraw: Put new views into their groups once per
+ batch
+
+Each attached view scanned all scene items for parents, which made
+opening a page with many dimensions quadratic.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/QGSPage.cpp | 12 ++++++++++--
+ src/Mod/TechDraw/Gui/QGSPage.h   |  1 +
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/TechDraw/Gui/QGSPage.cpp b/src/Mod/TechDraw/Gui/QGSPage.cpp
+index 93cc7cb9b..c4cf8c74f 100644
+--- a/src/Mod/TechDraw/Gui/QGSPage.cpp
++++ b/src/Mod/TechDraw/Gui/QGSPage.cpp
+@@ -25,6 +25,7 @@
+ #include <QApplication>
+ #include <QDomDocument>
+ #include <QFile>
++#include <QTimer>
+ #include <QGraphicsSceneEvent>
+ #include <QGraphicsView>
+ #include <QPainter>
+@@ -423,8 +424,15 @@ bool QGSPage::attachView(App::DocumentObject* obj)
+         // A view added while the page is open (e.g. the views of a new projection group) may
+         // belong to a group whose graphic exists now, or be the group of views added before
+         // it: put them into their groups, as when the page is opened. Otherwise they stay at
+-        // the page's origin until the file is opened again.
+-        setViewParents();
++        // the page's origin until the file is opened again. Once for all the views added
++        // together: each pass looks at every item of the scene.
++        if (!m_viewParentsPending) {
++            m_viewParentsPending = true;
++            QTimer::singleShot(0, this, [this]() {
++                m_viewParentsPending = false;
++                setViewParents();
++            });
++        }
+     }
+ 
+     return (qview != nullptr);
+diff --git a/src/Mod/TechDraw/Gui/QGSPage.h b/src/Mod/TechDraw/Gui/QGSPage.h
+index baf5fcb36..412349fac 100644
+--- a/src/Mod/TechDraw/Gui/QGSPage.h
++++ b/src/Mod/TechDraw/Gui/QGSPage.h
+@@ -166,6 +166,7 @@ private:
+     ViewProviderPage* m_vpPage;
+ 
+     bool m_exportingSvg{false};
++    bool m_viewParentsPending{false};
+     bool m_exportingPdf{false};
+ };
+ 
+-- 
+2.43.0
+

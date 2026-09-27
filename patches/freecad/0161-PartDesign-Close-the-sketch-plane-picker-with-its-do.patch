@@ -1,0 +1,60 @@
+From 48870ba8a19b18d5a8c55ec25020a8b1d32501eb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:44:22 +0900
+Subject: [PATCH 161/197] PartDesign: Close the sketch plane picker with its
+ document and keep picks in the body
+
+The picker kept raw pointers to the sketch and body and stayed open when
+its document was closed; a click in another document then used the
+freed sketch. It now closes with its document and view, ignores picks in
+other documents, and only accepts planes and faces of its own body
+(anything else needs a binder, which the full attachment workflow offers).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 1121b99f7..c4bf6d5e1 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -548,6 +548,9 @@ public:
+         , onAccept(std::move(onAccept))
+         , onReject(std::move(onReject))
+     {
++        // The dialog refers to the document's objects: close it with the document
++        setAutoCloseOnDeletedDocument(true);
++        setAutoCloseOnClosedView(true);
+         auto box = new Gui::TaskView::TaskBox(text("Where to draw"), false);
+         hint = new QLabel(text("Click one of the planes, or a flat face of the part, to draw the sketch on it."));
+         hint->setWordWrap(true);
+@@ -578,7 +581,8 @@ private:
+ 
+     void onSelectionChanged(const Gui::SelectionChanges& msg) override
+     {
+-        if (msg.Type != Gui::SelectionChanges::AddSelection || done) {
++        if (msg.Type != Gui::SelectionChanges::AddSelection || done
++            || !msg.pDocName || sketch->getDocument()->getName() != std::string(msg.pDocName)) {
+             return;
+         }
+         App::PropertyLinkSubList support;
+@@ -589,6 +593,15 @@ private:
+         if (support.getSize() != 1 || !attach) {
+             return;
+         }
++        // Only the body's own planes and faces: anything else needs a binder, which the full
++        // attachment workflow offers
++        App::DocumentObject* picked = support.getValues().front();
++        auto* origin = body->getOrigin();
++        if (PartDesign::Body::findBodyOf(picked) != body && !(origin && origin->hasObject(picked))) {
++            hint->setText(text("That belongs to another part. Click a plane or a flat face of this body."));
++            QTimer::singleShot(0, []() { Gui::Selection().clearSelection(); });
++            return;
++        }
+         attach->attacher().setReferences(support);
+         Attacher::SuggestResult sugr;
+         attach->attacher().suggestMapModes(sugr);
+-- 
+2.43.0
+

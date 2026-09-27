@@ -1,0 +1,152 @@
+From 707ccf79b0cf9ac631146a97c0028b6474fd5e59 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:32 +0900
+Subject: [PATCH 164/197] Unified: Fix the action bar after a second pick, on
+ document switch and for other documents
+
+- Buttons added while the bar was shown stayed hidden, leaving an empty
+  6x6 bar after a second pick: build it hidden.
+- The bar is dismissed when another document becomes active.
+- No PartDesign actions or edit-on-double-click for parts of another
+  document shown in the view (e.g. in an assembly).
+- A double-click only edits the selection if the view picked something
+  since the press (not on the navigation cube or empty space).
+- Buttons are deleted later (a command may run an event loop), the
+  reset-edit connection is scoped, and the bar is not placed over an
+  undocked view.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 32 +++++++++++++++++++++++++-----
+ src/Mod/Unified/Gui/ContextBar.h   |  7 +++++++
+ 2 files changed, 34 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index ae498ed3e..7934f9883 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -10,6 +10,7 @@
+ #include <QTimer>
+ #include <QToolButton>
+ 
++#include <App/Application.h>
+ #include <App/Document.h>
+ #include <App/DocumentObject.h>
+ #include <App/DocumentObserver.h>
+@@ -90,13 +91,17 @@ ContextBar::ContextBar()
+     layout->setSpacing(1);
+     hide();
+ 
+-    Gui::Application::Instance->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
++    connectResetEdit = Gui::Application::Instance->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
+         // Look the object up again after the edit mode has been left completely: cancelling a
+         // new sketch deletes it
+         App::DocumentObjectT ref(vp.getObject());
+         QTimer::singleShot(0, this, [this, ref]() { onEditClosed(ref.getObject()); });
+     });
+     // A sketch closed while its dialog was still going away: look again once it is gone
++    // The bar belongs to the picks in the document that was active
++    connectActiveDocument = Gui::Application::Instance->signalActiveDocument.connect(
++        [this](const Gui::Document&) { dismiss(); }
++    );
+     connect(&Gui::Control(), &Gui::ControlSingleton::dialogClosed, this, [this]() {
+         if (closedSketch.getObjectName().empty()) {
+             return;
+@@ -147,6 +152,7 @@ void ContextBar::onSelectionChanged(const Gui::SelectionChanges& msg)
+             // Picks in a 3D view carry the picked point; the tree and commands do not
+             pickedInView = msg.hasPickedPoint;
+             if (pickedInView) {
++                pickedSincePress = true;
+                 if (Gui::View3DInventor* view = active3DView()) {
+                     watchView(view->getViewer()->getGLWidget());
+                 }
+@@ -192,7 +198,9 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+     const auto& sel = selection.front();
+     const App::DocumentObject* obj = sel.getObject();
+     const auto& subs = sel.getSubNames();
+-    if (!obj) {
++    // Not for a part of another document shown here, e.g. in an assembly: the tools work
++    // in the active document
++    if (!obj || obj->getDocument() != App::GetApplication().getActiveDocument()) {
+         return {};
+     }
+     // A sketch, wherever it was picked (its edges, or the area inside, "InternalFace1")
+@@ -257,9 +265,15 @@ void ContextBar::refresh()
+ 
+ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ {
++    // Children added to a bar that is shown already would stay hidden: build it hidden
++    hide();
+     // Rebuild the buttons
++    // Later: a button's command may run an event loop that gets here
+     while (QLayoutItem* item = layout->takeAt(0)) {
+-        delete item->widget();
++        if (QWidget* w = item->widget()) {
++            w->hide();
++            w->deleteLater();
++        }
+         delete item;
+     }
+     auto& manager = Gui::Application::Instance->commandManager();
+@@ -302,6 +316,10 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+     // Put the bar next to the cursor, inside the view. The bar stays a child of the main
+     // window (views come and go with their documents) and is only positioned over the view.
+     QWidget* main = parentWidget();
++    if (view->window() != main->window()) {
++        dismiss();  // an undocked or full-screen view: the bar lives in the main window
++        return;
++    }
+     adjustSize();
+     QRect area(view->mapTo(main, QPoint(0, 0)), view->size());
+     QPoint pos = placeInView ? area.center() + QPoint(-width() / 2, area.height() / 4)
+@@ -330,8 +348,11 @@ void ContextBar::watchView(QWidget* gl)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
++    if (watched == watchedView && event->type() == QEvent::MouseButtonPress) {
++        pickedSincePress = false;
++    }
+     if (watched == watchedView && event->type() == QEvent::MouseButtonDblClick
+-        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
++        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton && pickedSincePress) {
+         // After the view has handled the clicks and updated the selection
+         QTimer::singleShot(0, this, [this]() { editPickedStep(); });
+     }
+@@ -363,7 +384,8 @@ void ContextBar::editPickedStep()
+     }
+     App::DocumentObject* obj = selection.front().getObject();
+     const std::string& element = selection.front().getSubNames().front();
+-    if (!obj || !(allStartWith({element}, "Face") || allStartWith({element}, "Edge"))) {
++    if (!obj || !(allStartWith({element}, "Face") || allStartWith({element}, "Edge"))
++        || obj->getDocument() != App::GetApplication().getActiveDocument()) {
+         return;
+     }
+     // Follow the face or edge back through the steps of the part while it stays a face (or
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index b7bc0f3d2..8b3dc032d 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -7,6 +7,8 @@
+ 
+ #include <string>
+ 
++#include <fastsignals/signal.h>
++
+ #include <App/DocumentObserver.h>
+ #include <Gui/Selection/Selection.h>
+ 
+@@ -65,6 +67,11 @@ private:
+     /// The last selection came from a pick in a 3D view (it has a picked point): the bar
+     /// follows picks in the view, not selections made by commands or in the tree
+     bool pickedInView {false};
++    /// Something was picked in the view since the last mouse press there: a double-click
++    /// elsewhere (on the navigation cube, on empty space) does not edit the selection
++    bool pickedSincePress {false};
++    fastsignals::scoped_connection connectResetEdit;
++    fastsignals::scoped_connection connectActiveDocument;
+     /// A sketch that was closed while its dialog was still going away: looked at again
+     /// when the dialog is gone
+     App::DocumentObjectT closedSketch;
+-- 
+2.43.0
+

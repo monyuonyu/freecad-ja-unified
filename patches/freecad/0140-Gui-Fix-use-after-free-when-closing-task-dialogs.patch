@@ -1,7 +1,7 @@
 From 9de0c7502b5ed425689da5005d0a725cf2b3f147 Mon Sep 17 00:00:00 2001
 From: alexdremov <dremov.me@gmail.com>
 Date: Wed, 9 Sep 2026 22:47:43 +0200
-Subject: [PATCH 140/158] Gui: Fix use-after-free when closing task dialogs
+Subject: [PATCH 140/197] Gui: Fix use-after-free when closing task dialogs
 
 removeDialog() deleted the task dialog, its button bar and its panel
 synchronously, while that memory was still referenced: the OK/Cancel

@@ -1,0 +1,34 @@
+From 70ae1053ace6d98970e1a06ae080d0f9470965bd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 00:25:04 +0900
+Subject: [PATCH 197/197] Gui: Do not wait forever for a navigation animation
+ of length 0
+
+Such an animation finishes within start(), before the event loop that
+waits for it runs; the loop then never quit (e.g. viewPosition() with a
+duration of 0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Navigation/NavigationAnimator.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Gui/Navigation/NavigationAnimator.cpp b/src/Gui/Navigation/NavigationAnimator.cpp
+index 23508f3f3..8ca307ead 100644
+--- a/src/Gui/Navigation/NavigationAnimator.cpp
++++ b/src/Gui/Navigation/NavigationAnimator.cpp
+@@ -73,6 +73,11 @@ bool NavigationAnimator::startAndWait(const std::shared_ptr<NavigationAnimation>
+         loop.quit();
+     });
+     start(animation);
++    // An animation of length 0 finishes within start(), before the loop runs: the loop would
++    // then wait forever
++    if (animation->state() == QAbstractAnimation::Stopped) {
++        return finished;
++    }
+     loop.exec();
+     return finished;
+ }
+-- 
+2.43.0
+

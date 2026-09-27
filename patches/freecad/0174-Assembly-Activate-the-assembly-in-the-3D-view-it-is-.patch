@@ -1,0 +1,33 @@
+From 24dc8b6e7674cae4a829cf0f89261d39a743325d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:35 +0900
+Subject: [PATCH 174/197] Assembly: Activate the assembly in the 3D view it is
+ edited in
+
+With another view in front (e.g. a TechDraw page) the assembly was made
+active in that view, and the assembly commands stayed disabled.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/Gui/ViewProviderAssembly.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Mod/Assembly/Gui/ViewProviderAssembly.cpp b/src/Mod/Assembly/Gui/ViewProviderAssembly.cpp
+index 4a27e9829..93bddbeee 100644
+--- a/src/Mod/Assembly/Gui/ViewProviderAssembly.cpp
++++ b/src/Mod/Assembly/Gui/ViewProviderAssembly.cpp
+@@ -296,6 +296,11 @@ bool ViewProviderAssembly::setEdit(int mode)
+         getDocument()->setEditRestore(true);
+         autoCollapseOnDeactivation = false;
+ 
++        // The assembly is edited in a 3D view, which the document brings to the front only
++        // after this. With another view in front (e.g. a drawing page) the assembly would be
++        // made active there, and the assembly commands would stay disabled.
++        getDocument()->openEditingView3D(this);
++
+         // Set the part as 'Activated' ie bold in the tree.
+         Gui::Command::doCommand(
+             Gui::Command::Gui,
+-- 
+2.43.0
+

@@ -27,6 +27,10 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 設定・マクロ・ウィンドウの配置は本家の FreeCAD と別の場所（`FreeCAD-ja-unified`）に置く。Windows のインストーラーも
 本家と別の場所（`FreeCAD-ja-unified 26.3`）に入る。0.3.1 までは本家と共通だった（本家と並べて使うと設定が混ざる）。
 
+アンインストールすると、プログラム・ショートカット・ファイルの関連付け・登録はすべて消える（Windows で確かめた）。
+自分の設定は、本家と同じく既定では残る（入れ直したときに引き継ぐため）。消すときはアンインストーラーの画面で
+「ユーザー設定も削除」を選ぶ。消えるのはこの版の設定だけで、本家の FreeCAD の設定には触れない。
+
 ## 画面で見る
 
 ### 最初の起動
@@ -225,6 +229,24 @@ AI が実行しようとするコードは毎回表示され、「実行する�
 **ファイル**
 
 - [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII の STL（長い名前・末尾の改行なし）が読めない（@maxwxyz）
+
+**0.3.3 で追加**
+
+- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) スケッチの点を少しだけ動かすと元に戻る（@Reqrefusion）
+- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) 計測を開いたまま文書を閉じると落ちる（@Amine0x0）。そのまま当てると、この版では別の見張りを上書きして後で落ちるので、合わせて直した
+- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) 厚みの結果が不正な形でも黙っている（@007stevendigar-lgtm）。厚みが大きすぎて形が変わらない場合も知らせるよう足した
+
+### 本家に報告されていて、まだ直っていない不具合を直したもの
+
+再現手順が付いていて、手元で再現または原因まで確かめたもの。
+
+- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) スケッチの寸法を式エディタで入れると、ツールを抜けたときに寸法が消える（今月の退行）
+- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) 「変数セットに保存」で単位が合わずに失敗する（macOS では落ちる）
+- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) 見えない文書を開くと、作業中の文書が奪われる（macOS では落ちる）
+- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) 部品より厚い厚みが、黙って何もしない
+- 途中の手順（切り抜きなど）を消すと、後の配列が消した穴を持ったまま「正常」と表示される
+- STEP で日本語などの名前が化ける（書き出しを規格どおりの書き方にし、読み込みの既定を UTF-8 にした。他の CAD の STEP も読める）
+- 長さ 0 の視点の動きで、画面が固まる
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。

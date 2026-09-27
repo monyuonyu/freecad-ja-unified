@@ -1,0 +1,45 @@
+From 0c6ac64fb94a3f1138ec7ccf178d9507601abcf2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:05:45 +0900
+Subject: [PATCH 160/197] Base: Give inlined crash frames the address of their
+ containing frame
+
+cpptrace resolves an inlined function into a frame of its own with a
+zero address, placed ahead of the frame it was inlined into. Such
+frames had no address and no module in the parsed report, which
+failed CrashReporterTests.realCrashCapturesUsableFrames in optimized
+builds with debug information.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Base/CrashReporter/Reader.cpp | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/Base/CrashReporter/Reader.cpp b/src/Base/CrashReporter/Reader.cpp
+index fd5be9822..d4f1264da 100644
+--- a/src/Base/CrashReporter/Reader.cpp
++++ b/src/Base/CrashReporter/Reader.cpp
+@@ -271,6 +271,20 @@ ParsedCrashReport Base::CrashReporter::parse(const std::string& pathToRawReportF
+             parsedFrame.isInline = frame.is_inline;
+             parsedReport.stackFrames.push_back(std::move(parsedFrame));
+         }
++        // cpptrace reports an inlined function as a frame of its own with no address, ahead of
++        // the frame it was inlined into: give it that frame's address and module
++        const ParsedFrame* container = nullptr;
++        for (auto it = parsedReport.stackFrames.rbegin(); it != parsedReport.stackFrames.rend();
++             ++it) {
++            if (!it->isInline) {
++                container = &*it;
++            }
++            else if (container && it->rawAddress == 0) {
++                it->rawAddress = container->rawAddress;
++                it->moduleOffset = container->moduleOffset;
++                it->modulePath = container->modulePath;
++            }
++        }
+         parsedReport.symbolicated = true;
+ #endif
+     }
+-- 
+2.43.0
+

@@ -1,0 +1,36 @@
+From 0176a15de6b4d40b6ba747be41627fe0de3444d6 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Fri, 26 Jun 2026 15:39:25 +0000
+Subject: [PATCH 186/197] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/Measure/Gui/TaskMeasure.cpp | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Measure/Gui/TaskMeasure.cpp b/src/Mod/Measure/Gui/TaskMeasure.cpp
+index ad6fa8f5d..8657eba89 100644
+--- a/src/Mod/Measure/Gui/TaskMeasure.cpp
++++ b/src/Mod/Measure/Gui/TaskMeasure.cpp
+@@ -242,12 +242,12 @@ TaskMeasure::TaskMeasure()
+         mTargetDoc = doc;
+ 
+         m_deletedConnection = Gui::Application::Instance->signalDeleteDocument.connect(
+-                [this, doc](const Gui::Document& deletedDoc) {
+-                    if (&deletedDoc == doc) {
+-                        this->mTargetDoc = nullptr;
+-                    }
++            [this, doc](const Gui::Document& deletedDoc) {
++                if (&deletedDoc == doc) {
++                    this->mTargetDoc = nullptr;
+                 }
+-            );
++            }
++        );
+         mTargetDoc->openCommand("Add Measurement");
+     }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,49 @@
+From 3d12669c981f5990fbb1c29763e64801acb99d84 Mon Sep 17 00:00:00 2001
+From: Amine0x0 <lowtix15@gmail.com>
+Date: Fri, 26 Jun 2026 08:30:14 +0100
+Subject: [PATCH 185/197] Fix UAF crash when closing document while tool is
+ active
+
+---
+ src/Gui/Document.cpp                | 5 ++++-
+ src/Mod/Measure/Gui/TaskMeasure.cpp | 8 ++++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Document.cpp b/src/Gui/Document.cpp
+index 946fd33ad..1c51baa3d 100644
+--- a/src/Gui/Document.cpp
++++ b/src/Gui/Document.cpp
+@@ -2898,7 +2898,10 @@ int Document::openCommand(const char* sName)
+ 
+ void Document::commitCommand()
+ {
+-    getDocument()->commitTransaction();
++    auto doc = getDocument();
++    if (doc) {
++        doc->commitTransaction();
++    }
+ }
+ 
+ void Document::abortCommand()
+diff --git a/src/Mod/Measure/Gui/TaskMeasure.cpp b/src/Mod/Measure/Gui/TaskMeasure.cpp
+index ad8ab46f2..ad6fa8f5d 100644
+--- a/src/Mod/Measure/Gui/TaskMeasure.cpp
++++ b/src/Mod/Measure/Gui/TaskMeasure.cpp
+@@ -240,6 +240,14 @@ TaskMeasure::TaskMeasure()
+ 
+     if (auto* doc = Gui::Application::Instance->activeDocument()) {
+         mTargetDoc = doc;
++
++        m_deletedConnection = Gui::Application::Instance->signalDeleteDocument.connect(
++                [this, doc](const Gui::Document& deletedDoc) {
++                    if (&deletedDoc == doc) {
++                        this->mTargetDoc = nullptr;
++                    }
++                }
++            );
+         mTargetDoc->openCommand("Add Measurement");
+     }
+ 
+-- 
+2.43.0
+

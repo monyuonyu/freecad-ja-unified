@@ -1,7 +1,7 @@
 From 55e8ab92cf2cd467ce3d5f1f54b890d69085e707 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:41:56 +0900
-Subject: [PATCH 098/158] Unified: keep its wording in its own translation file
+Subject: [PATCH 098/197] Unified: keep its wording in its own translation file
 
 The integrated environment had changed 1457 translations directly in 13
 upstream *_ja.ts files (Part, PartDesign, Sketcher, TechDraw, FreeCAD, ...),

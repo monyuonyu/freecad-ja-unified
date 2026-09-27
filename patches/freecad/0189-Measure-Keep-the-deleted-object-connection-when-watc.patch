@@ -1,0 +1,44 @@
+From c82cb723c4342cec1e247fed51d9553466d121ff Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 22:13:35 +0900
+Subject: [PATCH 189/197] Measure: Keep the deleted-object connection when
+ watching the document
+
+The imported fix for FreeCAD PR #30997 assigned the document connection
+to the variable that already held the deleted-object connection, which
+was then never disconnected and called the destroyed task afterwards.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Measure/Gui/TaskMeasure.cpp | 2 +-
+ src/Mod/Measure/Gui/TaskMeasure.h   | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Measure/Gui/TaskMeasure.cpp b/src/Mod/Measure/Gui/TaskMeasure.cpp
+index 8657eba89..c706c1e6a 100644
+--- a/src/Mod/Measure/Gui/TaskMeasure.cpp
++++ b/src/Mod/Measure/Gui/TaskMeasure.cpp
+@@ -241,7 +241,7 @@ TaskMeasure::TaskMeasure()
+     if (auto* doc = Gui::Application::Instance->activeDocument()) {
+         mTargetDoc = doc;
+ 
+-        m_deletedConnection = Gui::Application::Instance->signalDeleteDocument.connect(
++        m_deletedDocumentConnection = Gui::Application::Instance->signalDeleteDocument.connect(
+             [this, doc](const Gui::Document& deletedDoc) {
+                 if (&deletedDoc == doc) {
+                     this->mTargetDoc = nullptr;
+diff --git a/src/Mod/Measure/Gui/TaskMeasure.h b/src/Mod/Measure/Gui/TaskMeasure.h
+index 31e703910..ffc694522 100644
+--- a/src/Mod/Measure/Gui/TaskMeasure.h
++++ b/src/Mod/Measure/Gui/TaskMeasure.h
+@@ -103,6 +103,7 @@ private:
+     std::unique_ptr<TaskMeasureTypeInfo> typeInfo;
+ 
+     fastsignals::connection m_deletedConnection;
++    fastsignals::scoped_connection m_deletedDocumentConnection;
+ 
+     void removeObject();
+     void onModeChanged(int index);
+-- 
+2.43.0
+

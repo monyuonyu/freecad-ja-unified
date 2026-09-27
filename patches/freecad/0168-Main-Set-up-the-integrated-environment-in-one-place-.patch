@@ -1,0 +1,1724 @@
+From 0973ae94100af9a02cd721196d64cb7fd347d320 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:33 +0900
+Subject: [PATCH 168/197] Main: Set up the integrated environment in one place,
+ also for the command line and Python
+
+UserDataDirName, the single workbench and the JIS drawing standard are
+set by App::configureIntegratedEnvironment() when built with Unified.
+FreeCAD imported as a Python module now uses the same settings directory,
+and TechDraw's third-angle default no longer depends on the GUI.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/SingleWorkbench.h            |  18 +
+ src/Main/CMakeLists.txt              |   5 +
+ src/Main/MainCmd.cpp                 | 407 ++++++-------
+ src/Main/MainGui.cpp                 | 822 +++++++++++++--------------
+ src/Main/MainPy.cpp                  | 388 ++++++-------
+ src/Mod/TechDraw/App/Preferences.cpp |   7 +-
+ 6 files changed, 837 insertions(+), 810 deletions(-)
+
+diff --git a/src/App/SingleWorkbench.h b/src/App/SingleWorkbench.h
+index 0459a84da..23e74ea3e 100644
+--- a/src/App/SingleWorkbench.h
++++ b/src/App/SingleWorkbench.h
+@@ -14,4 +14,22 @@ inline bool isSingleWorkbench()
+     return Application::Config().contains("SingleWorkbench");
+ }
+ 
++/// Set up the integrated working environment's configuration, the same for the GUI, the
++/// command line and FreeCAD imported as a Python module. Called before the application is
++/// initialized.
++inline void configureIntegratedEnvironment(bool gui)
++{
++    auto& cfg = Application::Config();
++    // Settings, macros and add-ons of their own, apart from those of FreeCAD: the integrated
++    // environment writes defaults of its own (mouse navigation, sketch editing, ...)
++    cfg["UserDataDirName"] = "FreeCAD-ja-unified";
++    // Drawings follow JIS B 0001 by default (third-angle projection)
++    cfg["DrawingStandard"] = "JIS";
++    if (gui) {
++        // One integrated working environment instead of a choice of workbenches
++        cfg["StartWorkbench"] = "UnifiedWorkbench";
++        cfg["SingleWorkbench"] = "UnifiedWorkbench";
++    }
++}
++
+ }  // namespace App
+diff --git a/src/Main/CMakeLists.txt b/src/Main/CMakeLists.txt
+index a13ad312f..c7703be41 100644
+--- a/src/Main/CMakeLists.txt
++++ b/src/Main/CMakeLists.txt
+@@ -4,6 +4,11 @@ configure_file(freecad.rc.cmake ${CMAKE_CURRENT_BINARY_DIR}/freecad.rc)
+ configure_file(freecadCmd.rc.cmake ${CMAKE_CURRENT_BINARY_DIR}/freecadCmd.rc)
+ file(COPY icon.ico DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+ 
++# The integrated working environment's configuration (see App/SingleWorkbench.h)
++if(BUILD_UNIFIED)
++    add_compile_definitions(FC_BUILD_UNIFIED)
++endif()
++
+ ######################## FreeCADMain ########################
+ if(BUILD_GUI)
+ 
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 46956618d..8398dba81 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -1,203 +1,204 @@
+-// SPDX-License-Identifier: LGPL-2.1-or-later
+-/***************************************************************************
+- *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
+- *                                                                         *
+- *   This file is part of the FreeCAD CAx development system.              *
+- *                                                                         *
+- *   This program is free software; you can redistribute it and/or modify  *
+- *   it under the terms of the GNU Library General Public License (LGPL)   *
+- *   as published by the Free Software Foundation; either version 2 of     *
+- *   the License, or (at your option) any later version.                   *
+- *   for detail see the LICENCE text file.                                 *
+- *                                                                         *
+- *   FreeCAD is distributed in the hope that it will be useful,            *
+- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+- *   GNU Library General Public License for more details.                  *
+- *                                                                         *
+- *   You should have received a copy of the GNU Library General Public     *
+- *   License along with FreeCAD; if not, write to the Free Software        *
+- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
+- *   USA                                                                   *
+- *                                                                         *
+- ***************************************************************************/
+-
+-#include "../FCConfig.h"
+-
+-#if HAVE_CONFIG_H
+-# include <config.h>
+-#endif  // HAVE_CONFIG_H
+-
+-#include <Base/Version.h>
+-
+-#include <cstdio>
+-#include <format>
+-#include <iostream>
+-#include <ostream>
+-#include <QString>
+-
+-// FreeCAD Base header
+-#include <Base/Console.h>
+-#include <Base/CrashReporter/WindowsCrashReporter.h>
+-#include <Base/Exception.h>
+-#include <Base/Interpreter.h>
+-
+-// FreeCAD doc header
+-#include <App/Application.h>
+-#include <App/ProgramInformation.h>
+-
+-using App::Application;
+-using Base::Console;
+-
+-const auto sBanner = std::format(
+-    "(C) 2001-{} FreeCAD contributors\n"
+-    "FreeCAD is free and open-source software licensed under the terms of LGPL2+ license.\n\n",
+-    Base::FCVersionInfo::CopyrightYear()
+-);
+-
+-// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
+-// (e.g. print() output right before an exception or sys.exit()) would be lost.
+-static void flushPythonStreams()
+-{
+-    if (!Py_IsInitialized()) {
+-        return;
+-    }
+-    Base::PyGILStateLocker lock;
+-    for (const char* name : {"stdout", "stderr"}) {
+-        PyObject* stream = PySys_GetObject(name);  // borrowed
+-        if (stream && stream != Py_None) {
+-            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
+-            Py_XDECREF(result);
+-        }
+-    }
+-    PyErr_Clear();
+-}
+-
+-int main(int argc, char** argv)
+-{
+-    // Make sure that we use '.' as decimal point
+-    setlocale(LC_ALL, "");
+-    setlocale(LC_NUMERIC, "C");
+-
+-#if defined(__MINGW32__)
+-    const char* mingw_prefix = getenv("MINGW_PREFIX");
+-    const char* py_home = getenv("PYTHONHOME");
+-    if (!py_home && mingw_prefix) {
+-        _putenv_s("PYTHONHOME", mingw_prefix);
+-    }
+-#endif
+-
+-    // Name and Version of the Application
+-    App::Application::Config()["ExeName"] = "FreeCAD";
+-    App::Application::Config()["ExeVendor"] = "FreeCAD";
+-    App::Application::Config()["AppDataSkipVendor"] = "true";
+-    // Settings, macros and add-ons of their own, apart from those of FreeCAD: the integrated
+-    // environment writes defaults of its own (mouse navigation, sketch editing, ...)
+-    App::Application::Config()["UserDataDirName"] = "FreeCAD-ja-unified";
+-
+-    // set the banner (for logging and console)
+-    App::Application::Config()["CopyrightInfo"] = sBanner;
+-
+-    try {
+-        // Init phase ===========================================================
+-        // sets the default run mode for FC, starts with command prompt if not overridden in
+-        // InitConfig...
+-        App::Application::Config()["RunMode"] = "Exit";
+-        App::Application::Config()["LoggingConsole"] = "1";
+-
+-        // Inits the Application
+-        App::Application::init(argc, argv);
+-#ifdef _MSC_VER
+-        Base::CrashReporter::WindowsCrashReporter::install(
+-            App::Application::getUserAppDataDir() + "CrashReports"
+-        );
+-#endif
+-    }
+-    catch (const Base::UnknownProgramOption& e) {
+-        std::cerr << e.what();
+-        exit(1);
+-    }
+-    catch (const Base::ProgramInformation& e) {
+-        if (std::strcmp(e.what(), App::ProgramInformation::verboseVersionEmitMessage) == 0) {
+-            std::stringstream str;
+-            const std::map<std::string, std::string> config = App::Application::Config();
+-
+-            App::ProgramInformation::getVerboseCommonInfo(str, config);
+-            App::ProgramInformation::getVerboseAddOnsInfo(str, config);
+-
+-            std::cout << str.str();
+-        }
+-        else {
+-            std::cout << e.what();
+-        }
+-        exit(0);
+-    }
+-    catch (const Base::Exception& e) {
+-        std::string appName = App::Application::getExecutableName();
+-        std::cout << "While initializing " << appName << " the following exception occurred: '"
+-                  << e.what() << "'\n\n";
+-        std::cout << "Python is searching for its runtime files in the following directories:\n"
+-                  << Base::Interpreter().getPythonPath() << "\n\n";
+-        std::cout << "Python version information:\n" << Py_GetVersion() << "\n";
+-        const char* pythonhome = getenv("PYTHONHOME");
+-        if (pythonhome) {
+-            std::cout << "\nThe environment variable PYTHONHOME is set to '" << pythonhome << "'.";
+-            std::cout << "\nSetting this environment variable might cause Python to fail. "
+-                         "Please contact your administrator to unset it on your system.";
+-        }
+-        else {
+-            std::cout << "\nPlease contact the application's support team for more information.";
+-        }
+-        std::cout << std::endl;
+-        exit(100);
+-    }
+-    catch (...) {
+-        std::string appName = App::Application::getExecutableName();
+-        std::cout << "Unknown runtime error occurred while initializing " << appName << ".\n\n";
+-        std::cout << "Please contact the application's support team for more information.";
+-        std::cout << std::endl;
+-        exit(101);
+-    }
+-
+-    // Run phase ===========================================================
+-    try {
+-        Application::runApplication();
+-    }
+-    catch (const Base::SystemExitException& e) {
+-        flushPythonStreams();
+-        // sys.exit("message") prints the message to stderr, as Python does
+-        const std::string prefix = "System exit: ";
+-        const std::string msg = e.what();
+-        if (msg.starts_with(prefix)) {
+-            std::cerr << msg.substr(prefix.size()) << std::endl;
+-        }
+-        exit(static_cast<int>(e.getExitCode()));
+-    }
+-    catch (const Base::Exception& e) {
+-        flushPythonStreams();
+-        e.reportException();
+-        exit(1);
+-    }
+-    catch (...) {
+-        flushPythonStreams();
+-        Console().error("Application unexpectedly terminated\n");
+-        exit(1);
+-    }
+-
+-    // Destruction phase ===========================================================
+-    Console().log("FreeCAD terminating...\n");
+-
+-    try {
+-        // close open documents
+-        App::GetApplication().closeAllDocuments();
+-    }
+-    catch (...) {
+-    }
+-
+-    // cleans up
+-    Application::destruct();
+-
+-    Console().log("FreeCAD completely terminated\n");
+-
+-    return 0;
+-}
++// SPDX-License-Identifier: LGPL-2.1-or-later
++/***************************************************************************
++ *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
++ *                                                                         *
++ *   This file is part of the FreeCAD CAx development system.              *
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU Library General Public License (LGPL)   *
++ *   as published by the Free Software Foundation; either version 2 of     *
++ *   the License, or (at your option) any later version.                   *
++ *   for detail see the LICENCE text file.                                 *
++ *                                                                         *
++ *   FreeCAD is distributed in the hope that it will be useful,            *
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
++ *   GNU Library General Public License for more details.                  *
++ *                                                                         *
++ *   You should have received a copy of the GNU Library General Public     *
++ *   License along with FreeCAD; if not, write to the Free Software        *
++ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
++ *   USA                                                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#include "../FCConfig.h"
++
++#if HAVE_CONFIG_H
++# include <config.h>
++#endif  // HAVE_CONFIG_H
++
++#include <Base/Version.h>
++
++#include <cstdio>
++#include <format>
++#include <iostream>
++#include <ostream>
++#include <QString>
++
++// FreeCAD Base header
++#include <Base/Console.h>
++#include <Base/CrashReporter/WindowsCrashReporter.h>
++#include <Base/Exception.h>
++#include <Base/Interpreter.h>
++
++// FreeCAD doc header
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
++#include <App/ProgramInformation.h>
++
++using App::Application;
++using Base::Console;
++
++const auto sBanner = std::format(
++    "(C) 2001-{} FreeCAD contributors\n"
++    "FreeCAD is free and open-source software licensed under the terms of LGPL2+ license.\n\n",
++    Base::FCVersionInfo::CopyrightYear()
++);
++
++// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
++// (e.g. print() output right before an exception or sys.exit()) would be lost.
++static void flushPythonStreams()
++{
++    if (!Py_IsInitialized()) {
++        return;
++    }
++    Base::PyGILStateLocker lock;
++    for (const char* name : {"stdout", "stderr"}) {
++        PyObject* stream = PySys_GetObject(name);  // borrowed
++        if (stream && stream != Py_None) {
++            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
++            Py_XDECREF(result);
++        }
++    }
++    PyErr_Clear();
++}
++
++int main(int argc, char** argv)
++{
++    // Make sure that we use '.' as decimal point
++    setlocale(LC_ALL, "");
++    setlocale(LC_NUMERIC, "C");
++
++#if defined(__MINGW32__)
++    const char* mingw_prefix = getenv("MINGW_PREFIX");
++    const char* py_home = getenv("PYTHONHOME");
++    if (!py_home && mingw_prefix) {
++        _putenv_s("PYTHONHOME", mingw_prefix);
++    }
++#endif
++
++    // Name and Version of the Application
++    App::Application::Config()["ExeName"] = "FreeCAD";
++    App::Application::Config()["ExeVendor"] = "FreeCAD";
++    App::Application::Config()["AppDataSkipVendor"] = "true";
++#ifdef FC_BUILD_UNIFIED
++    App::configureIntegratedEnvironment(false);
++#endif
++
++    // set the banner (for logging and console)
++    App::Application::Config()["CopyrightInfo"] = sBanner;
++
++    try {
++        // Init phase ===========================================================
++        // sets the default run mode for FC, starts with command prompt if not overridden in
++        // InitConfig...
++        App::Application::Config()["RunMode"] = "Exit";
++        App::Application::Config()["LoggingConsole"] = "1";
++
++        // Inits the Application
++        App::Application::init(argc, argv);
++#ifdef _MSC_VER
++        Base::CrashReporter::WindowsCrashReporter::install(
++            App::Application::getUserAppDataDir() + "CrashReports"
++        );
++#endif
++    }
++    catch (const Base::UnknownProgramOption& e) {
++        std::cerr << e.what();
++        exit(1);
++    }
++    catch (const Base::ProgramInformation& e) {
++        if (std::strcmp(e.what(), App::ProgramInformation::verboseVersionEmitMessage) == 0) {
++            std::stringstream str;
++            const std::map<std::string, std::string> config = App::Application::Config();
++
++            App::ProgramInformation::getVerboseCommonInfo(str, config);
++            App::ProgramInformation::getVerboseAddOnsInfo(str, config);
++
++            std::cout << str.str();
++        }
++        else {
++            std::cout << e.what();
++        }
++        exit(0);
++    }
++    catch (const Base::Exception& e) {
++        std::string appName = App::Application::getExecutableName();
++        std::cout << "While initializing " << appName << " the following exception occurred: '"
++                  << e.what() << "'\n\n";
++        std::cout << "Python is searching for its runtime files in the following directories:\n"
++                  << Base::Interpreter().getPythonPath() << "\n\n";
++        std::cout << "Python version information:\n" << Py_GetVersion() << "\n";
++        const char* pythonhome = getenv("PYTHONHOME");
++        if (pythonhome) {
++            std::cout << "\nThe environment variable PYTHONHOME is set to '" << pythonhome << "'.";
++            std::cout << "\nSetting this environment variable might cause Python to fail. "
++                         "Please contact your administrator to unset it on your system.";
++        }
++        else {
++            std::cout << "\nPlease contact the application's support team for more information.";
++        }
++        std::cout << std::endl;
++        exit(100);
++    }
++    catch (...) {
++        std::string appName = App::Application::getExecutableName();
++        std::cout << "Unknown runtime error occurred while initializing " << appName << ".\n\n";
++        std::cout << "Please contact the application's support team for more information.";
++        std::cout << std::endl;
++        exit(101);
++    }
++
++    // Run phase ===========================================================
++    try {
++        Application::runApplication();
++    }
++    catch (const Base::SystemExitException& e) {
++        flushPythonStreams();
++        // sys.exit("message") prints the message to stderr, as Python does
++        const std::string prefix = "System exit: ";
++        const std::string msg = e.what();
++        if (msg.starts_with(prefix)) {
++            std::cerr << msg.substr(prefix.size()) << std::endl;
++        }
++        exit(static_cast<int>(e.getExitCode()));
++    }
++    catch (const Base::Exception& e) {
++        flushPythonStreams();
++        e.reportException();
++        exit(1);
++    }
++    catch (...) {
++        flushPythonStreams();
++        Console().error("Application unexpectedly terminated\n");
++        exit(1);
++    }
++
++    // Destruction phase ===========================================================
++    Console().log("FreeCAD terminating...\n");
++
++    try {
++        // close open documents
++        App::GetApplication().closeAllDocuments();
++    }
++    catch (...) {
++    }
++
++    // cleans up
++    Application::destruct();
++
++    Console().log("FreeCAD completely terminated\n");
++
++    return 0;
++}
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index c528f977a..9595390a8 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -1,412 +1,410 @@
+-// SPDX-License-Identifier: LGPL-2.1-or-later
+-/***************************************************************************
+- *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
+- *                                                                         *
+- *   This file is part of the FreeCAD CAx development system.              *
+- *                                                                         *
+- *   This program is free software; you can redistribute it and/or modify  *
+- *   it under the terms of the GNU Library General Public License (LGPL)   *
+- *   as published by the Free Software Foundation; either version 2 of     *
+- *   the License, or (at your option) any later version.                   *
+- *   for detail see the LICENCE text file.                                 *
+- *                                                                         *
+- *   FreeCAD is distributed in the hope that it will be useful,            *
+- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+- *   GNU Library General Public License for more details.                  *
+- *                                                                         *
+- *   You should have received a copy of the GNU Library General Public     *
+- *   License along with FreeCAD; if not, write to the Free Software        *
+- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
+- *   USA                                                                   *
+- *                                                                         *
+- ***************************************************************************/
+-
+-#include <FCConfig.h>
+-
+-#if defined(_MSC_VER)
+-# include <windows.h>
+-#endif
+-
+-#if HAVE_CONFIG_H
+-# include <config.h>
+-#endif  // HAVE_CONFIG_H
+-
+-#include <Base/Version.h>
+-
+-#include <cstdio>
+-#include <format>
+-#include <map>
+-#include <stdexcept>
+-
+-#include <QApplication>
+-#include <QLocale>
+-#include <QMessageBox>
+-#include <QStandardPaths>
+-
+-// FreeCAD header
+-#include <App/Application.h>
+-#include <App/ProgramInformation.h>
+-#include <Base/ConsoleObserver.h>
+-#include <Base/CrashReporter/WindowsCrashReporter.h>
+-#include <Base/Interpreter.h>
+-#include <Base/Parameter.h>
+-#include <Base/Exception.h>
+-#include <Gui/Application.h>
+-#include <Gui/ProgramInformation.h>
+-
+-
+-void PrintInitHelp();
+-
+-const auto sBanner = std::format(
+-    "(C) 2001-{} FreeCAD contributors\n"
+-    "FreeCAD is free and open-source software licensed under the terms of LGPL2+ license.\n\n",
+-    Base::FCVersionInfo::CopyrightYear()
+-);
+-
+-
+-class Redirection
+-{
+-public:
+-    Redirection(FILE* f)
+-        : fi(Base::FileInfo::getTempFileName())
+-        , file(f)
+-    {
+-#ifdef WIN32
+-        FILE* ptr = _wfreopen(fi.toStdWString().c_str(), L"w", file);
+-#else
+-        FILE* ptr = freopen(fi.filePath().c_str(), "w", file);
+-#endif
+-        if (!ptr) {
+-            std::cerr << "Failed to reopen file" << std::endl;
+-        }
+-    }
+-    ~Redirection()
+-    {
+-        fclose(file);
+-        fi.deleteFile();
+-    }
+-
+-private:
+-    Base::FileInfo fi;
+-    FILE* file;
+-};
+-
+-// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
+-// (e.g. print() output right before an exception or sys.exit()) would be lost.
+-static void flushPythonStreams()
+-{
+-    if (!Py_IsInitialized()) {
+-        return;
+-    }
+-    Base::PyGILStateLocker lock;
+-    for (const char* name : {"stdout", "stderr"}) {
+-        PyObject* stream = PySys_GetObject(name);  // borrowed
+-        if (stream && stream != Py_None) {
+-            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
+-            Py_XDECREF(result);
+-        }
+-    }
+-    PyErr_Clear();
+-}
+-
+-static bool inGuiMode()
+-{
+-    // if console option is set then run in cmd mode
+-    if (App::Application::Config()["Console"] == "1") {
+-        return false;
+-    }
+-    return App::Application::Config()["RunMode"] == "Gui"
+-        || App::Application::Config()["RunMode"] == "Internal";
+-}
+-
+-#if defined(FC_OS_LINUX) || defined(FC_OS_BSD)
+-static bool desktopFileIsAvailable(const QString& desktopFileName)
+-{
+-    const QString desktopFile = desktopFileName + QStringLiteral(".desktop");
+-    return !QStandardPaths::locate(QStandardPaths::ApplicationsLocation, desktopFile).isEmpty();
+-}
+-#else
+-static bool desktopFileIsAvailable(const QString&)
+-{
+-    return true;
+-}
+-#endif
+-
+-static void displayInfo(const std::string& msg, bool preformatted = true)
+-{
+-    if (inGuiMode()) {
+-        QString qMsg = QString::fromStdString(msg);
+-        QString appName = QString::fromStdString(App::Application::getExecutableName());
+-        QMessageBox msgBox;
+-        msgBox.setIcon(QMessageBox::Information);
+-        msgBox.setWindowTitle(appName);
+-        msgBox.setDetailedText(qMsg);
+-        msgBox.setText(preformatted ? QStringLiteral("<pre>%1</pre>").arg(qMsg) : qMsg);
+-        msgBox.exec();
+-    }
+-    else {
+-        std::cout << msg;
+-    }
+-}
+-
+-static void displayCritical(const QString& msg, bool preformatted = true)
+-{
+-    if (inGuiMode()) {
+-        QString appName = QString::fromStdString(App::Application::getExecutableName());
+-        QString title = QObject::tr("Initialization of %1 failed").arg(appName);
+-        QString text = preformatted ? QStringLiteral("<pre>%1</pre>").arg(msg) : msg;
+-        QMessageBox::critical(nullptr, title, text);
+-    }
+-    else {
+-        std::cerr << msg.toStdString();
+-    }
+-}
+-
+-int main(int argc, char** argv)
+-{
+-#if defined(FC_OS_LINUX) || defined(FC_OS_BSD)
+-    setlocale(LC_ALL, "");       // use native environment settings
+-    setlocale(LC_NUMERIC, "C");  // except for numbers to not break XML import
+-    // See https://github.com/FreeCAD/FreeCAD/issues/16724
+-
+-    // Make sure to setup the Qt locale system before setting LANG and LC_ALL to C.
+-    // which is needed to use the system locale settings.
+-    (void)QLocale::system();
+-    // See https://forum.freecad.org/viewtopic.php?f=18&t=20600
+-    // See Gui::Application::runApplication()
+-    putenv("LC_NUMERIC=C");
+-    putenv("PYTHONPATH=");
+-#elif defined(FC_OS_MACOSX)
+-    (void)QLocale::system();
+-    putenv("PYTHONPATH=");
+-#elif defined(__MINGW32__)
+-    const char* mingw_prefix = getenv("MINGW_PREFIX");
+-    const char* py_home = getenv("PYTHONHOME");
+-    if (!py_home && mingw_prefix) {
+-        _putenv_s("PYTHONHOME", mingw_prefix);
+-    }
+-#else
+-    _putenv("PYTHONPATH=");
+-    // https://forum.freecad.org/viewtopic.php?f=4&t=18288
+-    // https://forum.freecad.org/viewtopic.php?f=3&t=20515
+-    const char* fc_py_home = getenv("FC_PYTHONHOME");
+-    if (fc_py_home) {
+-        _putenv_s("PYTHONHOME", fc_py_home);
+-    }
+-    else {
+-        _putenv("PYTHONHOME=");
+-    }
+-#endif
+-
+-#if defined(FC_OS_WIN32)
+-    // we need to force Coin not to use Freetype in order to find installed fonts on Windows
+-    // see https://forum.freecad.org/viewtopic.php?p=485142#p485016
+-    _putenv("COIN_FORCE_FREETYPE_OFF=1");
+-
+-    int argc_ = argc;
+-    QVector<QByteArray> data;
+-    QVector<char*> argv_;
+-
+-    // get the command line arguments as unicode string
+-    {
+-        QCoreApplication app(argc, argv);
+-        QStringList args = app.arguments();
+-        for (QStringList::iterator it = args.begin(); it != args.end(); ++it) {
+-            data.push_back(it->toUtf8());
+-            argv_.push_back(data.back().data());
+-        }
+-        argv_.push_back(0);  // 0-terminated string
+-    }
+-#endif
+-
+-    // Name and Version of the Application
+-    App::Application::Config()["ExeName"] = "FreeCAD";
+-    App::Application::Config()["ExeVendor"] = "FreeCAD";
+-    App::Application::Config()["AppDataSkipVendor"] = "true";
+-    // Settings, macros and add-ons of their own, apart from those of FreeCAD: the integrated
+-    // environment writes defaults of its own (mouse navigation, sketch editing, ...)
+-    App::Application::Config()["UserDataDirName"] = "FreeCAD-ja-unified";
+-    App::Application::Config()["MaintainerUrl"] = "https://freecad.org";
+-
+-    // set the banner (for logging and console)
+-    App::Application::Config()["CopyrightInfo"] = sBanner;
+-    App::Application::Config()["AppIcon"] = "freecad";
+-    App::Application::Config()["SplashScreen"] = "freecadsplash";
+-    // One integrated working environment instead of a choice of workbenches
+-    App::Application::Config()["StartWorkbench"] = "UnifiedWorkbench";
+-    App::Application::Config()["SingleWorkbench"] = "UnifiedWorkbench";
+-    // Mouse like most applications: left selects, right drag orbits (right click opens the
+-    // context menu), middle drag pans, the wheel zooms at the cursor. Written into the
+-    // settings on the first start (they are this build's own, see UserDataDirName); a style
+-    // set later, e.g. by a macro, is kept.
+-    App::Application::Config()["NavigationStyle"] = "Gui::TinkerCADNavigationStyle";
+-    // App::Application::Config()["HiddenDockWindow"] = "Property editor";
+-    App::Application::Config()["SplashAlignment"] = "Bottom|Left";
+-    App::Application::Config()["SplashTextColor"] = "#418FDE";
+-    App::Application::Config()["SplashWarningColor"] = "#CA333B";
+-    App::Application::Config()["SplashInfoColor"] = "#212529";
+-    App::Application::Config()["SplashInfoPosition"] = "6,75";
+-    App::Application::Config()["DesktopFileName"] = "org.freecad.FreeCAD";
+-
+-    try {
+-        // Init phase ===========================================================
+-        // sets the default run mode for FC, starts with gui if not overridden in InitConfig...
+-        App::Application::Config()["RunMode"] = "Gui";
+-        App::Application::Config()["Console"] = "0";
+-        App::Application::Config()["LoggingConsole"] = "1";
+-
+-        // Inits the Application
+-#if defined(FC_OS_WIN32)
+-        App::Application::init(argc_, argv_.data());
+-# ifdef _MSC_VER
+-        // *Not* installed on mingw, etc.
+-        Base::CrashReporter::WindowsCrashReporter::install(
+-            App::Application::getUserAppDataDir() + "CrashReports"
+-        );
+-# endif
+-#else
+-        App::Application::init(argc, argv);
+-#endif
+-        // To set the window icon on Wayland, the desktop file has to be available to the
+-        // compositor. Qt also uses the desktop file name to register with the portal registry.
+-        const QString desktopFileName = QString::fromStdString(
+-            App::Application::Config()["DesktopFileName"]
+-        );
+-        if (desktopFileIsAvailable(desktopFileName)) {
+-            QGuiApplication::setDesktopFileName(desktopFileName);
+-        }
+-
+-        std::map<std::string, std::string>::iterator it = App::Application::Config().find(
+-            "NavigationStyle"
+-        );
+-        if (it != App::Application::Config().end()) {
+-            ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
+-                "User parameter:BaseApp/Preferences/View"
+-            );
+-            // if not already defined do it now (for the very first start)
+-            std::string style = hGrp->GetASCII("NavigationStyle", it->second.c_str());
+-            hGrp->SetASCII("NavigationStyle", style.c_str());
+-        }
+-
+-        Gui::Application::initApplication();
+-
+-        // Only if 'RunMode' is set to 'Gui' do the replacement. With a hidden main window
+-        // (--hidden, scripted use) keep Python's stdout/stderr on the terminal.
+-        if (App::Application::Config()["RunMode"] == "Gui"
+-            && !Gui::Application::hiddenMainWindow()) {
+-            Base::Interpreter().replaceStdOutput();
+-        }
+-    }
+-    catch (const Base::UnknownProgramOption& e) {
+-        QApplication app(argc, argv);
+-        QString msg = QString::fromLatin1(e.what());
+-        displayCritical(msg);
+-        exit(1);
+-    }
+-    catch (const Base::ProgramInformation& e) {
+-        QApplication app(argc, argv);
+-        if (std::strcmp(e.what(), App::ProgramInformation::verboseVersionEmitMessage) == 0) {
+-            displayInfo(Gui::ProgramInformation::collect());
+-        }
+-        else {
+-            displayInfo(e.what());
+-        }
+-        exit(0);
+-    }
+-    catch (const Base::Exception& e) {
+-        // Popup an own dialog box instead of that one of Windows
+-        QApplication app(argc, argv);
+-        QString appName = QString::fromStdString(App::Application::getExecutableName());
+-        QString msg = QObject::tr("While initializing %1 the following exception occurred: '%2'\n\n")
+-                          .arg(appName, QString::fromUtf8(e.what()));
+-        if (Py_IsInitialized()) {
+-            msg += QObject::tr("Python is searching for its files in the following directories:\n%1\n\n")
+-                       .arg(QString::fromStdString(Base::Interpreter().getPythonPath()));
+-        }
+-        else {
+-            msg += QObject::tr("Python has not initialized yet.\n\n");
+-        }
+-        msg += QObject::tr("Python version information:\n%1\n")
+-                   .arg(QString::fromLatin1(Py_GetVersion()));
+-        const char* pythonhome = getenv("PYTHONHOME");
+-        if (pythonhome) {
+-            msg += QObject::tr("\nThe environment variable PYTHONHOME is set to '%1'.")
+-                       .arg(QString::fromUtf8(pythonhome));
+-            msg += QObject::tr(
+-                "\nSetting this environment variable might cause Python to fail. "
+-                "Please contact your administrator to unset it on your system.\n\n"
+-            );
+-        }
+-        else {
+-            msg += QObject::tr(
+-                "\nPlease contact the application's support team for more information.\n\n"
+-            );
+-        }
+-
+-        displayCritical(msg, false);
+-        exit(100);
+-    }
+-    catch (...) {
+-        // Popup an own dialog box instead of that one of Windows
+-        QApplication app(argc, argv);
+-        QString appName = QString::fromStdString(App::Application::getExecutableName());
+-        QString msg = QObject::tr(
+-                          "Unknown runtime error occurred while initializing %1.\n\n"
+-                          "Please contact the application's support team for more information.\n\n"
+-        )
+-                          .arg(appName);
+-        displayCritical(msg, false);
+-        exit(101);
+-    }
+-
+-    // Run phase ===========================================================
+-    Base::RedirectStdOutput stdcout;
+-    Base::RedirectStdLog stdclog;
+-    Base::RedirectStdError stdcerr;
+-    std::streambuf* oldcout = std::cout.rdbuf(&stdcout);
+-    std::streambuf* oldclog = std::clog.rdbuf(&stdclog);
+-    std::streambuf* oldcerr = std::cerr.rdbuf(&stdcerr);
+-
+-    try {
+-        if (inGuiMode()) {
+-            Gui::Application::runApplication();
+-        }
+-        else {
+-            App::Application::runApplication();
+-        }
+-    }
+-    catch (const Base::SystemExitException& e) {
+-        flushPythonStreams();
+-        exit(e.getExitCode());
+-    }
+-    catch (const Base::Exception& e) {
+-        flushPythonStreams();
+-        e.reportException();
+-        exit(1);
+-    }
+-    catch (const std::exception& e) {
+-        flushPythonStreams();
+-        Base::Console().error("Application unexpectedly terminated: {}\n", e.what());
+-        exit(1);
+-    }
+-    catch (...) {
+-        flushPythonStreams();
+-        Base::Console().error("Application unexpectedly terminated\n");
+-        exit(1);
+-    }
+-
+-    std::cout.rdbuf(oldcout);
+-    std::clog.rdbuf(oldclog);
+-    std::cerr.rdbuf(oldcerr);
+-
+-    // Destruction phase ===========================================================
+-    Base::Console().log("{} terminating...\n", App::Application::getExecutableName());
+-
+-    // cleans up
+-    App::Application::destruct();
+-
+-    Base::Console().log("{} completely terminated\n", App::Application::getExecutableName());
+-
+-    return 0;
+-}
++// SPDX-License-Identifier: LGPL-2.1-or-later
++/***************************************************************************
++ *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
++ *                                                                         *
++ *   This file is part of the FreeCAD CAx development system.              *
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU Library General Public License (LGPL)   *
++ *   as published by the Free Software Foundation; either version 2 of     *
++ *   the License, or (at your option) any later version.                   *
++ *   for detail see the LICENCE text file.                                 *
++ *                                                                         *
++ *   FreeCAD is distributed in the hope that it will be useful,            *
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
++ *   GNU Library General Public License for more details.                  *
++ *                                                                         *
++ *   You should have received a copy of the GNU Library General Public     *
++ *   License along with FreeCAD; if not, write to the Free Software        *
++ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
++ *   USA                                                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#include <FCConfig.h>
++
++#if defined(_MSC_VER)
++# include <windows.h>
++#endif
++
++#if HAVE_CONFIG_H
++# include <config.h>
++#endif  // HAVE_CONFIG_H
++
++#include <Base/Version.h>
++
++#include <cstdio>
++#include <format>
++#include <map>
++#include <stdexcept>
++
++#include <QApplication>
++#include <QLocale>
++#include <QMessageBox>
++#include <QStandardPaths>
++
++// FreeCAD header
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
++#include <App/ProgramInformation.h>
++#include <Base/ConsoleObserver.h>
++#include <Base/CrashReporter/WindowsCrashReporter.h>
++#include <Base/Interpreter.h>
++#include <Base/Parameter.h>
++#include <Base/Exception.h>
++#include <Gui/Application.h>
++#include <Gui/ProgramInformation.h>
++
++
++void PrintInitHelp();
++
++const auto sBanner = std::format(
++    "(C) 2001-{} FreeCAD contributors\n"
++    "FreeCAD is free and open-source software licensed under the terms of LGPL2+ license.\n\n",
++    Base::FCVersionInfo::CopyrightYear()
++);
++
++
++class Redirection
++{
++public:
++    Redirection(FILE* f)
++        : fi(Base::FileInfo::getTempFileName())
++        , file(f)
++    {
++#ifdef WIN32
++        FILE* ptr = _wfreopen(fi.toStdWString().c_str(), L"w", file);
++#else
++        FILE* ptr = freopen(fi.filePath().c_str(), "w", file);
++#endif
++        if (!ptr) {
++            std::cerr << "Failed to reopen file" << std::endl;
++        }
++    }
++    ~Redirection()
++    {
++        fclose(file);
++        fi.deleteFile();
++    }
++
++private:
++    Base::FileInfo fi;
++    FILE* file;
++};
++
++// exit() skips Python's finalization, so text still buffered in sys.stdout/sys.stderr
++// (e.g. print() output right before an exception or sys.exit()) would be lost.
++static void flushPythonStreams()
++{
++    if (!Py_IsInitialized()) {
++        return;
++    }
++    Base::PyGILStateLocker lock;
++    for (const char* name : {"stdout", "stderr"}) {
++        PyObject* stream = PySys_GetObject(name);  // borrowed
++        if (stream && stream != Py_None) {
++            PyObject* result = PyObject_CallMethod(stream, "flush", nullptr);
++            Py_XDECREF(result);
++        }
++    }
++    PyErr_Clear();
++}
++
++static bool inGuiMode()
++{
++    // if console option is set then run in cmd mode
++    if (App::Application::Config()["Console"] == "1") {
++        return false;
++    }
++    return App::Application::Config()["RunMode"] == "Gui"
++        || App::Application::Config()["RunMode"] == "Internal";
++}
++
++#if defined(FC_OS_LINUX) || defined(FC_OS_BSD)
++static bool desktopFileIsAvailable(const QString& desktopFileName)
++{
++    const QString desktopFile = desktopFileName + QStringLiteral(".desktop");
++    return !QStandardPaths::locate(QStandardPaths::ApplicationsLocation, desktopFile).isEmpty();
++}
++#else
++static bool desktopFileIsAvailable(const QString&)
++{
++    return true;
++}
++#endif
++
++static void displayInfo(const std::string& msg, bool preformatted = true)
++{
++    if (inGuiMode()) {
++        QString qMsg = QString::fromStdString(msg);
++        QString appName = QString::fromStdString(App::Application::getExecutableName());
++        QMessageBox msgBox;
++        msgBox.setIcon(QMessageBox::Information);
++        msgBox.setWindowTitle(appName);
++        msgBox.setDetailedText(qMsg);
++        msgBox.setText(preformatted ? QStringLiteral("<pre>%1</pre>").arg(qMsg) : qMsg);
++        msgBox.exec();
++    }
++    else {
++        std::cout << msg;
++    }
++}
++
++static void displayCritical(const QString& msg, bool preformatted = true)
++{
++    if (inGuiMode()) {
++        QString appName = QString::fromStdString(App::Application::getExecutableName());
++        QString title = QObject::tr("Initialization of %1 failed").arg(appName);
++        QString text = preformatted ? QStringLiteral("<pre>%1</pre>").arg(msg) : msg;
++        QMessageBox::critical(nullptr, title, text);
++    }
++    else {
++        std::cerr << msg.toStdString();
++    }
++}
++
++int main(int argc, char** argv)
++{
++#if defined(FC_OS_LINUX) || defined(FC_OS_BSD)
++    setlocale(LC_ALL, "");       // use native environment settings
++    setlocale(LC_NUMERIC, "C");  // except for numbers to not break XML import
++    // See https://github.com/FreeCAD/FreeCAD/issues/16724
++
++    // Make sure to setup the Qt locale system before setting LANG and LC_ALL to C.
++    // which is needed to use the system locale settings.
++    (void)QLocale::system();
++    // See https://forum.freecad.org/viewtopic.php?f=18&t=20600
++    // See Gui::Application::runApplication()
++    putenv("LC_NUMERIC=C");
++    putenv("PYTHONPATH=");
++#elif defined(FC_OS_MACOSX)
++    (void)QLocale::system();
++    putenv("PYTHONPATH=");
++#elif defined(__MINGW32__)
++    const char* mingw_prefix = getenv("MINGW_PREFIX");
++    const char* py_home = getenv("PYTHONHOME");
++    if (!py_home && mingw_prefix) {
++        _putenv_s("PYTHONHOME", mingw_prefix);
++    }
++#else
++    _putenv("PYTHONPATH=");
++    // https://forum.freecad.org/viewtopic.php?f=4&t=18288
++    // https://forum.freecad.org/viewtopic.php?f=3&t=20515
++    const char* fc_py_home = getenv("FC_PYTHONHOME");
++    if (fc_py_home) {
++        _putenv_s("PYTHONHOME", fc_py_home);
++    }
++    else {
++        _putenv("PYTHONHOME=");
++    }
++#endif
++
++#if defined(FC_OS_WIN32)
++    // we need to force Coin not to use Freetype in order to find installed fonts on Windows
++    // see https://forum.freecad.org/viewtopic.php?p=485142#p485016
++    _putenv("COIN_FORCE_FREETYPE_OFF=1");
++
++    int argc_ = argc;
++    QVector<QByteArray> data;
++    QVector<char*> argv_;
++
++    // get the command line arguments as unicode string
++    {
++        QCoreApplication app(argc, argv);
++        QStringList args = app.arguments();
++        for (QStringList::iterator it = args.begin(); it != args.end(); ++it) {
++            data.push_back(it->toUtf8());
++            argv_.push_back(data.back().data());
++        }
++        argv_.push_back(0);  // 0-terminated string
++    }
++#endif
++
++    // Name and Version of the Application
++    App::Application::Config()["ExeName"] = "FreeCAD";
++    App::Application::Config()["ExeVendor"] = "FreeCAD";
++    App::Application::Config()["AppDataSkipVendor"] = "true";
++    App::Application::Config()["MaintainerUrl"] = "https://freecad.org";
++
++    // set the banner (for logging and console)
++    App::Application::Config()["CopyrightInfo"] = sBanner;
++    App::Application::Config()["AppIcon"] = "freecad";
++    App::Application::Config()["SplashScreen"] = "freecadsplash";
++#ifdef FC_BUILD_UNIFIED
++    App::configureIntegratedEnvironment(true);
++#endif
++    // Mouse like most applications: left selects, right drag orbits (right click opens the
++    // context menu), middle drag pans, the wheel zooms at the cursor. Written into the
++    // settings on the first start (they are this build's own, see UserDataDirName); a style
++    // set later, e.g. by a macro, is kept.
++    App::Application::Config()["NavigationStyle"] = "Gui::TinkerCADNavigationStyle";
++    // App::Application::Config()["HiddenDockWindow"] = "Property editor";
++    App::Application::Config()["SplashAlignment"] = "Bottom|Left";
++    App::Application::Config()["SplashTextColor"] = "#418FDE";
++    App::Application::Config()["SplashWarningColor"] = "#CA333B";
++    App::Application::Config()["SplashInfoColor"] = "#212529";
++    App::Application::Config()["SplashInfoPosition"] = "6,75";
++    App::Application::Config()["DesktopFileName"] = "org.freecad.FreeCAD";
++
++    try {
++        // Init phase ===========================================================
++        // sets the default run mode for FC, starts with gui if not overridden in InitConfig...
++        App::Application::Config()["RunMode"] = "Gui";
++        App::Application::Config()["Console"] = "0";
++        App::Application::Config()["LoggingConsole"] = "1";
++
++        // Inits the Application
++#if defined(FC_OS_WIN32)
++        App::Application::init(argc_, argv_.data());
++# ifdef _MSC_VER
++        // *Not* installed on mingw, etc.
++        Base::CrashReporter::WindowsCrashReporter::install(
++            App::Application::getUserAppDataDir() + "CrashReports"
++        );
++# endif
++#else
++        App::Application::init(argc, argv);
++#endif
++        // To set the window icon on Wayland, the desktop file has to be available to the
++        // compositor. Qt also uses the desktop file name to register with the portal registry.
++        const QString desktopFileName = QString::fromStdString(
++            App::Application::Config()["DesktopFileName"]
++        );
++        if (desktopFileIsAvailable(desktopFileName)) {
++            QGuiApplication::setDesktopFileName(desktopFileName);
++        }
++
++        std::map<std::string, std::string>::iterator it = App::Application::Config().find(
++            "NavigationStyle"
++        );
++        if (it != App::Application::Config().end()) {
++            ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
++                "User parameter:BaseApp/Preferences/View"
++            );
++            // if not already defined do it now (for the very first start)
++            std::string style = hGrp->GetASCII("NavigationStyle", it->second.c_str());
++            hGrp->SetASCII("NavigationStyle", style.c_str());
++        }
++
++        Gui::Application::initApplication();
++
++        // Only if 'RunMode' is set to 'Gui' do the replacement. With a hidden main window
++        // (--hidden, scripted use) keep Python's stdout/stderr on the terminal.
++        if (App::Application::Config()["RunMode"] == "Gui"
++            && !Gui::Application::hiddenMainWindow()) {
++            Base::Interpreter().replaceStdOutput();
++        }
++    }
++    catch (const Base::UnknownProgramOption& e) {
++        QApplication app(argc, argv);
++        QString msg = QString::fromLatin1(e.what());
++        displayCritical(msg);
++        exit(1);
++    }
++    catch (const Base::ProgramInformation& e) {
++        QApplication app(argc, argv);
++        if (std::strcmp(e.what(), App::ProgramInformation::verboseVersionEmitMessage) == 0) {
++            displayInfo(Gui::ProgramInformation::collect());
++        }
++        else {
++            displayInfo(e.what());
++        }
++        exit(0);
++    }
++    catch (const Base::Exception& e) {
++        // Popup an own dialog box instead of that one of Windows
++        QApplication app(argc, argv);
++        QString appName = QString::fromStdString(App::Application::getExecutableName());
++        QString msg = QObject::tr("While initializing %1 the following exception occurred: '%2'\n\n")
++                          .arg(appName, QString::fromUtf8(e.what()));
++        if (Py_IsInitialized()) {
++            msg += QObject::tr("Python is searching for its files in the following directories:\n%1\n\n")
++                       .arg(QString::fromStdString(Base::Interpreter().getPythonPath()));
++        }
++        else {
++            msg += QObject::tr("Python has not initialized yet.\n\n");
++        }
++        msg += QObject::tr("Python version information:\n%1\n")
++                   .arg(QString::fromLatin1(Py_GetVersion()));
++        const char* pythonhome = getenv("PYTHONHOME");
++        if (pythonhome) {
++            msg += QObject::tr("\nThe environment variable PYTHONHOME is set to '%1'.")
++                       .arg(QString::fromUtf8(pythonhome));
++            msg += QObject::tr(
++                "\nSetting this environment variable might cause Python to fail. "
++                "Please contact your administrator to unset it on your system.\n\n"
++            );
++        }
++        else {
++            msg += QObject::tr(
++                "\nPlease contact the application's support team for more information.\n\n"
++            );
++        }
++
++        displayCritical(msg, false);
++        exit(100);
++    }
++    catch (...) {
++        // Popup an own dialog box instead of that one of Windows
++        QApplication app(argc, argv);
++        QString appName = QString::fromStdString(App::Application::getExecutableName());
++        QString msg = QObject::tr(
++                          "Unknown runtime error occurred while initializing %1.\n\n"
++                          "Please contact the application's support team for more information.\n\n"
++        )
++                          .arg(appName);
++        displayCritical(msg, false);
++        exit(101);
++    }
++
++    // Run phase ===========================================================
++    Base::RedirectStdOutput stdcout;
++    Base::RedirectStdLog stdclog;
++    Base::RedirectStdError stdcerr;
++    std::streambuf* oldcout = std::cout.rdbuf(&stdcout);
++    std::streambuf* oldclog = std::clog.rdbuf(&stdclog);
++    std::streambuf* oldcerr = std::cerr.rdbuf(&stdcerr);
++
++    try {
++        if (inGuiMode()) {
++            Gui::Application::runApplication();
++        }
++        else {
++            App::Application::runApplication();
++        }
++    }
++    catch (const Base::SystemExitException& e) {
++        flushPythonStreams();
++        exit(e.getExitCode());
++    }
++    catch (const Base::Exception& e) {
++        flushPythonStreams();
++        e.reportException();
++        exit(1);
++    }
++    catch (const std::exception& e) {
++        flushPythonStreams();
++        Base::Console().error("Application unexpectedly terminated: {}\n", e.what());
++        exit(1);
++    }
++    catch (...) {
++        flushPythonStreams();
++        Base::Console().error("Application unexpectedly terminated\n");
++        exit(1);
++    }
++
++    std::cout.rdbuf(oldcout);
++    std::clog.rdbuf(oldclog);
++    std::cerr.rdbuf(oldcerr);
++
++    // Destruction phase ===========================================================
++    Base::Console().log("{} terminating...\n", App::Application::getExecutableName());
++
++    // cleans up
++    App::Application::destruct();
++
++    Base::Console().log("{} completely terminated\n", App::Application::getExecutableName());
++
++    return 0;
++}
+diff --git a/src/Main/MainPy.cpp b/src/Main/MainPy.cpp
+index 1be1d0d36..fad0ca99c 100644
+--- a/src/Main/MainPy.cpp
++++ b/src/Main/MainPy.cpp
+@@ -1,192 +1,196 @@
+-// SPDX-License-Identifier: LGPL-2.1-or-later
+-/***************************************************************************
+- *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
+- *                                                                         *
+- *   This file is part of the FreeCAD CAx development system.              *
+- *                                                                         *
+- *   This program is free software; you can redistribute it and/or modify  *
+- *   it under the terms of the GNU Library General Public License (LGPL)   *
+- *   as published by the Free Software Foundation; either version 2 of     *
+- *   the License, or (at your option) any later version.                   *
+- *   for detail see the LICENCE text file.                                 *
+- *                                                                         *
+- *   FreeCAD is distributed in the hope that it will be useful,            *
+- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+- *   GNU Library General Public License for more details.                  *
+- *                                                                         *
+- *   You should have received a copy of the GNU Library General Public     *
+- *   License along with FreeCAD; if not, write to the Free Software        *
+- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
+- *   USA                                                                   *
+- *                                                                         *
+- ***************************************************************************/
+-
+-#include <FCConfig.h>
+-
+-#if defined(FC_OS_WIN32)
+-# include <windows.h>
+-#endif
+-
+-#ifdef FC_OS_MACOSX
+-# include <mach-o/dyld.h>
+-# include <string>
+-#endif
+-
+-#if HAVE_CONFIG_H
+-# include <config.h>
+-#endif  // HAVE_CONFIG_H
+-
+-#include <cstdio>
+-#include <iostream>
+-#include <QByteArray>
+-
+-// FreeCAD Base header
+-#include <Base/ConsoleObserver.h>
+-#include <Base/Exception.h>
+-#include <Base/PyObjectBase.h>
+-#include <Base/Sequencer.h>
+-#include <App/Application.h>
+-
+-#if defined(FC_OS_WIN32)
+-
+-/** DllMain is called when DLL is loaded
+- */
+-BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
+-{
+-    switch (ul_reason_for_call) {
+-        case DLL_PROCESS_ATTACH: {
+-            // This name is preliminary, we pass it to Application::init() in initFreeCAD()
+-            // which does the rest.
+-            char szFileName[MAX_PATH];
+-            GetModuleFileNameA((HMODULE)hModule, szFileName, MAX_PATH - 1);
+-            App::Application::Config()["AppHomePath"] = szFileName;
+-        } break;
+-        default:
+-            break;
+-    }
+-
+-    return true;
+-}
+-#elif defined(FC_OS_LINUX) || defined(FC_OS_BSD)
+-# ifndef GNU_SOURCE
+-#  define GNU_SOURCE
+-# endif
+-# include <dlfcn.h>
+-#elif defined(FC_OS_CYGWIN)
+-# include <windows.h>
+-#endif
+-
+-PyMOD_INIT_FUNC(FreeCAD)
+-{
+-    // Init phase ===========================================================
+-    App::Application::Config()["ExeName"] = "FreeCAD";
+-    App::Application::Config()["ExeVendor"] = "FreeCAD";
+-    App::Application::Config()["AppDataSkipVendor"] = "true";
+-
+-    QByteArray path;
+-
+-#if defined(FC_OS_WIN32)
+-    path = App::Application::Config()["AppHomePath"].c_str();
+-#elif defined(FC_OS_CYGWIN)
+-    HMODULE hModule = GetModuleHandle("FreeCAD.dll");
+-    char szFileName[MAX_PATH];
+-    GetModuleFileNameA(hModule, szFileName, MAX_PATH - 1);
+-    path = szFileName;
+-#elif defined(FC_OS_LINUX) || defined(FC_OS_BSD)
+-    putenv("LANG=C");
+-    putenv("LC_ALL=C");
+-    // get whole path of the library
+-    Dl_info info;
+-    int ret = dladdr((void*)PyInit_FreeCAD, &info);
+-    if ((ret == 0) || (!info.dli_fname)) {
+-        PyErr_SetString(PyExc_ImportError, "Cannot get path of the FreeCAD module!");
+-        return nullptr;
+-    }
+-
+-    path = info.dli_fname;
+-    // this is a workaround to avoid a crash in libuuid.so
+-#elif defined(FC_OS_MACOSX)
+-
+-    // The MacOS approach uses the Python sys.path list to find the path
+-    // to FreeCAD.so - this should be OS-agnostic, except these two
+-    // strings, and the call to access().
+-    const static char libName[] = "/FreeCAD.so";
+-    const static char upDir[] = "/../";
+-
+-    PyObject* pySysPath = PySys_GetObject("path");
+-    if (PyList_Check(pySysPath)) {
+-        int i;
+-        // pySysPath should be a *PyList of strings - iterate through it
+-        // backwards since the FreeCAD path was likely appended just before
+-        // we were imported.
+-        for (i = PyList_Size(pySysPath) - 1; i >= 0; --i) {
+-            const char* basePath;
+-            PyObject* pyPath = PyList_GetItem(pySysPath, i);
+-            long sz = 0;
+-
+-            if (PyUnicode_Check(pyPath)) {
+-                // Python 3 string
+-                basePath = PyUnicode_AsUTF8AndSize(pyPath, &sz);
+-            }
+-            else {
+-                continue;
+-            }
+-
+-            if (sz + sizeof(libName) > PATH_MAX) {
+-                continue;
+-            }
+-
+-            path = basePath;
+-
+-            // append libName to the path
+-            if (access(path + libName, R_OK | X_OK) == 0) {
+-
+-                // The FreeCAD "home" path is one level up from
+-                // libName, so replace libName with upDir.
+-                path += upDir;
+-                break;
+-            }
+-        }
+-    }
+-
+-    if (path.isEmpty()) {
+-        PyErr_SetString(PyExc_ImportError, "Cannot get path of the FreeCAD module!");
+-        return nullptr;
+-    }
+-
+-#else
+-# error "Implement: Retrieve the path of the module for your platform."
+-#endif
+-    int argc = 1;
+-    std::vector<char*> argv;
+-    argv.push_back(path.data());
+-
+-    try {
+-        // Inits the Application
+-        App::Application::init(argc, argv.data());
+-    }
+-    catch (const Base::Exception& e) {
+-        std::string appName = App::Application::getExecutableName();
+-        std::cout << "While initializing " << appName << " the following exception occurred: '"
+-                  << e.what() << "'\n\n";
+-        std::cout << "Please contact the application's support team for more information."
+-                  << std::endl;
+-    }
+-
+-    Base::EmptySequencer* seq = new Base::EmptySequencer();
+-    (void)seq;
+-    static Base::RedirectStdOutput stdcout;
+-    static Base::RedirectStdLog stdclog;
+-    static Base::RedirectStdError stdcerr;
+-    std::cout.rdbuf(&stdcout);
+-    std::clog.rdbuf(&stdclog);
+-    std::cerr.rdbuf(&stdcerr);
+-
+-    PyObject* modules = PyImport_GetModuleDict();
+-    PyObject* module = PyDict_GetItemString(modules, "FreeCAD");
+-    if (!module) {
+-        PyErr_SetString(PyExc_ImportError, "Failed to load FreeCAD module!");
+-    }
+-    return module;
+-}
++// SPDX-License-Identifier: LGPL-2.1-or-later
++/***************************************************************************
++ *   Copyright (c) 2008 Jürgen Riegel <juergen.riegel@web.de>              *
++ *                                                                         *
++ *   This file is part of the FreeCAD CAx development system.              *
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU Library General Public License (LGPL)   *
++ *   as published by the Free Software Foundation; either version 2 of     *
++ *   the License, or (at your option) any later version.                   *
++ *   for detail see the LICENCE text file.                                 *
++ *                                                                         *
++ *   FreeCAD is distributed in the hope that it will be useful,            *
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
++ *   GNU Library General Public License for more details.                  *
++ *                                                                         *
++ *   You should have received a copy of the GNU Library General Public     *
++ *   License along with FreeCAD; if not, write to the Free Software        *
++ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  *
++ *   USA                                                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#include <FCConfig.h>
++
++#if defined(FC_OS_WIN32)
++# include <windows.h>
++#endif
++
++#ifdef FC_OS_MACOSX
++# include <mach-o/dyld.h>
++# include <string>
++#endif
++
++#if HAVE_CONFIG_H
++# include <config.h>
++#endif  // HAVE_CONFIG_H
++
++#include <cstdio>
++#include <iostream>
++#include <QByteArray>
++
++// FreeCAD Base header
++#include <Base/ConsoleObserver.h>
++#include <Base/Exception.h>
++#include <Base/PyObjectBase.h>
++#include <Base/Sequencer.h>
++#include <App/Application.h>
++#include <App/SingleWorkbench.h>
++
++#if defined(FC_OS_WIN32)
++
++/** DllMain is called when DLL is loaded
++ */
++BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
++{
++    switch (ul_reason_for_call) {
++        case DLL_PROCESS_ATTACH: {
++            // This name is preliminary, we pass it to Application::init() in initFreeCAD()
++            // which does the rest.
++            char szFileName[MAX_PATH];
++            GetModuleFileNameA((HMODULE)hModule, szFileName, MAX_PATH - 1);
++            App::Application::Config()["AppHomePath"] = szFileName;
++        } break;
++        default:
++            break;
++    }
++
++    return true;
++}
++#elif defined(FC_OS_LINUX) || defined(FC_OS_BSD)
++# ifndef GNU_SOURCE
++#  define GNU_SOURCE
++# endif
++# include <dlfcn.h>
++#elif defined(FC_OS_CYGWIN)
++# include <windows.h>
++#endif
++
++PyMOD_INIT_FUNC(FreeCAD)
++{
++    // Init phase ===========================================================
++    App::Application::Config()["ExeName"] = "FreeCAD";
++    App::Application::Config()["ExeVendor"] = "FreeCAD";
++    App::Application::Config()["AppDataSkipVendor"] = "true";
++#ifdef FC_BUILD_UNIFIED
++    App::configureIntegratedEnvironment(false);
++#endif
++
++    QByteArray path;
++
++#if defined(FC_OS_WIN32)
++    path = App::Application::Config()["AppHomePath"].c_str();
++#elif defined(FC_OS_CYGWIN)
++    HMODULE hModule = GetModuleHandle("FreeCAD.dll");
++    char szFileName[MAX_PATH];
++    GetModuleFileNameA(hModule, szFileName, MAX_PATH - 1);
++    path = szFileName;
++#elif defined(FC_OS_LINUX) || defined(FC_OS_BSD)
++    putenv("LANG=C");
++    putenv("LC_ALL=C");
++    // get whole path of the library
++    Dl_info info;
++    int ret = dladdr((void*)PyInit_FreeCAD, &info);
++    if ((ret == 0) || (!info.dli_fname)) {
++        PyErr_SetString(PyExc_ImportError, "Cannot get path of the FreeCAD module!");
++        return nullptr;
++    }
++
++    path = info.dli_fname;
++    // this is a workaround to avoid a crash in libuuid.so
++#elif defined(FC_OS_MACOSX)
++
++    // The MacOS approach uses the Python sys.path list to find the path
++    // to FreeCAD.so - this should be OS-agnostic, except these two
++    // strings, and the call to access().
++    const static char libName[] = "/FreeCAD.so";
++    const static char upDir[] = "/../";
++
++    PyObject* pySysPath = PySys_GetObject("path");
++    if (PyList_Check(pySysPath)) {
++        int i;
++        // pySysPath should be a *PyList of strings - iterate through it
++        // backwards since the FreeCAD path was likely appended just before
++        // we were imported.
++        for (i = PyList_Size(pySysPath) - 1; i >= 0; --i) {
++            const char* basePath;
++            PyObject* pyPath = PyList_GetItem(pySysPath, i);
++            long sz = 0;
++
++            if (PyUnicode_Check(pyPath)) {
++                // Python 3 string
++                basePath = PyUnicode_AsUTF8AndSize(pyPath, &sz);
++            }
++            else {
++                continue;
++            }
++
++            if (sz + sizeof(libName) > PATH_MAX) {
++                continue;
++            }
++
++            path = basePath;
++
++            // append libName to the path
++            if (access(path + libName, R_OK | X_OK) == 0) {
++
++                // The FreeCAD "home" path is one level up from
++                // libName, so replace libName with upDir.
++                path += upDir;
++                break;
++            }
++        }
++    }
++
++    if (path.isEmpty()) {
++        PyErr_SetString(PyExc_ImportError, "Cannot get path of the FreeCAD module!");
++        return nullptr;
++    }
++
++#else
++# error "Implement: Retrieve the path of the module for your platform."
++#endif
++    int argc = 1;
++    std::vector<char*> argv;
++    argv.push_back(path.data());
++
++    try {
++        // Inits the Application
++        App::Application::init(argc, argv.data());
++    }
++    catch (const Base::Exception& e) {
++        std::string appName = App::Application::getExecutableName();
++        std::cout << "While initializing " << appName << " the following exception occurred: '"
++                  << e.what() << "'\n\n";
++        std::cout << "Please contact the application's support team for more information."
++                  << std::endl;
++    }
++
++    Base::EmptySequencer* seq = new Base::EmptySequencer();
++    (void)seq;
++    static Base::RedirectStdOutput stdcout;
++    static Base::RedirectStdLog stdclog;
++    static Base::RedirectStdError stdcerr;
++    std::cout.rdbuf(&stdcout);
++    std::clog.rdbuf(&stdclog);
++    std::cerr.rdbuf(&stdcerr);
++
++    PyObject* modules = PyImport_GetModuleDict();
++    PyObject* module = PyDict_GetItemString(modules, "FreeCAD");
++    if (!module) {
++        PyErr_SetString(PyExc_ImportError, "Failed to load FreeCAD module!");
++    }
++    return module;
++}
+diff --git a/src/Mod/TechDraw/App/Preferences.cpp b/src/Mod/TechDraw/App/Preferences.cpp
+index f48da16bd..68c390b1f 100644
+--- a/src/Mod/TechDraw/App/Preferences.cpp
++++ b/src/Mod/TechDraw/App/Preferences.cpp
+@@ -29,7 +29,6 @@
+ 
+ #include <App/Application.h>
+ #include <App/Material.h>
+-#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Base/FileInfo.h>
+ #include <Base/Parameter.h>
+@@ -155,8 +154,10 @@ bool Preferences::useGlobalDecimals()
+ int Preferences::projectionAngle()
+ {
+     // The integrated working environment is made for Japanese users first: Japanese
+-    // drawings (JIS B 0001) use third-angle projection
+-    int defaultConvention = App::isSingleWorkbench()
++    // drawings (JIS B 0001) use third-angle projection. The same with or without the GUI.
++    const auto& cfg = App::Application::Config();
++    auto standard = cfg.find("DrawingStandard");
++    int defaultConvention = standard != cfg.end() && standard->second == "JIS"
+         ? (int)DrawProjGroup::ViewProjectionConvention::ThirdAngle
+         : (int)DrawProjGroup::ViewProjectionConvention::FirstAngle;
+     return getPreferenceGroup("General")->GetInt("ProjectionAngle",
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From fcbc3ac7975e3ca401d0c1edc41f6dcc525d78f0 Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Thu, 2 Jul 2026 10:11:41 -0700
-Subject: [PATCH 144/158] Gui: Don't throw from getPointOnXYPlaneOfPlacement
+Subject: [PATCH 144/197] Gui: Don't throw from getPointOnXYPlaneOfPlacement
  during assembly drag
 
 Dragging an assembly part while the joint's drag plane is viewed edge-on

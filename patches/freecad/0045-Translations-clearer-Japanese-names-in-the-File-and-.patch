@@ -1,7 +1,7 @@
 From 82a89bc50bbbbc679aaffcb016ca7dff0a409c52 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:26:08 +0900
-Subject: [PATCH 045/158] Translations: clearer Japanese names in the File and
+Subject: [PATCH 045/197] Translations: clearer Japanese names in the File and
  Edit menus
 
 "Revert" had the same Japanese name as "Undo"; it now says "back to

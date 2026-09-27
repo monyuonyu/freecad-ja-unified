@@ -1,7 +1,7 @@
 From 2e8fd76052d60877a61e962ef2461850a71a0510 Mon Sep 17 00:00:00 2001
 From: Alfredo Monclus <alfredomonclus@gmail.com>
 Date: Sat, 5 Sep 2026 13:26:07 -0300
-Subject: [PATCH 123/158] fix: polyline loses last point after fillet trims its
+Subject: [PATCH 123/197] fix: polyline loses last point after fillet trims its
  segments
 
 ---

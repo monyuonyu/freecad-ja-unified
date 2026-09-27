@@ -1,7 +1,7 @@
 From fe747b6cb401f3cac9994dfbb5e3cdc19b866afc Mon Sep 17 00:00:00 2001
 From: paddle <pierrelouis.boyer@gmail.com>
 Date: Fri, 25 Sep 2026 23:10:31 +0200
-Subject: [PATCH 135/158] Assembly: Isolate rack-pinion export regression test
+Subject: [PATCH 135/197] Assembly: Isolate rack-pinion export regression test
 
 ---
  src/Mod/Assembly/AssemblyTests/TestCore.py | 25 +++++++++++-----------

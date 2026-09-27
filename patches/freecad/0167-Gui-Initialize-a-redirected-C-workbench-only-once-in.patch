@@ -1,0 +1,42 @@
+From f8c0da715f57ccce57da5463a8ad2fe9335b1f69 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:32 +0900
+Subject: [PATCH 167/197] Gui: Initialize a redirected C++ workbench only once
+ in single workbench mode
+
+Its Initialize() ran on every request and leaked the Python commands it
+registers again.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Application.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Application.cpp b/src/Gui/Application.cpp
+index 20d3a7b68..afb5f47b5 100644
+--- a/src/Gui/Application.cpp
++++ b/src/Gui/Application.cpp
+@@ -38,6 +38,7 @@
+ #include <QRegularExpressionMatch>
+ #include <QScreen>
+ #include <QScopeGuard>
++#include <set>
+ #include <QStatusBar>
+ #include <QStyle>
+ #include <QSurfaceFormat>
+@@ -1907,7 +1908,11 @@ bool Application::activateWorkbench(const char* name)
+         // them, without showing it
+         {
+             Base::PyGILStateLocker lock;
+-            if (PyObject* requested = PyDict_GetItemString(_pcWorkbenchDictionary, name)) {
++            // Once: the handler of a workbench written in C++ is not marked by
++            // initializeWorkbenchHandler(), and its Initialize() registers commands again
++            static std::set<std::string> initialized;
++            PyObject* requested = PyDict_GetItemString(_pcWorkbenchDictionary, name);
++            if (requested && initialized.insert(name).second) {
+                 try {
+                     Py::Object handler(requested);
+                     std::string type;
+-- 
+2.43.0
+

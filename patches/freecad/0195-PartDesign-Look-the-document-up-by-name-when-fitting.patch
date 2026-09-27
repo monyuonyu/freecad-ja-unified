@@ -1,0 +1,37 @@
+From be0548c594fd2109fdccd8ca474279dcd56b08d1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 00:25:04 +0900
+Subject: [PATCH 195/197] PartDesign: Look the document up by name when fitting
+ the view for a new sketch
+
+The deferred fit kept a raw pointer to the document, which a script
+could close before it ran.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index c4bf6d5e1..e56ee8c14 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -777,8 +777,13 @@ private:
+             }
+             // A new part: show the planes fully, not partly under the task panel
+             if (!activeBody->Tip.getValue()) {
+-                Gui::Document* gdoc = guidocument;
+-                QTimer::singleShot(0, [gdoc]() {
++                // By name: the document may be closed before this runs (e.g. by a script)
++                std::string docName = guidocument->getDocument()->getName();
++                QTimer::singleShot(0, [docName]() {
++                    auto* gdoc = Gui::Application::Instance->getDocument(docName.c_str());
++                    if (!gdoc) {
++                        return;
++                    }
+                     if (auto* view = dynamic_cast<Gui::View3DInventor*>(gdoc->getActiveView())) {
+                         view->getViewer()->viewAll();
+                     }
+-- 
+2.43.0
+

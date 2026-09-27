@@ -1,0 +1,47 @@
+From cb6a52df66d03745b2546338533429241d3494f5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 22:08:19 +0900
+Subject: [PATCH 181/197] Gui: A bare number from the expression editor takes
+ the displayed unit
+
+Since c15232437 a number entered with the expression editor was
+committed without a unit, which a field that needs one (a sketch
+dimension) took for no value: leaving the tool then deleted the new
+dimension (FreeCAD issue #32968).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/QuantitySpinBox.cpp | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/QuantitySpinBox.cpp b/src/Gui/QuantitySpinBox.cpp
+index 31b48c1d7..b6609a042 100644
+--- a/src/Gui/QuantitySpinBox.cpp
++++ b/src/Gui/QuantitySpinBox.cpp
+@@ -250,7 +250,22 @@ void QuantitySpinBox::evaluateExpression()
+ 
+ void Gui::QuantitySpinBox::setNumberExpression(App::NumberExpression* expr)
+ {
+-    commitQuantity(expr->getQuantity(), TextPolicy::ReformatEditor, false);
++    Q_D(QuantitySpinBox);
++    Base::Quantity quantity = expr->getQuantity();
++    // A bare number (e.g. "=12" in the expression editor) means the displayed unit, as when it
++    // is typed into the field. Committed without a unit, a field that needs one (a sketch
++    // dimension) takes it for no value and drops the constraint.
++    if (quantity.isDimensionless() && d->unit != Base::Unit::One) {
++        const std::string symbol = d->displayUnit.getSymbol();
++        try {
++            quantity = symbol.empty() ? Base::Quantity(quantity.getValue(), d->unit)
++                                      : Base::Quantity::parse("1 " + symbol) * quantity.getValue();
++        }
++        catch (const Base::Exception&) {
++            quantity = Base::Quantity(quantity.getValue(), d->unit);
++        }
++    }
++    commitQuantity(quantity, TextPolicy::ReformatEditor, false);
+ }
+ 
+ bool QuantitySpinBox::apply(const std::string& propName)
+-- 
+2.43.0
+

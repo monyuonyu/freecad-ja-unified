@@ -1,0 +1,43 @@
+From 618e54adc0c1e4339b4530a3c90a998089db96f3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 28 Sep 2026 00:25:04 +0900
+Subject: [PATCH 196/197] Gui: Report a failing or invalid workbench when
+ redirecting to the single workbench
+
+The redirection returned success when the requested workbench failed
+to initialize or was not of a workbench type; it now returns false or
+raises the TypeError that activation would.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Application.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/Gui/Application.cpp b/src/Gui/Application.cpp
+index afb5f47b5..62d3b38c9 100644
+--- a/src/Gui/Application.cpp
++++ b/src/Gui/Application.cpp
+@@ -1917,10 +1917,20 @@ bool Application::activateWorkbench(const char* name)
+                     Py::Object handler(requested);
+                     std::string type;
+                     initializeWorkbenchHandler(name, handler, type);
++                    // As WorkbenchManager::createWorkbench() would on activation
++                    if (!type.empty()
++                        && Base::Type::getTypeIfDerivedFrom(type, Workbench::getClassTypeId(), false)
++                               .isBad()) {
++                        initialized.erase(name);
++                        throw Base::TypeError("'" + type + "' not a workbench type");
++                    }
+                 }
+                 catch (Py::Exception&) {
++                    // Failed as when activated: report it to the caller, and try again next time
+                     Base::PyException e;
+                     e.reportException();
++                    initialized.erase(name);
++                    return false;
+                 }
+             }
+         }
+-- 
+2.43.0
+

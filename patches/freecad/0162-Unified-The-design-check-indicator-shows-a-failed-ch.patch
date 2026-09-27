@@ -1,0 +1,107 @@
+From 163a4c59d8d7c5ca327012261ee2d0703e590cdb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:44:22 +0900
+Subject: [PATCH 162/197] Unified: The design check indicator shows a failed
+ check instead of an old result
+
+A check that failed (e.g. on a document with links) left the previous
+"Check: OK" shown, possibly of another document. Results are kept per
+document and a failure is shown as such.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheckGui.py | 38 +++++++++++++++++++++++++------
+ 1 file changed, 31 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index 6c8944023..ac088fccc 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -444,7 +444,7 @@ class Indicator:
+         self.cancel_button.setProperty("allowInputWhileBusy", True)
+         mw.statusBar().addPermanentWidget(self.cancel_button)
+         self.cancel_button.hide()
+-        self.last = None
++        self.results = {}  # 文書の名前 → 最後の結果（別の文書の結果を出さないように）
+         App.addDocumentObserver(self)
+ 
+     # ドキュメントの見張り
+@@ -453,6 +453,7 @@ class Indicator:
+             self.timer.start()
+ 
+     def slotDeletedDocument(self, doc):
++        self.results.pop(doc.Name, None)
+         self.timer.start()
+ 
+     def slotActivateDocument(self, doc):
+@@ -467,7 +468,13 @@ class Indicator:
+                 self.button.hide()
+             return
+         # 大きなモデルでは重いので、部品が多いときは常時の検査を省く（ボタンから手で検査できる）
+-        if len(DesignCheck.parts(doc)) > 40:
++        try:
++            many = len(DesignCheck.parts(doc)) > 40
++        except Exception as e:
++            self.stop()
++            self.show_failed(doc, e)
++            return
++        if many:
+             self.button.hide()
+             return
+         # 自動の検査では重い「浮き」を省く（手で開いた一覧では調べる）
+@@ -486,10 +493,12 @@ class Indicator:
+         if self.button is not None:
+             self.cancel_button.hide()
+             if running:
+-                if self.last is not None:
+-                    self.update_from(self.last)
++                doc = App.ActiveDocument
++                last = self.results.get(doc.Name) if doc is not None else None
++                if last is not None:
++                    self.update_from(last)
+                 else:
+-                    self.button.hide()  # まだ結果が無い
++                    self.button.hide()  # この文書の結果はまだ無い
+ 
+     def step(self):
+         if self.steps is None:
+@@ -507,8 +516,9 @@ class Indicator:
+                 self.stop()
+             return
+         except Exception as e:
++            doc = self.step_doc
+             self.stop()
+-            App.Console.PrintLog("DesignCheck: %s\n" % e)
++            self.show_failed(doc, e)
+             return
+         if self.steps is not gen:
+             return  # 計算の最中に中止された（または始め直した）
+@@ -525,10 +535,24 @@ class Indicator:
+             self.cancel_button.show()
+         self.step_timer.start(30 if r.waiting else 0)
+ 
++    def show_failed(self, doc, error):
++        """検査が途中で失敗した: 前の結果（OK など）は出さない"""
++        App.Console.PrintLog("DesignCheck: %s\n" % error)
++        if doc is not None:
++            self.results.pop(doc.Name, None)
++        if self.button is None:
++            return
++        self.button.setIcon(_dot(_COLORS[DesignCheck.WARNING]))
++        self.button.setText(translate("DesignCheck", "Check failed"))
++        self.button.setToolTip(translate("DesignCheck", "The design check could not finish: {0}").format(error))
++        self.button.show()
++
+     def update_from(self, sm):
+         if self.button is None:
+             return
+-        self.last = sm
++        doc = App.ActiveDocument
++        if doc is not None:
++            self.results[doc.Name] = sm
+         self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
+         worst = DesignCheck.ERROR if sm[DesignCheck.ERROR] else DesignCheck.WARNING if sm[DesignCheck.WARNING] else None
+         self.button.setIcon(_dot(_COLORS[worst]) if worst else _dot("#5cb85c"))
+-- 
+2.43.0
+

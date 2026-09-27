@@ -1,7 +1,7 @@
 From 701fb1cbb9a827b86edd4d07af0ba1374f4a4665 Mon Sep 17 00:00:00 2001
 From: alexdremov <dremov.me@gmail.com>
 Date: Fri, 25 Sep 2026 19:01:01 +0200
-Subject: [PATCH 142/158] Gui: Guard task dialog references with QPointer
+Subject: [PATCH 142/197] Gui: Guard task dialog references with QPointer
  against deferred deletion
 
 TaskInfo stored raw pointers to the task panel, dialog and control

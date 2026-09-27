@@ -1,0 +1,45 @@
+From ab5c1d0955ca6e202d707c8a8743d9254876a2f3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:43:35 +0900
+Subject: [PATCH 173/197] Unified: Hide the origin in the tree also for opened
+ files
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/Labels.cpp | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Labels.cpp b/src/Mod/Unified/Gui/Labels.cpp
+index 5e9dc31f9..f4f9827b5 100644
+--- a/src/Mod/Unified/Gui/Labels.cpp
++++ b/src/Mod/Unified/Gui/Labels.cpp
+@@ -2,6 +2,9 @@
+ 
+ #include <QApplication>
+ #include <QRegularExpression>
++#include <QTimer>
++
++#include <string>
+ 
+ #include <App/Application.h>
+ #include <App/Document.h>
+@@ -126,4 +129,16 @@ void UnifiedGui::installLocalizedLabels()
+             }
+         }
+     });
++    // Also in files from before (or from standard FreeCAD): after the view settings of the
++    // file have been read, which bring the row back
++    App::GetApplication().signalFinishRestoreDocument.connect([](const App::Document& doc) {
++        std::string name = doc.getName();
++        QTimer::singleShot(0, [name]() {
++            if (App::Document* d = App::GetApplication().getDocument(name.c_str())) {
++                for (App::DocumentObject* obj : d->getObjects()) {
++                    hideOriginInTree(obj);
++                }
++            }
++        });
++    });
+ }
+-- 
+2.43.0
+

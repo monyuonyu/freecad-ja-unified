@@ -1,7 +1,7 @@
 From 707a3e9a90ac00ced6b6eb6dc34020a0c8e61128 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 19:21:51 +0900
-Subject: [PATCH 138/158] Keep this build's settings apart from FreeCAD's
+Subject: [PATCH 138/197] Keep this build's settings apart from FreeCAD's
 
 The integrated environment writes defaults of its own, but its settings,
 macros, add-ons and window layout were FreeCAD's (~/.config/FreeCAD),

@@ -1,0 +1,140 @@
+From 03eb98a592c7a10b59ac98ab77f4adf58311aa7d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:57:10 +0900
+Subject: [PATCH 178/197] Import: Keep non-ASCII names in STEP files
+
+- Names are written with the ISO 10303-21 \X2\ directive instead of raw
+  UTF-8, which other systems show garbled.
+- Reading defaults to UTF-8 (OCCT's default, which also decodes \X2\)
+  instead of "No conversion", which garbled every non-ASCII name,
+  including the ones FreeCAD wrote.
+- The code page names in the import dialog can be translated.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/WriterStep.cpp             | 52 +++++++++++++++++++
+ .../Part/App/OCAF/ImportExportSettings.cpp    |  4 +-
+ src/Mod/Part/Gui/DlgImportStep.cpp            |  7 ++-
+ 3 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Import/App/WriterStep.cpp b/src/Mod/Import/App/WriterStep.cpp
+index 16f6f5319..122e646dd 100644
+--- a/src/Mod/Import/App/WriterStep.cpp
++++ b/src/Mod/Import/App/WriterStep.cpp
+@@ -25,6 +25,11 @@
+ #include <APIHeaderSection_MakeHeader.hxx>
+ #include <NCollection_Vector.hxx>
+ #include <STEPCAFControl_Writer.hxx>
++#include <TDF_ChildIterator.hxx>
++#include <TDataStd_Name.hxx>
++#include <TDocStd_Document.hxx>
++
++#include <cstdio>
+ 
+ 
+ #include "WriterStep.h"
+@@ -35,6 +40,52 @@
+ 
+ using namespace Import;
+ 
++namespace
++{
++// Names in the ISO 10303-21 form: characters outside U+0020..U+007E are written with the \X2\
++// directive (four hex digits each). OCCT writes names as raw UTF-8, which other systems (and
++// FreeCAD's own "No conversion" reading) show garbled; it passes \X2\ through unchanged.
++TCollection_ExtendedString toPart21(const TCollection_ExtendedString& name)
++{
++    TCollection_AsciiString out;
++    bool inX2 = false;
++    for (int i = 1; i <= name.Length(); ++i) {
++        const Standard_ExtCharacter c = name.Value(i);
++        if (c >= 0x20 && c < 0x7F) {
++            if (inX2) {
++                out += "\\X0\\";
++                inX2 = false;
++            }
++            out += static_cast<char>(c);
++        }
++        else {
++            if (!inX2) {
++                out += "\\X2\\";
++                inX2 = true;
++            }
++            char hex[5];
++            std::snprintf(hex, sizeof(hex), "%04X", static_cast<unsigned>(c));
++            out += hex;
++        }
++    }
++    if (inX2) {
++        out += "\\X0\\";
++    }
++    return {out};
++}
++
++// The export document is made for this file and closed after it: its names can be rewritten
++void encodeNames(const Handle(TDocStd_Document) & doc)
++{
++    for (TDF_ChildIterator it(doc->GetData()->Root(), Standard_True); it.More(); it.Next()) {
++        Handle(TDataStd_Name) name;
++        if (it.Value().FindAttribute(TDataStd_Name::GetID(), name)) {
++            name->Set(toPart21(name->Get()));
++        }
++    }
++}
++}  // namespace
++
+ WriterStep::WriterStep(const Base::FileInfo& file)  // NOLINT
+     : file {file}
+ {}
+@@ -55,6 +106,7 @@ void WriterStep::write(Handle(TDocStd_Document) hDoc) const  // NOLINT
+     writer.SetShapeProcessFlags(aFlags);
+ #endif
+     Part::Interface::writeStepAssembly(Part::Interface::Assembly::On);
++    encodeNames(hDoc);
+     writer.Transfer(hDoc, STEPControl_AsIs);
+ 
+     APIHeaderSection_MakeHeader makeHeader(writer.ChangeWriter().Model());
+diff --git a/src/Mod/Part/App/OCAF/ImportExportSettings.cpp b/src/Mod/Part/App/OCAF/ImportExportSettings.cpp
+index 816d9348b..18ab2aef2 100644
+--- a/src/Mod/Part/App/OCAF/ImportExportSettings.cpp
++++ b/src/Mod/Part/App/OCAF/ImportExportSettings.cpp
+@@ -113,7 +113,9 @@ void ImportExportSettings::setImportCodePage(int cpIndex)
+ Resource_FormatType ImportExportSettings::getImportCodePage() const
+ {
+     Resource_FormatType result {};
+-    long codePageIndex = pGroup->GetInt("ImportCodePage", 0L);
++    // UTF-8 by default, as OCCT reads it: it also decodes the \X2\ encoding of other CAD
++    // systems. "No conversion" showed non-ASCII names (e.g. Japanese) garbled.
++    long codePageIndex = pGroup->GetInt("ImportCodePage", 1L);
+     long i = 0L;
+     for (const auto& codePageIt : codePageList) {
+         if (i == codePageIndex) {
+diff --git a/src/Mod/Part/Gui/DlgImportStep.cpp b/src/Mod/Part/Gui/DlgImportStep.cpp
+index 8ae8b94dc..8ab3237cd 100644
+--- a/src/Mod/Part/Gui/DlgImportStep.cpp
++++ b/src/Mod/Part/Gui/DlgImportStep.cpp
+@@ -23,6 +23,7 @@
+  ***************************************************************************/
+ 
+ 
++#include <QCoreApplication>
+ #include <QDialogButtonBox>
+ 
+ 
+@@ -52,8 +53,12 @@ DlgImportStep::DlgImportStep(QWidget* parent)
+     std::list<Part::OCAF::ImportExportSettings::CodePage> codepagelist;
+     codepagelist = settings.getCodePageList();
+     for (const auto& codePage : codepagelist) {
+-        ui->comboBoxImportCodePage->addItem(QString::fromStdString(codePage.codePageName));
++        ui->comboBoxImportCodePage->addItem(
++            QCoreApplication::translate("PartGui::DlgImportStep", codePage.codePageName.c_str())
++        );
+     }
++    // UTF-8 unless set otherwise (see ImportExportSettings::getImportCodePage())
++    ui->comboBoxImportCodePage->setCurrentIndex(1);
+ #else
+     // hide options that not supported in this OCCT version (7.8.0)
+     ui->label_6->hide();
+-- 
+2.43.0
+

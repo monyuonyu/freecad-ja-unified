@@ -1,0 +1,31 @@
+From 22f25cee15dfd2aaeb73293d25f98df73b475255 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:44:10 +0900
+Subject: [PATCH 176/197] Unified: A hole goes where the face was clicked, also
+ on faces with round edges
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedCommands.py | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 9bdebeb5b..623c0256b 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -26,10 +26,8 @@ def _picked_plane_face():
+     face = sel.SubObjects[0]
+     if not isinstance(face.Surface, Part.Plane):
+         return None
+-    # Only faces without round edges: with a circle to drill through, PartDesign's hole
+-    # already knows where to go
+-    if any(isinstance(edge.Curve, (Part.Circle, Part.ArcOfCircle)) for edge in face.Edges):
+-        return None
++    # The hole goes where the face was clicked, also on faces with round edges (a fillet's
++    # arc, another hole). PartDesign's hole at a circle's center is there for a picked circle.
+     return obj, name, sel.PickedPoints[0]
+ 
+ 
+-- 
+2.43.0
+

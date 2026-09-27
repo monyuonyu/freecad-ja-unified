@@ -1,0 +1,500 @@
+From 3b7a4357186783774e72bcf0a463cc5f972bab57 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 21:02:50 +0900
+Subject: [PATCH 159/197] Unified: Fix design check and AI chat bugs found in
+ review
+
+Design check:
+- Parts inside a hidden App::Part or group are skipped; placements are
+  taken globally (Links no longer crash the check).
+- Open shells and non-solid shapes are reported; only bodies are
+  checked for split solids; tiny gaps below the tolerance do not count
+  as floating.
+- The pair cache key includes the edges, a vertex hash and the
+  tolerances, so a moved hole is detected again.
+- Parts whose placement is bound by an expression are not moved by
+  the fix; the other part is moved instead.
+- The background worker cleans up if it fails to start and does not
+  open a console window on Windows.
+- Closing the panel while "Fix all" runs cancels instead of raising,
+  and the undo transaction is always closed.
+
+AI chat:
+- The bridge talks UTF-8 on all platforms (Windows pipes default to
+  the ANSI code page).
+- When FreeCAD goes away, pending tool calls are failed and the
+  running turn is interrupted, so the bridge exits.
+- "New conversation" interrupts the running turn and ignores its
+  leftovers.
+- run_python copes with code that closes the active document.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py  |  23 ++++++
+ src/Mod/Unified/AIChatGui.py      |  17 ++++-
+ src/Mod/Unified/AITools.py        |  27 +++++--
+ src/Mod/Unified/DesignCheck.py    | 118 +++++++++++++++++++++---------
+ src/Mod/Unified/DesignCheckGui.py |  10 ++-
+ 5 files changed, 150 insertions(+), 45 deletions(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index ca6bcdac1..254e34e7e 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -149,8 +149,21 @@ class Bridge:
+             except ValueError:
+                 continue
+             asyncio.run_coroutine_threadsafe(self.dispatch(msg), loop)
++        # FreeCAD が閉じた（落ちた）: 待っている道具の呼び出しも終わらせて、走っている回を止める
++        asyncio.run_coroutine_threadsafe(self.shutdown_pending("FreeCAD が終わった"), loop)
+         asyncio.run_coroutine_threadsafe(self.inbox.put(None), loop)
+ 
++    async def shutdown_pending(self, why):
++        for fut in list(self.pending.values()):
++            if not fut.done():
++                fut.set_result({"content": [{"type": "text", "text": why}], "is_error": True})
++        self.pending.clear()
++        if self.client is not None and self.busy:
++            try:
++                await self.client.interrupt()
++            except Exception:
++                pass
++
+     async def dispatch(self, msg):
+         if msg.get("type") == "result":
+             fut = self.pending.pop(msg.get("id"), None)
+@@ -162,6 +175,10 @@ class Bridge:
+                     await self.client.interrupt()
+                 except Exception:
+                     pass
++        elif msg.get("type") == "reset":
++            # 走っている回を止めてから始め直す（待っている道具の呼び出しも終わらせる）
++            await self.shutdown_pending("会話を始め直した")
++            await self.inbox.put(msg)
+         else:
+             await self.inbox.put(msg)
+ 
+@@ -213,6 +230,12 @@ class Bridge:
+ 
+ 
+ def main():
++    # FreeCAD とのやり取りは UTF-8 の JSON 行（Windows のパイプは既定でロケールの符号 cp932 などになる）
++    for stream in (sys.stdin, sys.stdout, sys.stderr):
++        try:
++            stream.reconfigure(encoding="utf-8")
++        except Exception:
++            pass
+     ap = argparse.ArgumentParser()
+     ap.add_argument("--datadir", default=os.path.join(os.path.expanduser("~"), ".local", "share", "freecad-ai"))
+     ap.add_argument("--local-login", action="store_true", help="API キーではなく、この PC の claude のログインを使う")
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index 9d4f31f9c..ce339ad71 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -99,6 +99,7 @@ class ChatPanel(QtWidgets.QWidget):
+         self.queue = []
+         self.codes = []
+         self.in_call = False
++        self.resetting = False  # 「新しい会話」の後、仲介役の ready まで前の回の残りを捨てる
+         self.later = []        # 道具を実行している間に届いたもの（入れ子にしない）
+         lay = QtWidgets.QVBoxLayout(self)
+         lay.setContentsMargins(4, 4, 4, 4)
+@@ -247,10 +248,14 @@ class ChatPanel(QtWidgets.QWidget):
+         self.setup_btn.hide()
+         self.proc = QtCore.QProcess(self)
+         self.proc.setProcessChannelMode(QtCore.QProcess.SeparateChannels)
++        env = QtCore.QProcessEnvironment.systemEnvironment()
++        env.insert("PYTHONUTF8", "1")   # 仲介役の入出力を UTF-8 に（Windows の既定は cp932 など）
++        self.proc.setProcessEnvironment(env)
+         self.proc.readyReadStandardOutput.connect(self.on_stdout)
+         self.proc.readyReadStandardError.connect(self.on_stderr)
+         self.proc.finished.connect(self.on_finished)
+         self.ready = False
++        self.resetting = False
+         self.buffer = b""
+         args = [os.path.join(HERE, "AIAgentBridge.py"),
+                 "--model", _params().GetString("Model", "opus"),
+@@ -297,7 +302,14 @@ class ChatPanel(QtWidgets.QWidget):
+ 
+     def _handle(self, msg):
+         t = msg.get("type")
++        if self.resetting and t in ("text", "call", "done"):
++            # 始め直す前の回の残り: 表示せず、道具も実行しない
++            if t == "call":
++                self.send_json(type="result", id=msg.get("id"), is_error=True,
++                               content=[{"type": "text", "text": "会話を始め直した"}])
++            return
+         if t == "ready":
++            self.resetting = False
+             self.ready = True
+             self.status.setText("")
+             if self.queue:
+@@ -379,7 +391,10 @@ class ChatPanel(QtWidgets.QWidget):
+         AITools.reset()
+         if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
+             self.ready = False
+-            self.send_json(type="reset")
++            self.resetting = True
++            self.later.clear()
++            self._set_busy(False)
++            self.send_json(type="reset")   # 仲介役が走っている回を止めてから始め直す
+         self._note(translate("AIChat", "New conversation."))
+ 
+     def shutdown(self):
+diff --git a/src/Mod/Unified/AITools.py b/src/Mod/Unified/AITools.py
+index 5b2984445..b979a902e 100644
+--- a/src/Mod/Unified/AITools.py
++++ b/src/Mod/Unified/AITools.py
+@@ -145,9 +145,14 @@ def run_python(args):
+     if tree.body and isinstance(tree.body[-1], ast.Expr):
+         last = ast.Expression(tree.body.pop().value)
+     out = io.StringIO()
++    name = doc.Name if doc is not None else None   # コードが文書を閉じても名前で確かめられるように
++    docs_before = set(App.listDocuments())
+     if doc is not None:
+         doc.openTransaction("AI: " + desc)
+     before = set(o.Name for o in doc.Objects) if doc else set()
++
++    def still_open():
++        return name is not None and name in App.listDocuments()
+     value = None
+     try:
+         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+@@ -158,11 +163,18 @@ def run_python(args):
+             if cur is not None:
+                 cur.recompute()
+     except Exception:
+-        if doc is not None and App.getDocument(doc.Name) is not None:
+-            doc.abortTransaction()
+-        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（この回の変更は取り消した）", True)
+-    if doc is not None and App.getDocument(doc.Name) is not None:
+-        doc.commitTransaction()
++        note = []
++        if still_open():
++            App.getDocument(name).abortTransaction()
++            note.append("この文書でのこの回の変更は取り消した")
++        elif name is not None:
++            note.append("文書 %s はコードの中で閉じられた" % name)
++        new_docs = sorted(set(App.listDocuments()) - docs_before)
++        if new_docs:
++            note.append("この回に新しく作った文書は残っている（取り消していない）: " + ", ".join(new_docs))
++        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（" + "。".join(note) + "）", True)
++    if still_open():
++        App.getDocument(name).commitTransaction()
+     lines = []
+     if out.getvalue():
+         lines.append(out.getvalue().rstrip())
+@@ -171,8 +183,9 @@ def run_python(args):
+     cur = App.ActiveDocument
+     if cur is not None:
+         after = set(o.Name for o in cur.Objects)
+-        added = sorted(after - before) if cur is doc else []
+-        removed = sorted(before - after) if cur is doc else []
++        same = name is not None and cur.Name == name
++        added = sorted(after - before) if same else []
++        removed = sorted(before - after) if same else []
+         if added:
+             lines.append("増えた物: " + ", ".join("%s（%s）" % (n, cur.getObject(n).Label) for n in added))
+         if removed:
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index d0830deb3..900811329 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -104,10 +104,25 @@ class Issue:
+ 
+ # ------------------------------------------------------------------ 部品を集める
+ def _visible(o):
+-    try:
+-        return bool(o.Visibility)
+-    except Exception:
+-        return True
++    """o も、o を入れている入れ物（App::Part・グループ・Body）も見えているか"""
++    seen = set()
++    while o is not None and o.Name not in seen:
++        seen.add(o.Name)
++        try:
++            if not o.Visibility:
++                return False
++        except Exception:
++            pass
++        parent = None
++        for getter in ("getParentGeoFeatureGroup", "getParentGroup"):
++            try:
++                parent = getattr(o, getter)()
++            except Exception:
++                parent = None
++            if parent is not None:
++                break
++        o = parent
++    return True
+ 
+ 
+ def _in_body(o):
+@@ -118,11 +133,20 @@ def _in_body(o):
+     return g is not None and g.isDerivedFrom("PartDesign::Body")
+ 
+ 
++def _global_placement(o):
++    """o の全体の配置。App::Link は getGlobalPlacement を持たないので、入れ物の配置と自分の配置から"""
++    if hasattr(o, "getGlobalPlacement"):
++        return o.getGlobalPlacement()
++    pl = o.Placement if hasattr(o, "Placement") else App.Placement()
++    parent = o.getParentGeoFeatureGroup()
++    return parent.getGlobalPlacement().multiply(pl) if parent is not None else pl
++
++
+ def _global_shape(o):
+-    """o の形を全体の座標で（入れ物の中にあっても）"""
++    """o の形を全体の座標で（入れ物の中にあっても、リンクでも）"""
+     try:
+         s = Part.getShape(o, "", needSubElement=False, transform=False).copy()
+-        s.Placement = o.getGlobalPlacement()
++        s.Placement = _global_placement(o)
+         return s
+     except Exception:
+         return None
+@@ -147,13 +171,27 @@ def parts(doc):
+         else:
+             continue
+         s = _global_shape(o)
+-        if s is None or s.isNull() or not s.Solids:
++        if s is None or s.isNull() or not s.Faces:
+             continue
+         out[o.Name] = s
+     return out
+ 
+ 
+ # ------------------------------------------------------------------ 規則
++def _grown(bb, d):
++    bb = App.BoundBox(bb)
++    bb.enlarge(d)
++    return bb
++
++
++def _dist(a, b):
++    """最短距離。OCC が計算できないときは離れているとみなす"""
++    try:
++        return a.distToShape(b)[0]
++    except Exception:
++        return float("inf")
++
++
+ def _touching(solids, tol):
+     n = len(solids)
+     seen = {0}
+@@ -161,9 +199,9 @@ def _touching(solids, tol):
+     while todo:
+         i = todo.pop()
+         for j in range(n):
+-            if j in seen or not solids[i].BoundBox.intersect(solids[j].BoundBox):
++            if j in seen or not solids[i].BoundBox.intersect(_grown(solids[j].BoundBox, tol)):
+                 continue
+-            if solids[i].distToShape(solids[j])[0] <= tol:
++            if _dist(solids[i], solids[j]) <= tol:
+                 seen.add(j)
+                 todo.append(j)
+     return len(seen) == n
+@@ -194,12 +232,13 @@ def check_shapes(doc, issues, opt, shapes):
+             issues.append(Issue(ERROR, "invalid_shape",
+                                 translate("DesignCheck", "{0}: the shape is broken (isValid is false)").format(o.Label), [n]))
+         sol = s.Solids
+-        if len(sol) > 1 and not _touching(sol, opt["touch_mm"]):
++        # 分かれていて困るのは部品（Body）だけ。組み合わせ・配列・読み込んだ形は、わざと分かれていることが多い
++        if len(sol) > 1 and o.isDerivedFrom("PartDesign::Body") and not _touching(sol, opt["touch_mm"]):
+             issues.append(Issue(ERROR, "split",
+                                 translate("DesignCheck", "{0} consists of {1} separate pieces").format(o.Label, len(sol)),
+                                 [n], sol[1].BoundBox.Center))
+         closed = all(x.isClosed() for x in s.Shells) if s.Shells else False
+-        if s.Shells and not closed:
++        if (s.Shells and not closed) or not sol:
+             issues.append(Issue(WARNING, "not_solid",
+                                 translate("DesignCheck", "{0} has open surfaces (not a closed solid)").format(o.Label), [n]))
+         # 球や楕円体の極にできる長さ 0 の辺（Degenerated）は作図のミスではないので除く
+@@ -217,13 +256,15 @@ _PAIR_CACHE = {}
+ 
+ def _fingerprint(s):
+     bb = s.BoundBox
+-    return (round(s.Volume, 3), round(s.Area, 3), len(s.Faces),
++    verts = hash(tuple(sorted((round(v.X, 4), round(v.Y, 4), round(v.Z, 4)) for v in s.Vertexes)))
++    return (round(s.Volume, 3), round(s.Area, 3), len(s.Faces), len(s.Edges), verts,
+             tuple(round(v, 3) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)))
+ 
+ 
+-def _pair_key(a, b):
++def _pair_key(a, b, opt=None):
+     fa, fb = _fingerprint(a), _fingerprint(b)
+-    return (fa, fb) if fa <= fb else (fb, fa)
++    tol = (opt["interference_mm3"], opt["touch_mm"]) if opt else ()
++    return ((fa, fb) if fa <= fb else (fb, fa)) + tol
+ 
+ 
+ def _pair_cached(key, need_touch):
+@@ -251,12 +292,12 @@ def _pair_compute(a, b, need_touch, opt):
+     if v > opt["interference_mm3"]:
+         touch = True
+     elif need_touch:
+-        touch = a.distToShape(b)[0] <= opt["touch_mm"]
++        touch = _dist(a, b) <= opt["touch_mm"]
+     return (v, center, touch)
+ 
+ 
+ def _pair(a, b, need_touch, opt):
+-    key = _pair_key(a, b)
++    key = _pair_key(a, b, opt)
+     res = _pair_cached(key, need_touch)
+     if res is None:
+         res = _pair_compute(a, b, need_touch, opt)
+@@ -290,6 +331,15 @@ class _Background:
+         import threading
+ 
+         self.dir = tempfile.mkdtemp(prefix="designcheck-")
++        self.proc = None
++        try:
++            self._start(jobs, opt, json, os, queue, subprocess, threading)
++        except Exception:
++            self.close()
++            raise
++
++    def _start(self, jobs, opt, json, os, queue, subprocess, threading):
++        import sys
+         paths = {}
+         items = []
+         for a, b, need_touch in jobs:
+@@ -304,8 +354,9 @@ class _Background:
+         exe = _worker_exe()
+         here = os.path.dirname(os.path.abspath(__file__))
+         code = "import sys; sys.path.insert(0, %r); import DesignCheck; DesignCheck.worker_main(%r)" % (here, jobfile)
++        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0   # コンソールの窓を出さない
+         self.proc = subprocess.Popen([exe, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+-                                     stdin=subprocess.DEVNULL, text=True)
++                                     stdin=subprocess.DEVNULL, text=True, creationflags=flags)
+         self.results = queue.Queue()
+ 
+         def read():
+@@ -317,12 +368,13 @@ class _Background:
+ 
+     def close(self):
+         import shutil
+-        if self.proc.poll() is None:
+-            self.proc.kill()
+-        try:
+-            self.proc.wait(timeout=5)
+-        except Exception:
+-            pass
++        if self.proc is not None:
++            if self.proc.poll() is None:
++                self.proc.kill()
++            try:
++                self.proc.wait(timeout=5)
++            except Exception:
++                pass
+         shutil.rmtree(self.dir, ignore_errors=True)
+ 
+ 
+@@ -367,12 +419,13 @@ class Progress:
+ def iter_interference(doc, issues, opt, shapes):
+     """check_interference の中身。部品の組を調べる前に Progress を yield する（画面を止めずに少しずつ進め、
+     何をしているかを見せ、途中で止められるように）"""
++    shapes = {n: s for n, s in shapes.items() if s.Solids}   # 干渉と浮きは立体だけ
+     items = list(shapes.items())
+     need_touch = opt.get("floating", True) and len(shapes) >= 2
+     touch = {n: False for n in shapes}
+-    # 外形の箱が重ならない組は調べない。残りの数が進み具合の分母
++    # 外形の箱が（接していると見なす距離まで広げても）重ならない組は調べない。残りの数が進み具合の分母
+     pairs = [(items[i], items[j]) for i in range(len(items)) for j in range(i + 1, len(items))
+-             if items[i][1].BoundBox.intersect(items[j][1].BoundBox)]
++             if items[i][1].BoundBox.intersect(_grown(items[j][1].BoundBox, opt["touch_mm"]))]
+     def message(k):
+         (na, _), (nb, _) = pairs[k]
+         return translate("DesignCheck", "Checking whether {0} and {1} overlap").format(
+@@ -380,7 +433,7 @@ def iter_interference(doc, issues, opt, shapes):
+ 
+     if opt.get("background") and pairs and _worker_exe() is not None:
+         # まだ結果を覚えていない組を、別のプロセスでまとめて計算する（浮きのための距離も全部の組で測る）
+-        todo = [k for k, ((_, a), (_, b)) in enumerate(pairs) if _pair_cached(_pair_key(a, b), need_touch) is None]
++        todo = [k for k, ((_, a), (_, b)) in enumerate(pairs) if _pair_cached(_pair_key(a, b, opt), need_touch) is None]
+         if todo:
+             import queue
+             bg = _Background([(pairs[k][0][1], pairs[k][1][1], need_touch) for k in todo], opt)
+@@ -398,7 +451,7 @@ def iter_interference(doc, issues, opt, shapes):
+                         break  # 途中で終わった（残りはこのプロセスで計算する）
+                     (_, a), (_, b) = pairs[todo[r["i"]]]
+                     center = None if r["center"] is None else App.Vector(*r["center"])
+-                    _remember(_pair_key(a, b), (r["v"], center, r["touch"]))
++                    _remember(_pair_key(a, b, opt), (r["v"], center, r["touch"]))
+                     done += 1
+             finally:
+                 bg.close()
+@@ -481,7 +534,7 @@ def _movable(o):
+     if getattr(o, "MapMode", "Deactivated") != "Deactivated" and getattr(o, "AttachmentSupport", None):
+         return False
+     try:
+-        if any(p.startswith("Placement") for p, _ in o.ExpressionEngine):
++        if any(p.lstrip(".").startswith("Placement") for p, _ in o.ExpressionEngine):
+             return False
+     except Exception:
+         pass
+@@ -490,20 +543,13 @@ def _movable(o):
+ 
+ def _move_global(o, delta):
+     """物を全体の座標で delta だけ動かす（App::Part の中でも正しい向きに）"""
+-    parent = o.getGlobalPlacement().multiply(o.Placement.inverse())
++    parent = _global_placement(o).multiply(o.Placement.inverse())
+     local = parent.Rotation.inverted().multVec(delta)
+     pl = o.Placement
+     pl.Base = pl.Base + local
+     o.Placement = pl
+ 
+ 
+-def _global_shape(o):
+-    import Part
+-    s = Part.getShape(o, "", needSubElement=False, transform=False).copy()
+-    s.Placement = o.getGlobalPlacement()
+-    return s
+-
+-
+ def _fix_redundant(doc, issue):
+     sk = doc.getObject(issue.objects[0])
+     n = len(sk.RedundantConstraints)
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index a5215b188..6c8944023 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -330,6 +330,7 @@ class Panel:
+     def on_fix_all(self):
+         self.doc.openTransaction(translate("DesignCheck", "Fix all design check problems"))
+         self._cancelled = False
++        self._fixing = True
+         self._set_busy(True)
+ 
+         def progress(p):
+@@ -339,11 +340,14 @@ class Panel:
+             if p.waiting:
+                 QtCore.QThread.msleep(20)
+             return not self._cancelled
++        done = []
+         try:
+             done = DesignCheck.fix_all(self.doc, progress=progress, background=True)
+         finally:
++            # 途中で失敗しても、元に戻す単位は閉じる（開いたままだと、その後の操作が全部この単位に入る）
++            self.doc.commitTransaction()
++            self._fixing = False
+             self._set_busy(False)
+-        self.doc.commitTransaction()
+         cancelled = self._cancelled
+         marker.clear()
+         self.refresh()
+@@ -370,6 +374,10 @@ class Panel:
+         return QtWidgets.QDialogButtonBox.Close
+ 
+     def reject(self):
++        if getattr(self, "_fixing", False):
++            # まとめて直している最中: 閉じずに止める（閉じると、直している途中の画面が消えて例外になる）
++            self._cancelled = True
++            return False
+         self._close_steps()
+         self._cancelled = True
+         marker.clear()
+-- 
+2.43.0
+
