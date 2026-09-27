@@ -126,4 +126,10 @@ jobs:
           # AppImage の更新の確認先を本家からこのリポジトリに（そのままだと本家の版に置き換わる）
           sed -i "s#gh-releases-zsync|FreeCAD|FreeCAD|#gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|#" linux/create_bundle.sh
           grep -n "gh-releases-zsync" linux/create_bundle.sh
+          # Windows: インストーラー（NSIS）はパスが 260 文字を超えると失敗する。リポジトリ名の分だけ本家より
+          # 長いので、FreeCAD の clone を短いドライブ名に割り当ててそこから作る（約 50 文字短くなる）
+          if [ "$RUNNER_OS" = Windows ]; then
+            subst X: "$(cygpath -w "$GITHUB_WORKSPACE/FreeCAD")"
+            cd /x/package/bundle
+          fi
           pixi run --locked bash -c "cd ${{ matrix.osfolder }} && bash create_bundle.sh"
