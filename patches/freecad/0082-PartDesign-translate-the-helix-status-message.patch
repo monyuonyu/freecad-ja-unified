@@ -1,0 +1,62 @@
+From 08194d09f40b2abfc8733f7f0fa79d43febe1885 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 10:07:16 +0900
+Subject: [PATCH 82/82] PartDesign: translate the helix status message
+
+The helix panel showed feature errors other than the two it knew
+untranslated ("Error: Result is self intersecting"). Translate them in
+the "Exception" context like other feature errors, and mark this one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/App/FeatureHelix.cpp                      | 2 +-
+ .../PartDesign/Gui/Resources/translations/PartDesign_ja.ts   | 5 +++++
+ src/Mod/PartDesign/Gui/TaskHelixParameters.cpp               | 3 ++-
+ 3 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/PartDesign/App/FeatureHelix.cpp b/src/Mod/PartDesign/App/FeatureHelix.cpp
+index f1fa3cdf0..43b33c0dd 100644
+--- a/src/Mod/PartDesign/App/FeatureHelix.cpp
++++ b/src/Mod/PartDesign/App/FeatureHelix.cpp
+@@ -541,7 +541,7 @@ TopoDS_Shape Helix::generateHelixPath(double breakAtTurn)
+     if (radius < Precision::Confusion()) {
+         // in this case ensure that axis is not in the sketch plane
+         if (fabs(axisVector * normal) < Precision::Confusion()) {
+-            throw Base::ValueError("Error: Result is self intersecting");
++            throw Base::ValueError(QT_TRANSLATE_NOOP("Exception", "Error: Result is self intersecting"));
+         }
+         radius = 1000.0;  // fallback to radius 1000
+     }
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index d289a9e14..71080d612 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -5537,6 +5537,11 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+       <source>Cannot project an axis perpendicular to the profile plane</source>
+       <translation>輪郭の面に垂直な軸は投影できません</translation>
+     </message>
++    <message>
++      <location filename="../../../App/FeatureHelix.cpp" line="544"/>
++      <source>Error: Result is self intersecting</source>
++      <translation>エラー: らせんが自分自身と交わっています（ピッチを大きくしてください）</translation>
++    </message>
+   </context>
+   <context>
+     <name>PartDesign_InvoluteGear</name>
+diff --git a/src/Mod/PartDesign/Gui/TaskHelixParameters.cpp b/src/Mod/PartDesign/Gui/TaskHelixParameters.cpp
+index 178e36ba1..b55738020 100644
+--- a/src/Mod/PartDesign/Gui/TaskHelixParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskHelixParameters.cpp
+@@ -318,7 +318,8 @@ void TaskHelixParameters::updateStatus()
+         translatedStatus = tr("Error: helix touches itself");
+     }
+     else {
+-        translatedStatus = QString::fromStdString(status);
++        // Error messages of features are declared for translation in the "Exception" context
++        translatedStatus = QCoreApplication::translate("Exception", status.c_str());
+     }
+     ui->labelMessage->setText(translatedStatus);
+ }
+-- 
+2.43.0
+

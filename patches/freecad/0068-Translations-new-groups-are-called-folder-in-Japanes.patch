@@ -1,7 +1,7 @@
 From 9d444a0bad99aa72814a1e0ee17e408fbdf70d46 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:19:38 +0900
-Subject: [PATCH 68/77] Translations: new groups are called "folder" in
+Subject: [PATCH 68/82] Translations: new groups are called "folder" in
  Japanese
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

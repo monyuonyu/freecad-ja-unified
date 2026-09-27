@@ -1,0 +1,111 @@
+From f194bbc80b7b96b2cb68633fdef04a33f218cd3a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 10:01:51 +0900
+Subject: [PATCH 79/82] =?UTF-8?q?Translations:=20"solid"=20as=20=E7=AB=8B?=
+ =?UTF-8?q?=E4=BD=93=20in=20the=20property=20editor=20as=20well?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../translations/UnifiedProperties_ja.ts      | 20 +++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+index c1af7590b..4c7af3ea9 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+@@ -1525,7 +1525,7 @@
+     </message>
+     <message>
+         <source>Solid</source>
+-        <translation>ソリッド</translation>
++        <translation>立体</translation>
+     </message>
+     <message>
+         <source>Source</source>
+@@ -2399,7 +2399,7 @@ Defines a repeating pattern of spacings for the second direction. For example, a
+     </message>
+     <message>
+         <source>Allow multiple solids in Body</source>
+-        <translation>部品の中に複数のソリッドを持てるようにする</translation>
++        <translation>部品の中に複数の立体を持てるようにする</translation>
+     </message>
+     <message>
+         <source>Alternating Weld true/false</source>
+@@ -2443,7 +2443,7 @@ Defines a repeating pattern of spacings for the second direction. For example, a
+     </message>
+     <message>
+         <source>Apply the thickness towards the solids interior</source>
+-        <translation>ソリッドの内側に向かって厚みを付ける</translation>
++        <translation>立体の内側に向かって厚みを付ける</translation>
+     </message>
+     <message>
+         <source>Approximate distance between consecutive elements on the same circle.</source>
+@@ -2627,7 +2627,7 @@ If true, then this overrides any edge changes made to the Base property or in th
+     </message>
+     <message>
+         <source>Create solid</source>
+-        <translation>ソリッドを作る</translation>
++        <translation>立体を作る</translation>
+     </message>
+     <message>
+         <source>Curve of ruled surface</source>
+@@ -2910,7 +2910,7 @@ Element: On top only if some sub-element of the object is selected</source>
+     </message>
+     <message>
+         <source>Facemaker to use if Solid is true.</source>
+-        <translation>「ソリッド」がオンのときに使う面の作り方。</translation>
++        <translation>「立体」がオンのときに使う面の作り方。</translation>
+     </message>
+     <message>
+         <source>Faces or shape(s) where pad will end</source>
+@@ -2990,7 +2990,7 @@ If true, then this overrides any edge changes made to the Base property or in th
+     </message>
+     <message>
+         <source>Fuse solids from bound shapes</source>
+-        <translation>範囲内の形のソリッドを結合する</translation>
++        <translation>範囲内の形の立体を結合する</translation>
+     </message>
+     <message>
+         <source>Fuzzy tolerance:
+@@ -3092,7 +3092,7 @@ spacing between the borders of views</source>
+     </message>
+     <message>
+         <source>If Solid is true, this sets the facemaker class to use when converting wires to faces. Otherwise, ignored.</source>
+-        <translation>「ソリッド」がオンのとき、線を面にする方法。オフのときは使いません。</translation>
++        <translation>「立体」がオンのとき、線を面にする方法。オフのときは使いません。</translation>
+     </message>
+     <message>
+         <source>If True, BIM Spaces are shown as a colored area</source>
+@@ -3156,7 +3156,7 @@ spacing between the borders of views</source>
+     </message>
+     <message>
+         <source>If true, extruding a wire yields a solid. If false, a shell.</source>
+-        <translation>オンなら、線を押し出すとソリッドになる。オフなら殻（シェル）になる。</translation>
++        <translation>オンなら、線を押し出すと立体になる。オフなら殻（シェル）になる。</translation>
+     </message>
+     <message>
+         <source>If true, extrusion is done in both directions to a total of LengthFwd. LengthRev is ignored.</source>
+@@ -3323,7 +3323,7 @@ If disabled, only the dressed part of the shape is used for patterning.</source>
+     </message>
+     <message>
+         <source>Make revolution a solid if possible</source>
+-        <translation>できればソリッドの回転体にする</translation>
++        <translation>できれば立体の回転体にする</translation>
+     </message>
+     <message>
+         <source>Map with additional meta information</source>
+@@ -3453,7 +3453,7 @@ If disabled, only the dressed part of the shape is used for patterning.</source>
+     </message>
+     <message>
+         <source>Offset of solid</source>
+-        <translation>ソリッドのオフセット</translation>
++        <translation>立体のオフセット</translation>
+     </message>
+     <message>
+         <source>Offset value</source>
+-- 
+2.43.0
+

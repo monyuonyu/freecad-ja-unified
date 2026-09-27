@@ -1,0 +1,3378 @@
+From 2888c319162da3b23e60b0857708333e1f9a2541 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 10:01:23 +0900
+Subject: [PATCH 78/82] Translations: everyday Japanese for solid, shape,
+ geometry, face and surface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Japanese texts of the modules used in the integrated environment
+said ソリッド, シェイプ, ジオメトリー, フェイス and サーフェス; they now use
+立体, 形, 図形, 面 and 曲面 like the rest of the interface.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts                |  18 +-
+ .../Gui/Resources/translations/Assembly_ja.ts |  10 +-
+ .../Gui/Resources/translations/Mesh_ja.ts     |  44 +--
+ .../Gui/Resources/translations/Part_ja.ts     | 340 +++++++++---------
+ .../Resources/translations/PartDesign_ja.ts   |  92 ++---
+ .../Gui/Resources/translations/Sketcher_ja.ts | 276 +++++++-------
+ .../Gui/Resources/translations/TechDraw_ja.ts |  40 +--
+ 7 files changed, 410 insertions(+), 410 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index caf1c2b88..e6f3e4f33 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -2703,7 +2703,7 @@ will be shown at the lower left corner in opened files</source>
+     <message>
+       <location filename="../PreferencePages/DlgSettings3DView.ui" line="457"/>
+       <source>Backface pass</source>
+-      <translation>バックフェイスパス</translation>
++      <translation>バック面パス</translation>
+     </message>
+     <message>
+       <location filename="../PreferencePages/DlgSettings3DView.ui" line="491"/>
+@@ -2785,7 +2785,7 @@ forcibly enabled.
+ 
+ Note: Turning this on is typically not required. If you do,
+ remember to report this setting as enabled when seeking support.</source>
+-      <translation>VBOは、ジオメトリデータをグラフィックスカードにアップロード可能にするOpenGLの機能で、最新のハードウェアで効率的な3Dレンダリングを行うための仕組みです。
++      <translation>VBOは、図形データをグラフィックスカードにアップロード可能にするOpenGLの機能で、最新のハードウェアで効率的な3Dレンダリングを行うための仕組みです。
+ 古いハードウェアやドライバーを使用している場合、この機能はデフォルトでは無効になっている可能性があります。この設定を選択すると、強制的に有効化されます。
+ 
+ 注意：通常、この設定を有効にする必要はありません。有効にした場合は、サポートを依頼する際にその旨を報告してください。</translation>
+@@ -5723,7 +5723,7 @@ originally selected prior to opening this dialog</source>
+     <message>
+       <location filename="../Selection/SelectionView.cpp" line="683"/>
+       <source>Duplicate Subshape</source>
+-      <translation>重複したサブシェイプ</translation>
++      <translation>重複したサブ形</translation>
+     </message>
+     <message>
+       <location filename="../Selection/SelectionView.cpp" line="659"/>
+@@ -5758,7 +5758,7 @@ originally selected prior to opening this dialog</source>
+     <message>
+       <location filename="../Selection/SelectionView.cpp" line="685"/>
+       <source>Creates a standalone copy of this subshape in the document</source>
+-      <translation>ドキュメント内のこのサブシェイプの独立したコピーを作成</translation>
++      <translation>ドキュメント内のこのサブ形の独立したコピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -11256,7 +11256,7 @@ after FreeCAD launches</source>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsGeneral.ui" line="48"/>
+       <source>Language of the application's user interface</source>
+-      <translation>アプリケーションのユーザーインターフェイスの言語</translation>
++      <translation>アプリケーションのユーザーインター面の言語</translation>
+     </message>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsGeneral.ui" line="78"/>
+@@ -11348,7 +11348,7 @@ dot/period will always be printed</source>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsGeneral.ui" line="218"/>
+       <source>Customize the appearance of the user interface</source>
+-      <translation>ユーザーインターフェイスの外観をカスタマイズ</translation>
++      <translation>ユーザーインター面の外観をカスタマイズ</translation>
+     </message>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsGeneral.ui" line="230"/>
+@@ -12094,7 +12094,7 @@ the region are non-opaque.</source>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsUI.ui" line="166"/>
+       <source>Style sheet how user interface will look like</source>
+-      <translation>ユーザーインターフェイスの外観を指定するスタイルシート</translation>
++      <translation>ユーザーインター面の外観を指定するスタイルシート</translation>
+     </message>
+     <message>
+       <location filename="../PreferencePages/DlgSettingsUI.ui" line="260"/>
+@@ -13267,7 +13267,7 @@ Proceed?</source>
+     <message>
+       <location filename="../CommandLink.cpp" line="261"/>
+       <source>A link is an object that references another object, either within the same or in another document. Unlike clones, links reference the original shape directly, making them more memory-efficient, which helps with the creation of complex assemblies.</source>
+-      <translation>リンクは同じドキュメント、または別のドキュメント内の別のオブジェクトを参照するオブジェクトです。クローンとは異なり、リンクは元シェイプを直接参照するため、メモリーの効率が良く、複雑なアセンブリの作成に役立ちます。</translation>
++      <translation>リンクは同じドキュメント、または別のドキュメント内の別のオブジェクトを参照するオブジェクトです。クローンとは異なり、リンクは元形を直接参照するため、メモリーの効率が良く、複雑なアセンブリの作成に役立ちます。</translation>
+     </message>
+   </context>
+   <context>
+@@ -14636,7 +14636,7 @@ This makes the docked panel stay transparent at all times.</source>
+       <location filename="../CommandView.cpp" line="4047"/>
+       <source>Displays a context menu at the mouse cursor to select overlapping or obstructed geometry in the 3D view.
+ </source>
+-      <translation>3Dビューで重なったり遮蔽されたジオメトリーを選択するためのコンテキストメニューをマウスカーソル位置に表示します。
++      <translation>3Dビューで重なったり遮蔽された図形を選択するためのコンテキストメニューをマウスカーソル位置に表示します。
+ </translation>
+     </message>
+   </context>
+diff --git a/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts b/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
+index a4527859d..bc71e6082 100644
+--- a/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
++++ b/src/Mod/Assembly/Gui/Resources/translations/Assembly_ja.ts
+@@ -277,7 +277,7 @@
+     <message>
+       <location filename="../../../CommandCreateBom.py" line="384"/>
+       <source>Only parts: adds only part containers and sub-assemblies to the bill of materials. Solids like Part Design bodies, fasteners, or Part workbench primitives are ignored.</source>
+-      <translation>パーツのみ: パーツコンテナとサブアセンブリのみが部品表に追加されます。 PartDesignの部品、留め具、Partワークベンチのプリミティブといったソリッドは無視されます。</translation>
++      <translation>パーツのみ: パーツコンテナとサブアセンブリのみが部品表に追加されます。 PartDesignの部品、留め具、Partワークベンチのプリミティブといった立体は無視されます。</translation>
+     </message>
+     <message>
+       <location filename="../../../CommandCreateBom.py" line="386"/>
+@@ -961,7 +961,7 @@ Flexible means that the added sub-assembly will allow movement of its individual
+ You can change this behavior at any time by either right-clicking the sub-assembly on the document tree and toggling the
+ 'Turn rigid'/'Turn flexible' command there, or by editing its Rigid property in the property editor.</source>
+       <translation>挿入されたサブアセンブリがリジッドかフレキシブルかを設定します。
+-リジッドとは、追加されたサブアセンブリが親アセンブリ内でソリッド単位として扱われることを意味します。
++リジッドとは、追加されたサブアセンブリが親アセンブリ内で立体単位として扱われることを意味します。
+ フレキシブルとは、追加されたサブアセンブリが親アセンブリ内で個々のコンポーネントのジョイントを移動できることを意味します。
+ この動作は、ドキュメント ツリーでサブアセンブリを右クリックして「リジッドに切り替え」「フレキシブルに切り替え」のコマンド切り替えを行うか、プロパティエディターでRigidプロパティを編集することでいつでも変更できます。</translation>
+     </message>
+@@ -1106,12 +1106,12 @@ The files are named "runPreDrag.asmt" and "dragging.log" and are located in the
+     <message>
+       <location filename="../panels/TaskAssemblyCreateView.ui" line="20"/>
+       <source>If checked, parts will be selected as a single solid</source>
+-      <translation>チェックされている場合、パーツは単一のソリッドとして選択されます。</translation>
++      <translation>チェックされている場合、パーツは単一の立体として選択されます。</translation>
+     </message>
+     <message>
+       <location filename="../panels/TaskAssemblyCreateView.ui" line="23"/>
+       <source>Parts as single solid</source>
+-      <translation>パーツを単一のソリッドとして扱う</translation>
++      <translation>パーツを単一の立体として扱う</translation>
+     </message>
+     <message>
+       <location filename="../panels/TaskAssemblyCreateView.ui" line="42"/>
+@@ -1156,7 +1156,7 @@ The files are named "runPreDrag.asmt" and "dragging.log" and are located in the
+     <message>
+       <location filename="../panels/TaskAssemblyCreateBom.ui" line="58"/>
+       <source>Adds only part containers and sub-assemblies to the bill of materials. Solids (e.g. bodies, fasteners, primitives) are excluded.</source>
+-      <translation>パーツコンテナーとサブアセンブリのみを部品表に追加します。 ソリッド（部品、ファスナー、プリミティブなど）は除外されます。</translation>
++      <translation>パーツコンテナーとサブアセンブリのみを部品表に追加します。 立体（部品、ファスナー、プリミティブなど）は除外されます。</translation>
+     </message>
+     <message>
+       <location filename="../panels/TaskAssemblyCreateBom.ui" line="61"/>
+diff --git a/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts b/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
+index a5a0c0a1d..b1c791a23 100644
+--- a/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
++++ b/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
+@@ -46,7 +46,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1544"/>
+       <source>Regular Solid</source>
+-      <translation>標準のソリッド</translation>
++      <translation>標準の立体</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1545"/>
+@@ -136,12 +136,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="1308"/>
+       <source>Evaluate Solid</source>
+-      <translation>ソリッドを検査</translation>
++      <translation>立体を検査</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1309"/>
+       <source>Checks whether the mesh is a solid</source>
+-      <translation>メッシュがソリッドかどうか調べる</translation>
++      <translation>メッシュが立体かどうか調べる</translation>
+     </message>
+   </context>
+   <context>
+@@ -244,12 +244,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="484"/>
+       <source>Mesh From Geometry</source>
+-      <translation>ジオメトリーからメッシュへ</translation>
++      <translation>図形からメッシュへ</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="485"/>
+       <source>Creates a mesh from the selected geometry</source>
+-      <translation>選択したジオメトリーからメッシュを作成</translation>
++      <translation>選択した図形からメッシュを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -262,12 +262,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="557"/>
+       <source>Mesh From Shape</source>
+-      <translation>シェイプからメッシュへ</translation>
++      <translation>形からメッシュへ</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="558"/>
+       <source>Tessellates the selected shape to a mesh</source>
+-      <translation>選択したシェイプをメッシュへ分割</translation>
++      <translation>選択した形をメッシュへ分割</translation>
+     </message>
+   </context>
+   <context>
+@@ -537,12 +537,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="1716"/>
+       <source>Segmentation From Best-Fit Surfaces</source>
+-      <translation>最適合サーフェスからセグメントへ</translation>
++      <translation>最適合曲面からセグメントへ</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1717"/>
+       <source>Creates new mesh segments from the best-fit surfaces</source>
+-      <translation>最も一致するサーフェスから新しいメッシュセグメントを作成</translation>
++      <translation>最も一致する曲面から新しいメッシュセグメントを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1166,12 +1166,12 @@
+     <message>
+       <location filename="../../DlgRegularSolid.ui" line="14"/>
+       <source>Regular Solid</source>
+-      <translation>標準のソリッド</translation>
++      <translation>標準の立体</translation>
+     </message>
+     <message>
+       <location filename="../../DlgRegularSolid.ui" line="29"/>
+       <source>Solid</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../DlgRegularSolid.ui" line="42"/>
+@@ -1307,12 +1307,12 @@
+     <message>
+       <location filename="../../DlgSettingsImportExport.ui" line="28"/>
+       <source>Deviation of tessellation to the actual surface</source>
+-      <translation>実サーフェスにテセレーションした偏差</translation>
++      <translation>実曲面にテセレーションした偏差</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsImportExport.ui" line="31"/>
+       <source>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;Tessellation&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;Defines the maximum deviation of the tessellated mesh to the surface. The smaller the value is the slower the render speed which results in increased detail/resolution.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;テッセレーション&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;サーフェイスに対してテッセレーションしたメッシュの最大偏差を定義します。小さな値にするほどレンダリング速度が遅くなりますが、細密さ/解像度の向上した結果となります。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;テッセレーション&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;サー面に対してテッセレーションしたメッシュの最大偏差を定義します。小さな値にするほどレンダリング速度が遅くなりますが、細密さ/解像度の向上した結果となります。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsImportExport.ui" line="34"/>
+@@ -1337,7 +1337,7 @@
+     <message>
+       <location filename="../../DlgSettingsImportExport.ui" line="82"/>
+       <source>Always export mesh as model type in 3MF format even if not a solid</source>
+-      <translation>ソリッドでない場合でも常にモデルタイプとして3MF形式でメッシュをエクスポート</translation>
++      <translation>立体でない場合でも常にモデルタイプとして3MF形式でメッシュをエクスポート</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsImportExport.ui" line="85"/>
+@@ -1454,7 +1454,7 @@ is used when writing a file in AMF format</source>
+ If not checked, it depends on the option "Enable backlight color"
+ (preferences section Display -&gt; 3D View). Either the backlight color
+ will be used or black.</source>
+-      <translation>サーフェスの底部側は、上側と同様にレンダリングされます。
++      <translation>曲面の底部側は、上側と同様にレンダリングされます。
+ チェックされていない場合、オプション「バックライトの色を有効」（セクション表示→3Dビューの設定）に依存します。バックライトの色が用いられるか黒くなります。</translation>
+     </message>
+     <message>
+@@ -1466,9 +1466,9 @@ With flat shading the surface normals are not defined per vertex that leads
+ to an unreal appearance for curved surfaces while using Phong shading leads
+ to a smoother appearance.
+ </source>
+-      <translation>このオプションが設定されている場合、フォン・シェーディングが用いられ、それ以外の場合はフラット・シェーディングになります。シェーディングはサーフェスの外観を定義するものです。
++      <translation>このオプションが設定されている場合、フォン・シェーディングが用いられ、それ以外の場合はフラット・シェーディングになります。シェーディングは曲面の外観を定義するものです。
+ 
+-フラット・シェーディングではサーフェスの法線は頂点ごとには定義されず、曲面では非現実感的な外観になりますが、フォン・シェーディングを使用すると滑らかな外観になります。
++フラット・シェーディングでは曲面の法線は頂点ごとには定義されず、曲面では非現実感的な外観になりますが、フォン・シェーディングを使用すると滑らかな外観になります。
+ </translation>
+     </message>
+     <message>
+@@ -1630,7 +1630,7 @@ to a smoother appearance.
+     <message>
+       <location filename="../../SegmentationBestFit.cpp" line="176"/>
+       <source>Surface Fit</source>
+-      <translation>サーフェス適合</translation>
++      <translation>曲面適合</translation>
+     </message>
+     <message>
+       <location filename="../../SegmentationBestFit.cpp" line="183"/>
+@@ -2195,22 +2195,22 @@ Visit https://openscad.org/ to install it.</source>
+     <message>
+       <location filename="../../Command.cpp" line="496"/>
+       <source>Enter tolerance for meshing geometry:</source>
+-      <translation>ジオメトリのメッシュ処理用のトレランスを入力:</translation>
++      <translation>図形のメッシュ処理用のトレランスを入力:</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1324"/>
+       <source>The mesh '%1' is not a solid.</source>
+-      <translation>メッシュ '%1' はソリッドではありません。</translation>
++      <translation>メッシュ '%1' は立体ではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1328"/>
+       <source>The mesh '%1' is a solid.</source>
+-      <translation>'%1'はソリッドメッシュです。</translation>
++      <translation>'%1'は立体メッシュです。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1331"/>
+       <source>Solid Mesh</source>
+-      <translation>ソリッドメッシュ</translation>
++      <translation>立体メッシュ</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1524"/>
+diff --git a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+index 78e6a9ee6..145f3726f 100644
+--- a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
++++ b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+@@ -115,7 +115,7 @@
+       <location filename="../../AttacherTexts.cpp" line="885"/>
+       <source>Solid</source>
+       <comment>Attacher reference type</comment>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="886"/>
+@@ -453,7 +453,7 @@
+       <location filename="../../AttacherTexts.cpp" line="698"/>
+       <source>Line that spans the shortest distance between shapes.</source>
+       <comment>AttachmentLine mode tooltip</comment>
+-      <translation>シェイプ間の最短距離を結ぶ線。</translation>
++      <translation>形間の最短距離を結ぶ線。</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="706"/>
+@@ -495,7 +495,7 @@
+       <location filename="../../AttacherTexts.cpp" line="733"/>
+       <source>Normal to surface</source>
+       <comment>AttachmentLine mode caption</comment>
+-      <translation>サーフェスに垂直</translation>
++      <translation>曲面に垂直</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="734"/>
+@@ -600,7 +600,7 @@
+       <location filename="../../AttacherTexts.cpp" line="376"/>
+       <source>Plane is aligned to coincide planar face.</source>
+       <comment>AttachmentPlane mode tooltip</comment>
+-      <translation>平面フェイスと一致するように平面を配置</translation>
++      <translation>平面面と一致するように平面を配置</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="384"/>
+@@ -809,7 +809,7 @@
+       <location filename="../../AttacherTexts.cpp" line="123"/>
+       <source>X' Y' plane is aligned to coincide planar face.</source>
+       <comment>Attachment3D mode tooltip</comment>
+-      <translation>平面フェイスと一致するようにX' Y'平面を配置</translation>
++      <translation>平面面と一致するようにX' Y'平面を配置</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="131"/>
+@@ -1269,7 +1269,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1405"/>
+       <source>Applies a boolean operation with the selected shapes</source>
+-      <translation>選択したシェイプにブール演算を適用</translation>
++      <translation>選択した形にブール演算を適用</translation>
+     </message>
+   </context>
+   <context>
+@@ -1288,7 +1288,7 @@
+     <message>
+       <location filename="../../CommandParametric.cpp" line="118"/>
+       <source>Creates a solid cube</source>
+-      <translation>ソリッド立方体を作成</translation>
++      <translation>立体立方体を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1306,7 +1306,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="135"/>
+       <source>Creates a solid box</source>
+-      <translation>ソリッド直方体を作成</translation>
++      <translation>立体直方体を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1324,7 +1324,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="178"/>
+       <source>Creates a solid box</source>
+-      <translation>ソリッド直方体を作成</translation>
++      <translation>立体直方体を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1337,7 +1337,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1703"/>
+       <source>Shape Builder</source>
+-      <translation>シェイプビルダー</translation>
++      <translation>形ビルダー</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1705"/>
+@@ -1360,7 +1360,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1609"/>
+       <source>Chamfers the selected edges of a shape</source>
+-      <translation>シェイプの選択された辺を面取り</translation>
++      <translation>形の選択された辺を面取り</translation>
+     </message>
+   </context>
+   <context>
+@@ -1378,7 +1378,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="392"/>
+       <source>Intersects the selected shapes</source>
+-      <translation>選択したシェイプを交差</translation>
++      <translation>選択した形を交差</translation>
+     </message>
+   </context>
+   <context>
+@@ -1396,7 +1396,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="819"/>
+       <source>Compound tools for working with multiple shapes</source>
+-      <translation>複数シェイプを扱うためのコンパウンド・ツール</translation>
++      <translation>複数形を扱うためのコンパウンド・ツール</translation>
+     </message>
+   </context>
+   <context>
+@@ -1409,7 +1409,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="569"/>
+       <source>Join Shapes</source>
+-      <translation>シェイプを接合</translation>
++      <translation>形を接合</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="571"/>
+@@ -1432,7 +1432,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1925"/>
+       <source>Tools to offset shapes (construct parallel shapes)</source>
+-      <translation>シェイプオフセット用ツール（平行なシェイプを作成）</translation>
++      <translation>形オフセット用ツール（平行な形を作成）</translation>
+     </message>
+   </context>
+   <context>
+@@ -1445,12 +1445,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="683"/>
+       <source>Split Shapes</source>
+-      <translation>シェイプを分割</translation>
++      <translation>形を分割</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="685"/>
+       <source>Shape splitting and compsolid creation tools</source>
+-      <translation>シェイプ分割と複合ソリッド作成のツール</translation>
++      <translation>形分割と複合立体作成のツール</translation>
+     </message>
+   </context>
+   <context>
+@@ -1468,7 +1468,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="936"/>
+       <source>Compounds the selected shapes</source>
+-      <translation>選択したシェイプをコンパウンド化</translation>
++      <translation>選択した形をコンパウンド化</translation>
+     </message>
+   </context>
+   <context>
+@@ -1487,7 +1487,7 @@
+     <message>
+       <location filename="../../CommandParametric.cpp" line="206"/>
+       <source>Creates a solid cone</source>
+-      <translation>ソリッド円錐を作成</translation>
++      <translation>立体円錐を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1523,7 +1523,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="316"/>
+       <source>Cuts 2 selected shapes</source>
+-      <translation>選択した2つのシェイプを切断</translation>
++      <translation>選択した2つの形を切断</translation>
+     </message>
+   </context>
+   <context>
+@@ -1542,7 +1542,7 @@
+     <message>
+       <location filename="../../CommandParametric.cpp" line="74"/>
+       <source>Creates a solid cylinder</source>
+-      <translation>ソリッド円柱を作成</translation>
++      <translation>立体円柱を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1560,7 +1560,7 @@
+     <message>
+       <location filename="../../CommandSimple.cpp" line="463"/>
+       <source>Removes the selected features from a shape</source>
+-      <translation>選択した形をシェイプから削除</translation>
++      <translation>選択した形を形から削除</translation>
+     </message>
+   </context>
+   <context>
+@@ -1573,12 +1573,12 @@
+     <message>
+       <location filename="../../CommandSimple.cpp" line="359"/>
+       <source>Shape Element Copy</source>
+-      <translation>シェイプ要素のコピー</translation>
++      <translation>形要素のコピー</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="360"/>
+       <source>Creates a non-parametric copy of the selected shape element</source>
+-      <translation>選択したシェイプ要素の非パラメトリックコピーを作成</translation>
++      <translation>選択した形要素の非パラメトリックコピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1632,7 +1632,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1581"/>
+       <source>Fillets the selected edges of a shape</source>
+-      <translation>シェイプの選択した辺を丸め</translation>
++      <translation>形の選択した辺を丸め</translation>
+     </message>
+   </context>
+   <context>
+@@ -1650,7 +1650,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="469"/>
+       <source>Unites the selected shapes</source>
+-      <translation>選択したシェイプを結合</translation>
++      <translation>選択した形を結合</translation>
+     </message>
+   </context>
+   <context>
+@@ -1735,12 +1735,12 @@
+     <message>
+       <location filename="../../Command.cpp" line="1242"/>
+       <source>Convert to Solid</source>
+-      <translation>ソリッドに変換</translation>
++      <translation>立体に変換</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1243"/>
+       <source>Converts the selected shell or compound to a solid</source>
+-      <translation>選択したシェルまたはコンパウンドをソリッドに変換</translation>
++      <translation>選択したシェルまたはコンパウンドを立体に変換</translation>
+     </message>
+   </context>
+   <context>
+@@ -1758,7 +1758,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="1637"/>
+       <source>Mirrors the selected shape</source>
+-      <translation>選択したシェイプを鏡像コピー</translation>
++      <translation>選択した形を鏡像コピー</translation>
+     </message>
+   </context>
+   <context>
+@@ -1825,12 +1825,12 @@
+     <message>
+       <location filename="../../CommandSimple.cpp" line="143"/>
+       <source>Points From Shape</source>
+-      <translation>シェイプから点へ</translation>
++      <translation>形から点へ</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="144"/>
+       <source>Creates distributed points from the selected shape</source>
+-      <translation>選択したシェイプから分散した点群を作成</translation>
++      <translation>選択した形から分散した点群を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1848,7 +1848,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="222"/>
+       <source>Creates solid geometric primitives parametrically</source>
+-      <translation>ソリッド幾何プリミティブをパラメトリックに作成</translation>
++      <translation>立体幾何プリミティブをパラメトリックに作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1861,7 +1861,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="2425"/>
+       <source>Project on Surface</source>
+-      <translation>サーフェスに投影</translation>
++      <translation>曲面に投影</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2426"/>
+@@ -1869,7 +1869,7 @@
+ onto a face of another shape.
+ The camera view determines the direction
+ of the projection.</source>
+-      <translation>1 つのシェイプの辺、ワイヤ、または面を別のシェイプの面に投影します。
++      <translation>1 つの形の辺、ワイヤ、または面を別の形の面に投影します。
+ カメラビューによって投影方向が決定します。</translation>
+     </message>
+   </context>
+@@ -1883,12 +1883,12 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="387"/>
+       <source>Refine Shape</source>
+-      <translation>シェイプを高精度化</translation>
++      <translation>形を高精度化</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="388"/>
+       <source>Creates a refined copy of the selected shapes</source>
+-      <translation>選択したシェイプの高精度化されたコピーを作成</translation>
++      <translation>選択した形の高精度化されたコピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1901,12 +1901,12 @@ of the projection.</source>
+     <message>
+       <location filename="../../Command.cpp" line="1335"/>
+       <source>Reverse Shapes</source>
+-      <translation>シェイプを反転</translation>
++      <translation>形を反転</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1336"/>
+       <source>Reverses the orientation of the selected shapes</source>
+-      <translation>選択したシェイプの方向を反転</translation>
++      <translation>選択した形の方向を反転</translation>
+     </message>
+   </context>
+   <context>
+@@ -1924,7 +1924,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../Command.cpp" line="1553"/>
+       <source>Revolves the selected shape</source>
+-      <translation>選択したシェイプを回転押し出し</translation>
++      <translation>選択した形を回転押し出し</translation>
+     </message>
+   </context>
+   <context>
+@@ -1960,7 +1960,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../Command.cpp" line="998"/>
+       <source>Sections 2 selected shapes</source>
+-      <translation>選択した2つのシェイプを分割</translation>
++      <translation>選択した2つの形を分割</translation>
+     </message>
+   </context>
+   <context>
+@@ -1973,12 +1973,12 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="115"/>
+       <source>Shape From Mesh</source>
+-      <translation>メッシュからシェイプへ</translation>
++      <translation>メッシュから形へ</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="116"/>
+       <source>Creates a shape from the selected mesh</source>
+-      <translation>選択したメッシュからシェイプを作成</translation>
++      <translation>選択したメッシュから形を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1996,7 +1996,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="241"/>
+       <source>Creates a simple non-parametric copy of the selected shapes</source>
+-      <translation>選択したシェイプの単純な非パラメトリックコピーを作成</translation>
++      <translation>選択した形の単純な非パラメトリックコピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -2014,7 +2014,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="57"/>
+       <source>Creates a solid cylinder</source>
+-      <translation>ソリッド円柱を作成</translation>
++      <translation>立体円柱を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -2033,7 +2033,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandParametric.cpp" line="162"/>
+       <source>Creates a solid sphere</source>
+-      <translation>ソリッド球を作成</translation>
++      <translation>立体球を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -2079,7 +2079,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../Command.cpp" line="2087"/>
+       <source>Selected shape is not a solid</source>
+-      <translation>選択した図形はソリッドではありません</translation>
++      <translation>選択した図形は立体ではありません</translation>
+     </message>
+   </context>
+   <context>
+@@ -2098,7 +2098,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandParametric.cpp" line="250"/>
+       <source>Creates a solid torus</source>
+-      <translation>ソリッドトーラスを作成</translation>
++      <translation>立体トーラスを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -2116,7 +2116,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="330"/>
+       <source>Creates a non-parametric copy with transformed placement of the selected shapes</source>
+-      <translation>選択したシェイプの配置を変換した非パラメトリックコピーを作成</translation>
++      <translation>選択した形の配置を変換した非パラメトリックコピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -2220,7 +2220,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="200"/>
+       <source>Points from geometry</source>
+-      <translation>ジオメトリからの点</translation>
++      <translation>図形からの点</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSimple.cpp" line="405"/>
+@@ -2276,7 +2276,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../TaskShapeBuilder.cpp" line="540"/>
+       <source>Solid</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSweep.cpp" line="418"/>
+@@ -2286,7 +2286,7 @@ of the projection.</source>
+     <message>
+       <location filename="../../DlgProjectionOnSurface.cpp" line="1621"/>
+       <source>Project on surface</source>
+-      <translation>サーフェスに投影</translation>
++      <translation>曲面に投影</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderMirror.cpp" line="213"/>
+@@ -2509,7 +2509,7 @@ Note: The placement is expressed in local space of object being attached.</sourc
+       <location filename="../../DlgBooleanOperation.ui" line="81"/>
+       <location filename="../../DlgBooleanOperation.ui" line="119"/>
+       <source>Solids</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../DlgBooleanOperation.ui" line="86"/>
+@@ -2552,12 +2552,12 @@ Note: The placement is expressed in local space of object being attached.</sourc
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="414"/>
+       <source>First, select a shape on the left side</source>
+-      <translation>まず左側のシェイプを選択してください</translation>
++      <translation>まず左側の形を選択してください</translation>
+     </message>
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="418"/>
+       <source>First, select a shape on the right side</source>
+-      <translation>まず右側のシェイプを選択してください</translation>
++      <translation>まず右側の形を選択してください</translation>
+     </message>
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="447"/>
+@@ -2567,17 +2567,17 @@ Note: The placement is expressed in local space of object being attached.</sourc
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="457"/>
+       <source>Performing union on non-solids is not possible</source>
+-      <translation>ソリッドでないものに対する結合は行えません</translation>
++      <translation>立体でないものに対する結合は行えません</translation>
+     </message>
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="468"/>
+       <source>Performing intersection on non-solids is not possible</source>
+-      <translation>ソリッドでないものに対する共通集合は行えません</translation>
++      <translation>立体でないものに対する共通集合は行えません</translation>
+     </message>
+     <message>
+       <location filename="../../DlgBooleanOperation.cpp" line="479"/>
+       <source>Performing difference on non-solids is not possible</source>
+-      <translation>ソリッドでないものに対する論理差は行えません</translation>
++      <translation>立体でないものに対する論理差は行えません</translation>
+     </message>
+   </context>
+   <context>
+@@ -2650,7 +2650,7 @@ a single object. When importing back the STEP file, the
+ placement will be encoded into the shape geometry, instead of keeping
+ it inside the placement property.</source>
+       <translation>単一オブジェクトのエクスポート時に配置情報を保持します。
+-STEPファイルを再インポートする場合、配置情報は配置プロパティ内には保持されず、形状ジオメトリーにエンコードされます。</translation>
++STEPファイルを再インポートする場合、配置情報は配置プロパティ内には保持されず、形状図形にエンコードされます。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExportStep.ui" line="139"/>
+@@ -2692,7 +2692,7 @@ STEPファイルを再インポートする場合、配置情報は配置プロ
+       <source>This parameter indicates whether parametric curves (curves in parametric space of surface)
+ should be written into the STEP file. This parameter can be set to off in order to minimize
+ the size of the resulting STEP file.</source>
+-      <translation>このパラメータは、パラメトリック曲線（サーフェスのパラメトリック空間の曲線）かどうかを示し、
++      <translation>このパラメータは、パラメトリック曲線（曲面のパラメトリック空間の曲線）かどうかを示し、
+ STEPファイルに書き込む必要があります。このパラメータは、結果としてのSTEPファイルのサイズを最小化するためにオフに設定できます。</translation>
+     </message>
+   </context>
+@@ -2743,7 +2743,7 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="32"/>
+       <source>Extrudes perpendicularly to the plane of the input shape</source>
+-      <translation>入力シェイプの平面に垂直に押し出し</translation>
++      <translation>入力形の平面に垂直に押し出し</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="48"/>
+@@ -2833,22 +2833,22 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="337"/>
+       <source>Results in solids if wires are closed, otherwise in shells</source>
+-      <translation>ワイヤーが閉じている場合はソリッド、そうでない場合はシェルとなります。</translation>
++      <translation>ワイヤーが閉じている場合は立体、そうでない場合はシェルとなります。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="340"/>
+       <source>Create solid</source>
+-      <translation>ソリッド作成</translation>
++      <translation>立体作成</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="360"/>
+       <source>Select shape(s) that should be extruded</source>
+-      <translation>押し出すシェイプを選択</translation>
++      <translation>押し出す形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.ui" line="373"/>
+       <source>Shape</source>
+-      <translation>シェイプ</translation>
++      <translation>形</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.cpp" line="230"/>
+@@ -2877,14 +2877,14 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgExtrusion.cpp" line="712"/>
+       <source>No shapes selected for extrusion.</source>
+-      <translation>押し出し用のシェイプが選択されていません。</translation>
++      <translation>押し出し用の形が選択されていません。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.cpp" line="779"/>
+       <source>Cannot determine normal vector of shape to be extruded. Use other mode. 
+ 
+ (%1)</source>
+-      <translation>押し出されるシェイプの法線ベクトルを決定できません。他のモードを使用してください。
++      <translation>押し出される形の法線ベクトルを決定できません。他のモードを使用してください。
+ 
+  （%1）</translation>
+     </message>
+@@ -2932,7 +2932,7 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgFilletEdges.ui" line="20"/>
+       <source>Shape</source>
+-      <translation>シェイプ</translation>
++      <translation>形</translation>
+     </message>
+     <message>
+       <location filename="../../DlgFilletEdges.ui" line="40"/>
+@@ -2942,7 +2942,7 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgFilletEdges.ui" line="32"/>
+       <source>Selected shape</source>
+-      <translation>選択したシェイプ</translation>
++      <translation>選択した形</translation>
+     </message>
+     <message>
+       <location filename="../../DlgFilletEdges.ui" line="51"/>
+@@ -3071,8 +3071,8 @@ If both lengths are zero, magnitude of direction is used.</source>
+       <location filename="../../DlgFilletEdges.cpp" line="1040"/>
+       <source>No valid shape is selected.
+ Select a valid shape in the drop-down box first.</source>
+-      <translation>有効なシェイプが選択されていません。
+-最初にドロップダウンボックスで有効なシェイプを選択してください。</translation>
++      <translation>有効な形が選択されていません。
++最初にドロップダウンボックスで有効な形を選択してください。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgFilletEdges.cpp" line="1098"/>
+@@ -3133,7 +3133,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="71"/>
+       <source>Solids and shells will be exported as trimmed surface</source>
+-      <translation>ソリッドとシェルはトリムされたサーフェスとしてエクスポートされます</translation>
++      <translation>立体とシェルはトリムされた曲面としてエクスポートされます</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="74"/>
+@@ -3143,17 +3143,17 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="65"/>
+       <source>Export Solids and Shells As</source>
+-      <translation>ソリッドとシェルを次の形式でエクスポート</translation>
++      <translation>立体とシェルを次の形式でエクスポート</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="84"/>
+       <source>Solids will be exported as manifold solid B-rep object, shells as shell</source>
+-      <translation>ソリッドはマニホールドソリッドB-Repオブジェクト、シェルとしてエクスポートされます。</translation>
++      <translation>立体はマニホールド立体B-Repオブジェクト、シェルとしてエクスポートされます。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="87"/>
+       <source>Solids (type 186) and shells (type 514) / B-rep mode</source>
+-      <translation>ソリッド （タイプ 186） とシェル （タイプ 514）/B-REP モード</translation>
++      <translation>立体 （タイプ 186） とシェル （タイプ 514）/B-REP モード</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportExportIges.ui" line="100"/>
+@@ -3246,7 +3246,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgImportStep.ui" line="93"/>
+       <source>Expand compound shape with multiple solids</source>
+-      <translation>複数のソリッドでコンパウンドシェイプを展開</translation>
++      <translation>複数の立体でコンパウンド形を展開</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportStep.ui" line="96"/>
+@@ -4071,7 +4071,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgProjectionOnSurface.ui" line="14"/>
+       <source>Project on Surface</source>
+-      <translation>サーフェスに投影</translation>
++      <translation>曲面に投影</translation>
+     </message>
+     <message>
+       <location filename="../../DlgProjectionOnSurface.ui" line="20"/>
+@@ -4106,7 +4106,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgProjectionOnSurface.ui" line="116"/>
+       <source>Solid depth</source>
+-      <translation>ソリッドの深さ</translation>
++      <translation>立体の深さ</translation>
+     </message>
+     <message>
+       <location filename="../../DlgProjectionOnSurface.ui" line="141"/>
+@@ -4159,7 +4159,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgRevolution.ui" line="42"/>
+       <source>Shape</source>
+-      <translation>シェイプ</translation>
++      <translation>形</translation>
+     </message>
+     <message>
+       <location filename="../../DlgRevolution.ui" line="56"/>
+@@ -4221,12 +4221,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgRevolution.ui" line="325"/>
+       <source>Creates a solid. Otherwise it results in a shell.</source>
+-      <translation>ソリッドを作成します。それ以外の場合はシェルになります。</translation>
++      <translation>立体を作成します。それ以外の場合はシェルになります。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgRevolution.ui" line="328"/>
+       <source>Create solid</source>
+-      <translation>ソリッド作成</translation>
++      <translation>立体作成</translation>
+     </message>
+     <message>
+       <location filename="../../DlgRevolution.ui" line="318"/>
+@@ -4287,7 +4287,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettings3DViewPart.ui" line="14"/>
+       <source>Shape View</source>
+-      <translation>シェイプビュー</translation>
++      <translation>形ビュー</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettings3DViewPart.ui" line="26"/>
+@@ -4297,12 +4297,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettings3DViewPart.ui" line="46"/>
+       <source>Defines the deviation of tessellation to the actual surface</source>
+-      <translation>実際のサーフェスに対してテッセレーションの偏差を定義</translation>
++      <translation>実際の曲面に対してテッセレーションの偏差を定義</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettings3DViewPart.ui" line="49"/>
+       <source>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;Tessellation&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;Defines the maximum deviation of the tessellated mesh to the surface. The smaller the value is the slower the render speed which results in increased detail/resolution.&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;テッセレーション&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;サーフェイスに対してテッセレーションしたメッシュの最大偏差を定義します。小さな値にするほどレンダリング速度が遅くなりますが、細密さ/解像度の向上した結果となります。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head&gt;&lt;meta name="qrichtext" content="1" /&gt;&lt;/head&gt;&lt;body style=" white-space: pre-wrap; font-size:7.8pt; font-weight:400; font-style:normal; text-decoration:none;"&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"&gt;&lt;span style=" font-weight:600;"&gt;テッセレーション&lt;/span&gt;&lt;/p&gt;&lt;p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;/p&gt;&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"&gt;&lt;span style=" font-weight:400;"&gt;サー面に対してテッセレーションしたメッシュの最大偏差を定義します。小さな値にするほどレンダリング速度が遅くなりますが、細密さ/解像度の向上した結果となります。&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettings3DViewPart.ui" line="52"/>
+@@ -4434,7 +4434,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="342"/>
+       <source>Visually highlights the source sketch or geometry used to generate the feature currently being edited</source>
+-      <translation>現在編集している形の生成に使用される元スケッチまたはジオメトリーを視覚的に強調表示</translation>
++      <translation>現在編集している形の生成に使用される元スケッチまたは図形を視覚的に強調表示</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="361"/>
+@@ -4464,7 +4464,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="411"/>
+       <source>Prevents the model from recalculating while manipulating draggers. The shape updates only after release of the mouse button.</source>
+-      <translation>ドラッグ操作中にモデルが再計算されるのを防ぎます。シェイプはマウスボタンを離した後にだけ更新されます。</translation>
++      <translation>ドラッグ操作中にモデルが再計算されるのを防ぎます。形はマウスボタンを離した後にだけ更新されます。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="424"/>
+@@ -4509,7 +4509,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="105"/>
+       <source>Allow multiple solids in Part Design bodies by default</source>
+-      <translation>デフォルトでパートデザインの部品内に複数ソリッドを配置することを許可</translation>
++      <translation>デフォルトでパートデザインの部品内に複数立体を配置することを許可</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.cpp" line="53"/>
+@@ -4546,7 +4546,7 @@ Check one or more edge entities first.</source>
+     </message>
+     <message>
+       <source>Sets new bodies to allow multiple disconnected solids (compounds). If unchecked, a body is strictly limited to a single contiguous solid.</source>
+-      <translation>新しい部品で、離れた複数のソリッド（複合形状）を持てるようにします。オフなら、部品は 1 つのつながったソリッドに限られます。</translation>
++      <translation>新しい部品で、離れた複数の立体（複合形状）を持てるようにします。オフなら、部品は 1 つのつながった立体に限られます。</translation>
+     </message>
+     <message>
+       <source>Currently not implemented: this option does not yet modify automatically generated Part feature names</source>
+@@ -4586,17 +4586,17 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="14"/>
+       <source>Shape Appearance</source>
+-      <translation>シェイプの外観</translation>
++      <translation>形の外観</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="20"/>
+       <source>Default Shape Appearance Properties</source>
+-      <translation>デフォルトのシェイプの外観のプロパティ</translation>
++      <translation>デフォルトの形の外観のプロパティ</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="34"/>
+       <source>Shape color</source>
+-      <translation>シェイプの色</translation>
++      <translation>形の色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="41"/>
+@@ -4616,52 +4616,52 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="83"/>
+       <source>Ambient shape color</source>
+-      <translation>シェイプの環境光色</translation>
++      <translation>形の環境光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="90"/>
+       <source>The default ambient color for new shapes</source>
+-      <translation>新しいシェイプのデフォルトの環境光色</translation>
++      <translation>新しい形のデフォルトの環境光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="116"/>
+       <source>Emissive shape color</source>
+-      <translation>シェイプの放射光色</translation>
++      <translation>形の放射光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="123"/>
+       <source>The default emissive color for new shapes</source>
+-      <translation>新しいシェイプのデフォルトの放射光色</translation>
++      <translation>新しい形のデフォルトの放射光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="149"/>
+       <source>Specular shape color</source>
+-      <translation>シェイプの反射光色</translation>
++      <translation>形の反射光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="156"/>
+       <source>The default specular color for new shapes</source>
+-      <translation>新しいシェイプのデフォルトの反射光色</translation>
++      <translation>新しい形のデフォルトの反射光色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="182"/>
+       <source>Shape transparency</source>
+-      <translation>シェイプの透明度</translation>
++      <translation>形の透明度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="189"/>
+       <source>The default transparency for new shapes</source>
+-      <translation>新しいシェイプのデフォルト透明度</translation>
++      <translation>新しい形のデフォルト透明度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="217"/>
+       <source>Shape shininess</source>
+-      <translation>シェイプの光沢度</translation>
++      <translation>形の光沢度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="224"/>
+       <source>The default shininess for new shapes</source>
+-      <translation>新しいシェイプのデフォルトの光沢度</translation>
++      <translation>新しい形のデフォルトの光沢度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="255"/>
+@@ -4671,7 +4671,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="262"/>
+       <source>The default line color for new shapes</source>
+-      <translation>新規シェイプの既定の線色</translation>
++      <translation>新規形の既定の線色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsObjectColor.ui" line="288"/>
+@@ -4729,7 +4729,7 @@ Check one or more edge entities first.</source>
+ If not checked, it depends on the option "Backlight color"
+ (preferences section Display -&gt; 3D View); either the backlight color
+ will be used or black.</source>
+-      <translation>サーフェスの底部側は、上側と同様にレンダリングされます。
++      <translation>曲面の底部側は、上側と同様にレンダリングされます。
+ チェックされていない場合、オプション「バックライトの色を有効」（セクション表示→3Dビューの設定）に依存します。バックライトの色が用いられるか黒くなります。</translation>
+     </message>
+     <message>
+@@ -5187,7 +5187,7 @@ only created cuts will be visible</source>
+     <message>
+       <location filename="../../TaskShapeBuilder.cpp" line="498"/>
+       <source>Select only 1 shape object</source>
+-      <translation>シェイプオブジェクトを1つだけ選択してください</translation>
++      <translation>形オブジェクトを1つだけ選択してください</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBuilder.cpp" line="570"/>
+@@ -5494,7 +5494,7 @@ of the object being attached.</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1189"/>
+       <source>Shape Content</source>
+-      <translation>シェイプのコンテンツ</translation>
++      <translation>形のコンテンツ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1201"/>
+@@ -5517,7 +5517,7 @@ of the object being attached.</source>
+       <source>Extra boolean operations check that can sometimes find errors that
+ the standard BRep geometry check misses. These errors do not always
+ mean the checked object is unusable.  Default: false</source>
+-      <translation>ブーリアン演算の追加検査。標準の BRep ジオメトリ検査では見落とされるようなエラーを発見できる場合があります。これらのエラーは、必ずしも検査されたオブジェクトが使用できないことを意味するものではありません。既定: false</translation>
++      <translation>ブーリアン演算の追加検査。標準の BRep 図形検査では見落とされるようなエラーを発見できる場合があります。これらのエラーは、必ずしも検査されたオブジェクトが使用できないことを意味するものではありません。既定: false</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1229"/>
+@@ -5528,7 +5528,7 @@ mean the checked object is unusable.  Default: false</source>
+       <location filename="../../TaskCheckGeometry.cpp" line="1231"/>
+       <source>Run the geometry check in a single thread.  This is slower,
+ but more stable.  Default: false</source>
+-      <translation>単一スレッドでジオメトリチェックを実行します。これは遅くなりますが、
++      <translation>単一スレッドで図形チェックを実行します。これは遅くなりますが、
+ 安定性が向上します。デフォルト: false</translation>
+     </message>
+     <message>
+@@ -5544,24 +5544,24 @@ but more stable.  Default: false</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1256"/>
+       <source>Expand shape content</source>
+-      <translation>シェイプの内容を展開</translation>
++      <translation>形の内容を展開</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1258"/>
+       <source>Expand shape content.  Changes will take effect next time you use 
+ the check geometry tool.  Default: false</source>
+-      <translation>シェイプコンテンツを展開します。次回ジオメトリチェックツールを使用するときに変更が有効になります。既定：false</translation>
++      <translation>形コンテンツを展開します。次回図形チェックツールを使用するときに変更が有効になります。既定：false</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1271"/>
+       <source>Advanced shape content</source>
+-      <translation>高度なシェイプコンテンツ</translation>
++      <translation>高度な形コンテンツ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1273"/>
+       <source>Show advanced shape content.  Changes will take effect next time you use 
+ the check geometry tool.  Default: false</source>
+-      <translation>シェイプコンテンツを展開します。次回ジオメトリチェックツールを使用するときに変更が有効になります。既定：false</translation>
++      <translation>形コンテンツを展開します。次回図形チェックツールを使用するときに変更が有効になります。既定：false</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1285"/>
+@@ -5613,7 +5613,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1384"/>
+       <source>Invalid curve on surface</source>
+-      <translation>サーフェス上の無効な曲線</translation>
++      <translation>曲面上の無効な曲線</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1455"/>
+@@ -5633,7 +5633,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1210"/>
+       <source>Skip this settings page and run the geometry check automatically</source>
+-      <translation>この設定をスキップし、ジオメトリーチェックを自動実行します。</translation>
++      <translation>この設定をスキップし、図形チェックを自動実行します。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1301"/>
+@@ -5673,7 +5673,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1385"/>
+       <source>Check for invalid curves on surfaces.  Default: true</source>
+-      <translation>サーフェス上の無効な曲線をチェックします。デフォルト: true</translation>
++      <translation>曲面上の無効な曲線をチェックします。デフォルト: true</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="1467"/>
+@@ -5686,7 +5686,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="403"/>
+       <source>Check Geometry Results</source>
+-      <translation>ジオメトリの結果を確認</translation>
++      <translation>図形の結果を確認</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="426"/>
+@@ -5701,7 +5701,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="458"/>
+       <source>Check geometry</source>
+-      <translation>ジオメトリを確認</translation>
++      <translation>図形を確認</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="490"/>
+@@ -5808,7 +5808,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskLoft.ui" line="23"/>
+       <source>Create solid</source>
+-      <translation>ソリッド作成</translation>
++      <translation>立体作成</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLoft.ui" line="33"/>
+@@ -5897,7 +5897,7 @@ Individual boolean operation checks:</source>
+       <location filename="../../TaskShapeBuilder.ui" line="14"/>
+       <location filename="../../TaskShapeBuilder.ui" line="20"/>
+       <source>Create Shape</source>
+-      <translation>シェイプを作成</translation>
++      <translation>形を作成</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBuilder.ui" line="26"/>
+@@ -5927,7 +5927,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskShapeBuilder.ui" line="61"/>
+       <source>Solid from shell</source>
+-      <translation>シェルからソリッドへ</translation>
++      <translation>シェルから立体へ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBuilder.ui" line="75"/>
+@@ -5970,7 +5970,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskSweep.ui" line="53"/>
+       <source>Create solid</source>
+-      <translation>ソリッド作成</translation>
++      <translation>立体作成</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSweep.ui" line="63"/>
+@@ -6070,13 +6070,13 @@ in the 3D view for the sweep path.</source>
+       <location filename="../../Command.cpp" line="427"/>
+       <location filename="../../Command.cpp" line="527"/>
+       <source>Non-solids selected</source>
+-      <translation>非ソリッドが選択されています</translation>
++      <translation>非立体が選択されています</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="334"/>
+       <location filename="../../Command.cpp" line="1016"/>
+       <source>Select 2 shapes</source>
+-      <translation>2つのシェイプを選択</translation>
++      <translation>2つの形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="333"/>
+@@ -6094,22 +6094,22 @@ in the 3D view for the sweep path.</source>
+       <location filename="../../Command.cpp" line="528"/>
+       <source>The use of non-solids for boolean operations may lead to unexpected results.
+ Continue?</source>
+-      <translation>非ソリッドをブーリアン演算に用いると、予期しない結果を引き起こす可能性があります。続行しますか？</translation>
++      <translation>非立体をブーリアン演算に用いると、予期しない結果を引き起こす可能性があります。続行しますか？</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="411"/>
+       <source>Select at least 2 shapes. Alternatively, select 1 compound containing 2 or more shapes to compute the intersection between.</source>
+-      <translation>少なくとも2つのシェイプ、または2つ以上のシェイプを含むコンパウンド1つを選択して、その間の交差を計算します。</translation>
++      <translation>少なくとも2つの形、または2つ以上の形を含むコンパウンド1つを選択して、その間の交差を計算します。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="511"/>
+       <source>Select at least 2 shapes. Alternatively, select 1 compound containing 2 or more shapes to be fused.</source>
+-      <translation>少なくとも2つのシェイプ、または2つ以上のシェイプを含むコンパウンド1つを選択して、結合します。</translation>
++      <translation>少なくとも2つの形、または2つ以上の形を含むコンパウンド1つを選択して、結合します。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="953"/>
+       <source>Select at least one shape</source>
+-      <translation>少なくとも1つのシェイプを選択</translation>
++      <translation>少なくとも1つの形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1080"/>
+@@ -6162,12 +6162,12 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="79"/>
+       <source>Compound solid</source>
+-      <translation>コンパウンド・ソリッド</translation>
++      <translation>コンパウンド・立体</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="80"/>
+       <source>Solid</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="81"/>
+@@ -6182,7 +6182,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="86"/>
+       <source>Shape</source>
+-      <translation>シェイプ</translation>
++      <translation>形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="102"/>
+@@ -6197,12 +6197,12 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="105"/>
+       <source>Invalid point on curve on surface</source>
+-      <translation>サーフェス上にある曲線上の無効な点</translation>
++      <translation>曲面上にある曲線上の無効な点</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="107"/>
+       <source>Invalid point on surface</source>
+-      <translation>サーフェス上の無効な点</translation>
++      <translation>曲面上の無効な点</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="108"/>
+@@ -6222,17 +6222,17 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="111"/>
+       <source>No curve on surface</source>
+-      <translation>サーフェス上に曲線がありません</translation>
++      <translation>曲面上に曲線がありません</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="112"/>
+       <source>Invalid curve on surface</source>
+-      <translation>サーフェス上の無効な曲線</translation>
++      <translation>曲面上の無効な曲線</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="114"/>
+       <source>Invalid curve on closed surface</source>
+-      <translation>閉じたサーフェス上の無効な曲線</translation>
++      <translation>閉じた曲面上の無効な曲線</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="116"/>
+@@ -6282,7 +6282,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="125"/>
+       <source>No surface</source>
+-      <translation>サーフェスがありません</translation>
++      <translation>曲面がありません</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="126"/>
+@@ -6317,7 +6317,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="132"/>
+       <source>Unorientable shape</source>
+-      <translation>方向付け不能なシェイプ</translation>
++      <translation>方向付け不能な形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="133"/>
+@@ -6332,7 +6332,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="135"/>
+       <source>Sub-shape not in shape</source>
+-      <translation>シェイプ内にないサブシェイプ</translation>
++      <translation>形内にないサブ形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="136"/>
+@@ -6342,7 +6342,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="137"/>
+       <source>Bad orientation of sub-shape</source>
+-      <translation>サブシェイプの向きが正しくありません</translation>
++      <translation>サブ形の向きが正しくありません</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="138"/>
+@@ -6412,7 +6412,7 @@ Continue?</source>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="180"/>
+       <source>Boolean operation: invalid curve on surface</source>
+-      <translation>ブーリアン演算: サーフェス上の無効な曲線</translation>
++      <translation>ブーリアン演算: 曲面上の無効な曲線</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCheckGeometry.cpp" line="182"/>
+@@ -6574,7 +6574,7 @@ Continue?</source>
+     <message>
+       <location filename="../../Workbench.cpp" line="37"/>
+       <source>Solids</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../Workbench.cpp" line="38"/>
+@@ -6724,7 +6724,7 @@ Continue?</source>
+     <message>
+       <location filename="../../../CompoundTools/_CommandCompoundFilter.py" line="87"/>
+       <source>First select a shape that is a compound. If a second object is selected (optional) it will be treated as a stencil.</source>
+-      <translation>まずコンパウンドであるシェイプを選択してください。2つ目の選択アイテム (省略可) がステンシルとして扱われます。</translation>
++      <translation>まずコンパウンドである形を選択してください。2つ目の選択アイテム (省略可) がステンシルとして扱われます。</translation>
+     </message>
+     <message>
+       <location filename="../../../CompoundTools/_CommandCompoundFilter.py" line="67"/>
+@@ -6762,12 +6762,12 @@ for collision or distance filtering.</source>
+     <message>
+       <location filename="../../../CompoundTools/_CommandExplodeCompound.py" line="63"/>
+       <source>Splits up a compound of shapes into separate objects, creating a compound filter for each shape</source>
+-      <translation>シェイプのコンパウンドを別々のオブジェクトに分割し、それぞれのシェイプに対してコンパウンド・フィルターを作成</translation>
++      <translation>形のコンパウンドを別々のオブジェクトに分割し、それぞれの形に対してコンパウンド・フィルターを作成</translation>
+     </message>
+     <message>
+       <location filename="../../../CompoundTools/_CommandExplodeCompound.py" line="74"/>
+       <source>First select a shape that is a compound.</source>
+-      <translation>最初にコンパウンドであるシェイプを選択してください。</translation>
++      <translation>最初にコンパウンドである形を選択してください。</translation>
+     </message>
+     <message>
+       <location filename="../../../CompoundTools/_CommandExplodeCompound.py" line="75"/>
+@@ -6885,7 +6885,7 @@ for collision or distance filtering.</source>
+     <message>
+       <location filename="../../../BasicShapes/ShapeContent.py" line="30"/>
+       <source>Shape type</source>
+-      <translation>シェイプの種類</translation>
++      <translation>形の種類</translation>
+     </message>
+     <message>
+       <location filename="../../../BasicShapes/ShapeContent.py" line="32"/>
+@@ -6915,12 +6915,12 @@ for collision or distance filtering.</source>
+     <message>
+       <location filename="../../../BasicShapes/ShapeContent.py" line="38"/>
+       <source>Solids</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../../BasicShapes/ShapeContent.py" line="41"/>
+       <source>CompSolids</source>
+-      <translation>複合ソリッド</translation>
++      <translation>複合立体</translation>
+     </message>
+     <message>
+       <location filename="../../../BasicShapes/ShapeContent.py" line="46"/>
+@@ -7010,8 +7010,8 @@ for collision or distance filtering.</source>
+       <source>Performs an 'exclusive OR' boolean operation with two or more selected objects,
+ or with the shapes inside a compound.
+ Overlapping volumes of the shapes will be removed.</source>
+-      <translation>選択した2つ以上のオブジェクト、またはコンパウンド内のシェイプによる「排他的論理和」ブーリアン演算を実行。
+-シェイプの間の重なった体積が取り除かれます。</translation>
++      <translation>選択した2つ以上のオブジェクト、またはコンパウンド内の形による「排他的論理和」ブーリアン演算を実行。
++形の間の重なった体積が取り除かれます。</translation>
+     </message>
+   </context>
+   <context>
+@@ -7064,17 +7064,17 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../DlgScale.ui" line="195"/>
+       <source>Select shapes to be scaled</source>
+-      <translation>拡大縮小するシェイプを選択</translation>
++      <translation>拡大縮小する形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../DlgScale.ui" line="199"/>
+       <source>Shape</source>
+-      <translation>シェイプ</translation>
++      <translation>形</translation>
+     </message>
+     <message>
+       <location filename="../../DlgScale.cpp" line="206"/>
+       <source>No scalable shapes selected</source>
+-      <translation>拡大縮小可能なシェイプが選択されていません。</translation>
++      <translation>拡大縮小可能な形が選択されていません。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgScale.cpp" line="216"/>
+@@ -7105,7 +7105,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../Command.cpp" line="1465"/>
+       <source>Scales the selected shape</source>
+-      <translation>選択したシェイプを拡大縮小</translation>
++      <translation>選択した形を拡大縮小</translation>
+     </message>
+   </context>
+   <context>
+@@ -7113,7 +7113,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMaker.cpp" line="82"/>
+       <source>Shape must be a wire, edge or compound. Something else was supplied.</source>
+-      <translation>シェイプはワイヤー、辺、またはコンパウンドである必要があります。それ以外の物が設定されようとしました。</translation>
++      <translation>形はワイヤー、辺、またはコンパウンドである必要があります。それ以外の物が設定されようとしました。</translation>
+     </message>
+   </context>
+   <context>
+@@ -7126,7 +7126,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMaker.cpp" line="343"/>
+       <source>Makes separate plane face from every wire independently. No support for holes; wires can be on different planes.</source>
+-      <translation>各ワイヤーごとに独立に分かれた平面フェイスを作成。穴はサポートされていません。またワイヤーは異なる平面上に存在できます。</translation>
++      <translation>各ワイヤーごとに独立に分かれた平面面を作成。穴はサポートされていません。またワイヤーは異なる平面上に存在できます。</translation>
+     </message>
+   </context>
+   <context>
+@@ -7134,7 +7134,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMakerBullseye.cpp" line="60"/>
+       <source>Bull's-eye facemaker</source>
+-      <translation>ブルズ・アイ・フェイスメーカー</translation>
++      <translation>ブルズ・アイ・面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FaceMakerBullseye.cpp" line="65"/>
+@@ -7147,7 +7147,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMakerCheese.cpp" line="257"/>
+       <source>Cheese facemaker</source>
+-      <translation>チーズ・フェイスメーカー</translation>
++      <translation>チーズ・面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FaceMakerCheese.cpp" line="262"/>
+@@ -7160,7 +7160,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FeatureExtrusion.cpp" line="427"/>
+       <source>Part Extrude facemaker</source>
+-      <translation>パーツ押し出しフェイスメーカー</translation>
++      <translation>パーツ押し出し面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureExtrusion.cpp" line="432"/>
+@@ -7378,12 +7378,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../BOPTools/JoinFeatures.py" line="223"/>
+       <source>Connect Shapes</source>
+-      <translation>シェイプを連結</translation>
++      <translation>形を連結</translation>
+     </message>
+     <message>
+       <location filename="../../../BOPTools/JoinFeatures.py" line="227"/>
+       <source>Fuses shapes, taking care to preserve voids</source>
+-      <translation>中空が維持されるようにシェイプを結合</translation>
++      <translation>中空が維持されるように形を結合</translation>
+     </message>
+   </context>
+   <context>
+@@ -7391,12 +7391,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../BOPTools/JoinFeatures.py" line="338"/>
+       <source>Embed Shapes</source>
+-      <translation>埋め込みシェイプ</translation>
++      <translation>埋め込み形</translation>
+     </message>
+     <message>
+       <location filename="../../../BOPTools/JoinFeatures.py" line="342"/>
+       <source>Fuses one shape into another, taking care to preserve voids</source>
+-      <translation>中空が維持されるようにシェイプを別のシェイプと結合</translation>
++      <translation>中空が維持されるように形を別の形と結合</translation>
+     </message>
+   </context>
+   <context>
+@@ -7409,7 +7409,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../BOPTools/JoinFeatures.py" line="458"/>
+       <source>Creates a cutout in the selected shape to fit another shape</source>
+-      <translation>別の形状に合うよう、選択したシェイプに切り抜きを作成</translation>
++      <translation>別の形状に合うよう、選択した形に切り抜きを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7422,7 +7422,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../BOPTools/SplitFeatures.py" line="227"/>
+       <source>Creates a boolean union which is sliced at the intersections of the selected shapes</source>
+-      <translation>選択したシェイプの交差でスライスされたブーリアン和を作成</translation>
++      <translation>選択した形の交差でスライスされたブーリアン和を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7509,17 +7509,17 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../ShapeFromMesh.ui" line="14"/>
+       <source>Shape From Mesh</source>
+-      <translation>メッシュからシェイプへ</translation>
++      <translation>メッシュから形へ</translation>
+     </message>
+     <message>
+       <location filename="../../ShapeFromMesh.ui" line="20"/>
+       <source>Sew Shape</source>
+-      <translation>シェイプを縫い合わせ</translation>
++      <translation>形を縫い合わせ</translation>
+     </message>
+     <message>
+       <location filename="../../ShapeFromMesh.ui" line="32"/>
+       <source>Tolerance for sewing the shape</source>
+-      <translation>シェイプ縫い合わせの許容誤差</translation>
++      <translation>形縫い合わせの許容誤差</translation>
+     </message>
+   </context>
+   <context>
+@@ -7527,7 +7527,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMakerBullseye.cpp" line="367"/>
+       <source>Ring facemaker</source>
+-      <translation>リング・フェイスメーカー</translation>
++      <translation>リング・面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FaceMakerBullseye.cpp" line="372"/>
+@@ -7545,7 +7545,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../Command.cpp" line="2461"/>
+       <source>Creates a new object as a boolean intersection of all visible shapes and the selected axis planes</source>
+-      <translation>すべての表示シェイプと選択した軸面のブーリアン積として新しいオブジェクトを作成</translation>
++      <translation>すべての表示形と選択した軸面のブーリアン積として新しいオブジェクトを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7841,12 +7841,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMakerBuildFace.cpp" line="60"/>
+       <source>BuildFace facemaker</source>
+-      <translation>面構築フェイスメーカー</translation>
++      <translation>面構築面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FaceMakerBuildFace.cpp" line="65"/>
+       <source>Splits edges at intersections and finds all bounded face regions. Handles arbitrary overlapping geometry.</source>
+-      <translation>交点で辺を分割し、すべての境界面領域を検出します。任意の重なったジオメトリーを処理します。</translation>
++      <translation>交点で辺を分割し、すべての境界面領域を検出します。任意の重なった図形を処理します。</translation>
+     </message>
+   </context>
+   <context>
+@@ -7854,7 +7854,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../../App/FaceMakerUnified.cpp" line="53"/>
+       <source>Unified facemaker</source>
+-      <translation>統合されたフェイスメーカー</translation>
++      <translation>統合された面メーカー</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FaceMakerUnified.cpp" line="58"/>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index f208ed833..d289a9e14 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -685,7 +685,7 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="412"/>
+       <source>Creates a reference to geometry from one or more objects, allowing it to be used inside or outside a body. It tracks relative placements, supports multiple geometry types (solids, faces, edges, vertices), and can work with objects in the same or external documents.</source>
+-      <translation>1つまたは複数のオブジェクトから部品の内外で使用できるジオメトリーへの参照を作成します。この参照は相対配置を維持し、複数のジオメトリータイプ（ソリッド、面、辺、頂点）をサポートし、同じドキュメントまたは外部ドキュメント内のオブジェクトと共に使用できます。</translation>
++      <translation>1つまたは複数のオブジェクトから部品の内外で使用できる図形への参照を作成します。この参照は相対配置を維持し、複数の図形タイプ（立体、面、辺、頂点）をサポートし、同じドキュメントまたは外部ドキュメント内のオブジェクトと共に使用できます。</translation>
+     </message>
+   </context>
+   <context>
+@@ -881,17 +881,17 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Command.cpp" line="362"/>
+       <source>Edit Shape Binder</source>
+-      <translation>シェイプバインダーを編集</translation>
++      <translation>形の参照を編集</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="373"/>
+       <source>Create Shape Binder</source>
+-      <translation>シェイプバインダーを作成</translation>
++      <translation>形の参照を作成</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="466"/>
+       <source>Create Sub-Shape Binder</source>
+-      <translation>サブシェイプバインダーを作成</translation>
++      <translation>形の参照を作成</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="536"/>
+@@ -1011,7 +1011,7 @@ so that self intersection is avoided.</source>
+     <message>
+       <location filename="../../Workbench.cpp" line="60"/>
+       <source>Create Geometry</source>
+-      <translation>ジオメトリを作成</translation>
++      <translation>図形を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -1383,7 +1383,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../DlgReference.ui" line="20"/>
+       <source>You selected geometries which are not part of the active body. Please define how to handle those selections. If you do not want those references, cancel the command.</source>
+-      <translation>アクティブな部品の一部ではないジオメトリを選択しました。 これらの選択をどのように処理するかを定義してください。これらの参照を必要としない場合は、コマンドをキャンセルします。</translation>
++      <translation>アクティブな部品の一部ではない図形を選択しました。 これらの選択をどのように処理するかを定義してください。これらの参照を必要としない場合は、コマンドをキャンセルします。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgReference.ui" line="42"/>
+@@ -1806,7 +1806,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskExtrudeParameters.cpp" line="667"/>
+       <source>No shape selected</source>
+-      <translation>シェイプが選択されていません</translation>
++      <translation>形が選択されていません</translation>
+     </message>
+     <message>
+       <location filename="../../TaskExtrudeParameters.cpp" line="68"/>
+@@ -1854,7 +1854,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskExtrudeParameters.cpp" line="1190"/>
+       <source>Click on a shape in the model</source>
+-      <translation>モデルのシェイプをクリック</translation>
++      <translation>モデルの形をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../TaskExtrudeParameters.cpp" line="1467"/>
+@@ -2515,7 +2515,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskPadParameters.cpp" line="77"/>
+       <source>Up to shape</source>
+-      <translation>シェイプまで</translation>
++      <translation>形まで</translation>
+     </message>
+   </context>
+   <context>
+@@ -2706,13 +2706,13 @@ measured along the specified direction</source>
+       <location filename="../../TaskPadPocketParameters.ui" line="256"/>
+       <location filename="../../TaskPadPocketParameters.ui" line="485"/>
+       <source>Select Shape</source>
+-      <translation>シェイプを選択</translation>
++      <translation>形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="271"/>
+       <location filename="../../TaskPadPocketParameters.ui" line="500"/>
+       <source>Selects all faces of the shape</source>
+-      <translation>シェイプのすべての面を選択</translation>
++      <translation>形のすべての面を選択</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="762"/>
+@@ -3014,7 +3014,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskPocketParameters.cpp" line="81"/>
+       <source>Up to shape</source>
+-      <translation>シェイプまで</translation>
++      <translation>形まで</translation>
+     </message>
+   </context>
+   <context>
+@@ -3255,17 +3255,17 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskShapeBinder.ui" line="48"/>
+       <source>Add Geometry</source>
+-      <translation>ジオメトリを追加</translation>
++      <translation>図形を追加</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBinder.ui" line="67"/>
+       <source>Remove Geometry</source>
+-      <translation>ジオメトリを削除</translation>
++      <translation>図形を削除</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBinder.cpp" line="61"/>
+       <source>Shape Binder Parameters</source>
+-      <translation>シェイプバインダーの設定</translation>
++      <translation>形の参照の設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskShapeBinder.cpp" line="139"/>
+@@ -3560,7 +3560,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../Command.cpp" line="1033"/>
+       <source>Cannot use this command as there is no solid to subtract from.</source>
+-      <translation>このコマンドを使うことはできません。このコマンドから引くソリッドがないためです。</translation>
++      <translation>このコマンドを使うことはできません。このコマンドから引く立体がないためです。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1036"/>
+@@ -3585,7 +3585,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../Command.cpp" line="494"/>
+       <source>Sub-shape binder</source>
+-      <translation>サブシェイプバインダー</translation>
++      <translation>形の参照</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1092"/>
+@@ -3663,7 +3663,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../Command.cpp" line="1897"/>
+       <source>Shape of the selected part is empty</source>
+-      <translation>選択したパートのシェイプが空です。</translation>
++      <translation>選択したパートの形が空です。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1870"/>
+@@ -3673,7 +3673,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../Command.cpp" line="1063"/>
+       <source>Consider using a shape binder or a base feature to reference external geometry in a body</source>
+-      <translation>部品内の外部ジオメトリーを参照するためにシェイプバインダーまたはベース形を使用することを検討してください。</translation>
++      <translation>部品内の外部図形を参照するために形の参照またはベース形を使用することを検討してください。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1883"/>
+@@ -3717,25 +3717,25 @@ measured along the specified direction</source>
+       <location filename="../../CommandBody.cpp" line="185"/>
+       <source>The selected shape consists of multiple solids.
+ This may lead to unexpected results.</source>
+-      <translation>選択されているシェイプは複数のソリッドで構成されています。これは予期しない結果につながる可能性があります。</translation>
++      <translation>選択されている形は複数の立体で構成されています。これは予期しない結果につながる可能性があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="191"/>
+       <source>The selected shape consists of multiple shells.
+ This may lead to unexpected results.</source>
+-      <translation>選択されているシェイプは複数のシェルで構成されています。これは予期しない結果につながる可能性があります。</translation>
++      <translation>選択されている形は複数のシェルで構成されています。これは予期しない結果につながる可能性があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="197"/>
+       <source>The selected shape consists of only a shell.
+ This may lead to unexpected results.</source>
+-      <translation>選択されているシェイプはシェルひとつだけで構成されています。これは予期しない結果につながる可能性があります。</translation>
++      <translation>選択されている形はシェルひとつだけで構成されています。これは予期しない結果につながる可能性があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="203"/>
+       <source>The selected shape consists of multiple solids or shells.
+ This may lead to unexpected results.</source>
+-      <translation>選択されているシェイプは複数のソリッドまたはシェルで構成されています。これは予期しない結果につながる可能性があります。</translation>
++      <translation>選択されている形は複数の立体またはシェルで構成されています。これは予期しない結果につながる可能性があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="210"/>
+@@ -3785,7 +3785,7 @@ This may lead to unexpected results.</source>
+     <message>
+       <location filename="../../CommandBody.cpp" line="167"/>
+       <source>Base feature (%1) has an empty shape.</source>
+-      <translation>ベース形（%1）に空のシェイプがあります。</translation>
++      <translation>ベース形（%1）に空の形があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="428"/>
+@@ -3804,7 +3804,7 @@ This may lead to unexpected results.</source>
+     <message>
+       <location filename="../../CommandBody.cpp" line="713"/>
+       <source>Only a solid feature can be the tip of a body.</source>
+-      <translation>部品のTIPにできるのはソリッド形だけです。</translation>
++      <translation>部品のTIPにできるのは立体形だけです。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandBody.cpp" line="849"/>
+@@ -3979,7 +3979,7 @@ This feature is broken and cannot be edited.</source>
+     <message>
+       <location filename="../../ViewProviderShapeBinder.cpp" line="223"/>
+       <source>Edit Shape Binder</source>
+-      <translation>シェイプバインダーを編集</translation>
++      <translation>形の参照を編集</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderShapeBinder.cpp" line="352"/>
+@@ -4883,7 +4883,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/Body.cpp" line="417"/>
+       <source>Tip shape is empty</source>
+-      <translation>TIPのシェイプが空です。</translation>
++      <translation>TIPの形が空です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBase.cpp" line="80"/>
+@@ -4894,7 +4894,7 @@ over 90: larger hole radius at the bottom</source>
+       <location filename="../../../App/FeatureBase.cpp" line="100"/>
+       <location filename="../../../App/FeatureBase.cpp" line="125"/>
+       <source>BaseFeature has an empty shape</source>
+-      <translation>BaseFeatureに空のシェイプがあります。</translation>
++      <translation>BaseFeatureに空の形があります。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="172"/>
+@@ -4930,12 +4930,12 @@ over 90: larger hole radius at the bottom</source>
+       <location filename="../../../App/FeatureExtrude.cpp" line="852"/>
+       <location filename="../../../App/FeatureExtrude.cpp" line="865"/>
+       <source>Result has multiple solids: enable 'Allow Compound' in the active body.</source>
+-      <translation>結果に複数のソリッドがあります: アクティブな部品で「コンパウンドを許可」を有効にしてください。</translation>
++      <translation>結果に複数の立体があります: アクティブな部品で「コンパウンドを許可」を有効にしてください。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="221"/>
+       <source>Tool shape is null</source>
+-      <translation>ツールシェイプが null です。</translation>
++      <translation>ツール形が null です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureBoolean.cpp" line="248"/>
+@@ -4955,7 +4955,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureExtrude.cpp" line="770"/>
+       <source>No extrusion geometry was generated.</source>
+-      <translation>押し出しジオメトリーは生成されませんでした。</translation>
++      <translation>押し出し図形は生成されませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureExtrude.cpp" line="794"/>
+@@ -4969,7 +4969,7 @@ over 90: larger hole radius at the bottom</source>
+       <location filename="../../../App/FeaturePipe.cpp" line="572"/>
+       <location filename="../../../App/FeatureExtrude.cpp" line="827"/>
+       <source>Resulting shape is not a solid</source>
+-      <translation>結果シェイプはソリッドではありません。</translation>
++      <translation>結果形は立体ではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureChamfer.cpp" line="176"/>
+@@ -4980,7 +4980,7 @@ over 90: larger hole radius at the bottom</source>
+       <location filename="../../../App/FeatureFillet.cpp" line="122"/>
+       <location filename="../../../App/FeatureDraft.cpp" line="330"/>
+       <source>Resulting shape is null</source>
+-      <translation>結果シェイプが null です。</translation>
++      <translation>結果形が null です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureChamfer.cpp" line="144"/>
+@@ -5010,7 +5010,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureFillet.cpp" line="97"/>
+       <source>Fillet not possible on selected shapes</source>
+-      <translation>選択したシェイプでは丸めを作成できません。</translation>
++      <translation>選択した形では丸めを作成できません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureFillet.cpp" line="105"/>
+@@ -5020,7 +5020,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureFillet.cpp" line="159"/>
+       <source>Fillet operation failed. The selected edges may contain geometry that cannot be filleted together. Try filleting edges individually or with a smaller radius.</source>
+-      <translation>丸め操作に失敗しました。選択した辺に同時には丸めできないジオメトリーが含まれている可能性があります。個別に辺を丸めするか、半径を小さくしてみてください。</translation>
++      <translation>丸め操作に失敗しました。選択した辺に同時には丸めできない図形が含まれている可能性があります。個別に辺を丸めするか、半径を小さくしてみてください。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="1783"/>
+@@ -5029,13 +5029,13 @@ over 90: larger hole radius at the bottom</source>
+   material to be removed;
+   - the selected sketch does not belong to the active Body.</source>
+       <translation>要求された形を作成できません。原因は以下である可能性があります。
+-・ アクティブな部品にベースシェイプが無く、削除されるマテリアルが存在しない。
++・ アクティブな部品にベース形が無く、削除されるマテリアルが存在しない。
+ ・ 選択されたスケッチがアクティブな部品に属していない。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureExtrude.cpp" line="451"/>
+       <source>Failed to obtain profile shape</source>
+-      <translation>輪郭のシェイプを取得できませんでした。</translation>
++      <translation>輪郭の形を取得できませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureExtrude.cpp" line="505"/>
+@@ -5056,7 +5056,7 @@ over 90: larger hole radius at the bottom</source>
+     <message>
+       <location filename="../../../App/FeatureRevolved.cpp" line="494"/>
+       <source>No revolution geometry was generated</source>
+-      <translation>回転押し出しジオメトリーは生成されませんでした。</translation>
++      <translation>回転押し出し図形は生成されませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureRevolved.cpp" line="520"/>
+@@ -5116,7 +5116,7 @@ Intersecting sketch entities in a sketch are not allowed.</source>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="2505"/>
+       <source>Error: Result is not a solid</source>
+-      <translation>エラー: 結果はソリッドではありません。</translation>
++      <translation>エラー: 結果は立体ではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureHelix.cpp" line="414"/>
+@@ -5191,7 +5191,7 @@ Intersecting sketch entities in a sketch are not allowed.</source>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="2042"/>
+       <source>Hole error: Resulting shape is empty</source>
+-      <translation>穴エラー: 結果シェイプが空です。</translation>
++      <translation>穴エラー: 結果形が空です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureHole.cpp" line="2065"/>
+@@ -5312,7 +5312,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../../App/FeaturePipe.cpp" line="344"/>
+       <source>Path must not be a null shape</source>
+-      <translation>パスは null シェイプであってはなりません。</translation>
++      <translation>パスは null 形であってはなりません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeaturePipe.cpp" line="384"/>
+@@ -5502,12 +5502,12 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../../App/FeatureTransformed.cpp" line="379"/>
+       <source>Cannot transform invalid support shape</source>
+-      <translation>無効なサポートシェイプを変換できません</translation>
++      <translation>無効なサポート形を変換できません</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureTransformed.cpp" line="430"/>
+       <source>Shape of additive/subtractive feature is empty</source>
+-      <translation>加算/減算形のシェイプが空です。</translation>
++      <translation>加算/減算形の形が空です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/FeatureTransformed.cpp" line="421"/>
+@@ -5527,7 +5527,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../../App/FeatureDefeaturing.cpp" line="84"/>
+       <source>Defeaturing did not produce a single solid</source>
+-      <translation>面の除去は単一のソリッドを生成しませんでした</translation>
++      <translation>面の除去は単一の立体を生成しませんでした</translation>
+     </message>
+     <message>
+       <source>Cannot project the axis because the profile is not planar</source>
+@@ -5605,7 +5605,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../../App/FeatureAddSub.cpp" line="179"/>
+       <source>Resulting shape is empty. That may indicate that no material will be removed or a problem with the model.</source>
+-      <translation>結果シェイプが空です。マテリアルが削除されていない、またはモデルに問題がある可能性があります。</translation>
++      <translation>結果形が空です。マテリアルが削除されていない、またはモデルに問題がある可能性があります。</translation>
+     </message>
+   </context>
+   <context>
+@@ -5943,7 +5943,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed.</sou
+     <message>
+       <location filename="../../Command.cpp" line="2119"/>
+       <source>Removes selected faces from a solid</source>
+-      <translation>ソリッドから選択した面を削除</translation>
++      <translation>立体から選択した面を削除</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index 4376c7a8f..bc72ac6d3 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -11,7 +11,7 @@
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1642"/>
+       <source>Creates a clone of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリーのクローンを作成</translation>
++      <translation>最後に選択された点を参照位置として図形のクローンを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -52,7 +52,7 @@
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1724"/>
+       <source>Creates a clone of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリーのクローンを作成</translation>
++      <translation>最後に選択された点を参照位置として図形のクローンを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -83,12 +83,12 @@
+     <message>
+       <location filename="../../CommandSketcherBSpline.cpp" line="116"/>
+       <source>Geometry to B-Spline</source>
+-      <translation>ジオメトリーをB-スプラインへ</translation>
++      <translation>図形をB-スプラインへ</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherBSpline.cpp" line="117"/>
+       <source>Converts the selected geometry to B-splines</source>
+-      <translation>選択されたジオメトリーをB-スプラインに変換</translation>
++      <translation>選択された図形をB-スプラインに変換</translation>
+     </message>
+   </context>
+   <context>
+@@ -101,7 +101,7 @@
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1590"/>
+       <source>Creates a simple copy of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリーの単純コピーを作成</translation>
++      <translation>最後に選択された点を参照位置として図形の単純コピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -166,7 +166,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="653"/>
+       <source>Attaches a sketch to the selected geometry element</source>
+-      <translation>選択したジオメトリー要素にスケッチをアタッチする</translation>
++      <translation>選択した図形要素にスケッチをアタッチする</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="744"/>
+@@ -180,14 +180,14 @@
+       <location filename="../../Command.cpp" line="1161"/>
+       <source>Skipping external geometry #%1
+ </source>
+-      <translation>外部ジオメトリー #%1 をスキップ
++      <translation>外部図形 #%1 をスキップ
+ </translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1204"/>
+       <source>External geometry '%1' is out of scope:
+ </source>
+-      <translation>外部ジオメトリー「%1」が範囲外：
++      <translation>外部図形「%1」が範囲外：
+ </translation>
+     </message>
+     <message>
+@@ -221,7 +221,7 @@
+       <location filename="../../Command.cpp" line="1377"/>
+       <source>Skipping constraint #%1 of '%2': references unmerged geometry.
+ </source>
+-      <translation>「%2」のうちの拘束#%1をスキップ：マージされていないジオメトリーを参照しています。
++      <translation>「%2」のうちの拘束#%1をスキップ：マージされていない図形を参照しています。
+ </translation>
+     </message>
+   </context>
+@@ -260,7 +260,7 @@ as mirroring reference</source>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1689"/>
+       <source>Moves the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリーを移動</translation>
++      <translation>最後に選択された点を参照位置として図形を移動</translation>
+     </message>
+   </context>
+   <context>
+@@ -273,7 +273,7 @@ as mirroring reference</source>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2032"/>
+       <source>Creates a rectangular array pattern of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリーの格子状整列パターンを作成</translation>
++      <translation>最後に選択された点を参照位置として図形の格子状整列パターンを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -300,7 +300,7 @@ as mirroring reference</source>
+       <location filename="../../Command.cpp" line="909"/>
+       <source>Validates a sketch by checking for missing coincidences,
+ invalid constraints, and degenerate geometry</source>
+-      <translation>見落とされた一致、無効な拘束、縮退ジオメトリーを確認してスケッチを検証</translation>
++      <translation>見落とされた一致、無効な拘束、縮退図形を確認してスケッチを検証</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="925"/>
+@@ -769,7 +769,7 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../DrawSketchHandlerExternal.h" line="181"/>
+       <location filename="../../CommandConstraints.cpp" line="2020"/>
+       <source>Add external geometry</source>
+-      <translation>外部ジオメトリーを追加</translation>
++      <translation>外部図形を追加</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSlot.h" line="175"/>
+@@ -824,22 +824,22 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1171"/>
+       <source>Exposing Internal Geometry</source>
+-      <translation>内部ジオメトリーを表示</translation>
++      <translation>内部図形を表示</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1374"/>
+       <source>Copy/clone/move geometry</source>
+-      <translation>ジオメトリーのコピー/クローン/移動</translation>
++      <translation>図形のコピー/クローン/移動</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1959"/>
+       <source>Create copy of geometry</source>
+-      <translation>ジオメトリーのコピーを作成</translation>
++      <translation>図形のコピーを作成</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2209"/>
+       <source>Delete all geometry</source>
+-      <translation>すべてのジオメトリーを削除</translation>
++      <translation>すべての図形を削除</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2273"/>
+@@ -890,7 +890,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="2208"/>
+       <source>Drag geometries</source>
+-      <translation>ジオメトリーをドラッグ</translation>
++      <translation>図形をドラッグ</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="1411"/>
+@@ -927,22 +927,22 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../DrawSketchHandlerRotate.h" line="210"/>
+       <source>Rotate geometries</source>
+-      <translation>ジオメトリーを回転</translation>
++      <translation>図形を回転</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerScale.h" line="128"/>
+       <source>Scale geometries</source>
+-      <translation>ジオメトリーの拡大縮小</translation>
++      <translation>図形の拡大縮小</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerTranslate.h" line="127"/>
+       <source>Translate geometries</source>
+-      <translation>ジオメトリーを移動</translation>
++      <translation>図形を移動</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="137"/>
+       <source>Symmetry geometries</source>
+-      <translation>対称ジオメトリー</translation>
++      <translation>対称図形</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="464"/>
+@@ -963,7 +963,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandAlterGeometry.cpp" line="249"/>
+       <source>Toggle construction geometry</source>
+-      <translation>構築ジオメトリーの切り替え</translation>
++      <translation>構築図形の切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandler.cpp" line="1613"/>
+@@ -1013,13 +1013,13 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../../App/SketchObjectOperations.cpp" line="2998"/>
+       <location filename="../../../App/SketchObjectOperations.cpp" line="3176"/>
+       <source>B-spline Geometry Index (GeoID) is out of bounds.</source>
+-      <translation>Bスプラインのジオメトリー番号（GeoID）が範囲外です。</translation>
++      <translation>Bスプラインの図形番号（GeoID）が範囲外です。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/SketchObjectOperations.cpp" line="3015"/>
+       <location filename="../../../App/SketchObjectOperations.cpp" line="3192"/>
+       <source>The Geometry Index (GeoId) provided is not a B-spline.</source>
+-      <translation>入力されたジオメトリー番号（GeoID）はBスプラインではありません。</translation>
++      <translation>入力された図形番号（GeoID）はBスプラインではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/SketchObjectOperations.cpp" line="3027"/>
+@@ -1333,7 +1333,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="486"/>
+       <source>Cannot add a constraint between two fixed geometries. Fixed geometries include external geometry, blocked geometry, and special points such as B-spline knot points.</source>
+-      <translation>2つの固定ジオメトリの間に拘束を追加することができません。固定ジオメトリに外部ジオメトリ、固定拘束されたジオメトリ、Bスプラインの節点といった特殊な点が含まれています。</translation>
++      <translation>2つの固定図形の間に拘束を追加することができません。固定図形に外部図形、固定拘束された図形、Bスプラインの節点といった特殊な点が含まれています。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="1049"/>
+@@ -1401,7 +1401,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5262"/>
+       <source>None of the selected points were constrained onto the respective curves, because they are part of the same element, they are both external geometry, or the edge is not eligible.</source>
+-      <translation>選択した点をそれぞれの曲線上に拘束することができません。同じ要素の一部であるか、両方とも外部ジオメトリであるか、適切な辺でないことが原因です。</translation>
++      <translation>選択した点をそれぞれの曲線上に拘束することができません。同じ要素の一部であるか、両方とも外部図形であるか、適切な辺でないことが原因です。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="8116"/>
+@@ -1544,7 +1544,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5437"/>
+       <source>None of the selected points were constrained onto the respective curves, either because they are parts of the same element, or because they are both external geometry.</source>
+-      <translation>選択した点をそれぞれの曲線上に拘束することができません。同じ要素のパーツであるか、両方とも外部ジオメトリであることが原因です。</translation>
++      <translation>選択した点をそれぞれの曲線上に拘束することができません。同じ要素のパーツであるか、両方とも外部図形であることが原因です。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="6144"/>
+@@ -1700,7 +1700,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="8156"/>
+       <source>Geometry cannot be tangent to itself</source>
+-      <translation>ジオメトリーは自身と接することができません</translation>
++      <translation>図形は自身と接することができません</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="8529"/>
+@@ -1773,22 +1773,22 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../CommandConstraints.cpp" line="10172"/>
+       <location filename="../../CommandConstraints.cpp" line="10361"/>
+       <source>Selected objects are not just geometry from one sketch.</source>
+-      <translation>選択されたオブジェクトは1つのスケッチから成るジオメトリではありません。</translation>
++      <translation>選択されたオブジェクトは1つのスケッチから成る図形ではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="10214"/>
+       <source>Cannot create constraint with external geometry only.</source>
+-      <translation>外部ジオメトリのみからなる拘束を作成することはできません。</translation>
++      <translation>外部図形のみからなる拘束を作成することはできません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="10224"/>
+       <source>Incompatible geometry is selected.</source>
+-      <translation>互換性のないジオメトリが選択されています。</translation>
++      <translation>互換性のない図形が選択されています。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="10377"/>
+       <source>No geometries selected</source>
+-      <translation>ジオメトリーが選択されていません</translation>
++      <translation>図形が選択されていません</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="10609"/>
+@@ -1917,12 +1917,12 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../CommandSketcherTools.cpp" line="1520"/>
+       <location filename="../../CommandSketcherTools.cpp" line="2126"/>
+       <source>A copy requires at least one selected non-external geometric element</source>
+-      <translation>コピーをするには、非外部ジオメトリ要素を1つ以上選択する必要があります。</translation>
++      <translation>コピーをするには、非外部図形要素を1つ以上選択する必要があります。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2199"/>
+       <source>Delete All Geometry</source>
+-      <translation>すべてのジオメトリーを削除</translation>
++      <translation>すべての図形を削除</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2263"/>
+@@ -1932,7 +1932,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2200"/>
+       <source>Delete all geometry and constraints?</source>
+-      <translation>ジオメトリーと拘束を全て削除しますか？</translation>
++      <translation>図形と拘束を全て削除しますか？</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2264"/>
+@@ -1942,7 +1942,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2393"/>
+       <source>Removal of axes alignment requires at least one selected non-external geometric element</source>
+-      <translation>軸配置を除去するには、非外部ジオメトリ要素を1つ以上選択する必要があります。</translation>
++      <translation>軸配置を除去するには、非外部図形要素を1つ以上選択する必要があります。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherElements.cpp" line="674"/>
+@@ -1954,7 +1954,7 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../TaskSketcherElements.cpp" line="675"/>
+       <location filename="../../TaskSketcherElements.cpp" line="725"/>
+       <source>It is currently unsupported to move external geometry to another visual layer. External geometry will be omitted</source>
+-      <translation>外部ジオメトリーの別の表示レイヤーへの移動は現在サポートされていません。外部ジオメトリーは省略されます。</translation>
++      <translation>外部図形の別の表示レイヤーへの移動は現在サポートされていません。外部図形は省略されます。</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="1056"/>
+@@ -2053,7 +2053,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../DrawSketchHandlerCarbonCopy.h" line="92"/>
+       <source>This object belongs to another body and it contains external geometry. Cross-reference not allowed.</source>
+-      <translation>このオブジェクトは別の部品に属していて外部ジオメトリーを含んでいます。相互参照することはできません。</translation>
++      <translation>このオブジェクトは別の部品に属していて外部図形を含んでいます。相互参照することはできません。</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCarbonCopy.h" line="98"/>
+@@ -2086,7 +2086,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../TaskSketcherConstraints.h" line="115"/>
+       <source>Geometric</source>
+-      <translation>ジオメトリック</translation>
++      <translation>図形ック</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherConstraints.h" line="116"/>
+@@ -2649,7 +2649,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../TaskSketcherElements.cpp" line="107"/>
+       <source>Toggle Construction Geometry</source>
+-      <translation>構築ジオメトリーの切り替え</translation>
++      <translation>構築図形の切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherElements.cpp" line="109"/>
+@@ -2674,7 +2674,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../TaskSketcherElements.cpp" line="763"/>
+       <source>Convert to geometries</source>
+-      <translation>ジオメトリーへ変換</translation>
++      <translation>図形へ変換</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherElements.cpp" line="888"/>
+@@ -3003,12 +3003,12 @@ Requires to re-enter edit mode to take effect.</source>
+     <message>
+       <location filename="../../SketcherSettings.ui" line="221"/>
+       <source>Always adds external geometry as construction geometry. Otherwise, it is added according to the current construction mode.</source>
+-      <translation>外部ジオメトリーを構築ジオメトリーとして常に追加します。設定されていない場合は、現在の構築モードに応じて追加されます。</translation>
++      <translation>外部図形を構築図形として常に追加します。設定されていない場合は、現在の構築モードに応じて追加されます。</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettings.ui" line="224"/>
+       <source>Always add external geometry as construction</source>
+-      <translation>外部ジオメトリーを常に構築ジオメトリーとして追加</translation>
++      <translation>外部図形を常に構築図形として追加</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettings.ui" line="240"/>
+@@ -3047,7 +3047,7 @@ Requires to re-enter edit mode to take effect.</source>
+ 'Never': Automatic scaling upon first dimension is never performed.
+ 'When no scale feature is visible': Automatic scaling upon first dimension is only performed if there are no visible objects in the 3D view.
+ </source>
+-      <translation>最初の寸法に対する自動ジオメトリー拡大縮小モードを選択:
++      <translation>最初の寸法に対する自動図形拡大縮小モードを選択:
+ 「常に」: 最初の寸法に対する自動拡大縮小が常に実行されます。
+ 「なし」: 最初の寸法に対する自動拡大縮小は実行されません。
+ 「拡大縮小形が表示されていない場合」: 最初の寸法に対する自動拡大縮小は3Dビューに表示されているオブジェクトが無い場合にのみ実行されます。</translation>
+@@ -3206,7 +3206,7 @@ Supports all unit systems except 'US customary' and 'Building US/Euro'.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="331"/>
+       <source>Segments per geometry</source>
+-      <translation>ジオメトリーあたりのセグメント</translation>
++      <translation>図形あたりのセグメント</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="363"/>
+@@ -3216,7 +3216,7 @@ Supports all unit systems except 'US customary' and 'Building US/Euro'.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="382"/>
+       <source>Geometry creation "Continue Mode"</source>
+-      <translation>ジオメトリ作成「続行モード」</translation>
++      <translation>図形作成「続行モード」</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="401"/>
+@@ -3246,7 +3246,7 @@ Supports all unit systems except 'US customary' and 'Building US/Euro'.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="341"/>
+       <source>The number of polygons used for geometry approximation</source>
+-      <translation>ジオメトリー近似で使用されるポリゴン数</translation>
++      <translation>図形近似で使用されるポリゴン数</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="472"/>
+@@ -3261,7 +3261,7 @@ Supports all unit systems except 'US customary' and 'Building US/Euro'.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="379"/>
+       <source>Keeps the current Sketcher tool active after creating geometry</source>
+-      <translation>ジオメトリー作成後に現在のスケッチャーツールをアクティブな状態に維持</translation>
++      <translation>図形作成後に現在のスケッチャーツールをアクティブな状態に維持</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="68"/>
+@@ -3271,7 +3271,7 @@ Supports all unit systems except 'US customary' and 'Building US/Euro'.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="398"/>
+       <source>Keeps the current Sketcher constraint tool active after creating geometry</source>
+-      <translation>ジオメトリー作成後に現在のスケッチャー拘束ツールをアクティブな状態に維持</translation>
++      <translation>図形作成後に現在のスケッチャー拘束ツールをアクティブな状態に維持</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="360"/>
+@@ -3358,7 +3358,7 @@ the characters listed here will be drawn using a substitute font.</source>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="585"/>
+       <source>Shows source objects which are used for external geometry in the opened sketch</source>
+-      <translation>開いたスケッチで外部ジオメトリーに使用されているソースオブジェクトを表示</translation>
++      <translation>開いたスケッチで外部図形に使用されているソースオブジェクトを表示</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="604"/>
+@@ -3443,7 +3443,7 @@ Defaults to: %N = %V
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="588"/>
+       <source>Show objects used for external geometry</source>
+-      <translation>外部ジオメトリで使用されているオブジェクトを表示</translation>
++      <translation>外部図形で使用されているオブジェクトを表示</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsDisplay.ui" line="607"/>
+@@ -3529,7 +3529,7 @@ Defaults to: %N = %V
+       <location filename="../../TaskSketcherValidation.cpp" line="318"/>
+       <location filename="../../TaskSketcherValidation.cpp" line="336"/>
+       <source>Reversed external geometry</source>
+-      <translation>反転された外部ジオメトリ</translation>
++      <translation>反転された外部図形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="290"/>
+@@ -3538,7 +3538,7 @@ Defaults to: %N = %V
+ %2 constraints are linking to the endpoints. The constraints have been listed in the report view (menu View -&gt; Panels -&gt; Report view).
+ 
+ Click "Swap endpoints in constraints" button to reassign endpoints. Do this only once to sketches created in FreeCAD older than v0.15</source>
+-      <translation>%1 個の反転した外部ジオメトリー円弧を発見しました。3Dビュー上で端点が囲まれています。
++      <translation>%1 個の反転した外部図形円弧を発見しました。3Dビュー上で端点が囲まれています。
+ 
+ %2 個の拘束が端点にリンクしています。拘束のリストをレポートビューに表示しています（メニューの表示→パネル→レポートビュー）。
+ 
+@@ -3549,24 +3549,24 @@ Click "Swap endpoints in constraints" button to reassign endpoints. Do this only
+       <source>%1 reversed external geometry arcs were found. Their endpoints are encircled in the 3D view.
+ 
+ However, no constraints linking to the endpoints were found.</source>
+-      <translation>%1 個の反転した外部ジオメトリーの円弧が見つかりました。3Dビュー上で端点が囲まれています。
++      <translation>%1 個の反転した外部図形の円弧が見つかりました。3Dビュー上で端点が囲まれています。
+ 
+ ただし端点にリンクする拘束が見つかりません。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="319"/>
+       <source>No reversed external geometry arcs were found.</source>
+-      <translation>反転した外部ジオメトリーの円弧は見つかりませんでした。</translation>
++      <translation>反転した外部図形の円弧は見つかりませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="399"/>
+       <source>Delete Constraints to External Geometry</source>
+-      <translation>外部ジオメトリーへの拘束を削除</translation>
++      <translation>外部図形への拘束を削除</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="400"/>
+       <source>This will delete all constraints that deal with external geometry. This is useful to rescue a sketch with broken or changed links to external geometry. Delete the constraints?</source>
+-      <translation>外部ジオメトリーを扱うすべての拘束を削除します。これは外部ジオメトリーへの壊れたリンク、変更されたリンクを回復するのに便利です。拘束を削除しますか？</translation>
++      <translation>外部図形を扱うすべての拘束を削除します。これは外部図形への壊れたリンク、変更されたリンクを回復するのに便利です。拘束を削除しますか？</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="337"/>
+@@ -3592,32 +3592,32 @@ However, no constraints linking to the endpoints were found.</source>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="419"/>
+       <source>Delete constraints to external geom.</source>
+-      <translation>外部ジオメトリへの拘束を削除</translation>
++      <translation>外部図形への拘束を削除</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="420"/>
+       <source>All constraints that deal with external geometry were deleted.</source>
+-      <translation>外部ジオメトリを扱うすべての拘束が削除されました。</translation>
++      <translation>外部図形を扱うすべての拘束が削除されました。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="491"/>
+       <source>No degenerated geometry</source>
+-      <translation>縮退ジオメトリがありません。</translation>
++      <translation>縮退図形がありません。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="492"/>
+       <source>No degenerated geometry found</source>
+-      <translation>縮退ジオメトリが見つかりませんでした。</translation>
++      <translation>縮退図形が見つかりませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="500"/>
+       <source>Degenerated geometry</source>
+-      <translation>縮退ジオメトリ</translation>
++      <translation>縮退図形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.cpp" line="501"/>
+       <source>%1 degenerated geometry found</source>
+-      <translation>%1 の縮退ジオメトリが見つかりました。</translation>
++      <translation>%1 の縮退図形が見つかりました。</translation>
+     </message>
+   </context>
+   <context>
+@@ -3887,7 +3887,7 @@ However, no constraints linking to the endpoints were found.</source>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="38"/>
+       <source>Highlights open and non-manifold vertices that could lead to errors if the sketch is used to generate solids. This is purely based on the topological shape of the sketch and not on its geometry/constraint set.</source>
+-      <translation>スケッチがソリッドを生成するために使用される場合、開放頂点と非多様体頂点を強調表示します。 これはスケッチのトポロジカルな形状に完全に基づいていてジオメトリー/拘束は考慮しません。</translation>
++      <translation>スケッチが立体を生成するために使用される場合、開放頂点と非多様体頂点を強調表示します。 これはスケッチのトポロジカルな形状に完全に基づいていて図形/拘束は考慮しません。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="41"/>
+@@ -3917,19 +3917,19 @@ However, no constraints linking to the endpoints were found.</source>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="74"/>
+       <source>Ignores construction geometry in the search</source>
+-      <translation>検索で構築ジオメトリーを無視</translation>
++      <translation>検索で構築図形を無視</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="77"/>
+       <source>Ignore construction geometry</source>
+-      <translation>構築ジオメトリーを無視</translation>
++      <translation>構築図形を無視</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="87"/>
+       <source>Finds and displays missing coincidences in the sketch.
+ This is done by analyzing the sketch geometries and constraints.</source>
+       <translation>スケッチ内で見落とされている一致を探して表示。
+-この処理はスケッチのジオメトリと拘束を解析すること行われます。</translation>
++この処理はスケッチの図形と拘束を解析すること行われます。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="91"/>
+@@ -3954,17 +3954,17 @@ This is done by analyzing the sketch geometries and constraints.</source>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="137"/>
+       <source>Delete Constraints Linked to External Geometry</source>
+-      <translation>外部ジオメトリーにリンクされている拘束を削除</translation>
++      <translation>外部図形にリンクされている拘束を削除</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="147"/>
+       <source>Degenerate Geometry</source>
+-      <translation>縮退したジオメトリー</translation>
++      <translation>縮退した図形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="176"/>
+       <source>Reversed External Geometry</source>
+-      <translation>反転された外部ジオメトリー</translation>
++      <translation>反転された外部図形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="195"/>
+@@ -3989,22 +3989,22 @@ This is done by analyzing the sketch geometries and constraints.</source>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="134"/>
+       <source>Deletes constraints referring to external geometry</source>
+-      <translation>外部ジオメトリを参照している拘束を削除</translation>
++      <translation>外部図形を参照している拘束を削除</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="153"/>
+       <source>Finds degenerated geometries in the sketch</source>
+-      <translation>スケッチ上の縮退したジオメトリを探す</translation>
++      <translation>スケッチ上の縮退した図形を探す</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="163"/>
+       <source>Tries to fix found degenerated geometries</source>
+-      <translation>見つかった縮退ジオメトリの修正を試みる</translation>
++      <translation>見つかった縮退図形の修正を試みる</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="182"/>
+       <source>Finds reversed external geometries</source>
+-      <translation>反転した外部ジオメトリを探す</translation>
++      <translation>反転した外部図形を探す</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSketcherValidation.ui" line="192"/>
+@@ -4179,7 +4179,7 @@ This is done by analyzing the sketch geometries and constraints.</source>
+       <location filename="../../CommandSketcherTools.cpp" line="1797"/>
+       <location filename="../../CommandSketcherTools.cpp" line="1800"/>
+       <source>Creates a clone of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリのクローンを作成</translation>
++      <translation>最後に選択された点を参照位置として図形のクローンを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -4215,7 +4215,7 @@ This is done by analyzing the sketch geometries and constraints.</source>
+       <location filename="../../CommandSketcherTools.cpp" line="1805"/>
+       <location filename="../../CommandSketcherTools.cpp" line="1808"/>
+       <source>Creates a simple copy of the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリの単純コピーを作成</translation>
++      <translation>最後に選択された点を参照位置として図形の単純コピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -4313,7 +4313,7 @@ Select the method to attach this sketch to selected objects.</source>
+       <location filename="../../CommandSketcherTools.cpp" line="1813"/>
+       <location filename="../../CommandSketcherTools.cpp" line="1815"/>
+       <source>Moves the geometry taking as reference the last selected point</source>
+-      <translation>最後に選択された点を参照位置としてジオメトリを移動</translation>
++      <translation>最後に選択された点を参照位置として図形を移動</translation>
+     </message>
+   </context>
+   <context>
+@@ -4429,7 +4429,7 @@ to determine whether a solution converges or not</source>
+       <source>Solver used for solving the geometry.
+ LevenbergMarquardt and DogLeg are trust region optimization algorithms.
+ BFGS solver uses the Broyden–Fletcher–Goldfarb–Shanno algorithm.</source>
+-      <translation>ジオメトリーを求解するために使用されるソルバー。
++      <translation>図形を求解するために使用されるソルバー。
+ レーベンバーグ・マーカート法とドッグレッグ法は信頼領域最適化アルゴリズムです。
+ BFGS ソルバーはブロイデン・フレッチャー・ゴールドファーブ・シャンノのアルゴリズムを使用します。</translation>
+     </message>
+@@ -4668,7 +4668,7 @@ Eigen Sparse QR algorithm is optimized for sparse matrices; usually faster</sour
+     <message>
+       <location filename="../../Workbench.cpp" line="43"/>
+       <source>Geometries</source>
+-      <translation>ジオメトリー</translation>
++      <translation>図形</translation>
+     </message>
+     <message>
+       <location filename="../../Workbench.cpp" line="44"/>
+@@ -4908,7 +4908,7 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2215"/>
+       <source>Failed to delete all geometry</source>
+-      <translation>すべてのジオメトリーを削除することができませんでした。</translation>
++      <translation>すべての図形を削除することができませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2280"/>
+@@ -4918,7 +4918,7 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2500"/>
+       <source>Selection has no valid geometries. B-splines and points are not supported yet.</source>
+-      <translation>選択したジオメトリが有効ではありません。Bスプライン、点はまだサポートされていません。</translation>
++      <translation>選択した図形が有効ではありません。Bスプライン、点はまだサポートされていません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="194"/>
+@@ -4929,7 +4929,7 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="195"/>
+       <source>Selection has no valid geometries.</source>
+-      <translation>選択したジオメトリが有効ではありません。</translation>
++      <translation>選択した図形が有効ではありません。</translation>
+     </message>
+     <message>
+       <location filename="../../../App/SketchObjectPyImp.cpp" line="422"/>
+@@ -5002,7 +5002,7 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+       <location filename="../../CommandConstraints.cpp" line="2038"/>
+       <location filename="../../CommandConstraints.cpp" line="3965"/>
+       <source>Failed to add external geometry</source>
+-      <translation>外部ジオメトリを追加できませんでした。</translation>
++      <translation>外部図形を追加できませんでした。</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="237"/>
+@@ -5312,12 +5312,12 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+     <message>
+       <location filename="../../DrawSketchHandlerOffset.h" line="1194"/>
+       <source>Delete original geometries (U)</source>
+-      <translation>元のジオメトリを削除 (U)</translation>
++      <translation>元の図形を削除 (U)</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerOffset.h" line="1202"/>
+       <source>Deletes the original geometry. If creating a single copy, this effectively performs a 'Move' operation.</source>
+-      <translation>元のジオメトリを削除します。単一コピーを作成している場合には効率的に「移動」操作を実現できます。</translation>
++      <translation>元の図形を削除します。単一コピーを作成している場合には効率的に「移動」操作を実現できます。</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRotate.h" line="560"/>
+@@ -5342,7 +5342,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../DrawSketchHandlerOffset.h" line="1210"/>
+       <source>Adds a distance constraint with additional construction geometries that allows the distance to modify the entire offset geometry</source>
+-      <translation>追加の構築ジオメトリーを持った距離拘束を追加します。この距離拘束によってオフセットジオメトリー全体の変更が可能になります。</translation>
++      <translation>追加の構築図形を持った距離拘束を追加します。この距離拘束によってオフセット図形全体の変更が可能になります。</translation>
+     </message>
+   </context>
+   <context>
+@@ -5436,7 +5436,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="139"/>
+       <source>Geometric Element Colors</source>
+-      <translation>ジオメトリー要素の色</translation>
++      <translation>図形要素の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="151"/>
+@@ -5457,12 +5457,12 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="211"/>
+       <source>Color of fully constrained normal geometry in edit mode</source>
+-      <translation>編集モードでの完全拘束された通常ジオメトリーの色</translation>
++      <translation>編集モードでの完全拘束された通常図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="237"/>
+       <source>Color of normal geometry in edit mode</source>
+-      <translation>編集モードでの通常ジオメトリーの色</translation>
++      <translation>編集モードでの通常図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="257"/>
+@@ -5477,7 +5477,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="308"/>
+       <source>Color of fully constrained construction geometry in edit mode</source>
+-      <translation>編集モードでの完全拘束された構築ジオメトリーの色</translation>
++      <translation>編集モードでの完全拘束された構築図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="354"/>
+@@ -5492,17 +5492,17 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="392"/>
+       <source>Internal alignment geometry</source>
+-      <translation>内部配置ジオメトリ</translation>
++      <translation>内部配置図形</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="405"/>
+       <source>Color of fully constrained internal alignment geometry in edit mode</source>
+-      <translation>編集モードでの完全拘束された内部配置ジオメトリの色</translation>
++      <translation>編集モードでの完全拘束された内部配置図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="431"/>
+       <source>Color of internal alignment geometry in edit mode</source>
+-      <translation>編集モードでの内部配置ジオメトリの色</translation>
++      <translation>編集モードでの内部配置図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="451"/>
+@@ -5517,12 +5517,12 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="489"/>
+       <source>External construction geometry</source>
+-      <translation>外部構築ジオメトリー</translation>
++      <translation>外部構築図形</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="502"/>
+       <source>Color of external construction geometry in edit mode</source>
+-      <translation>編集モードでの外部構築ジオメトリーの色</translation>
++      <translation>編集モードでの外部構築図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="522"/>
+@@ -5537,12 +5537,12 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="560"/>
+       <source>External defining geometry</source>
+-      <translation>外部定義ジオメトリー</translation>
++      <translation>外部定義図形</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="573"/>
+       <source>Color of external defining geometry in edit mode</source>
+-      <translation>編集モードでの外部定義ジオメトリーの色</translation>
++      <translation>編集モードでの外部定義図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="593"/>
+@@ -5562,7 +5562,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="650"/>
+       <source>Color of geometry indicating a fully constrained sketch</source>
+-      <translation>完全拘束されたスケッチを表すジオメトリの色</translation>
++      <translation>完全拘束されたスケッチを表す図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="670"/>
+@@ -5687,12 +5687,12 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="1224"/>
+       <source>Color of internal faces formed by intersecting geometry or closed loops in the sketch</source>
+-      <translation>交差ジオメトリーまたはスケッチの閉じたループによって作られた内部面の色</translation>
++      <translation>交差図形またはスケッチの閉じたループによって作られた内部面の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="198"/>
+       <source>Geometry</source>
+-      <translation>ジオメトリ</translation>
++      <translation>図形</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="171"/>
+@@ -5703,17 +5703,17 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="295"/>
+       <source>Construction geometry</source>
+-      <translation>構築ジオメトリー</translation>
++      <translation>構築図形</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="334"/>
+       <source>Color of construction geometry in edit mode</source>
+-      <translation>編集モードでの構築ジオメトリーの色</translation>
++      <translation>編集モードでの構築図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="683"/>
+       <source>Color of geometry indicating an invalid sketch</source>
+-      <translation>無効なスケッチを表すジオメトリの色</translation>
++      <translation>無効なスケッチを表す図形の色</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsAppearance.ui" line="1006"/>
+@@ -5751,7 +5751,7 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../DrawSketchHandlerScale.h" line="670"/>
+       <source>Keep original geometries (U)</source>
+-      <translation>元のジオメトリを保持 (U)</translation>
++      <translation>元の図形を保持 (U)</translation>
+     </message>
+   </context>
+   <context>
+@@ -5855,12 +5855,12 @@ Instead equal constraints are applied between the original objects and their cop
+     <message>
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="280"/>
+       <source>Delete original geometries (U)</source>
+-      <translation>元のジオメトリを削除 (U)</translation>
++      <translation>元の図形を削除 (U)</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="284"/>
+       <source>Removes the original geometry and keeps only the mirrored result.</source>
+-      <translation>元のジオメトリーを削除し、鏡像化の結果のみを保持します。</translation>
++      <translation>元の図形を削除し、鏡像化の結果のみを保持します。</translation>
+     </message>
+   </context>
+   <context>
+@@ -6101,22 +6101,22 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../Command.cpp" line="1947"/>
+       <source>Normal geometry</source>
+-      <translation>通常ジオメトリー</translation>
++      <translation>通常図形</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1949"/>
+       <source>Construction geometry</source>
+-      <translation>構築ジオメトリー</translation>
++      <translation>構築図形</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1951"/>
+       <source>External geometry</source>
+-      <translation>外部ジオメトリー</translation>
++      <translation>外部図形</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1954"/>
+       <source>Unknown geometry</source>
+-      <translation>不明なジオメトリー</translation>
++      <translation>不明な図形</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1995"/>
+@@ -6142,12 +6142,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandAlterGeometry.cpp" line="103"/>
+       <source>Toggle Construction Geometry</source>
+-      <translation>構築ジオメトリーの切り替え</translation>
++      <translation>構築図形の切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../CommandAlterGeometry.cpp" line="104"/>
+       <source>Toggles between defining geometry and construction geometry modes</source>
+-      <translation>ジオメトリー定義モードと構築ジオメトリーモードを切り替え</translation>
++      <translation>図形定義モードと構築図形モードを切り替え</translation>
+     </message>
+   </context>
+   <context>
+@@ -7039,12 +7039,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1814"/>
+       <source>External Geometry</source>
+-      <translation>外部ジオメトリ</translation>
++      <translation>外部図形</translation>
+     </message>
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1815"/>
+       <source>Creates sketch elements linked to geometry defined outside the sketch</source>
+-      <translation>スケッチ外で定義されたジオメトリーにリンクされたスケッチ要素を作成</translation>
++      <translation>スケッチ外で定義された図形にリンクされたスケッチ要素を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7057,7 +7057,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1873"/>
+       <source>Creates the projection of external geometry in the sketch plane</source>
+-      <translation>スケッチ平面に外部ジオメトリーの投影を作成</translation>
++      <translation>スケッチ平面に外部図形の投影を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7070,7 +7070,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1910"/>
+       <source>Creates the intersection of external geometry with the sketch plane</source>
+-      <translation>スケッチ平面と外部ジオメトリーの交差を作成</translation>
++      <translation>スケッチ平面と外部図形の交差を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7083,7 +7083,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandCreateGeo.cpp" line="1948"/>
+       <source>Copies the geometry of another sketch</source>
+-      <translation>別のスケッチのジオメトリーをコピー</translation>
++      <translation>別のスケッチの図形をコピー</translation>
+     </message>
+   </context>
+   <context>
+@@ -7283,7 +7283,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="325"/>
+       <source>Copies the selected geometries and constraints to the clipboard</source>
+-      <translation>選択したジオメトリーと拘束をクリップボードにコピー</translation>
++      <translation>選択した図形と拘束をクリップボードにコピー</translation>
+     </message>
+   </context>
+   <context>
+@@ -7296,7 +7296,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="356"/>
+       <source>Cuts the selected geometries and constraints to the clipboard</source>
+-      <translation>選択したジオメトリーと拘束をクリップボードに切り取り</translation>
++      <translation>選択した図形と拘束をクリップボードに切り取り</translation>
+     </message>
+   </context>
+   <context>
+@@ -7309,7 +7309,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="396"/>
+       <source>Pastes the geometries and constraints from the clipboard into the sketch</source>
+-      <translation>クリップボードからスケッチにジオメトリーと拘束を貼り付け</translation>
++      <translation>クリップボードからスケッチに図形と拘束を貼り付け</translation>
+     </message>
+   </context>
+   <context>
+@@ -7322,7 +7322,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="445"/>
+       <source>Selects the constraints associated with the selected geometrical elements</source>
+-      <translation>選択したジオメトリー要素に関連づけられた拘束を選択</translation>
++      <translation>選択した図形要素に関連づけられた拘束を選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -7421,12 +7421,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="879"/>
+       <source>Select Associated Geometry</source>
+-      <translation>関連するジオメトリーを選択</translation>
++      <translation>関連する図形を選択</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="881"/>
+       <source>Selects the geometrical elements associated with the selected constraints</source>
+-      <translation>選択した拘束に関連付けられたジオメトリー要素を選択</translation>
++      <translation>選択した拘束に関連付けられた図形要素を選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -7439,7 +7439,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1006"/>
+       <source>Selects geometrical elements where the solver still detects unconstrained degrees of freedom</source>
+-      <translation>ソルバーが未拘束の自由度を検出しているジオメトリー要素を選択</translation>
++      <translation>ソルバーが未拘束の自由度を検出している図形要素を選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -7447,12 +7447,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1094"/>
+       <source>Toggle Internal Geometry</source>
+-      <translation>内部ジオメトリーを切り替え</translation>
++      <translation>内部図形を切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1095"/>
+       <source>Toggles the visibility of all internal geometry</source>
+-      <translation>すべての内部ジオメトリーの表示を切り替え</translation>
++      <translation>すべての内部図形の表示を切り替え</translation>
+     </message>
+   </context>
+   <context>
+@@ -7465,7 +7465,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="1211"/>
+       <source>Creates a mirrored copy of the selected geometry</source>
+-      <translation>選択したジオメトリーの鏡像コピーを作成</translation>
++      <translation>選択した図形の鏡像コピーを作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -7473,12 +7473,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2183"/>
+       <source>Delete All Geometry</source>
+-      <translation>すべてのジオメトリーを削除</translation>
++      <translation>すべての図形を削除</translation>
+     </message>
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2184"/>
+       <source>Deletes all geometry and their constraints in the current sketch, with the exception of external geometry</source>
+-      <translation>外部ジオメトリーを除き、現在のスケッチ内のすべてのジオメトリーと拘束を削除</translation>
++      <translation>外部図形を除き、現在のスケッチ内のすべての図形と拘束を削除</translation>
+     </message>
+   </context>
+   <context>
+@@ -7517,7 +7517,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2436"/>
+       <source>Adds an equidistant closed contour around selected geometry: positive values offset outward, negative values inward</source>
+-      <translation>選択したジオメトリーの周りに等距離の閉じた輪郭を追加: 正の値で外側に、負の値で内部にオフセット</translation>
++      <translation>選択した図形の周りに等距離の閉じた輪郭を追加: 正の値で外側に、負の値で内部にオフセット</translation>
+     </message>
+   </context>
+   <context>
+@@ -7530,7 +7530,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2519"/>
+       <source>Rotates the selected geometry by creating 'n' total elements, enabling circular pattern creation</source>
+-      <translation>円状パターン作成を有効化し、合計「n」個の要素を作成して選択したジオメトリーを回転</translation>
++      <translation>円状パターン作成を有効化し、合計「n」個の要素を作成して選択した図形を回転</translation>
+     </message>
+   </context>
+   <context>
+@@ -7543,7 +7543,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2553"/>
+       <source>Scales the selected geometries</source>
+-      <translation>選択したジオメトリーを拡大縮小</translation>
++      <translation>選択した図形を拡大縮小</translation>
+     </message>
+   </context>
+   <context>
+@@ -7556,7 +7556,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../CommandSketcherTools.cpp" line="2587"/>
+       <source>Translates the selected geometries and enables the creation of 'i' * 'j' total elements</source>
+-      <translation>選択したジオメトリーを移動し、合計「i」*「j」個の要素に作成を有効化</translation>
++      <translation>選択した図形を移動し、合計「i」*「j」個の要素に作成を有効化</translation>
+     </message>
+   </context>
+   <context>
+@@ -7870,7 +7870,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerExternal.h" line="259"/>
+       <source>%1 pick external geometry</source>
+       <comment>Sketcher External: hint</comment>
+-      <translation>%1 外部ジオメトリーを選択</translation>
++      <translation>%1 外部図形を選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -8355,10 +8355,10 @@ To Edit: Double-click the Text constraint to change the text content and font.
+ To Position/Size: Apply constraints to the group's construction line.
+ Note: While the Text constraint is active, any constraints applied directly to the text geometries will be ignored.
+ </source>
+-      <translation>テキスト拘束によって制御されるテキストジオメトリーを作成します。
++      <translation>テキスト拘束によって制御されるテキスト図形を作成します。
+ 編集：テキスト内容やフォントを変更するにはテキスト拘束をダブルクリック。
+ 位置/サイズ：グループの構築線に拘束を適用。
+-注意：テキスト拘束が有効な間はテキストジオメトリーに直接適用された拘束はすべて無視されます。
++注意：テキスト拘束が有効な間はテキスト図形に直接適用された拘束はすべて無視されます。
+ </translation>
+     </message>
+   </context>
+@@ -8574,7 +8574,7 @@ Note: While the Text constraint is active, any constraints applied directly to t
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="10338"/>
+       <source>Constrains the selected geometries together as a single entity.The position and size of the grouped geometries can be defined by constraining the construction line that is generated.Constraints applied to grouped edges are ignored as long as the Group constraint is here.</source>
+-      <translation>選択ジオメトリーを単一エンティティーとして拘束します。 グループ化されたジオメトリーの位置と大きさは、生成された構築線を拘束することで定義できます。 グループ化された辺に適用されている拘束はグループ拘束が存在する限り無視されます。</translation>
++      <translation>選択図形を単一エンティティーとして拘束します。 グループ化された図形の位置と大きさは、生成された構築線を拘束することで定義できます。 グループ化された辺に適用されている拘束はグループ拘束が存在する限り無視されます。</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+index 085759d16..b36c860dc 100644
+--- a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
++++ b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+@@ -1729,7 +1729,7 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../Command.cpp" line="2013"/>
+       <source>Creates a projected geometry of the selected object in the 3D view from the current camera angle</source>
+-      <translation>現在のカメラ角度から、3Dビューで選択したオブジェクトの投影ジオメトリーを作成</translation>
++      <translation>現在のカメラ角度から、3Dビューで選択したオブジェクトの投影図形を作成</translation>
+     </message>
+   </context>
+   <context>
+@@ -3157,7 +3157,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+       <location filename="../../Command.cpp" line="650"/>
+       <location filename="../../Command.cpp" line="1133"/>
+       <source>No shapes, groups, or links in this selection</source>
+-      <translation>シェイプ、グループ、リンクが選択されていません。</translation>
++      <translation>形、グループ、リンクが選択されていません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandStack.cpp" line="75"/>
+@@ -3251,7 +3251,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../Command.cpp" line="991"/>
+       <source>No base view, shapes, groups, or links in this selection</source>
+-      <translation>ベースビュー、シェイプ、グループ、リンクが選択されていません。</translation>
++      <translation>ベースビュー、形、グループ、リンクが選択されていません。</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1202"/>
+@@ -3457,7 +3457,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../CommandCreateDims.cpp" line="2026"/>
+       <source>Selection contains both 2D and 3D geometry</source>
+-      <translation>選択範囲に2Dと3Dのジオメトリを含んでいます。</translation>
++      <translation>選択範囲に2Dと3Dの図形を含んでいます。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandStack.cpp" line="76"/>
+@@ -4407,7 +4407,7 @@ it has a tile weld that would become broken.</source>
+     <message>
+       <location filename="../../TaskActiveView.ui" line="130"/>
+       <source>Solid</source>
+-      <translation>ソリッド</translation>
++      <translation>立体</translation>
+     </message>
+     <message>
+       <location filename="../../TaskActiveView.ui" line="135"/>
+@@ -4686,7 +4686,7 @@ can be a performance penalty in complex models.</source>
+     <message>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="217"/>
+       <source>Issue progress messages while building view geometry</source>
+-      <translation>ビュージオメトリー構築中に進捗状況メッセージを表示</translation>
++      <translation>ビュー図形構築中に進捗状況メッセージを表示</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="220"/>
+@@ -4793,18 +4793,18 @@ Increase the limit if necessary.</source>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="178"/>
+       <source>If checked, input shapes will be checked for errors before use and invalid shapes will be skipped by the shape extractor. Checking for errors is slower, but can prevent crashes from some geometry problems.
+ </source>
+-      <translation>チェックされている場合、入力されたシェイプは使用前にエラーがないかチェックされ、無効なシェイプは抽出器によってスキップされます。 エラーの確認は遅くなりますが、ジオメトリーの問題によるクラッシュを防げます。
++      <translation>チェックされている場合、入力された形は使用前にエラーがないかチェックされ、無効な形は抽出器によってスキップされます。 エラーの確認は遅くなりますが、図形の問題によるクラッシュを防げます。
+ </translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="201"/>
+       <source>Include edges with unexpected geometry (zero length etc.) in results</source>
+-      <translation>予期しないジオメトリ(長さゼロなど) の辺を結果に含める</translation>
++      <translation>予期しない図形(長さゼロなど) の辺を結果に含める</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="318"/>
+       <source>If checked, shapes that fail validation will be saved as BREP files for later analysis.</source>
+-      <translation>チェックされている場合、後で調べられるように検証に失敗したシェイプを BREP ファイルとして保存します。</translation>
++      <translation>チェックされている場合、後で調べられるように検証に失敗した形を BREP ファイルとして保存します。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawAdvanced.ui" line="522"/>
+@@ -6495,7 +6495,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="197"/>
+       <source>Shape scale</source>
+-      <translation>シェイプの拡大縮小率</translation>
++      <translation>形の拡大縮小率</translation>
+     </message>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="210"/>
+@@ -7006,12 +7006,12 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="202"/>
+       <source>Derived geometry element</source>
+-      <translation>派生ジオメトリー要素</translation>
++      <translation>派生図形要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="307"/>
+       <source>Least inscribed geometry element</source>
+-      <translation>最小内接ジオメトリー要素</translation>
++      <translation>最小内接図形要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="382"/>
+@@ -7021,7 +7021,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="397"/>
+       <source>Most inscribed geometry element</source>
+-      <translation>最大内接ジオメトリー要素</translation>
++      <translation>最大内接図形要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="489"/>
+@@ -7086,7 +7086,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="262"/>
+       <source>Least square geometry element</source>
+-      <translation>最小正方形ジオメトリ要素</translation>
++      <translation>最小正方形図形要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCustomizeFormat.ui" line="277"/>
+@@ -7973,7 +7973,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="54"/>
+       <source>Link this 3D geometry</source>
+-      <translation>この3Dジオメトリーとリンク</translation>
++      <translation>この3D図形とリンク</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="67"/>
+@@ -7983,7 +7983,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="87"/>
+       <source>Geometry1</source>
+-      <translation>ジオメトリー1</translation>
++      <translation>図形1</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="107"/>
+@@ -7993,7 +7993,7 @@ You can pick further points to get line segments.</source>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="127"/>
+       <source>Geometry2</source>
+-      <translation>ジオメトリー2</translation>
++      <translation>図形2</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLinkDim.ui" line="153"/>
+@@ -8342,7 +8342,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskRestoreLines.ui" line="39"/>
+       <source>Geometry</source>
+-      <translation>ジオメトリ</translation>
++      <translation>図形</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRestoreLines.ui" line="56"/>
+@@ -9042,7 +9042,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="178"/>
+       <source>The sub-elements of the view that define the geometry for this dimension</source>
+-      <translation>この寸法に対するジオメトリーを定義するビューのサブ要素</translation>
++      <translation>この寸法に対する図形を定義するビューのサブ要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="140"/>
+@@ -9053,7 +9053,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="153"/>
+       <source>Geometry</source>
+-      <translation>ジオメトリ</translation>
++      <translation>図形</translation>
+     </message>
+     <message>
+       <source>Replace References With Selection</source>
+-- 
+2.43.0
+

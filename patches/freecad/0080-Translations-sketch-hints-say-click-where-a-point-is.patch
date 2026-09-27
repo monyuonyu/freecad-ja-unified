@@ -1,0 +1,508 @@
+From 7c1f6df00c0ed63065a512f464f90909015785cf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 10:03:24 +0900
+Subject: [PATCH 80/82] Translations: sketch hints say "click" where a point is
+ picked
+
+Japanese hints translated "pick" (click a point in the view) as "select",
+and "corner" as a loanword. They now say "click the first corner" etc.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Sketcher_ja.ts | 134 +++++++++---------
+ 1 file changed, 67 insertions(+), 67 deletions(-)
+
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index bc72ac6d3..c96774970 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -1980,17 +1980,17 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../DrawSketchHandlerText.h" line="735"/>
+       <location filename="../../DrawSketchHandlerText.h" line="743"/>
+       <source>%1 pick bottom-left point</source>
+-      <translation>%1 左下の点を選択</translation>
++      <translation>%1 左下の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerText.h" line="739"/>
+       <source>%1 pick top-left point</source>
+-      <translation>%1 左上の点を選択</translation>
++      <translation>%1 左上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerText.h" line="747"/>
+       <source>%1 pick bottom-right point</source>
+-      <translation>%1 右下の点を選択</translation>
++      <translation>%1 右下の点をクリック</translation>
+     </message>
+     <message>
+       <source>Select geometry from a single sketch.</source>
+@@ -7569,32 +7569,32 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="106"/>
+       <source>%1 pick arc center</source>
+-      <translation>%1 円弧の中心を選択</translation>
++      <translation>%1 円弧の中心をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="112"/>
+       <source>%1 pick arc start point</source>
+-      <translation>%1 円弧の開始点を選択</translation>
++      <translation>%1 円弧の開始点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="118"/>
+       <source>%1 pick arc end point</source>
+-      <translation>%1 円弧の終了点を選択</translation>
++      <translation>%1 円弧の終了点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="126"/>
+       <source>%1 pick first arc point</source>
+-      <translation>%1 円弧の1番目の点を選択</translation>
++      <translation>%1 円弧の1番目の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="132"/>
+       <source>%1 pick second arc point</source>
+-      <translation>%1 円弧の2番目の点を選択</translation>
++      <translation>%1 円弧の2番目の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="138"/>
+       <source>%1 pick third arc point</source>
+-      <translation>%1 円弧の3番目の点を選択</translation>
++      <translation>%1 円弧の3番目の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArc.h" line="435"/>
+@@ -7607,22 +7607,22 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfEllipse.h" line="101"/>
+       <source>%1 pick ellipse center point</source>
+-      <translation>%1 楕円の中心点を選択</translation>
++      <translation>%1 楕円の中心点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfEllipse.h" line="106"/>
+       <source>%1 pick axis point</source>
+-      <translation>%1 軸点を選択</translation>
++      <translation>%1 軸点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfEllipse.h" line="111"/>
+       <source>%1 pick arc start point</source>
+-      <translation>%1 円弧の開始点を選択</translation>
++      <translation>%1 円弧の開始点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfEllipse.h" line="116"/>
+       <source>%1 pick arc end point</source>
+-      <translation>%1 円弧の終了点を選択</translation>
++      <translation>%1 円弧の終了点をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7630,22 +7630,22 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfHyperbola.h" line="105"/>
+       <source>%1 pick center point</source>
+-      <translation>%1 中心点を選択</translation>
++      <translation>%1 中心点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfHyperbola.h" line="110"/>
+       <source>%1 pick axis point</source>
+-      <translation>%1 軸点を選択</translation>
++      <translation>%1 軸点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfHyperbola.h" line="115"/>
+       <source>%1 pick arc start point</source>
+-      <translation>%1 円弧の開始点を選択</translation>
++      <translation>%1 円弧の開始点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfHyperbola.h" line="120"/>
+       <source>%1 pick arc end point</source>
+-      <translation>%1 円弧の終了点を選択</translation>
++      <translation>%1 円弧の終了点をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7653,22 +7653,22 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfParabola.h" line="99"/>
+       <source>%1 pick focus point</source>
+-      <translation>%1 焦点を選択</translation>
++      <translation>%1 焦点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfParabola.h" line="104"/>
+       <source>%1 pick axis point</source>
+-      <translation>%1 軸点を選択</translation>
++      <translation>%1 軸点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfParabola.h" line="109"/>
+       <source>%1 pick starting point</source>
+-      <translation>%1 開始点を選択</translation>
++      <translation>%1 開始点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcOfParabola.h" line="114"/>
+       <source>%1 pick end point</source>
+-      <translation>%1 終了点を選択</translation>
++      <translation>%1 終了点をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7681,22 +7681,22 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="108"/>
+       <source>%1 pick slot center</source>
+-      <translation>%1 長円形の中心を選択</translation>
++      <translation>%1 長円形の中心をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="114"/>
+       <source>%1 pick slot radius</source>
+-      <translation>%1 長円形の半径を選択</translation>
++      <translation>%1 長円形の半径をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="120"/>
+       <source>%1 pick slot angle</source>
+-      <translation>%1 長円形の角度を選択</translation>
++      <translation>%1 長円形の角度をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="126"/>
+       <source>%1 pick slot width</source>
+-      <translation>%1 長円形の幅を選択</translation>
++      <translation>%1 長円形の幅をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerArcSlot.h" line="304"/>
+@@ -7729,13 +7729,13 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="443"/>
+       <source>%1 pick first control point</source>
+-      <translation>%1 最初の制御点を選択</translation>
++      <translation>%1 最初の制御点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="451"/>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="470"/>
+       <source>%1 pick next point</source>
+-      <translation>%1 次の点を選択</translation>
++      <translation>%1 次の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="452"/>
+@@ -7746,7 +7746,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="463"/>
+       <source>%1 pick first knot</source>
+-      <translation>%1 最初のノットを選択</translation>
++      <translation>%1 最初のノットをクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerBSpline.h" line="432"/>
+@@ -7765,7 +7765,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerCarbonCopy.h" line="241"/>
+       <source>%1 pick sketch to copy</source>
+       <comment>Sketcher CarbonCopy: hint</comment>
+-      <translation>%1 コピーするスケッチを選択</translation>
++      <translation>%1 コピーするスケッチをクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7778,27 +7778,27 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="96"/>
+       <source>%1 pick circle center</source>
+-      <translation>%1 円の中心を選択</translation>
++      <translation>%1 円の中心をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="102"/>
+       <source>%1 pick rim point</source>
+-      <translation>%1 周上の点を選択</translation>
++      <translation>%1 周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="110"/>
+       <source>%1 pick first rim point</source>
+-      <translation>%1 1番目の周上の点を選択</translation>
++      <translation>%1 1番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="116"/>
+       <source>%1 pick second rim point</source>
+-      <translation>%1 2番目の周上の点を選択</translation>
++      <translation>%1 2番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="122"/>
+       <source>%1 pick third rim point</source>
+-      <translation>%1 3番目の周上の点を選択</translation>
++      <translation>%1 3番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerCircle.h" line="326"/>
+@@ -7816,32 +7816,32 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="102"/>
+       <source>%1 pick ellipse center</source>
+-      <translation>%1 楕円の中心を選択</translation>
++      <translation>%1 楕円の中心をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="108"/>
+       <source>%1 pick axis endpoint</source>
+-      <translation>%1 軸の端点を選択</translation>
++      <translation>%1 軸の端点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="114"/>
+       <source>%1 pick minor axis endpoint</source>
+-      <translation>%1 短軸の端点を選択</translation>
++      <translation>%1 短軸の端点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="122"/>
+       <source>%1 pick first rim point</source>
+-      <translation>%1 1番目の周上の点を選択</translation>
++      <translation>%1 1番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="128"/>
+       <source>%1 pick second rim point</source>
+-      <translation>%1 2番目の周上の点を選択</translation>
++      <translation>%1 2番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="134"/>
+       <source>%1 pick third rim point</source>
+-      <translation>%1 3番目の周上の点を選択</translation>
++      <translation>%1 3番目の周上の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerEllipse.h" line="340"/>
+@@ -7855,7 +7855,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerExtend.h" line="391"/>
+       <source>%1 pick edge to extend</source>
+       <comment>Sketcher Extend: hint</comment>
+-      <translation>%1 延長する辺を選択</translation>
++      <translation>%1 延長する辺をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerExtend.h" line="396"/>
+@@ -7870,7 +7870,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerExternal.h" line="259"/>
+       <source>%1 pick external geometry</source>
+       <comment>Sketcher External: hint</comment>
+-      <translation>%1 外部図形を選択</translation>
++      <translation>%1 外部図形をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7898,17 +7898,17 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="436"/>
+       <source>%1 toggle preserve corner</source>
+-      <translation>%1 コーナーの維持を切り替え</translation>
++      <translation>%1 角の維持を切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="445"/>
+       <source>%1 pick first edge or point</source>
+-      <translation>%1 最初の辺、または点を選択</translation>
++      <translation>%1 最初の辺、または点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="450"/>
+       <source>%1 pick second edge</source>
+-      <translation>%1 2番目のえッジを選択</translation>
++      <translation>%1 2番目のえッジをクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerFillet.h" line="452"/>
+@@ -7933,14 +7933,14 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerLine.h" line="316"/>
+       <location filename="../../DrawSketchHandlerLine.h" line="330"/>
+       <source>%1 pick first point</source>
+-      <translation>%1 最初の点を選択</translation>
++      <translation>%1 最初の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLine.h" line="308"/>
+       <location filename="../../DrawSketchHandlerLine.h" line="322"/>
+       <location filename="../../DrawSketchHandlerLine.h" line="336"/>
+       <source>%1 pick second point</source>
+-      <translation>%1 2番目の点を選択</translation>
++      <translation>%1 2番目の点をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -7948,12 +7948,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="805"/>
+       <source>%1 pick first point</source>
+-      <translation>%1 最初の点を選択</translation>
++      <translation>%1 最初の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="810"/>
+       <source>%1 pick next point</source>
+-      <translation>%1 次の点を選択</translation>
++      <translation>%1 次の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="811"/>
+@@ -8040,12 +8040,12 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerRectangle.h" line="206"/>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="248"/>
+       <source>%1 pick first corner</source>
+-      <translation>%1 1番目のコーナーを選択</translation>
++      <translation>%1 1番目の角をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="146"/>
+       <source>%1 pick opposite corner</source>
+-      <translation>%1 反対のコーナーを選択</translation>
++      <translation>%1 反対の角をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="154"/>
+@@ -8053,7 +8053,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerRectangle.h" line="230"/>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="264"/>
+       <source>%1 set corner radius or frame thickness</source>
+-      <translation>%1 コーナー半径または枠の太さを設定</translation>
++      <translation>%1 角半径または枠の太さを設定</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="162"/>
+@@ -8065,23 +8065,23 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerRectangle.h" line="172"/>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="240"/>
+       <source>%1 pick center</source>
+-      <translation>%1 中心を選択</translation>
++      <translation>%1 中心をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="180"/>
+       <source>%1 pick corner</source>
+-      <translation>%1 コーナーを選択</translation>
++      <translation>%1 角をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="214"/>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="256"/>
+       <source>%1 pick second corner</source>
+-      <translation>%1 2番目のコーナーを選択</translation>
++      <translation>%1 2番目の角をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="222"/>
+       <source>%1 pick third corner</source>
+-      <translation>%1 3番目のコーナーを選択</translation>
++      <translation>%1 3番目の角をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRectangle.h" line="804"/>
+@@ -8101,7 +8101,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerRotate.h" line="108"/>
+       <source>%1 pick center point</source>
+       <comment>Sketcher Rotate: hint</comment>
+-      <translation>%1 中心点を選択</translation>
++      <translation>%1 中心点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerRotate.h" line="114"/>
+@@ -8126,7 +8126,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerScale.h" line="179"/>
+       <source>%1 pick reference point</source>
+-      <translation>%1 参照点を選択</translation>
++      <translation>%1 参照点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerScale.h" line="184"/>
+@@ -8144,17 +8144,17 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+     <message>
+       <location filename="../../DrawSketchHandlerSlot.h" line="93"/>
+       <source>%1 pick slot start point</source>
+-      <translation>%1 長円形の開始点を選択</translation>
++      <translation>%1 長円形の開始点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSlot.h" line="98"/>
+       <source>%1 pick slot end point</source>
+-      <translation>%1 長円形の終了点を選択</translation>
++      <translation>%1 長円形の終了点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerSlot.h" line="103"/>
+       <source>%1 pick slot width</source>
+-      <translation>%1 長円形の幅を選択</translation>
++      <translation>%1 長円形の幅をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -8163,7 +8163,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerSplitting.h" line="209"/>
+       <source>%1 pick location on edge to split</source>
+       <comment>Sketcher Splitting: hint</comment>
+-      <translation>%1 辺を分割する位置を選択</translation>
++      <translation>%1 辺を分割する位置をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -8177,7 +8177,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerSymmetry.h" line="232"/>
+       <source>%1 pick axis, edge, or point</source>
+       <comment>Sketcher Symmetry: hint</comment>
+-      <translation>%1 軸、辺、または点を選択</translation>
++      <translation>%1 軸、辺、または点をクリック</translation>
+     </message>
+   </context>
+   <context>
+@@ -8203,7 +8203,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerTranslate.h" line="527"/>
+       <source>%1 pick reference point</source>
+       <comment>Sketcher Translate: hint</comment>
+-      <translation>%1 参照点を選択</translation>
++      <translation>%1 参照点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerTranslate.h" line="532"/>
+@@ -8229,7 +8229,7 @@ Points must be set closer than a fifth of the grid spacing to a grid line to sna
+       <location filename="../../DrawSketchHandlerTrimming.h" line="270"/>
+       <source>%1 pick edge to trim</source>
+       <comment>Sketcher Trimming: hint</comment>
+-      <translation>%1 トリムする辺を選択</translation>
++      <translation>%1 トリムする辺をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerTrimming.h" line="271"/>
+@@ -8426,12 +8426,12 @@ Note: While the Text constraint is active, any constraints applied directly to t
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="1025"/>
+       <source>%1 pick first point</source>
+-      <translation>%1 最初の点を選択</translation>
++      <translation>%1 最初の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="1030"/>
+       <source>%1 pick next point</source>
+-      <translation>%1 次の点を選択</translation>
++      <translation>%1 次の点をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../DrawSketchHandlerLineSet.h" line="1031"/>
+-- 
+2.43.0
+

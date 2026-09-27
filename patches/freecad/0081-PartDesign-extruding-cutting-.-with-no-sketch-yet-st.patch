@@ -1,0 +1,44 @@
+From 3d3b2c873835a003fab4d3cbc877750702df2b49 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 10:04:52 +0900
+Subject: [PATCH 81/82] PartDesign: extruding, cutting, ... with no sketch yet
+ starts one
+
+In the integrated environment, Pad, Pocket, Revolution and the other
+sketch based tools start a new sketch when the document has none,
+instead of stopping with "No sketch is available". The closed sketch is
+then offered to be extruded, cut, ... by the context bar.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/Command.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/Command.cpp b/src/Mod/PartDesign/Gui/Command.cpp
+index c73b2dd7c..d14cb1879 100644
+--- a/src/Mod/PartDesign/Gui/Command.cpp
++++ b/src/Mod/PartDesign/Gui/Command.cpp
+@@ -37,6 +37,7 @@
+ #include <TopoDS_Face.hxx>
+ 
+ 
++#include <App/Application.h>
+ #include <App/Expression.h>
+ #include <App/ObjectIdentifier.h>
+ #include <App/Origin.h>
+@@ -1107,6 +1108,12 @@ void prepareProfileBased(
+     }
+ 
+     if (sketches.empty()) {
++        if (App::Application::Config().contains("SingleWorkbench")) {
++            // Nothing drawn yet: start with the sketch (it is offered to be extruded, cut, ...
++            // when it is closed) instead of stopping with a message
++            Gui::Application::Instance->commandManager().runCommandByName("PartDesign_NewSketch");
++            return;
++        }
+         QMessageBox::warning(
+             Gui::getMainWindow(),
+             QObject::tr("No sketch to work on"),
+-- 
+2.43.0
+

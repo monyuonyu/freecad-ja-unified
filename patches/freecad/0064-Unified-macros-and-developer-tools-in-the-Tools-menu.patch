@@ -1,7 +1,7 @@
 From b6ee285d40c577f3de50b83ab7c877c3a00c4891 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:15:52 +0900
-Subject: [PATCH 64/77] Unified: macros and developer tools in the Tools menu
+Subject: [PATCH 64/82] Unified: macros and developer tools in the Tools menu
 
 The Macro menu moves into the Tools menu, and the tools for developers
 (scene inspector, dependency graph, document utility, parameter editor)
