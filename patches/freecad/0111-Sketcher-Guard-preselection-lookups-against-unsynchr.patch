@@ -1,0 +1,92 @@
+From 9815a23fd2960412f180418f3c4739534468da58 Mon Sep 17 00:00:00 2001
+From: alexdremov <dremov.me@gmail.com>
+Date: Wed, 9 Sep 2026 22:49:55 +0200
+Subject: [PATCH 111/137] Sketcher: Guard preselection lookups against
+ unsynchronized coin mapping
+
+The preselection code resolves picked points and screen positions
+through the coin mapping (PointIdToVertexId, CurvIdToGeoId, ...).
+The mapping is rebuilt when the sketch changes, while the Coin
+scenegraph - and thus still-delivered pick data - is updated
+afterwards; in that window the mapping vectors can be empty or
+shorter than the scenegraph layers, and the unchecked operator[]
+accesses segfaulted on mouse move.
+
+Validate every mapping lookup in the event-driven preselection
+paths with the existing isValid* helpers (plus a new
+isValidPointVertexId mirroring isValidPointId), skipping candidates
+whose mapping entry is not available yet.
+
+Assisted-by: GLM-5.3-Flash (Z.ai)
+---
+ src/Mod/Sketcher/Gui/EditModeCoinManager.cpp         | 10 ++++++++++
+ src/Mod/Sketcher/Gui/EditModeCoinManagerParameters.h | 11 +++++++++++
+ 2 files changed, 21 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/EditModeCoinManager.cpp b/src/Mod/Sketcher/Gui/EditModeCoinManager.cpp
+index 59c00661f..2577117c2 100644
+--- a/src/Mod/Sketcher/Gui/EditModeCoinManager.cpp
++++ b/src/Mod/Sketcher/Gui/EditModeCoinManager.cpp
+@@ -211,6 +211,9 @@ struct GeometryScreenPreselector
+ 
+             int pointCount = coords->point.getNum();
+             for (int pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
++                if (!coinMapping.isValidPointVertexId(pointIndex, layerIndex)) {
++                    continue;
++                }
+                 int vertexId = coinMapping.getPointVertexId(pointIndex, layerIndex);
+                 if (vertexId < 0) {
+                     continue;
+@@ -359,6 +362,7 @@ private:
+     )
+     {
+         if (!coinMapping.isValidPointId(pointIndex, layerIndex)
++            || !coinMapping.isValidPointVertexId(pointIndex, layerIndex)
+             || static_cast<int>(editModeScenegraphNodes.PointsCoordinate.size()) <= layerIndex) {
+             return false;
+         }
+@@ -1324,6 +1328,9 @@ bool EditModeCoinManager::detectPointPreselection(
+     }
+ 
+     int pointIndex = static_cast<const SoPointDetail*>(pointDetail)->getCoordinateIndex();
++    if (!coinMapping.isValidPointVertexId(pointIndex, layerIndex)) {
++        return false;
++    }
+     result.PointIndex = coinMapping.getPointVertexId(pointIndex, layerIndex);
+     if (result.PointIndex == -1) {
+         result.Kind = PreselectionResult::HitKind::Axis;
+@@ -1360,6 +1367,9 @@ bool EditModeCoinManager::detectCurvePreselection(
+         }
+ 
+         int curveIndex = static_cast<const SoLineDetail*>(curveDetail)->getLineIndex();
++        if (!coinMapping.isValidCurveId(curveIndex, layerIndex, subLayerIndex)) {
++            return false;
++        }
+         result.GeoIndex = coinMapping.getCurveGeoId(curveIndex, layerIndex, subLayerIndex);
+         result.Kind = PreselectionResult::HitKind::Edge;
+         result.setPickedPoint(point);
+diff --git a/src/Mod/Sketcher/Gui/EditModeCoinManagerParameters.h b/src/Mod/Sketcher/Gui/EditModeCoinManagerParameters.h
+index bd390e952..49ed9af79 100644
+--- a/src/Mod/Sketcher/Gui/EditModeCoinManagerParameters.h
++++ b/src/Mod/Sketcher/Gui/EditModeCoinManagerParameters.h
+@@ -570,6 +570,17 @@ struct CoinMapping
+         // clang-format on
+     }
+ 
++    /// checks whether the point mapping holds an entry for the given MF index of a point in the
++    /// given coin layer; the mapping and the coin scenegraph are not always updated in sync, so
++    /// event-driven lookups must be validated before indexing
++    bool isValidPointVertexId(int pointindex, int layerindex) const
++    {
++        // clang-format off
++        return static_cast<int>(PointIdToVertexId.size()) > layerindex &&
++               static_cast<int>(PointIdToVertexId[layerindex].size()) > pointindex;
++        // clang-format on
++    }
++
+     /// given the MF index of a point and the coin layer in which it is drawn returns the PosId of
+     /// the point
+     Sketcher::PointPos getPointPosId(int pointindex, int layerindex)
+-- 
+2.43.0
+

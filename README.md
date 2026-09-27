@@ -100,6 +100,34 @@ AI が実行しようとするコードは毎回表示され、「実行する�
 | `--hidden` の実行 | 最近使ったファイル・ウィンドウ配置を書き換える | 書き換えない |
 | Python の `saveImage()` | ナビゲーションキューブが写り込む | 写らない（「画像を保存」メニューと同じ） |
 
+## 本家でまだ取り込まれていない直し
+
+本家 FreeCAD に出されていて、まだ取り込まれていない PR のうち、精査して入れたもの（作者の名前はそのまま残している）。
+541 件から、統合環境が使う部分の不具合・落ちる・退行を中心に絞り、中身を読み、パッチに当たることと試験を確かめた。
+
+| PR | 直すこと |
+|---|---|
+| [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) | スケッチの編集に入るとき・マウスを動かしたときに落ちる |
+| [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) | スケッチの事前選択で範囲外を読む |
+| [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) | スケッチの反転で落ちる |
+| [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) | ライト／ダークのテーマで結合の色が崩れる |
+| [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) | 位置をロックした図面のビューが読み込み時に原点へ飛ぶ |
+| [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) | 図面の寸法の修復が壊れた参照で失敗する |
+| [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) | ASCII の STL（長い名前・末尾の改行なし）が読めない |
+| [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) | 選択の表示の奥行きの退行 |
+| [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) | プロパティ欄の選択肢で日本語などが化ける |
+| [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) | 外部参照のファイルを開くと落ちる |
+| [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) | ポリラインを角丸めすると最後の点が消える |
+| [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) | キーボードでツリーを選んだときにステータスバーを更新 |
+| [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) | 曲線どうしの点で角丸めできない理由を表示 |
+| [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) | 起動直後の SpaceMouse の操作で落ちる |
+| [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) | 部品に固定ジョイントを付けるとエラー |
+| [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) | 親を失ったジョイントのグループを消せない |
+| [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) | ラックとピニオンの誤動作 |
+
+あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
+（型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
 ## 当て方とビルド
 
 ```sh
@@ -127,6 +155,9 @@ XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
 FreeCAD 自身の試験（`FreeCADCmd -t 0`、C++ の Base/App/Part/Gui の試験）もパッチ後にすべて通ることを確かめている。
 
 ## リリースの作り方
+
+パッチの書き出しは `tools/export_patches.sh`（FreeCAD の clone の unified-ui から patches/ を作り直す）。
+
 
 GitHub Actions の「Build release」（`.github/workflows/release.yml`）をタグ名を入れて手で実行する。
 元の版にパッチを当て、本家と同じ `package/bundle` の手順で Linux と Windows を作ってリリースに載せる（数時間かかる）。

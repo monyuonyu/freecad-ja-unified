@@ -1,7 +1,7 @@
 From 3020fd1ceab10305b9b248463143c97328958e82 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:16:07 +0900
-Subject: [PATCH 004/108] Part: accept shapes in Part.export() and fail instead
+Subject: [PATCH 004/137] Part: accept shapes in Part.export() and fail instead
  of writing an empty file
 
 Part.export([Part.makeBox(1, 2, 3)], "a.step") silently skipped the shape

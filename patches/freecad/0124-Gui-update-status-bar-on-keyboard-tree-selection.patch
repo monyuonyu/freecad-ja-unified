@@ -1,0 +1,28 @@
+From 54b45e37bf58938ab23ce03c343a4311031d9a3b Mon Sep 17 00:00:00 2001
+From: 007stevendigar-lgtm <007stevendigar@gmail.com>
+Date: Sun, 27 Sep 2026 04:11:54 +0700
+Subject: [PATCH 124/137] Gui: update status bar on keyboard tree selection
+
+Assisted-by: GPT-5.6 Sol
+---
+ src/Gui/Tree.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Gui/Tree.cpp b/src/Gui/Tree.cpp
+index 7a1f4d385..909129c48 100644
+--- a/src/Gui/Tree.cpp
++++ b/src/Gui/Tree.cpp
+@@ -4112,6 +4112,10 @@ void TreeWidget::onItemSelectionChanged()
+         }
+     }
+ 
++    if (selItems.size() == 1 && selItems.front()->type() == ObjectType) {
++        static_cast<DocumentObjectItem*>(selItems.front())->displayStatusInfo();
++    }
++
+     this->blockSelection(lock);
+ }
+ 
+-- 
+2.43.0
+

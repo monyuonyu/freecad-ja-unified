@@ -1,0 +1,60 @@
+From 4e50bbca1f8f913055770ce3b8760cb5970b94b4 Mon Sep 17 00:00:00 2001
+From: paddle <pierrelouis.boyer@gmail.com>
+Date: Fri, 26 Jun 2026 11:00:52 +0200
+Subject: [PATCH 129/137] Assembly: Enable joint group deletion if orphaned
+
+---
+ src/Mod/Assembly/Gui/ViewProviderGroups.cpp | 14 ++++++++++++++
+ src/Mod/Assembly/Gui/ViewProviderGroups.h   |  6 +-----
+ 2 files changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+index 97b375107..55a5c460d 100644
+--- a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
++++ b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+@@ -26,6 +26,8 @@
+ #include <Gui/Application.h>
+ #include <Gui/BitmapFactory.h>
+ 
++#include <Mod/Assembly/App/Groups.h>
++
+ #include "ViewProviderGroups.h"
+ 
+ using namespace AssemblyGui;
+@@ -61,3 +63,15 @@ QIcon ViewProviderViewGroup::getIcon() const
+ {
+     return Gui::BitmapFactory().pixmap("Assembly_ExplodedViewGroup.svg");
+ }
++
++bool ViewProviderJointGroup::onDelete(const std::vector<std::string>&)
++{
++    auto* group = getObject<Assembly::JointGroup>();
++
++    // if empty or orphaned ok to delete.
++    if (group && (group->Group.getValues().empty() || group->getParents().empty())) {
++        return true;
++    }
++
++    return false;
++};
+\ No newline at end of file
+diff --git a/src/Mod/Assembly/Gui/ViewProviderGroups.h b/src/Mod/Assembly/Gui/ViewProviderGroups.h
+index 25053ecf7..f97aaad9d 100644
+--- a/src/Mod/Assembly/Gui/ViewProviderGroups.h
++++ b/src/Mod/Assembly/Gui/ViewProviderGroups.h
+@@ -75,11 +75,7 @@ public:
+ 
+     QIcon getIcon() const override;
+ 
+-    // Make the joint group impossible to delete.
+-    bool onDelete(const std::vector<std::string>&) override
+-    {
+-        return false;
+-    };
++    bool onDelete(const std::vector<std::string>&) override;
+ };
+ 
+ class AssemblyGuiExport ViewProviderSimulationGroup: public ViewProviderGroupBase
+-- 
+2.43.0
+

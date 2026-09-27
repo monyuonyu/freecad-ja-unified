@@ -1,0 +1,40 @@
+From 43386575ff69e9192eadf2a6692b9f6ea23c7747 Mon Sep 17 00:00:00 2001
+From: wandererfan <wandererfan@gmail.com>
+Date: Wed, 9 Sep 2026 10:19:38 -0400
+Subject: [PATCH 114/137] Fix positioning of locked views on load
+
+---
+ src/Mod/TechDraw/Gui/ViewProviderDrawingView.cpp | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/TechDraw/Gui/ViewProviderDrawingView.cpp b/src/Mod/TechDraw/Gui/ViewProviderDrawingView.cpp
+index f7ee89503..1e337d03f 100644
+--- a/src/Mod/TechDraw/Gui/ViewProviderDrawingView.cpp
++++ b/src/Mod/TechDraw/Gui/ViewProviderDrawingView.cpp
+@@ -257,16 +257,19 @@ void ViewProviderDrawingView::updateData(const App::Property* prop)
+ 
+     App::PropertyLink* ownerProp = obj->getOwnerProperty();
+ 
++
+     //only move the view on X, Y change
+     if (prop == &obj->X ||
+         prop == &obj->Y) {
+-
+-        if (qgiv->isSnapping() ||
+-            obj->LockPosition.getValue()) {
++        // there was an attempt to prevent X/Y changes for Locked views here, but the
++        // property value has already been changed by this point.  Not moving the graphic
++        // will leave X,Y and scene position out of sync.  At load time, preventing
++        // repositioning of locked views will cause them to be loaded at (0,0).
++        if (qgiv->isSnapping()) {
++            // wait for snap movements to finish
+             Gui::ViewProviderDocumentObject::updateData(prop);
+             return;
+         }
+-
+         qgiv->updatePositionFromFeatureXY();
+ 
+         // Update also the owner/parent view, if there is any
+-- 
+2.43.0
+

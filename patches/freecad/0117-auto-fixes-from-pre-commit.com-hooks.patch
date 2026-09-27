@@ -1,0 +1,33 @@
+From aa209769cf5738f5179a1c51038a611bac69c0df Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Mon, 24 Aug 2026 14:27:02 +0000
+Subject: [PATCH 117/137] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/Part/App/PropertyTopoShapeList.cpp | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Part/App/PropertyTopoShapeList.cpp b/src/Mod/Part/App/PropertyTopoShapeList.cpp
+index 8b3fbd8f2..dbace5fe2 100644
+--- a/src/Mod/Part/App/PropertyTopoShapeList.cpp
++++ b/src/Mod/Part/App/PropertyTopoShapeList.cpp
+@@ -255,9 +255,11 @@ App::Property* PropertyTopoShapeList::Copy() const
+     std::vector<TopoShape> copiedShapes;
+     for (auto& shape : _lValueList) {
+         if (shape.isNull()) {
+-            // this is probabably(?) undo/redo saving the before state of this property, which includes invalid
+-            // references.
+-            Base::Console().error("PropertyTopoShapeList::Copy encountered a null shape. Undo may not be possible.\n");
++            // this is probabably(?) undo/redo saving the before state of this property, which
++            // includes invalid references.
++            Base::Console().error(
++                "PropertyTopoShapeList::Copy encountered a null shape. Undo may not be possible.\n"
++            );
+             continue;
+         }
+         BRepBuilderAPI_Copy copy(shape.getShape());
+-- 
+2.43.0
+

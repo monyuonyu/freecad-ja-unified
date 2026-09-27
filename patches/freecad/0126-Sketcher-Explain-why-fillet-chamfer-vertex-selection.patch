@@ -1,0 +1,29 @@
+From 8b7454b89644527393d4be1abbd657e411a9f98d Mon Sep 17 00:00:00 2001
+From: Vishal Ram K N <vishalramkn@gmail.com>
+Date: Thu, 17 Sep 2026 21:24:51 +0530
+Subject: [PATCH 126/137] Sketcher: Explain why fillet/chamfer vertex selection
+ is blocked for curves
+
+Fixes #24562
+---
+ src/Mod/Sketcher/Gui/DrawSketchHandlerFillet.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/DrawSketchHandlerFillet.h b/src/Mod/Sketcher/Gui/DrawSketchHandlerFillet.h
+index 2ca6d075a..c0d568621 100644
+--- a/src/Mod/Sketcher/Gui/DrawSketchHandlerFillet.h
++++ b/src/Mod/Sketcher/Gui/DrawSketchHandlerFillet.h
+@@ -80,6 +80,10 @@ public:
+                 if (geom1->is<Part::GeomLineSegment>() && geom2->is<Part::GeomLineSegment>()) {
+                     return true;
+                 }
++                notAllowedReason = QT_TR_NOOP(
++                    "Fillet/chamfer on a point only works between two lines. "
++                    "To fillet curves, select the two edges instead."
++                );
+                 // TODO: This could return true for any curve as long as
+                 // int SketchObject::fillet(int GeoId, PointPos PosId, double radius, bool trim,
+                 // bool createCorner, bool chamfer) evaluates two correct points that can be bound
+-- 
+2.43.0
+

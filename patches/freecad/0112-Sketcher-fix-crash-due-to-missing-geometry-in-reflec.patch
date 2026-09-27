@@ -1,0 +1,27 @@
+From 57f97992a79f7ce5f55aa8f47be544c0d0b3fcc2 Mon Sep 17 00:00:00 2001
+From: Alfredo Monclus <alfredomonclus@gmail.com>
+Date: Sat, 26 Sep 2026 07:49:31 -0300
+Subject: [PATCH 112/137] Sketcher: fix crash due to missing geometry in
+ reflected sketches
+
+---
+ src/Mod/Sketcher/App/SketchObjectConstraints.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/Mod/Sketcher/App/SketchObjectConstraints.cpp b/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
+index 1bc9f2921..a5572484e 100644
+--- a/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
++++ b/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
+@@ -2705,6 +2705,9 @@ bool SketchObject::AutoLockTangencyAndPerpty(Constraint* cstr, bool bForce, bool
+                 // solver level, so they need locking angle calculation, tangency at knot constraint
+                 // does not.
+                 auto geof = getGeometryFacade(cstr->First);
++                if (!geof) {
++                    return false;
++                }
+                 if (geof->isInternalType(InternalType::BSplineKnotPoint)) {
+                     // there is point that is a B-Spline knot in a two element constraint
+                     // this is not implement using AngleViaPoint (TangencyViaPoint)
+-- 
+2.43.0
+

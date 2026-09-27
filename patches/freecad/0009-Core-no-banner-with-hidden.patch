@@ -1,7 +1,7 @@
 From f37891396ea4f7582d670bdf07143d4842cd4e16 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:51:17 +0900
-Subject: [PATCH 009/108] Core: no banner with --hidden
+Subject: [PATCH 009/137] Core: no banner with --hidden
 
 A hidden main window means scripted use, so keep the output clean like
 when FreeCADCmd runs a file.

@@ -1,0 +1,25 @@
+From 0075d5251687578cb76717cfcce76182f43b5af2 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 10:56:08 +0000
+Subject: [PATCH 130/137] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Mod/Assembly/Gui/ViewProviderGroups.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+index 55a5c460d..f65f51bbb 100644
+--- a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
++++ b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+@@ -74,4 +74,4 @@ bool ViewProviderJointGroup::onDelete(const std::vector<std::string>&)
+     }
+ 
+     return false;
+-};
+\ No newline at end of file
++};
+-- 
+2.43.0
+

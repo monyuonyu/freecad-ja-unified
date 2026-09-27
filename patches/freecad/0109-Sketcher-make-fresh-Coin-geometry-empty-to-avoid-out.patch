@@ -1,0 +1,53 @@
+From b7d401bf49b0e71a0553e8bdc0033a93cfd8e26a Mon Sep 17 00:00:00 2001
+From: Alfredo Monclus <alfredomonclus@gmail.com>
+Date: Sun, 20 Sep 2026 09:45:20 -0300
+Subject: [PATCH 109/137] Sketcher: make fresh Coin geometry empty to avoid
+ out-of-bounds preselection
+
+A freshly constructed SoCoordinate3 carries a default (0,0,0) vertex, so
+point.getNum() is 1 even though the CoinMapping tables (PointIdToVertexId, etc.)
+are still empty until convert() populates them. Preselection read that default
+point and indexed the empty mapping, causing a libstdc++ abort (root cause
+exposed by 16a8367).
+
+Start the point/curve coordinate nodes and the SoLineSet explicitly empty so
+preselection sees zero points and never indexes the not-yet-populated mapping.
+This fixes the crash at the root without reverting 16a8367.
+---
+ src/Mod/Sketcher/Gui/EditModeGeometryCoinManager.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/EditModeGeometryCoinManager.cpp b/src/Mod/Sketcher/Gui/EditModeGeometryCoinManager.cpp
+index 5db7af0a9..10668ce5f 100644
+--- a/src/Mod/Sketcher/Gui/EditModeGeometryCoinManager.cpp
++++ b/src/Mod/Sketcher/Gui/EditModeGeometryCoinManager.cpp
+@@ -681,6 +681,10 @@ void EditModeGeometryCoinManager::createEditModePointInventorNodes()
+         sep->addChild(MtlBind);
+ 
+         auto coords = new SoCoordinate3;
++        // A freshly constructed SoCoordinate3 carries a default (0,0,0) vertex,
++        // so point.getNum() is 1 even though the CoinMapping tables are still empty.
++        // Start explicitly empty to not index a mapping that has not been populated yet.
++        coords->point.setNum(0);
+         editModeScenegraphNodes.PointsCoordinate.push_back(coords);
+         editModeScenegraphNodes.PointsCoordinate[i]->setName(concat("PointsCoordinate", i).c_str());
+         sep->addChild(editModeScenegraphNodes.PointsCoordinate[i]);
+@@ -764,6 +768,7 @@ void EditModeGeometryCoinManager::createEditModeCurveInventorNodes()
+             sep->addChild(MtlBind);
+ 
+             auto coords = new SoCoordinate3;
++            coords->point.setNum(0);
+             coords->setName(concat("CurvesCoordinate", i * 10 + t).c_str());
+             editModeScenegraphNodes.CurvesCoordinate[i].push_back(coords);
+             sep->addChild(editModeScenegraphNodes.CurvesCoordinate[i][t]);
+@@ -785,6 +790,7 @@ void EditModeGeometryCoinManager::createEditModeCurveInventorNodes()
+             }
+ 
+             auto solineset = new SoLineSet;
++            solineset->numVertices.setNum(0);
+             solineset->setName(concat("CurvesLineSet", i * 10 + t).c_str());
+             editModeScenegraphNodes.CurveSet[i].push_back(solineset);
+             sep->addChild(editModeScenegraphNodes.CurveSet[i][t]);
+-- 
+2.43.0
+

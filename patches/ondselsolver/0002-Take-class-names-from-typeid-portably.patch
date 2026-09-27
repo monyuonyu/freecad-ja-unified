@@ -1,0 +1,192 @@
+From 9a032e1c151cb3799cfa064d2af026f742b10a52 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 17:41:51 +0900
+Subject: [PATCH 2/2] Take class names from typeid portably
+
+ASMTItem::classname(), Item::classname(), the printOn() methods and the
+time series labels cut a fixed number of characters off typeid(...).name(),
+which only works for MSVC's 'class MbD::X'. GCC and Clang give the mangled
+'N3MbD19ASMTRackPinionJointE', so the ASMT export on Linux and macOS wrote
+joint types like 'PinionJointE'. plainClassName() demangles and strips the
+namespace; the result on Windows is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ OndselSolver/ASMTItem.cpp   |  5 ++---
+ OndselSolver/ASMTJoint.cpp  |  5 +++--
+ OndselSolver/CMakeLists.txt |  1 +
+ OndselSolver/Item.cpp       |  9 +++-----
+ OndselSolver/Symbolic.cpp   |  5 ++---
+ OndselSolver/TypeName.h     | 45 +++++++++++++++++++++++++++++++++++++
+ 6 files changed, 56 insertions(+), 14 deletions(-)
+ create mode 100644 OndselSolver/TypeName.h
+
+diff --git a/OndselSolver/ASMTItem.cpp b/OndselSolver/ASMTItem.cpp
+index 77618cb..baf9d12 100644
+--- a/OndselSolver/ASMTItem.cpp
++++ b/OndselSolver/ASMTItem.cpp
+@@ -11,6 +11,7 @@
+ #include "ASMTSpatialContainer.h"
+ #include "ASMTAssembly.h"
+ #include "Constant.h"
++#include "TypeName.h"
+ #include <algorithm>
+ 
+ using namespace MbD;
+@@ -41,9 +42,7 @@ void MbD::ASMTItem::noop()
+ 
+ std::string MbD::ASMTItem::classname()
+ {
+-	std::string str = typeid(*this).name();
+-	auto answer = str.substr(11, str.size() - 11);
+-	return answer;
++	return plainClassName(typeid(*this));
+ }
+ 
+ void MbD::ASMTItem::setName(const std::string& str)
+diff --git a/OndselSolver/ASMTJoint.cpp b/OndselSolver/ASMTJoint.cpp
+index 40edd52..8c30dc3 100644
+--- a/OndselSolver/ASMTJoint.cpp
++++ b/OndselSolver/ASMTJoint.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include "ASMTJoint.h"
+ #include "Joint.h"
++#include "TypeName.h"
+ 
+ using namespace MbD;
+ 
+@@ -47,8 +48,8 @@ void MbD::ASMTJoint::storeOnLevel(std::ofstream& os, size_t level)
+ 
+ void MbD::ASMTJoint::storeOnTimeSeries(std::ofstream& os)
+ {
+-	std::string label = typeid(*this).name();
+-	label = label.substr(15, label.size() - 15);
++	std::string label = plainClassName(typeid(*this));
++	label = label.substr(4, label.size() - 4);	//Remove ASMT in name
+ 	os << label << "Series\t" << fullName("") << std::endl;
+ 	ASMTItemIJ::storeOnTimeSeries(os);
+ }
+diff --git a/OndselSolver/CMakeLists.txt b/OndselSolver/CMakeLists.txt
+index 9fc1e82..15014f2 100644
+--- a/OndselSolver/CMakeLists.txt
++++ b/OndselSolver/CMakeLists.txt
+@@ -363,6 +363,7 @@ set(ONDSELSOLVER_HEADERS
+         ASMTInLineJoint.h
+         ASMTInPlaneJoint.h
+         ASMTItem.h
++        TypeName.h
+         ASMTItemIJ.h
+         ASMTJoint.h
+         ASMTKinematicIJ.h
+diff --git a/OndselSolver/Item.cpp b/OndselSolver/Item.cpp
+index 994a253..1cec0f5 100644
+--- a/OndselSolver/Item.cpp
++++ b/OndselSolver/Item.cpp
+@@ -15,6 +15,7 @@
+ #include "Item.h"
+ #include "System.h"
+ #include "Symbolic.h"
++#include "TypeName.h"
+ 
+ using namespace MbD;
+ 
+@@ -44,9 +45,7 @@ void Item::initialize()
+ 
+ std::ostream& Item::printOn(std::ostream& s) const
+ {
+-	std::string str = typeid(*this).name();
+-	auto classname = str.substr(11, str.size() - 11);
+-	s << classname << std::endl;
++	s << plainClassName(typeid(*this)) << std::endl;
+ 	return s;
+ }
+ 
+@@ -255,9 +254,7 @@ void MbD::Item::postDynCorrectorIteration()
+ 
+ std::string Item::classname()
+ {
+-	std::string str = typeid(*this).name();
+-	auto answer = str.substr(11, str.size() - 11);
+-	return answer;
++	return plainClassName(typeid(*this));
+ }
+ 
+ void Item::preDynFirstStep()
+diff --git a/OndselSolver/Symbolic.cpp b/OndselSolver/Symbolic.cpp
+index 70b2a71..3bd8e6c 100644
+--- a/OndselSolver/Symbolic.cpp
++++ b/OndselSolver/Symbolic.cpp
+@@ -15,6 +15,7 @@
+ #include "Product.h"
+ #include "Sum.h"
+ #include "Power.h"
++#include "TypeName.h"
+ 
+ using namespace MbD;
+ 
+@@ -160,9 +161,7 @@ bool Symbolic::isConstant()
+ 
+ std::ostream& Symbolic::printOn(std::ostream& s) const
+ {
+-	std::string str = typeid(*this).name();
+-	auto classname = str.substr(11, str.size() - 11);
+-	s << classname;
++	s << plainClassName(typeid(*this));
+ 	return s;
+ }
+ 
+diff --git a/OndselSolver/TypeName.h b/OndselSolver/TypeName.h
+new file mode 100644
+index 0000000..6a704b4
+--- /dev/null
++++ b/OndselSolver/TypeName.h
+@@ -0,0 +1,45 @@
++/***************************************************************************
++ *   Copyright (c) 2023 Ondsel, Inc.                                       *
++ *                                                                         *
++ *   This file is part of OndselSolver.                                    *
++ *                                                                         *
++ *   See LICENSE file for details about copyright.                         *
++ ***************************************************************************/
++
++#pragma once
++
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <typeinfo>
++#if defined(__GNUG__) || defined(__clang__)
++#include <cxxabi.h>
++#endif
++
++namespace MbD {
++	// The name of a class without "class " and the namespace, e.g. "ASMTRackPinionJoint".
++	// typeid names differ per compiler: MSVC gives "class MbD::ASMTRackPinionJoint", GCC and
++	// Clang the mangled "N3MbD19ASMTRackPinionJointE", which cutting a fixed number of
++	// characters turned into "PinionJointE".
++	inline std::string plainClassName(const std::type_info& type)
++	{
++		std::string name = type.name();
++#if defined(__GNUG__) || defined(__clang__)
++		int status = 0;
++		char* demangled = abi::__cxa_demangle(name.c_str(), nullptr, nullptr, &status);
++		if (status == 0 && demangled) {
++			name = demangled;
++		}
++		std::free(demangled);
++#endif
++		for (const char* prefix : { "class ", "struct " }) {
++			if (name.rfind(prefix, 0) == 0) {
++				name = name.substr(std::strlen(prefix));
++			}
++		}
++		if (name.rfind("MbD::", 0) == 0) {
++			name = name.substr(5);
++		}
++		return name;
++	}
++}
+-- 
+2.43.0
+

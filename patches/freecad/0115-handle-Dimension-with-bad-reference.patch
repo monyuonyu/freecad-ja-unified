@@ -1,0 +1,42 @@
+From a56ccc5a8fa013b5c7032fe92370247f85ad2fb0 Mon Sep 17 00:00:00 2001
+From: wandererfan <wandererfan@gmail.com>
+Date: Mon, 24 Aug 2026 10:11:12 -0400
+Subject: [PATCH 115/137] handle Dimension with bad reference.
+
+- prevents a crash if the dimension has a reference that points to
+  non-existent geometry
+---
+ src/Mod/Part/App/PropertyTopoShapeList.cpp | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Part/App/PropertyTopoShapeList.cpp b/src/Mod/Part/App/PropertyTopoShapeList.cpp
+index 9c25445c3..8b3fbd8f2 100644
+--- a/src/Mod/Part/App/PropertyTopoShapeList.cpp
++++ b/src/Mod/Part/App/PropertyTopoShapeList.cpp
+@@ -251,13 +251,21 @@ void PropertyTopoShapeList::RestoreDocFile(Base::Reader& reader)
+ 
+ App::Property* PropertyTopoShapeList::Copy() const
+ {
+-    PropertyTopoShapeList* p = new PropertyTopoShapeList();
++    auto* p = new PropertyTopoShapeList();
+     std::vector<TopoShape> copiedShapes;
+     for (auto& shape : _lValueList) {
++        if (shape.isNull()) {
++            // this is probabably(?) undo/redo saving the before state of this property, which includes invalid
++            // references.
++            Base::Console().error("PropertyTopoShapeList::Copy encountered a null shape. Undo may not be possible.\n");
++            continue;
++        }
+         BRepBuilderAPI_Copy copy(shape.getShape());
+         copiedShapes.emplace_back(copy.Shape());
+     }
+-    p->setValues(copiedShapes);
++    if (!copiedShapes.empty()) {
++        p->setValues(copiedShapes);
++    }
+     return p;
+ }
+ 
+-- 
+2.43.0
+

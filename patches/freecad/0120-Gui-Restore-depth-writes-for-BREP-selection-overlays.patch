@@ -1,0 +1,54 @@
+From 1cfee620e4c1f267ffe831bae9a84d13752669ad Mon Sep 17 00:00:00 2001
+From: Billy Huddleston <billy@ivdc.com>
+Date: Sat, 19 Sep 2026 15:09:34 -0400
+Subject: [PATCH 120/137] Gui: Restore depth writes for BREP selection overlays
+
+Committed selection overlays for edges and points had depth writes disabled since #30791,
+so selected edge-only objects (wireframe shapes, Part curves, CAM paths) were overdrawn
+by geometry rendered after them. Keep depth writes on while still depth-testing.
+---
+ src/Mod/Part/Gui/SoBrepEdgeSet.cpp  | 8 +-------
+ src/Mod/Part/Gui/SoBrepPointSet.cpp | 8 +-------
+ 2 files changed, 2 insertions(+), 14 deletions(-)
+
+diff --git a/src/Mod/Part/Gui/SoBrepEdgeSet.cpp b/src/Mod/Part/Gui/SoBrepEdgeSet.cpp
+index c73c34b33..bc8257921 100644
+--- a/src/Mod/Part/Gui/SoBrepEdgeSet.cpp
++++ b/src/Mod/Part/Gui/SoBrepEdgeSet.cpp
+@@ -94,13 +94,7 @@ static void applyOverlayDepthState(SoState* state, OverlayDepthMode depthMode)
+             );
+             return;
+         case OverlayDepthMode::RespectDepth:
+-            SoDepthBufferElement::set(
+-                state,
+-                TRUE,
+-                FALSE,
+-                SoDepthBufferElement::LEQUAL,
+-                SbVec2f(0.0f, 1.0f)
+-            );
++            SoDepthBufferElement::set(state, TRUE, TRUE, SoDepthBufferElement::LEQUAL, SbVec2f(0.0f, 1.0f));
+             return;
+     }
+ }
+diff --git a/src/Mod/Part/Gui/SoBrepPointSet.cpp b/src/Mod/Part/Gui/SoBrepPointSet.cpp
+index d2d450c45..7a28c8ee5 100644
+--- a/src/Mod/Part/Gui/SoBrepPointSet.cpp
++++ b/src/Mod/Part/Gui/SoBrepPointSet.cpp
+@@ -84,13 +84,7 @@ static void applyOverlayDepthState(SoState* state, OverlayDepthMode depthMode)
+             );
+             return;
+         case OverlayDepthMode::RespectDepth:
+-            SoDepthBufferElement::set(
+-                state,
+-                TRUE,
+-                FALSE,
+-                SoDepthBufferElement::LEQUAL,
+-                SbVec2f(0.0f, 1.0f)
+-            );
++            SoDepthBufferElement::set(state, TRUE, TRUE, SoDepthBufferElement::LEQUAL, SbVec2f(0.0f, 1.0f));
+             return;
+     }
+ }
+-- 
+2.43.0
+

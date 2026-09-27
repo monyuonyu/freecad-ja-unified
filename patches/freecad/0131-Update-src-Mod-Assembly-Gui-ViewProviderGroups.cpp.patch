@@ -1,0 +1,28 @@
+From 70ba7da31258137f53620c481d544383b9b726cf Mon Sep 17 00:00:00 2001
+From: PaddleStroke <pierrelouis.boyer@gmail.com>
+Date: Fri, 25 Sep 2026 23:01:32 +0200
+Subject: [PATCH 131/137] Update src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+
+Co-authored-by: Kacper Donat <kadet1090@gmail.com>
+---
+ src/Mod/Assembly/Gui/ViewProviderGroups.cpp | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+index f65f51bbb..c0889f13f 100644
+--- a/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
++++ b/src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+@@ -69,9 +69,5 @@ bool ViewProviderJointGroup::onDelete(const std::vector<std::string>&)
+     auto* group = getObject<Assembly::JointGroup>();
+ 
+     // if empty or orphaned ok to delete.
+-    if (group && (group->Group.getValues().empty() || group->getParents().empty())) {
+-        return true;
+-    }
+-
+-    return false;
++    return group && (group->Group.getValues().empty() || group->getParents().empty());
+ };
+-- 
+2.43.0
+

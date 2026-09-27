@@ -1,0 +1,33 @@
+From b31d7c2295352e89dabaa9a5d3de47da3b8ea0f0 Mon Sep 17 00:00:00 2001
+From: "pre-commit-ci[bot]"
+ <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 21:55:08 +0000
+Subject: [PATCH 125/137] auto fixes from pre-commit.com hooks
+
+for more information, see https://pre-commit.ci
+---
+ src/Gui/Tree.cpp | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/Gui/Tree.cpp b/src/Gui/Tree.cpp
+index 909129c48..c127e6e01 100644
+--- a/src/Gui/Tree.cpp
++++ b/src/Gui/Tree.cpp
+@@ -4112,10 +4112,10 @@ void TreeWidget::onItemSelectionChanged()
+         }
+     }
+ 
+-    if (selItems.size() == 1 && selItems.front()->type() == ObjectType) {
+-        static_cast<DocumentObjectItem*>(selItems.front())->displayStatusInfo();
+-    }
+-
++    if (selItems.size() == 1 && selItems.front()->type() == ObjectType) {
++        static_cast<DocumentObjectItem*>(selItems.front())->displayStatusInfo();
++    }
++
+     this->blockSelection(lock);
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,59 @@
+From d0a3ce22dcb4086ed22924ab43c6a2e8190a3367 Mon Sep 17 00:00:00 2001
+From: Chris Hennes <chennes@pioneerlibrarysystem.org>
+Date: Fri, 25 Sep 2026 12:56:02 -0500
+Subject: [PATCH 119/137] Mesh/Tests: Add regression test for 32928
+
+---
+ tests/src/Mod/Mesh/App/CMakeLists.txt  |  1 +
+ tests/src/Mod/Mesh/App/Core/MeshIO.cpp | 27 ++++++++++++++++++++++++++
+ 2 files changed, 28 insertions(+)
+ create mode 100644 tests/src/Mod/Mesh/App/Core/MeshIO.cpp
+
+diff --git a/tests/src/Mod/Mesh/App/CMakeLists.txt b/tests/src/Mod/Mesh/App/CMakeLists.txt
+index 1980bb609..6d6f673a7 100644
+--- a/tests/src/Mod/Mesh/App/CMakeLists.txt
++++ b/tests/src/Mod/Mesh/App/CMakeLists.txt
+@@ -2,6 +2,7 @@
+ 
+ add_executable(Mesh_tests_run
+         Core/KDTree.cpp
++        Core/MeshIO.cpp
+         Exporter.cpp
+         Importer.cpp
+         Mesh.cpp
+diff --git a/tests/src/Mod/Mesh/App/Core/MeshIO.cpp b/tests/src/Mod/Mesh/App/Core/MeshIO.cpp
+new file mode 100644
+index 000000000..7ce79bd9c
+--- /dev/null
++++ b/tests/src/Mod/Mesh/App/Core/MeshIO.cpp
+@@ -0,0 +1,27 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <gtest/gtest.h>
++#include <sstream>
++#include <Mod/Mesh/App/Core/MeshIO.h>
++#include <Mod/Mesh/App/Core/MeshKernel.h>
++
++TEST(MeshIO, LoadAsciiSTLWithoutTrailingNewline)
++{
++    // Regression test for Issue #32928 -- the solid's name has to be at least 11 chars to trigger
++    std::istringstream input(
++        "solid ASCII_STL_WITH_A_LONG_NAME\n"
++        "facet normal 0 0 1\n"
++        "outer loop\n"
++        "vertex 0 0 0\n"
++        "vertex 1 0 0\n"
++        "vertex 0 1 0\n"
++        "endloop\n"
++        "endfacet\n"
++        "endsolid ASCII_STL_WIth_A_LONG_NAME"
++    );
++    MeshCore::MeshKernel kernel;
++    MeshCore::MeshInput reader(kernel);
++
++    EXPECT_TRUE(reader.LoadAsciiSTL(input));
++    EXPECT_EQ(kernel.CountFacets(), 1);
++}
+-- 
+2.43.0
+

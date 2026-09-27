@@ -1,7 +1,7 @@
 From b22389a9c30b59e0e788b8524e998c489a366f45 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:17:35 +0900
-Subject: [PATCH 041/108] Unified: sketch toolbars fit on one row
+Subject: [PATCH 041/137] Unified: sketch toolbars fit on one row
 
 The B-spline tools and the visual helpers are used now and then and are
 in the Sketch menu. Without their toolbars the drawing, constraint and

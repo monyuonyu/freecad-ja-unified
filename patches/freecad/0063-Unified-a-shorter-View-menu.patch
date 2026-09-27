@@ -1,7 +1,7 @@
 From 4b222c27e4bfb3d8676b63dde847edf8dab5d4f1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:14:42 +0900
-Subject: [PATCH 063/108] Unified: a shorter View menu
+Subject: [PATCH 063/137] Unified: a shorter View menu
 
 The view commands used now and then (new view, freeze views, clipping,
 texture mapping, link and tree actions, ...) move into one "More"

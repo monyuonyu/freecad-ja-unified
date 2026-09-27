@@ -1,0 +1,319 @@
+From 18642dfd16530e0cb60f4283e359ba9479fd9f2a Mon Sep 17 00:00:00 2001
+From: Chris Hennes <chennes@pioneerlibrarysystem.org>
+Date: Mon, 14 Sep 2026 22:39:30 -0500
+Subject: [PATCH 122/137] Part: Make sure property exists before accessing
+
+Assisted-by: Claude Opus 5.1
+---
+ src/App/PropertyLinks.cpp                     |  26 +-
+ tests/src/Mod/Part/App/CMakeLists.txt         |   1 +
+ .../App/PropertyLinkElementReferences.cpp     | 231 ++++++++++++++++++
+ 3 files changed, 252 insertions(+), 6 deletions(-)
+ create mode 100644 tests/src/Mod/Part/App/PropertyLinkElementReferences.cpp
+
+diff --git a/src/App/PropertyLinks.cpp b/src/App/PropertyLinks.cpp
+index 7f66b2589..ec2636287 100644
+--- a/src/App/PropertyLinks.cpp
++++ b/src/App/PropertyLinks.cpp
+@@ -272,6 +272,13 @@ PropertyLinkBase::getElementReferences(DocumentObject* feature)
+     return it->second;
+ }
+ 
++/// Given a feature and a property, see if the feature contains a reference to the property.
++static bool propertyIsRegistered(DocumentObject* feature, PropertyLinkBase* property)
++{
++    const auto it = _ElementRefMap.find(feature);
++    return it != _ElementRefMap.end() && it->second.contains(property);
++}
++
+ void PropertyLinkBase::updateElementReferences(DocumentObject* feature, bool reverse)
+ {
+     if (!feature || !feature->getNameInDocument()) {
+@@ -281,10 +288,11 @@ void PropertyLinkBase::updateElementReferences(DocumentObject* feature, bool rev
+     if (it == _ElementRefMap.end()) {
+         return;
+     }
+-    std::vector<PropertyLinkBase*> props;
+-    props.reserve(it->second.size());
+-    props.insert(props.end(), it->second.begin(), it->second.end());
++    std::vector<PropertyLinkBase*> props(it->second.begin(), it->second.end());
+     for (auto prop : props) {
++        if (!propertyIsRegistered(feature, prop)) {
++            continue;
++        }
+         if (prop->getContainer()) {
+             try {
+                 prop->updateElementReference(feature, reverse, true);
+@@ -303,11 +311,17 @@ void PropertyLinkBase::updateElementReferences(DocumentObject* feature, bool rev
+ 
+ void PropertyLinkBase::updateAllElementReferences(bool reverse)
+ {
+-    for (auto reference : _ElementRefMap) {
+-        for (auto prop : reference.second) {
++    auto const mapSnapshot = _ElementRefMap;
++    for (const auto& [feature, props] : mapSnapshot) {
++        for (auto prop : props) {
++            // Check to see if the property is no longer registered (because the code below can
++            // remove them and we're working off a snapshot from before that). See #29673.
++            if (!propertyIsRegistered(feature, prop)) {
++                continue;
++            }
+             if (prop->getContainer()) {
+                 try {
+-                    prop->updateElementReference(reference.first, reverse, true);
++                    prop->updateElementReference(feature, reverse, true);
+                 }
+                 catch (Base::Exception& e) {
+                     e.reportException();
+diff --git a/tests/src/Mod/Part/App/CMakeLists.txt b/tests/src/Mod/Part/App/CMakeLists.txt
+index 8d92c4e10..93ec663bd 100644
+--- a/tests/src/Mod/Part/App/CMakeLists.txt
++++ b/tests/src/Mod/Part/App/CMakeLists.txt
+@@ -24,6 +24,7 @@ add_executable(Part_tests_run
+         PartFeatures.cpp
+         PartTestHelpers.cpp
+         PreviewExtension.cpp
++        PropertyLinkElementReferences.cpp
+         PropertyTopoShape.cpp
+         TopoDS_Shape.cpp
+         TopoShape.cpp
+diff --git a/tests/src/Mod/Part/App/PropertyLinkElementReferences.cpp b/tests/src/Mod/Part/App/PropertyLinkElementReferences.cpp
+new file mode 100644
+index 000000000..6d9fc83e9
+--- /dev/null
++++ b/tests/src/Mod/Part/App/PropertyLinkElementReferences.cpp
+@@ -0,0 +1,231 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <gtest/gtest.h>
++
++#include <functional>
++#include <memory>
++#include <vector>
++
++#include <App/Application.h>
++#include <App/Document.h>
++#include <App/PropertyLinks.h>
++#include <src/App/InitApplication.h>
++
++#include "PartTestHelpers.h"
++
++namespace
++{
++
++class RecordingLinkSub: public App::PropertyLinkSub
++{
++public:
++    void updateElementReference(App::DocumentObject* feature, bool reverse, bool notify) override
++    {
++        if (feature) {
++            ++*updateCount;
++            const bool destroyedItself = onUpdate && onUpdate();
++            if (destroyedItself) {
++                return;
++            }
++        }
++        PropertyLinkSub::updateElementReference(feature, reverse, notify);
++    }
++
++    std::shared_ptr<int> updateCount = std::make_shared<int>(0);  // NOLINT
++    std::function<bool()> onUpdate;                               // NOLINT
++};
++
++}  // namespace
++
++class PropertyLinkElementReferencesTest: public ::testing::Test,
++                                         public PartTestHelpers::PartTestHelperClass
++{
++protected:
++    static void SetUpTestSuite()
++    {
++        tests::initApplication();
++    }
++
++    void SetUp() override
++    {
++        createTestDoc();
++        _doc->recompute();
++    }
++
++    void TearDown() override
++    {
++        _links.clear();
++        App::GetApplication().closeDocument(_docName.c_str());
++    }
++
++    RecordingLinkSub* addLink(App::DocumentObject* target)
++    {
++        auto link = std::make_unique<RecordingLinkSub>();
++        link->setScope(App::LinkScope::Hidden);
++        // Registering without a container avoids change notifications for an unnamed property
++        link->setValue(target, std::vector<std::string> {"Face1"});
++        link->setContainer(_boxes[5]);
++        EXPECT_TRUE(App::PropertyLinkBase::getElementReferences(target).contains(link.get()));
++        return _links.emplace_back(std::move(link)).get();
++    }
++
++    void destroyLink(RecordingLinkSub* link)
++    {
++        std::erase_if(_links, [link](const auto& owned) { return owned.get() == link; });
++    }
++
++    std::vector<std::unique_ptr<RecordingLinkSub>> _links;  // NOLINT
++};
++
++TEST_F(PropertyLinkElementReferencesTest, everyRegisteredPropertyIsUpdatedOnce)
++{
++    // Arrange
++    auto first = addLink(_boxes[0]);
++    auto second = addLink(_boxes[0]);
++    auto third = addLink(_boxes[1]);
++
++    // Act
++    App::PropertyLinkBase::updateAllElementReferences();
++
++    // Assert
++    EXPECT_EQ(*first->updateCount, 1);
++    EXPECT_EQ(*second->updateCount, 1);
++    EXPECT_EQ(*third->updateCount, 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, propertyUnregisteredByEarlierUpdateIsSkipped)
++{
++    // Arrange
++    auto first = addLink(_boxes[0]);
++    auto second = addLink(_boxes[0]);
++    first->onUpdate = [second] {
++        second->unregisterElementReference();
++        return false;
++    };
++    second->onUpdate = [first] {
++        first->unregisterElementReference();
++        return false;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateAllElementReferences();
++
++    // Assert
++    EXPECT_EQ(*first->updateCount + *second->updateCount, 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, propertyDestroyedByEarlierUpdateIsSkipped)
++{
++    // Arrange
++    auto first = addLink(_boxes[0]);
++    auto second = addLink(_boxes[0]);
++    auto firstCount = first->updateCount;
++    auto secondCount = second->updateCount;
++    first->onUpdate = [this, second] {
++        destroyLink(second);
++        return false;
++    };
++    second->onUpdate = [this, first] {
++        destroyLink(first);
++        return false;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateAllElementReferences();
++
++    // Assert
++    EXPECT_EQ(*firstCount + *secondCount, 1);
++    EXPECT_EQ(_links.size(), 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, propertyDestroyedDuringItsOwnUpdateIsUnregistered)
++{
++    // Arrange
++    auto doomed = addLink(_boxes[2]);
++    auto survivor = addLink(_boxes[3]);
++    doomed->onUpdate = [this, doomed] {
++        destroyLink(doomed);
++        return true;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateAllElementReferences();
++
++    // Assert
++    EXPECT_TRUE(App::PropertyLinkBase::getElementReferences(_boxes[2]).empty());
++    EXPECT_EQ(*survivor->updateCount, 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, featureUpdateSkipsPropertyUnregisteredByEarlierUpdate)
++{
++    // Arrange
++    auto first = addLink(_boxes[0]);
++    auto second = addLink(_boxes[0]);
++    first->onUpdate = [second] {
++        second->unregisterElementReference();
++        return false;
++    };
++    second->onUpdate = [first] {
++        first->unregisterElementReference();
++        return false;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateElementReferences(_boxes[0]);
++
++    // Assert
++    EXPECT_EQ(*first->updateCount + *second->updateCount, 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, featureUpdateSkipsPropertyDestroyedByEarlierUpdate)
++{
++    // Arrange
++    auto first = addLink(_boxes[0]);
++    auto second = addLink(_boxes[0]);
++    auto firstCount = first->updateCount;
++    auto secondCount = second->updateCount;
++    first->onUpdate = [this, second] {
++        destroyLink(second);
++        return false;
++    };
++    second->onUpdate = [this, first] {
++        destroyLink(first);
++        return false;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateElementReferences(_boxes[0]);
++
++    // Assert
++    EXPECT_EQ(*firstCount + *secondCount, 1);
++    EXPECT_EQ(_links.size(), 1);
++}
++
++TEST_F(PropertyLinkElementReferencesTest, referencesRegisteredDuringUpdateWaitForNextPass)
++{
++    // Arrange
++    const int newTargetCount = 64;  // Enough new keys to force the map to rehash
++    std::vector<App::DocumentObject*> newTargets;
++    for (int index = 0; index < newTargetCount; ++index) {
++        newTargets.push_back(_doc->addObject<Part::Box>());
++    }
++    _doc->recompute();
++    auto trigger = addLink(_boxes[0]);
++    std::vector<RecordingLinkSub*> added;
++    trigger->onUpdate = [this, &newTargets, &added] {
++        for (auto target : newTargets) {
++            added.push_back(addLink(target));
++        }
++        return false;
++    };
++
++    // Act
++    App::PropertyLinkBase::updateAllElementReferences();
++
++    // Assert
++    EXPECT_EQ(*trigger->updateCount, 1);
++    ASSERT_EQ(added.size(), newTargetCount);
++    for (auto link : added) {
++        EXPECT_EQ(*link->updateCount, 0);
++    }
++}
+-- 
+2.43.0
+

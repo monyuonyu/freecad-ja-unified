@@ -1,0 +1,42 @@
+From 2e8fd76052d60877a61e962ef2461850a71a0510 Mon Sep 17 00:00:00 2001
+From: Alfredo Monclus <alfredomonclus@gmail.com>
+Date: Sat, 5 Sep 2026 13:26:07 -0300
+Subject: [PATCH 123/137] fix: polyline loses last point after fillet trims its
+ segments
+
+---
+ src/Mod/Sketcher/Gui/DrawSketchHandlerLineSet.h | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Sketcher/Gui/DrawSketchHandlerLineSet.h b/src/Mod/Sketcher/Gui/DrawSketchHandlerLineSet.h
+index f1385465f..ade5c55b6 100644
+--- a/src/Mod/Sketcher/Gui/DrawSketchHandlerLineSet.h
++++ b/src/Mod/Sketcher/Gui/DrawSketchHandlerLineSet.h
+@@ -1141,7 +1141,8 @@ private:
+                 Base::Vector3d refPnt1, refPnt2;
+                 getFilletData(refPnt1, refPnt2, radius, newGeo, prevGeo, newGeoPos, prevGeoPos);
+ 
+-                obj->fillet(geoId1, geoId2, refPnt1, refPnt2, radius, true, true);
++                bool filletOk = obj->fillet(geoId1, geoId2, refPnt1, refPnt2, radius, true, true)
++                    >= 0;
+ 
+                 if (!obj->noRecomputes) {
+                     // obj->fillet() solves at the end only when obj->noRecomputes is set, but we
+@@ -1150,6 +1151,14 @@ private:
+                     obj->solve();
+                 }
+ 
++                // A fillet trims both lines at the corner and adds an arc between them,
++                // appending a surviving continuation for the end away from the corner.
++                // When the trimmed line was construction it becomes a scrap, so geoEltIds.back()
++                // still points at the old id. Re-point it at the appended continuation line.
++                if (filletOk && obj->getGeometryFacade(geoId1)->getConstruction()) {
++                    geoEltIds.back().GeoId = obj->getHighestCurveIndex() - 1;
++                }
++
+                 if (isConstructionMode()) {
+                     int filletGeoId = geoId + 1;
+                     Gui::cmdAppObjectArgs(obj, "toggleConstruction(%d) ", filletGeoId);
+-- 
+2.43.0
+

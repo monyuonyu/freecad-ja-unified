@@ -1,7 +1,7 @@
 From bbc296591d6696f694dbbfaa6193892d5a548f47 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:39:42 +0900
-Subject: [PATCH 074/108] Translations: the sketch status in everyday Japanese
+Subject: [PATCH 074/137] Translations: the sketch status in everyday Japanese
 
 "Under-constrained: 2 degrees of freedom" and "Fully constrained" now
 say what they mean for the user: two places are not fixed yet, shape and

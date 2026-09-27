@@ -1,0 +1,149 @@
+From e3f6c41f0b143e46b6cbcef5ab7c848b57aae071 Mon Sep 17 00:00:00 2001
+From: paddle <pierrelouis.boyer@gmail.com>
+Date: Thu, 24 Sep 2026 12:08:43 +0200
+Subject: [PATCH 132/137] Assembly: Fix rack and pinion bug
+
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp    | 29 +++++-----
+ src/Mod/Assembly/AssemblyTests/TestCore.py | 66 ++++++++++++++++++++++
+ 2 files changed, 80 insertions(+), 15 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index c40e895b9..171363a63 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -2441,14 +2441,12 @@ void AssemblyObject::getRackPinionMarkers(
+ int AssemblyObject::slidingPartIndex(App::DocumentObject* joint)
+ {
+     App::DocumentObject* part1 = getMovingPartFromRef(joint, "Reference1");
+-    App::DocumentObject* obj1 = getObjFromJointRef(joint, "Reference1");
+-    boost::ignore_unused(obj1);
+-    Base::Placement plc1 = getPlacementFromProp(joint, "Placement1");
+-
+     App::DocumentObject* part2 = getMovingPartFromRef(joint, "Reference2");
+-    App::DocumentObject* obj2 = getObjFromJointRef(joint, "Reference2");
+-    boost::ignore_unused(obj2);
+-    Base::Placement plc2 = getPlacementFromProp(joint, "Placement2");
++
++    // Compare the JCS in global coordinates: the slider and this joint may reference
++    // different sub-objects of the same part.
++    Base::Placement plc1 = getJointSideGlobalPlacement(joint, "Reference1", "Placement1");
++    Base::Placement plc2 = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
+ 
+     int slidingFound = 0;
+     for (auto* jt : getJoints()) {
+@@ -2460,21 +2458,22 @@ int AssemblyObject::slidingPartIndex(App::DocumentObject* joint)
+             if (jpart1 == part1 || jpart1 == part2) {
+                 found = (jpart1 == part1) ? 1 : 2;
+                 plci = (jpart1 == part1) ? plc1 : plc2;
+-                plcjt = getPlacementFromProp(jt, "Placement1");
++                plcjt = getJointSideGlobalPlacement(jt, "Reference1", "Placement1");
+             }
+             else if (jpart2 == part1 || jpart2 == part2) {
+                 found = (jpart2 == part1) ? 1 : 2;
+                 plci = (jpart2 == part1) ? plc1 : plc2;
+-                plcjt = getPlacementFromProp(jt, "Placement2");
++                plcjt = getJointSideGlobalPlacement(jt, "Reference2", "Placement2");
+             }
+ 
+             if (found != 0) {
+-                // check the placements plcjt and (jcs1 or jcs2 depending on found value) Z axis are
+-                // colinear ie if their pitch and roll are the same.
+-                double y1, p1, r1, y2, p2, r2;
+-                plcjt.getRotation().getYawPitchRoll(y1, p1, r1);
+-                plci.getRotation().getYawPitchRoll(y2, p2, r2);
+-                if (fabs(p1 - p2) < Precision::Confusion() && fabs(r1 - r2) < Precision::Confusion()) {
++                // Check that the Z axes of plcjt and plci are parallel. Do not compare
++                // pitch/roll: a yaw offset on the slider JCS (e.g. to align the rack) rotates
++                // about its local Z axis, which keeps the axis but changes pitch and roll
++                // whenever that axis is not the global Z.
++                Base::Vector3d axisjt = plcjt.getRotation().multVec(Base::Vector3d(0, 0, 1));
++                Base::Vector3d axisi = plci.getRotation().multVec(Base::Vector3d(0, 0, 1));
++                if (axisjt.Cross(axisi).Length() < Precision::Confusion()) {
+                     slidingFound = found;
+                 }
+             }
+diff --git a/src/Mod/Assembly/AssemblyTests/TestCore.py b/src/Mod/Assembly/AssemblyTests/TestCore.py
+index 27cd32993..5ba701d7b 100644
+--- a/src/Mod/Assembly/AssemblyTests/TestCore.py
++++ b/src/Mod/Assembly/AssemblyTests/TestCore.py
+@@ -23,6 +23,8 @@
+ 
+ import FreeCAD as App
+ import Part
++import os
++import tempfile
+ import unittest
+ 
+ import UtilsAssembly
+@@ -340,3 +342,67 @@ class TestCore(AssemblyTestBase):
+         joint.Proxy.setJointConnectors(joint, refs)
+ 
+         self.assertTrue(box.Placement.isSame(box2.Placement, 1e-6), "'{}'".format(operation))
++
++    def test_rack_pinion_with_slider_offset(self):
++        """Rack and pinion joint whose rack slider has a yaw offset, see
++        github.com/freecad/freecad/issues/17563"""
++        operation = "Rack and pinion with slider offset"
++        _msg("  Test '{}'".format(operation))
++
++        ground = self.assembly.newObject("Part::Box", "Ground")
++        ground.Length = 200
++        ground.Width = 200
++        ground.Height = 10
++
++        rack = self.assembly.newObject("Part::Box", "Rack")
++        rack.Length = 10
++        rack.Width = 100
++        rack.Height = 10
++        rack.Placement.Base = App.Vector(50, 0, 10)
++
++        pinion = self.assembly.newObject("Part::Cylinder", "Pinion")
++        pinion.Radius = 10
++        pinion.Height = 10
++        pinion.Placement.Base = App.Vector(30, 50, 10)
++        self.doc.recompute()
++
++        grounded = self.jointgroup.newObject("App::FeaturePython", "GroundedJoint")
++        JointObject.GroundedJoint(grounded, ground)
++
++        # Edge4 of a box runs along Y, so the slider axis is not the global Z axis.
++        slider = self.jointgroup.newObject("App::FeaturePython", "Slider")
++        JointObject.Joint(slider, JointObject.JointTypes.index("Slider"))
++        slider.Proxy.setJointConnectors(
++            slider, [[ground, ["Edge4", "Edge4"]], [rack, ["Edge4", "Edge4"]]]
++        )
++
++        revolute = self.jointgroup.newObject("App::FeaturePython", "Revolute")
++        JointObject.Joint(revolute, JointObject.JointTypes.index("Revolute"))
++        revolute.Proxy.setJointConnectors(
++            revolute, [[ground, ["Face6", "Face6"]], [pinion, ["Edge3", "Edge3"]]]
++        )
++
++        rackPinion = self.jointgroup.newObject("App::FeaturePython", "RackPinion")
++        JointObject.Joint(rackPinion, JointObject.JointTypes.index("RackPinion"))
++        rackPinion.Proxy.setJointConnectors(
++            rackPinion, [[rack, ["Edge4", "Edge4"]], [pinion, ["Edge3", "Edge3"]]]
++        )
++        rackPinion.Distance = 10
++
++        # Rotating the rack around its sliding axis keeps that axis but changes
++        # the pitch and roll of the slider JCS.
++        slider.Offset2 = App.Placement(App.Vector(), App.Rotation(-90, 0, 0))
++        self.doc.recompute()
++
++        self.assertEqual(self.assembly.solve(), 0, "'{}' failed - solve".format(operation))
++
++        # The rack and pinion joint must reach the solver: it is silently dropped when
++        # the rack cannot be identified from its slider.
++        with tempfile.TemporaryDirectory() as temp_dir:
++            fileName = os.path.join(temp_dir, "rackPinion.asmt")
++            self.assembly.exportAsASMT(fileName)
++            with open(fileName) as asmt:
++                content = asmt.read()
++        self.assertTrue(
++            "RackPinionJoint" in content, "'{}' failed - joint not exported".format(operation)
++        )
+-- 
+2.43.0
+

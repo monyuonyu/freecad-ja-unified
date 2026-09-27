@@ -1,0 +1,65 @@
+From 970995b442c48b16aca076b5249a263a69b6e20c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 17:32:16 +0900
+Subject: [PATCH 136/137] TechDraw, Unified: fmt placeholders in the dimension
+ reference messages, and translate the new messages
+
+The messages added by the dimension repair fix used printf's %s with
+Base::Console, which formats with {}. Japanese for them and for the new
+sketch fillet hint.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawViewDimension.cpp           |  4 ++--
+ .../Gui/Resources/translations/UnifiedWording_ja.ts  | 12 ++++++++++++
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/DrawViewDimension.cpp b/src/Mod/TechDraw/App/DrawViewDimension.cpp
+index 22a1afbb4..dd8a7c4c9 100644
+--- a/src/Mod/TechDraw/App/DrawViewDimension.cpp
++++ b/src/Mod/TechDraw/App/DrawViewDimension.cpp
+@@ -1755,9 +1755,9 @@ void DrawViewDimension::updateSavedGeometry()
+         else {
+             // If we can't get a shape for a reference, we will just keep the existing
+             // SavedGeometry as the lesser evil.
+-            Base::Console().error("Dimension reference to %s:%s has no geometry\n",
++            Base::Console().error("Dimension reference to {}:{} has no geometry\n",
+                             entry.getObjectName(), entry.getSubName());
+-            Base::Console().warning("SavedGeometry for %s was not updated\n",
++            Base::Console().warning("SavedGeometry for {} was not updated\n",
+                                         Label.getValue());
+             return;
+         }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 3ad3c010b..69305ae2d 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -5278,6 +5278,10 @@ For legacy documents with Part Design objects lacking a body, use the migrate fu
+         <translation>2つの頂点、または1つの辺を選択する必要があります。
+ </translation>
+     </message>
++    <message>
++        <source>Fillet/chamfer on a point only works between two lines. To fillet curves, select the two edges instead.</source>
++        <translation>点での角丸め・面取りは、2 本の直線の間だけです。曲線を丸めるときは、2 本の辺を選んでください。</translation>
++    </message>
+ </context>
+ <context>
+     <name>QWidget</name>
+@@ -8552,6 +8556,14 @@ Each unit is approximately 0.1mm wide</source>
+         <source>Invalid</source>
+         <translation>エラー</translation>
+     </message>
++    <message>
++        <source>Dimension reference to</source>
++        <translation>寸法が測っている要素が見つかりません:</translation>
++    </message>
++    <message>
++        <source>PropertyTopoShapeList::Copy encountered a null shape. Undo may not be possible.</source>
++        <translation>空の形がありました。元に戻せないかもしれません</translation>
++    </message>
+ </context>
+ <context>
+     <name>Gui::NaviCube</name>
+-- 
+2.43.0
+

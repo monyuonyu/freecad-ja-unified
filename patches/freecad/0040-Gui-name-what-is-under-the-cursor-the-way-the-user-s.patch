@@ -1,7 +1,7 @@
 From d6470e682f52618625f5bfc8ee219ca1eaf24248 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:15:54 +0900
-Subject: [PATCH 040/108] Gui: name what is under the cursor the way the user
+Subject: [PATCH 040/137] Gui: name what is under the cursor the way the user
  sees it
 
 In the integrated environment the status bar shows the label from the

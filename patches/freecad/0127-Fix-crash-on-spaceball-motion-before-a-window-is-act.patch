@@ -1,0 +1,32 @@
+From 89481e061514bd6286703871535394e5f2310713 Mon Sep 17 00:00:00 2001
+From: Maik-0000FF <Maik-0000FF@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 18:05:13 +0200
+Subject: [PATCH 127/137] Fix crash on spaceball motion before a window is
+ active
+
+activeWindow() returns nullptr during startup; guard it before
+findChild() instead of dereferencing. Fixes #30017
+---
+ src/Gui/MainWindow.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/MainWindow.cpp b/src/Gui/MainWindow.cpp
+index c2f2d0d12..f3b853f09 100644
+--- a/src/Gui/MainWindow.cpp
++++ b/src/Gui/MainWindow.cpp
+@@ -1206,8 +1206,10 @@ static View3DInventorViewer* spaceballMotionEventTarget()
+ {
+     // check if the active window has a 3d view
+ 
+-    if (auto viewer = getMainWindow()->activeWindow()->findChild<View3DInventorViewer*>()) {
+-        return viewer;
++    if (auto active = getMainWindow()->activeWindow()) {
++        if (auto viewer = active->findChild<View3DInventorViewer*>()) {
++            return viewer;
++        }
+     }
+ 
+     // check active view for the document
+-- 
+2.43.0
+

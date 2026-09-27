@@ -1,7 +1,7 @@
 From 14f14dad598d5b1421e5d3b53d3b6d0438362c99 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:12:02 +0900
-Subject: [PATCH 038/108] Unified: remaining property names in Japanese, wider
+Subject: [PATCH 038/137] Unified: remaining property names in Japanese, wider
  name column
 
 A scan of the properties of all PartDesign features, sketches, datums and

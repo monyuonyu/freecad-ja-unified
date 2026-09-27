@@ -1,0 +1,33 @@
+From 1b321b8dd1d51aedeedf4c0e1dd7e9457d440860 Mon Sep 17 00:00:00 2001
+From: wwmayer <wmayer@freecad.org>
+Date: Thu, 24 Sep 2026 17:55:50 +0200
+Subject: [PATCH 118/137] Mesh: Fix loading ASCII STL
+
+When counting the number of triangles then the error flag might be set
+to the input stream (in case the file doesn't end with a newline).
+
+To fix reading the actual mesh data the error flag must be cleared.
+
+This fixes issue https://github.com/FreeCAD/FreeCAD/issues/32928
+---
+ src/Mod/Mesh/App/Core/MeshIO.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Mod/Mesh/App/Core/MeshIO.cpp b/src/Mod/Mesh/App/Core/MeshIO.cpp
+index 22b3b57b6..a88d03638 100644
+--- a/src/Mod/Mesh/App/Core/MeshIO.cpp
++++ b/src/Mod/Mesh/App/Core/MeshIO.cpp
+@@ -781,6 +781,10 @@ bool MeshInput::LoadAsciiSTL(std::istream& input)
+     // restart from the beginning
+     buf->pubseekoff(0, std::ios::beg, std::ios::in);
+ 
++    if (input.fail()) {
++        input.clear();
++    }
++
+ #if 0
+     MeshBuilder builder(this->_rclMesh);
+ #else
+-- 
+2.43.0
+

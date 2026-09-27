@@ -1,7 +1,7 @@
 From f2ce88cbdde645ed881d3e36cf29a8d76a4c157b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 00:14:38 +0900
-Subject: [PATCH] Log solver diagnostics to std::clog instead of std::cout
+Subject: [PATCH 1/2] Log solver diagnostics to std::clog instead of std::cout
 
 The solver runs inside FreeCAD, where stdout belongs to user scripts;
 opening an assembly with FreeCADCmd printed 'MbD: Assembling system.',

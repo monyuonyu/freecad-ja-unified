@@ -1,0 +1,37 @@
+From d9a22f84467c3e015a72187d7e6a74817bbae270 Mon Sep 17 00:00:00 2001
+From: Alfredo Monclus <alfredomonclus@gmail.com>
+Date: Sun, 20 Sep 2026 12:26:12 -0300
+Subject: [PATCH 110/137] Sketcher: populate edit geometry independent of view
+ resolution
+
+Call draw() unconditionally in slotSolverUpdate() during edit mode, since
+population used to be gated on resolving a view, which is NULL on entry to
+edit mode (the initial solve fires before setupEditingRoot() attaches the
+node). draw() writes the geometry to the Coin graph up front, so it renders
+once the node attaches. The redraw then targets the sketch's own view
+(issue 17036).
+---
+ src/Mod/Sketcher/Gui/ViewProviderSketch.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+index 004f66887..8f1104c77 100644
+--- a/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
++++ b/src/Mod/Sketcher/Gui/ViewProviderSketch.cpp
+@@ -3899,10 +3899,12 @@ void ViewProviderSketch::slotSolverUpdate()
+             + getSketchObject()->getHighestCurveIndex() + 1
+         == getSolvedSketch().getGeometrySize()) {
+ 
++        draw(false, true);
++
+         Gui::MDIView* mdi =
+             Gui::Application::Instance->editViewOfNode(editCoinManager->getRootEditNode());
+         if (mdi && mdi->isDerivedFrom<Gui::View3DInventor>()) {
+-            draw(false, true);
++            static_cast<Gui::View3DInventor*>(mdi)->getViewer()->redraw();
+         }
+ 
+         signalConstraintsChanged();
+-- 
+2.43.0
+
