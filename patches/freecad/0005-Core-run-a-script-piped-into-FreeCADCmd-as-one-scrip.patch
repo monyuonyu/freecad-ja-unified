@@ -1,7 +1,7 @@
 From 5abc650eec157d2a762c82161589a2be1c0f7607 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 26 Sep 2026 23:18:49 +0900
-Subject: [PATCH 05/82] Core: run a script piped into FreeCADCmd as one script
+Subject: [PATCH 05/83] Core: run a script piped into FreeCADCmd as one script
 
 'FreeCADCmd < script.py' fed the input line by line to the interactive
 console: prompts and the banner were mixed into the output, a blank line

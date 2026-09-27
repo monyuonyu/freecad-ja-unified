@@ -1,0 +1,1006 @@
+From 99ca1ab3495e152963d3e1c5cde9d2fcdd7a9e86 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 11:48:36 +0900
+Subject: [PATCH 83/83] Unified: add a design check (DRC-like mistake finder)
+
+Checks the whole model for failed features, invalid or split shapes,
+non-solid parts, overlapping parts, sketch constraint problems, tiny
+edges and floating parts. A task panel lists the problems, selects and
+frames the parts, and marks the location with a red sphere. Problems
+can be marked as intended per object (DesignCheckIgnore). A status bar
+indicator runs the check incrementally after recomputes, and pairwise
+results are cached by shape fingerprint so re-checks are fast.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   3 +-
+ src/Mod/Unified/DesignCheck.py                | 391 ++++++++++++++++++
+ src/Mod/Unified/DesignCheckGui.py             | 311 ++++++++++++++
+ .../translations/UnifiedProperties_ja.ts      |  16 +
+ .../Gui/Resources/translations/Unified_ja.ts  | 174 ++++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   3 +-
+ src/Mod/Unified/InitGui.py                    |   4 +
+ 7 files changed, 900 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Unified/DesignCheck.py
+ create mode 100644 src/Mod/Unified/DesignCheckGui.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 93087ecce..0f8ecbdfd 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -7,10 +7,11 @@ endif(BUILD_GUI)
+ 
+ set(Unified_Scripts
+     Init.py
++    DesignCheck.py
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py)
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py)
+ endif(BUILD_GUI)
+ 
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+new file mode 100644
+index 000000000..b50fe1446
+--- /dev/null
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -0,0 +1,391 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""形の検査（KiCad の DRC のような、規則による一括検査）。
++
++GUI が無くても動く（FreeCADCmd から `import DesignCheck; DesignCheck.run(doc)`）。
++GUI の一覧は DesignCheckGui.py。結果は Issue のリストで、重さは "error" / "warning" / "info"。
++"""
++
++import FreeCAD as App
++import Part
++
++QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
++
++
++def translate(context, text):
++    """GUI では Qt の訳。GUI の無い FreeCADCmd では訳が読み込まれないので、日本語の環境なら _JA を使う"""
++    r = App.Qt.translate(context, text)
++    if r == text and context == "DesignCheck" and not App.GuiUp and _japanese():
++        return _JA.get(text, text)
++    return r
++
++
++def _japanese():
++    import os
++    lang = App.ParamGet("User parameter:BaseApp/Preferences/General").GetString("Language", "")
++    return lang == "Japanese" or (not lang and os.environ.get("LANG", "").startswith("ja"))
++
++
++# CLI 用の日本語。Gui/Resources/translations/Unified_ja.ts の DesignCheck の文脈と同じ（ts を直したらここも）
++_JA = {'Step failed to compute': '計算に失敗した手順',
++ 'Broken shape': '壊れた形',
++ 'Part split into pieces': 'ばらばらに分かれた部品',
++ 'Not a closed solid': '閉じていない形',
++ 'Parts overlap': '部品どうしの干渉',
++ 'Conflicting constraints': 'ぶつかる拘束',
++ 'Redundant constraints': '重なった拘束',
++ 'Malformed constraints': '不正な拘束',
++ 'Very short edges': '極端に短い辺',
++ 'Sketch not fully constrained': '決まりきっていないスケッチ',
++ 'Part touches no other part': 'どこにも接していない部品',
++ '{0}: {1}': '{0}: {1}',
++ '{0}: the shape is broken (isValid is false)': '{0}: 形が壊れている',
++ '{0} consists of {1} separate pieces': '{0} が {1} 個に分かれている（形が切れていないか）',
++ '{0} has open surfaces (not a closed solid)': '{0} に開いた面がある（立体になっていない）',
++ '{0} has {1} edges shorter than {2} mm': '{0} に {2} mm より短い辺が {1} 本ある（作図のミスの跡かも）',
++ '{0} and {1} overlap by {2:.1f} mm³': '{0} と {1} が {2:.1f} mm³ 重なっている',
++ '{0} touches no other part (floating?)': '{0} がどの部品にも接していない（浮いていないか）',
++ '{0}: constraints {1} contradict each other': '{0}: 拘束 {1} がぶつかっている',
++ '{0}: constraints {1} are malformed': '{0}: 拘束 {1} が不正',
++ '{0}: constraints {1} say the same thing twice': '{0}: 拘束 {1} が同じことを二重に決めている',
++ '{0}: {1} places are not fixed yet': '{0}: まだ決まっていない所が {1} か所',
++ 'Error': 'エラー',
++ 'Warning': '警告',
++ 'Info': '情報',
++ 'Errors {0} · Warnings {1} · Info {2}': 'エラー {0}・警告 {1}・情報 {2}',
++ 'Design check': '設計の検査',
++ 'Kind': '種類',
++ 'What': '内容',
++ 'Pick a line to select and show the parts it is about.': '行を選ぶと、その部品を選んで画面に寄せます。',
++ 'Check again': 'もう一度検査',
++ 'No document is open.': 'ファイルが開いていません。',
++ 'No problems found.': '問題は見つかりませんでした。',
++ 'Result of the design check. Click to see the list.': '設計の検査の結果。押すと一覧を開きます。',
++ 'Check: OK': '検査: OK',
++ 'Check: ': '検査: '}
++
++ERROR, WARNING, INFO = "error", "warning", "info"
++
++# 検査の既定値
++DEFAULTS = {
++    "interference_mm3": 1e-3,   # これより大きい重なりを干渉とみなす
++    "tiny_edge_mm": 0.01,       # これより短い辺を作図のミスの跡とみなす
++    "touch_mm": 1e-3,           # これより近ければ接している
++}
++
++# 規則の名前（一覧に出す）
++RULES = {
++    "feature_error": QT_TRANSLATE_NOOP("DesignCheck", "Step failed to compute"),
++    "invalid_shape": QT_TRANSLATE_NOOP("DesignCheck", "Broken shape"),
++    "split": QT_TRANSLATE_NOOP("DesignCheck", "Part split into pieces"),
++    "not_solid": QT_TRANSLATE_NOOP("DesignCheck", "Not a closed solid"),
++    "interference": QT_TRANSLATE_NOOP("DesignCheck", "Parts overlap"),
++    "sketch_conflict": QT_TRANSLATE_NOOP("DesignCheck", "Conflicting constraints"),
++    "sketch_redundant": QT_TRANSLATE_NOOP("DesignCheck", "Redundant constraints"),
++    "sketch_malformed": QT_TRANSLATE_NOOP("DesignCheck", "Malformed constraints"),
++    "tiny_edge": QT_TRANSLATE_NOOP("DesignCheck", "Very short edges"),
++    "sketch_free": QT_TRANSLATE_NOOP("DesignCheck", "Sketch not fully constrained"),
++    "floating": QT_TRANSLATE_NOOP("DesignCheck", "Part touches no other part"),
++}
++
++
++class Issue:
++    def __init__(self, severity, rule, message, objects=(), location=None):
++        self.severity = severity
++        self.rule = rule
++        self.message = message
++        self.objects = list(objects)          # 関係する物の名前（ドキュメント内の Name）
++        self.location = location              # App.Vector（その場所に寄せるため）か None
++
++    def as_dict(self, doc=None):
++        def label(n):
++            o = doc.getObject(n) if doc else None
++            return o.Label if o else n
++        return {
++            "severity": self.severity,
++            "rule": self.rule,
++            "title": translate("DesignCheck", RULES[self.rule]),
++            "message": self.message,
++            "objects": [label(n) for n in self.objects],
++            "location": None if self.location is None else [round(v, 3) for v in self.location],
++        }
++
++
++# ------------------------------------------------------------------ 部品を集める
++def _visible(o):
++    try:
++        return bool(o.Visibility)
++    except Exception:
++        return True
++
++
++def _in_body(o):
++    try:
++        g = o.getParentGeoFeatureGroup()
++    except Exception:
++        return False
++    return g is not None and g.isDerivedFrom("PartDesign::Body")
++
++
++def _global_shape(o):
++    """o の形を全体の座標で（入れ物の中にあっても）"""
++    try:
++        s = Part.getShape(o, "", needSubElement=False, transform=False).copy()
++        s.Placement = o.getGlobalPlacement()
++        return s
++    except Exception:
++        return None
++
++
++def parts(doc):
++    """検査の対象になる「部品」: 見えている部品（Body）と、部品の外にある形（読み込んだ STEP など）と、リンク。
++    {Name: 全体座標の形}"""
++    out = {}
++    for o in doc.Objects:
++        if not _visible(o):
++            continue
++        if o.isDerivedFrom("PartDesign::Body"):
++            pass
++        elif o.isDerivedFrom("App::Link"):
++            pass
++        elif o.isDerivedFrom("Part::Feature"):
++            if _in_body(o) or o.isDerivedFrom("Part::Part2DObject") or o.isDerivedFrom("Part::Datum"):
++                continue
++            if o.TypeId.startswith(("PartDesign::", "Sketcher::", "App::", "TechDraw::", "Measure::")):
++                continue
++        else:
++            continue
++        s = _global_shape(o)
++        if s is None or s.isNull() or not s.Solids:
++            continue
++        out[o.Name] = s
++    return out
++
++
++# ------------------------------------------------------------------ 規則
++def _touching(solids, tol):
++    n = len(solids)
++    seen = {0}
++    todo = [0]
++    while todo:
++        i = todo.pop()
++        for j in range(n):
++            if j in seen or not solids[i].BoundBox.intersect(solids[j].BoundBox):
++                continue
++            if solids[i].distToShape(solids[j])[0] <= tol:
++                seen.add(j)
++                todo.append(j)
++    return len(seen) == n
++
++
++def check_features(doc, issues, opt):
++    for o in doc.Objects:
++        try:
++            broken = not o.isValid()
++        except Exception:
++            broken = False
++        if broken:
++            if o.isDerivedFrom("Sketcher::SketchObject"):
++                continue   # スケッチの問題は check_sketches が拘束の番号つきで出す
++            msg = o.getStatusString() if hasattr(o, "getStatusString") else ""
++            msg = translate("Exception", msg) if msg else msg      # 形のエラー文は "Exception" の文脈で訳されている
++            msg = " ".join(msg.split())
++            issues.append(Issue(ERROR, "feature_error", translate("DesignCheck", "{0}: {1}").format(o.Label, msg), [o.Name]))
++
++
++def check_shapes(doc, issues, opt, shapes):
++    for n, s in shapes.items():
++        o = doc.getObject(n)
++        if not s.isValid():
++            issues.append(Issue(ERROR, "invalid_shape",
++                                translate("DesignCheck", "{0}: the shape is broken (isValid is false)").format(o.Label), [n]))
++        sol = s.Solids
++        if len(sol) > 1 and not _touching(sol, opt["touch_mm"]):
++            issues.append(Issue(ERROR, "split",
++                                translate("DesignCheck", "{0} consists of {1} separate pieces").format(o.Label, len(sol)),
++                                [n], sol[1].BoundBox.Center))
++        closed = all(x.isClosed() for x in s.Shells) if s.Shells else False
++        if s.Shells and not closed:
++            issues.append(Issue(WARNING, "not_solid",
++                                translate("DesignCheck", "{0} has open surfaces (not a closed solid)").format(o.Label), [n]))
++        # 球や楕円体の極にできる長さ 0 の辺（Degenerated）は作図のミスではないので除く
++        tiny = [e for e in s.Edges if e.Length < opt["tiny_edge_mm"] and not getattr(e, "Degenerated", False)]
++        if tiny:
++            issues.append(Issue(WARNING, "tiny_edge",
++                                translate("DesignCheck", "{0} has {1} edges shorter than {2} mm").format(
++                                    o.Label, len(tiny), opt["tiny_edge_mm"]),
++                                [n], tiny[0].BoundBox.Center))
++
++
++# 部品の組ごとの結果を覚えておく（形と位置が同じなら計算し直さない）。{(指紋 a, 指紋 b): (重なり体積, 重なりの中心, 接しているか)}
++_PAIR_CACHE = {}
++
++
++def _fingerprint(s):
++    bb = s.BoundBox
++    return (round(s.Volume, 3), round(s.Area, 3), len(s.Faces),
++            tuple(round(v, 3) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)))
++
++
++def _pair(a, b, need_touch, opt):
++    fa, fb = _fingerprint(a), _fingerprint(b)
++    key = (fa, fb) if fa <= fb else (fb, fa)
++    hit = _PAIR_CACHE.get(key)
++    if hit is not None and (hit[2] is not None or not need_touch):
++        return hit
++    try:
++        c = a.common(b)
++        v = c.Volume
++        center = c.BoundBox.Center if v > 0 else None
++    except Exception:
++        v, center = 0.0, None
++    touch = None
++    if v > opt["interference_mm3"]:
++        touch = True
++    elif need_touch:
++        touch = a.distToShape(b)[0] <= opt["touch_mm"]
++    res = (v, center, touch)
++    if len(_PAIR_CACHE) > 20000:
++        _PAIR_CACHE.clear()
++    _PAIR_CACHE[key] = res
++    return res
++
++
++def check_interference(doc, issues, opt, shapes):
++    """部品どうしの干渉。opt["floating"] が真なら、どこにも接していない部品も調べる（重いので手動の検査だけ）"""
++    for _ in iter_interference(doc, issues, opt, shapes):
++        pass
++
++
++def iter_interference(doc, issues, opt, shapes):
++    """check_interference の中身。部品の組を 1 つ調べるごとに yield する（画面を止めずに少しずつ進めるため）"""
++    items = list(shapes.items())
++    need_touch = opt.get("floating", True) and len(shapes) >= 2
++    touch = {n: False for n in shapes}
++    for i in range(len(items)):
++        for j in range(i + 1, len(items)):
++            (na, a), (nb, b) = items[i], items[j]
++            if not a.BoundBox.intersect(b.BoundBox):
++                continue
++            # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
++            pair_touch = need_touch and not (touch[na] and touch[nb])
++            v, center, t = _pair(a, b, pair_touch, opt)
++            if v > opt["interference_mm3"]:
++                issues.append(Issue(ERROR, "interference",
++                                    translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
++                                        doc.getObject(na).Label, doc.getObject(nb).Label, v),
++                                    [na, nb], center))
++            if t:
++                touch[na] = touch[nb] = True
++            yield
++    if need_touch:
++        for n, t in touch.items():
++            if not t:
++                issues.append(Issue(INFO, "floating",
++                                    translate("DesignCheck", "{0} touches no other part (floating?)").format(
++                                        doc.getObject(n).Label),
++                                    [n], shapes[n].BoundBox.Center))
++
++
++def check_sketches(doc, issues, opt):
++    for o in doc.Objects:
++        if not o.isDerivedFrom("Sketcher::SketchObject"):
++            continue
++        try:
++            o.solve()
++        except Exception:
++            pass
++        for attr, rule, sev, text in (
++            ("ConflictingConstraints", "sketch_conflict", ERROR,
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} contradict each other")),
++            ("MalformedConstraints", "sketch_malformed", ERROR,
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} are malformed")),
++            ("RedundantConstraints", "sketch_redundant", WARNING,
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} say the same thing twice")),
++        ):
++            ids = list(getattr(o, attr, []) or [])
++            if ids:
++                issues.append(Issue(sev, rule, translate("DesignCheck", text).format(o.Label, ", ".join(map(str, ids))), [o.Name]))
++        dof = getattr(o, "DoF", 0) or 0
++        if dof > 0 and len(o.Geometry) > 0:
++            issues.append(Issue(INFO, "sketch_free",
++                                translate("DesignCheck", "{0}: {1} places are not fixed yet").format(o.Label, dof), [o.Name]))
++
++
++ORDER = {ERROR: 0, WARNING: 1, INFO: 2}
++
++IGNORE_PROP = "DesignCheckIgnore"
++
++
++def ignored_rules(obj):
++    """obj で無視すると決めた規則（ファイルに記録される）"""
++    return list(getattr(obj, IGNORE_PROP, []) or [])
++
++
++def ignore(doc, issue):
++    """この指摘を無視する: 関係する物それぞれに規則の名前を記録する（KiCad の「違反を除外」）"""
++    for n in issue.objects:
++        o = doc.getObject(n)
++        if o is None:
++            continue
++        if IGNORE_PROP not in o.PropertiesList:
++            o.addProperty("App::PropertyStringList", IGNORE_PROP, "DesignCheck",
++                          QT_TRANSLATE_NOOP("App::Property", "Rules of the design check to ignore for this object"))
++        rules = ignored_rules(o)
++        if issue.rule not in rules:
++            setattr(o, IGNORE_PROP, rules + [issue.rule])
++
++
++def _is_ignored(doc, issue):
++    objs = [doc.getObject(n) for n in issue.objects]
++    objs = [o for o in objs if o is not None]
++    return bool(objs) and all(issue.rule in ignored_rules(o) for o in objs)
++
++
++def run(doc=None, **options):
++    """doc を検査して Issue のリストを返す（重い順）"""
++    result = []
++    for r in iter_run(doc, **options):
++        if r is not None:
++            result = r
++    return result
++
++
++def iter_run(doc=None, **options):
++    """run を少しずつ進める版。途中は None を、最後に Issue のリストを yield する"""
++    doc = doc or App.ActiveDocument
++    if doc is None:
++        yield []
++        return
++    opt = dict(DEFAULTS, **options)
++    issues = []
++    shapes = parts(doc)
++    check_features(doc, issues, opt)
++    check_shapes(doc, issues, opt, shapes)
++    check_sketches(doc, issues, opt)
++    yield None
++    yield from iter_interference(doc, issues, opt, shapes)
++    kept = [i for i in issues if not _is_ignored(doc, i)]
++    run.ignored = len(issues) - len(kept)          # 無視した数（一覧の見出しに出す）
++    kept.sort(key=lambda i: ORDER[i.severity])
++    yield kept
++
++
++def summary(issues):
++    return {s: sum(1 for i in issues if i.severity == s) for s in (ERROR, WARNING, INFO)}
++
++
++def main(path):
++    """コマンドラインから: FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')" 。
++    エラーがあれば終了コード 1"""
++    import json
++    import sys
++    doc = App.openDocument(path)
++    try:
++        doc.recompute()
++        issues = run(doc)
++        print(json.dumps({"summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
++                         ensure_ascii=False, indent=1))
++    finally:
++        App.closeDocument(doc.Name)
++    if summary(issues)[ERROR]:
++        sys.exit(1)
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+new file mode 100644
+index 000000000..eb21eb13d
+--- /dev/null
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -0,0 +1,311 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""形の検査の画面: 一覧（作業パネル）と、ステータスバーの常時表示。"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import DesignCheck
++
++translate = App.Qt.translate
++QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
++
++_COLORS = {DesignCheck.ERROR: "#d9534f", DesignCheck.WARNING: "#e0a000", DesignCheck.INFO: "#5b8def"}
++
++
++def _severity_text(s):
++    return {
++        DesignCheck.ERROR: translate("DesignCheck", "Error"),
++        DesignCheck.WARNING: translate("DesignCheck", "Warning"),
++        DesignCheck.INFO: translate("DesignCheck", "Info"),
++    }[s]
++
++
++def _dot(color):
++    pm = QtGui.QPixmap(12, 12)
++    pm.fill(QtCore.Qt.transparent)
++    p = QtGui.QPainter(pm)
++    p.setRenderHint(QtGui.QPainter.Antialiasing)
++    p.setBrush(QtGui.QColor(color))
++    p.setPen(QtCore.Qt.NoPen)
++    p.drawEllipse(1, 1, 10, 10)
++    p.end()
++    return QtGui.QIcon(pm)
++
++
++def _summary_text(sm):
++    return translate("DesignCheck", "Errors {0} · Warnings {1} · Info {2}").format(
++        sm[DesignCheck.ERROR], sm[DesignCheck.WARNING], sm[DesignCheck.INFO])
++
++
++class Marker:
++    """問題の場所の赤い印（画面の中だけ。文書にも元に戻す一覧にも残らない）"""
++
++    def __init__(self):
++        self.node = None
++        self.view = None
++
++    def clear(self):
++        if self.node is not None and self.view is not None:
++            try:
++                self.view.getSceneGraph().removeChild(self.node)
++            except Exception:
++                pass
++        self.node = self.view = None
++
++    def show(self, view, center, radius):
++        from pivy import coin
++        self.clear()
++        sep = coin.SoSeparator()
++        pick = coin.SoPickStyle()
++        pick.style = coin.SoPickStyle.UNPICKABLE
++        mat = coin.SoMaterial()
++        mat.diffuseColor = (0.9, 0.1, 0.1)
++        mat.emissiveColor = (0.6, 0.0, 0.0)
++        mat.transparency = 0.45
++        tr = coin.SoTranslation()
++        tr.translation = (center.x, center.y, center.z)
++        sph = coin.SoSphere()
++        sph.radius = radius
++        # 干渉の場所は形の内側にあるので、奥行きの判定を切って常に手前に描く
++        depth = coin.SoDepthBuffer()
++        depth.test = False
++        for n in (pick, depth, mat, tr, sph):
++            sep.addChild(n)
++        view.getSceneGraph().addChild(sep)
++        self.node, self.view = sep, view
++
++
++marker = Marker()
++
++
++def show_issue(doc, issue):
++    """その問題の物を選んで、画面を寄せ、場所に赤い印を出す"""
++    Gui.Selection.clearSelection()
++    for n in issue.objects:
++        o = doc.getObject(n)
++        if o is not None:
++            Gui.Selection.addSelection(o)
++    if issue.objects:
++        Gui.runCommand("Std_ViewFitSelection")
++    marker.clear()
++    view = Gui.ActiveDocument.ActiveView if Gui.ActiveDocument else None
++    if issue.location is not None and view is not None and hasattr(view, "getSceneGraph"):
++        # 印の大きさは、関係する物の大きさの 1/10 くらい（小さすぎても大きすぎても見えない）
++        size = 5.0
++        shapes = [doc.getObject(n).Shape for n in issue.objects if doc.getObject(n) is not None and hasattr(doc.getObject(n), "Shape")]
++        if shapes:
++            size = max(max(s.BoundBox.DiagonalLength for s in shapes) / 12.0, 0.5)
++        marker.show(view, issue.location, size)
++
++
++class Panel:
++    """検査の結果の一覧（作業パネル）"""
++
++    def __init__(self):
++        self.doc = App.ActiveDocument
++        self.form = QtWidgets.QWidget()
++        self.form.setWindowTitle(translate("DesignCheck", "Design check"))
++        lay = QtWidgets.QVBoxLayout(self.form)
++        self.head = QtWidgets.QLabel()
++        self.head.setWordWrap(True)
++        lay.addWidget(self.head)
++        self.tree = QtWidgets.QTreeWidget()
++        self.tree.setHeaderLabels([translate("DesignCheck", "Kind"), translate("DesignCheck", "What")])
++        self.tree.setRootIsDecorated(False)
++        self.tree.setWordWrap(True)
++        self.tree.header().setStretchLastSection(True)
++        self.tree.itemSelectionChanged.connect(self.on_select)
++        lay.addWidget(self.tree)
++        hint = QtWidgets.QLabel(translate("DesignCheck", "Pick a line to select and show the parts it is about."))
++        hint.setWordWrap(True)
++        lay.addWidget(hint)
++        row = QtWidgets.QHBoxLayout()
++        self.ignore_btn = QtWidgets.QPushButton(translate("DesignCheck", "Ignore this one"))
++        self.ignore_btn.setToolTip(translate("DesignCheck",
++            "Mark the selected problem as intended. It is recorded in the file and not shown again."))
++        self.ignore_btn.setEnabled(False)
++        self.ignore_btn.clicked.connect(self.on_ignore)
++        row.addWidget(self.ignore_btn)
++        again = QtWidgets.QPushButton(translate("DesignCheck", "Check again"))
++        again.clicked.connect(self.refresh)
++        row.addWidget(again)
++        lay.addLayout(row)
++        self.issues = []
++        self.refresh()
++
++    def refresh(self):
++        if self.doc is None:
++            self.head.setText(translate("DesignCheck", "No document is open."))
++            return
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        try:
++            self.doc.recompute()
++            self.issues = DesignCheck.run(self.doc)
++        finally:
++            QtWidgets.QApplication.restoreOverrideCursor()
++        self.tree.clear()
++        for i in self.issues:
++            it = QtWidgets.QTreeWidgetItem([
++                _severity_text(i.severity),
++                translate("DesignCheck", DesignCheck.RULES[i.rule]) + "\n" + i.message,
++            ])
++            it.setIcon(0, _dot(_COLORS[i.severity]))
++            self.tree.addTopLevelItem(it)
++        self.tree.resizeColumnToContents(0)
++        sm = DesignCheck.summary(self.issues)
++        if not self.issues:
++            self.head.setText(translate("DesignCheck", "No problems found."))
++        else:
++            self.head.setText(_summary_text(sm))
++        n_ign = getattr(DesignCheck.run, "ignored", 0)
++        if n_ign:
++            self.head.setText(self.head.text() + "\n" + translate("DesignCheck", "({0} ignored as intended)").format(n_ign))
++        indicator.update_from(sm)
++
++    def on_select(self):
++        items = self.tree.selectedItems()
++        if not items:
++            return
++        k = self.tree.indexOfTopLevelItem(items[0])
++        if 0 <= k < len(self.issues):
++            show_issue(self.doc, self.issues[k])
++        self.ignore_btn.setEnabled(bool(items))
++
++    def on_ignore(self):
++        items = self.tree.selectedItems()
++        if not items:
++            return
++        k = self.tree.indexOfTopLevelItem(items[0])
++        if 0 <= k < len(self.issues):
++            self.doc.openTransaction(translate("DesignCheck", "Ignore a design check problem"))
++            DesignCheck.ignore(self.doc, self.issues[k])
++            self.doc.commitTransaction()
++            marker.clear()
++            self.refresh()
++
++    def getStandardButtons(self):
++        return QtWidgets.QDialogButtonBox.Close
++
++    def reject(self):
++        marker.clear()
++        Gui.Control.closeDialog()
++        return True
++
++    def accept(self):
++        return self.reject()
++
++
++class DesignCheckCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Part_CheckGeometry",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_DesignCheck", "Design check"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_DesignCheck",
++                "Checks the whole model for mistakes, like the design rule check of a circuit board tool: "
++                "failed steps, broken or split shapes, overlapping parts, sketch constraint problems, "
++                "very short edges and floating parts",
++            ),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None and not Gui.Control.activeDialog()
++
++    def Activated(self):
++        Gui.Control.showDialog(Panel())
++
++
++class Indicator:
++    """ステータスバーの常時表示「検査: エラー 1 · 警告 2 · 情報 0」。計算し直すたびに（少し待って）更新する"""
++
++    def __init__(self):
++        self.button = None
++        self.timer = QtCore.QTimer()
++        self.timer.setSingleShot(True)
++        self.timer.setInterval(1500)
++        self.timer.timeout.connect(self.run)
++        self.step_timer = QtCore.QTimer()
++        self.step_timer.setSingleShot(True)
++        self.step_timer.setInterval(0)
++        self.step_timer.timeout.connect(self.step)
++        self.steps = None
++        self.step_doc = None
++
++    def install(self):
++        mw = Gui.getMainWindow()
++        if mw is None or self.button is not None:
++            return
++        self.button = QtWidgets.QToolButton()
++        self.button.setAutoRaise(True)
++        self.button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
++        self.button.clicked.connect(lambda: Gui.runCommand("Unified_DesignCheck"))
++        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
++        mw.statusBar().addPermanentWidget(self.button)
++        self.button.hide()
++        App.addDocumentObserver(self)
++
++    # ドキュメントの見張り
++    def slotRecomputedDocument(self, doc):
++        if doc is App.ActiveDocument:
++            self.timer.start()
++
++    def slotDeletedDocument(self, doc):
++        self.timer.start()
++
++    def slotActivateDocument(self, doc):
++        self.timer.start()
++
++    def run(self):
++        """検査を始める。部品の組ごとに少しずつ進め、その間も画面は動く"""
++        self.step_timer.stop()
++        doc = App.ActiveDocument
++        if doc is None or self.button is None:
++            if self.button is not None:
++                self.button.hide()
++            return
++        # 大きなモデルでは重いので、部品が多いときは常時の検査を省く（ボタンから手で検査できる）
++        if len(DesignCheck.parts(doc)) > 40:
++            self.button.hide()
++            return
++        # 自動の検査では重い「浮き」を省く（手で開いた一覧では調べる）
++        self.steps = DesignCheck.iter_run(doc, floating=False)
++        self.step_doc = doc
++        self.step_timer.start()
++
++    def step(self):
++        if self.steps is None:
++            return
++        if self.step_doc is not App.ActiveDocument or Gui.Control.activeDialog():
++            # 別の文書に移った・編集が始まった: 途中の検査は捨てる（次の再計算でやり直す）
++            self.steps = None
++            return
++        try:
++            r = next(self.steps)
++        except StopIteration:
++            self.steps = None
++            return
++        except Exception as e:
++            self.steps = None
++            App.Console.PrintLog("DesignCheck: %s\n" % e)
++            return
++        if r is not None:
++            self.steps = None
++            self.update_from(DesignCheck.summary(r))
++            return
++        self.step_timer.start()
++
++    def update_from(self, sm):
++        if self.button is None:
++            return
++        worst = DesignCheck.ERROR if sm[DesignCheck.ERROR] else DesignCheck.WARNING if sm[DesignCheck.WARNING] else None
++        self.button.setIcon(_dot(_COLORS[worst]) if worst else _dot("#5cb85c"))
++        if not sm[DesignCheck.ERROR] and not sm[DesignCheck.WARNING]:
++            self.button.setText(translate("DesignCheck", "Check: OK"))
++        else:
++            self.button.setText(translate("DesignCheck", "Check: ") + _summary_text(sm))
++        self.button.show()
++
++
++indicator = Indicator()
++Gui.addCommand("Unified_DesignCheck", DesignCheckCommand())
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+index 4c7af3ea9..d094e8496 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedProperties_ja.ts
+@@ -4811,6 +4811,22 @@ by negative value of 'Over Tolerance'</source>
+         <source>Reverse Z-direction (flip sketch upside down)</source>
+         <translation>Z の向きを逆にする（スケッチを裏返す）</translation>
+     </message>
++    <message>
++        <source>Design Check Ignore</source>
++        <translation>検査で無視する規則</translation>
++    </message>
++    <message>
++        <source>DesignCheck</source>
++        <translation>設計の検査</translation>
++    </message>
++    <message>
++        <source>Design Check</source>
++        <translation>設計の検査</translation>
++    </message>
++    <message>
++        <source>Rules of the design check to ignore for this object</source>
++        <translation>この物について、設計の検査で「わざと」として無視する規則</translation>
++    </message>
+ </context>
+ <context>
+     <name>App::PropertyEnumeration</name>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 4cc0302d4..e7f8aa42b 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -362,4 +362,178 @@
+         <translation>この FreeCAD は freecad-ja-unified による改造版（一つの画面・日本語）です。変更点の一覧と、不具合の報告先のページを開きます</translation>
+     </message>
+ </context>
++<context>
++    <name>DesignCheck</name>
++    <message>
++        <source>Step failed to compute</source>
++        <translation>計算に失敗した手順</translation>
++    </message>
++    <message>
++        <source>Broken shape</source>
++        <translation>壊れた形</translation>
++    </message>
++    <message>
++        <source>Part split into pieces</source>
++        <translation>ばらばらに分かれた部品</translation>
++    </message>
++    <message>
++        <source>Not a closed solid</source>
++        <translation>閉じていない形</translation>
++    </message>
++    <message>
++        <source>Parts overlap</source>
++        <translation>部品どうしの干渉</translation>
++    </message>
++    <message>
++        <source>Conflicting constraints</source>
++        <translation>ぶつかる拘束</translation>
++    </message>
++    <message>
++        <source>Redundant constraints</source>
++        <translation>重なった拘束</translation>
++    </message>
++    <message>
++        <source>Malformed constraints</source>
++        <translation>不正な拘束</translation>
++    </message>
++    <message>
++        <source>Very short edges</source>
++        <translation>極端に短い辺</translation>
++    </message>
++    <message>
++        <source>Sketch not fully constrained</source>
++        <translation>決まりきっていないスケッチ</translation>
++    </message>
++    <message>
++        <source>Part touches no other part</source>
++        <translation>どこにも接していない部品</translation>
++    </message>
++    <message>
++        <source>{0}: {1}</source>
++        <translation>{0}: {1}</translation>
++    </message>
++    <message>
++        <source>{0}: the shape is broken (isValid is false)</source>
++        <translation>{0}: 形が壊れている</translation>
++    </message>
++    <message>
++        <source>{0} consists of {1} separate pieces</source>
++        <translation>{0} が {1} 個に分かれている（形が切れていないか）</translation>
++    </message>
++    <message>
++        <source>{0} has open surfaces (not a closed solid)</source>
++        <translation>{0} に開いた面がある（立体になっていない）</translation>
++    </message>
++    <message>
++        <source>{0} has {1} edges shorter than {2} mm</source>
++        <translation>{0} に {2} mm より短い辺が {1} 本ある（作図のミスの跡かも）</translation>
++    </message>
++    <message>
++        <source>{0} and {1} overlap by {2:.1f} mm³</source>
++        <translation>{0} と {1} が {2:.1f} mm³ 重なっている</translation>
++    </message>
++    <message>
++        <source>{0} touches no other part (floating?)</source>
++        <translation>{0} がどの部品にも接していない（浮いていないか）</translation>
++    </message>
++    <message>
++        <source>{0}: constraints {1} contradict each other</source>
++        <translation>{0}: 拘束 {1} がぶつかっている</translation>
++    </message>
++    <message>
++        <source>{0}: constraints {1} are malformed</source>
++        <translation>{0}: 拘束 {1} が不正</translation>
++    </message>
++    <message>
++        <source>{0}: constraints {1} say the same thing twice</source>
++        <translation>{0}: 拘束 {1} が同じことを二重に決めている</translation>
++    </message>
++    <message>
++        <source>{0}: {1} places are not fixed yet</source>
++        <translation>{0}: まだ決まっていない所が {1} か所</translation>
++    </message>
++    <message>
++        <source>Error</source>
++        <translation>エラー</translation>
++    </message>
++    <message>
++        <source>Warning</source>
++        <translation>警告</translation>
++    </message>
++    <message>
++        <source>Info</source>
++        <translation>情報</translation>
++    </message>
++    <message>
++        <source>Errors {0} · Warnings {1} · Info {2}</source>
++        <translation>エラー {0}・警告 {1}・情報 {2}</translation>
++    </message>
++    <message>
++        <source>Design check</source>
++        <translation>設計の検査</translation>
++    </message>
++    <message>
++        <source>Kind</source>
++        <translation>種類</translation>
++    </message>
++    <message>
++        <source>What</source>
++        <translation>内容</translation>
++    </message>
++    <message>
++        <source>Pick a line to select and show the parts it is about.</source>
++        <translation>行を選ぶと、その部品を選んで画面に寄せます。</translation>
++    </message>
++    <message>
++        <source>Check again</source>
++        <translation>もう一度検査</translation>
++    </message>
++    <message>
++        <source>No document is open.</source>
++        <translation>ファイルが開いていません。</translation>
++    </message>
++    <message>
++        <source>No problems found.</source>
++        <translation>問題は見つかりませんでした。</translation>
++    </message>
++    <message>
++        <source>Result of the design check. Click to see the list.</source>
++        <translation>設計の検査の結果。押すと一覧を開きます。</translation>
++    </message>
++    <message>
++        <source>Check: OK</source>
++        <translation>検査: OK</translation>
++    </message>
++    <message>
++        <source>Check: </source>
++        <translation>検査: </translation>
++    </message>
++    <message>
++        <source>Ignore this one</source>
++        <translation>この指摘を無視</translation>
++    </message>
++    <message>
++        <source>Mark the selected problem as intended. It is recorded in the file and not shown again.</source>
++        <translation>選んだ指摘を「わざと」として記録し、以後は出さない（ファイルに残る）</translation>
++    </message>
++    <message>
++        <source>({0} ignored as intended)</source>
++        <translation>（わざととして無視した指摘 {0} 件）</translation>
++    </message>
++    <message>
++        <source>Ignore a design check problem</source>
++        <translation>設計の検査の指摘を無視</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_DesignCheck</name>
++    <message>
++        <source>Design check</source>
++        <translation>設計の検査</translation>
++    </message>
++    <message>
++        <source>Checks the whole model for mistakes, like the design rule check of a circuit board tool: failed steps, broken or split shapes, overlapping parts, sketch constraint problems, very short edges and floating parts</source>
++        <translation>モデル全体の間違いを一括で調べる（基板 CAD の DRC のようなもの）: 計算に失敗した手順、壊れた・ばらばらの形、部品の干渉、スケッチの拘束の問題、極端に短い辺、浮いた部品</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 9ef05e369..89c86202a 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -152,6 +152,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+           << "PartDesign_SubShapeBinder"
+           << "PartDesign_Clone"
+           << "Separator"
++          << "Unified_DesignCheck"
+           << "Part_CheckGeometry";
+ 
+     // Technical drawings: used now and then, so in a menu instead of on the toolbars
+@@ -337,7 +338,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     auto check = new Gui::ToolBarItem(root);
+     check->setCommand("Unified Check");
+     *check << "Std_Measure"
+-           << "Part_CheckGeometry";
++           << "Unified_DesignCheck";
+ 
+     // Sketch tools: the toolbars of Sketcher, shown only while a sketch is edited
+     using Vis = Gui::ToolBarItem::DefaultVisibility;
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 5a1d3b91b..9edf12b7c 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -50,6 +50,10 @@ class UnifiedWorkbench(Workbench):
+ 
+         # Commands of this environment written in Python (after PartDesign, which they use)
+         import UnifiedCommands
++        import DesignCheckGui
++
++        # 設計の検査の結果をステータスバーに常に出す（計算し直すたびに更新）
++        DesignCheckGui.indicator.install()
+ 
+         # Load the translations of the modules imported above (e.g. Assembly's command names)
+         Gui.updateLocale()
+-- 
+2.43.0
+
