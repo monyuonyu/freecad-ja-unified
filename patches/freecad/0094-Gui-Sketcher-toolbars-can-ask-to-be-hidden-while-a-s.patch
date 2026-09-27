@@ -1,0 +1,169 @@
+From f2fbaf09c002054b52ff187a21a215e7f66d8576 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:31:58 +0900
+Subject: [PATCH 094/100] Gui, Sketcher: toolbars can ask to be hidden while a
+ sketch is edited
+
+ToolBarItem::hiddenWhileEditing; ToolBarManager collects the names in
+setup and Sketcher hides them with its own non-edit toolbars. Sketcher no
+longer lists the toolbar names and the workbench name of the integrated
+environment, so a toolbar added there is hidden too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/ToolBarManager.cpp         |  5 +++++
+ src/Gui/ToolBarManager.h           |  9 +++++++++
+ src/Mod/Sketcher/Gui/Workbench.cpp | 17 +++++++----------
+ src/Mod/Unified/Gui/Workbench.cpp  |  6 +++---
+ 4 files changed, 24 insertions(+), 13 deletions(-)
+
+diff --git a/src/Gui/ToolBarManager.cpp b/src/Gui/ToolBarManager.cpp
+index 66d0ce4ac..05042f284 100644
+--- a/src/Gui/ToolBarManager.cpp
++++ b/src/Gui/ToolBarManager.cpp
+@@ -101,6 +101,7 @@ ToolBarItem* ToolBarItem::copy() const
+     auto root = new ToolBarItem;
+     root->setCommand(command());
+     root->textUnderIcons = textUnderIcons;
++    root->hiddenWhileEditing = hiddenWhileEditing;
+ 
+     QList<ToolBarItem*> items = getItems();
+     for (auto it : items) {
+@@ -691,6 +692,7 @@ void ToolBarManager::setup(ToolBarItem* toolBarItems)
+ 
+     saveState();
+     this->toolbarNames.clear();
++    this->hiddenWhileEditingNames.clear();
+ 
+     int max_width = getMainWindow()->width();
+     int top_width = 0;
+@@ -709,6 +711,9 @@ void ToolBarManager::setup(ToolBarItem* toolBarItems)
+         // search for the toolbar
+         QString name = QString::fromUtf8(it->command().c_str());
+         this->toolbarNames << name;
++        if (it->hiddenWhileEditing) {
++            this->hiddenWhileEditingNames << name;
++        }
+         ToolBar* toolbar = findToolBar(toolbars, name);
+         std::string toolbarName = it->command();
+         bool toolbar_added = false;
+diff --git a/src/Gui/ToolBarManager.h b/src/Gui/ToolBarManager.h
+index 28cf1e13f..24a1340b6 100644
+--- a/src/Gui/ToolBarManager.h
++++ b/src/Gui/ToolBarManager.h
+@@ -90,6 +90,9 @@ public:
+     /// Show the command names under the icons, like a ribbon (for the main toolbars of a
+     /// workbench); otherwise the style of the main window is kept
+     bool textUnderIcons {false};
++    /// Hidden while an object is edited in a mode with toolbars of its own (a sketch): the
++    /// edit mode shows its tools instead
++    bool hiddenWhileEditing {false};
+ 
+ private:
+     std::string _name;
+@@ -181,6 +184,11 @@ public:
+     void setupToolBarIconSize();
+ 
+     ToolBarArea toolBarArea(QWidget* toolBar) const;
++    /// Names of the toolbars of the active workbench that ask to be hidden while editing
++    QStringList toolBarsHiddenWhileEditing() const
++    {
++        return hiddenWhileEditingNames;
++    }
+     ToolBarAreaWidget* toolBarAreaWidget(QWidget* toolBar) const;
+ 
+ protected:
+@@ -222,6 +230,7 @@ private:
+ 
+ private:
+     QStringList toolbarNames;
++    QStringList hiddenWhileEditingNames;
+     static ToolBarManager* _instance;
+ 
+     QTimer timer;
+diff --git a/src/Mod/Sketcher/Gui/Workbench.cpp b/src/Mod/Sketcher/Gui/Workbench.cpp
+index 53668c9e9..3c4f6e480 100644
+--- a/src/Mod/Sketcher/Gui/Workbench.cpp
++++ b/src/Mod/Sketcher/Gui/Workbench.cpp
+@@ -25,9 +25,11 @@
+ 
+ #include "Utils.h"
+ #include "Workbench.h"
++#include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
+ #include <Gui/Application.h>
+ #include <Gui/Document.h>
++#include <Gui/ToolBarManager.h>
+ #include <Gui/WorkbenchManager.h>
+ #include <Mod/Sketcher/App/Constraint.h>
+ 
+@@ -170,15 +172,10 @@ inline const QStringList editModeToolbarNames()
+ 
+ inline const QStringList nonEditModeToolbarNames()
+ {
+-    // Besides Sketcher's own toolbars, hide the modelling toolbars of the integrated
+-    // working environment (UnifiedGui) while a sketch is edited
+-    return QStringList {
+-        QStringLiteral("Structure"),
+-        QStringLiteral("Sketcher"),
+-        QStringLiteral("Unified Model"),
+-        QStringLiteral("Unified Parts"),
+-        QStringLiteral("Unified Check")
+-    };
++    // Besides Sketcher's own toolbars, those of the active workbench that ask to be hidden
++    // while editing (the modelling toolbars of the integrated working environment)
++    return QStringList {QStringLiteral("Structure"), QStringLiteral("Sketcher")}
++    + Gui::ToolBarManager::getInstance()->toolBarsHiddenWhileEditing();
+ }
+ }  // namespace
+ 
+@@ -244,7 +241,7 @@ void Workbench::leaveEditMode()
+     auto* workbench = Gui::WorkbenchManager::instance()->active();
+ 
+     // The integrated working environment shows the same edit mode toolbars as the Sketcher
+-    if (workbench->name() == "SketcherWorkbench" || workbench->name() == "UnifiedWorkbench") {
++    if (workbench->name() == "SketcherWorkbench" || App::isSingleWorkbench()) {
+         Gui::ToolBarManager::getInstance()->setState(
+             editModeToolbarNames(),
+             Gui::ToolBarManager::State::SaveState
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 6b1334d8a..340e9bc54 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -54,9 +54,6 @@ void tidySeparators(Gui::MenuItem* menu)
+ }
+ }  // namespace
+ 
+-// The toolbar names below are also listed in SketcherGui (nonEditModeToolbarNames) so that
+-// they are hidden while a sketch is edited and only the sketch tools are shown.
+-
+ Workbench::Workbench() = default;
+ 
+ Workbench::~Workbench() = default;
+@@ -312,6 +309,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     // The main flow from left to right: draw a sketch, turn it into a solid, refine it
+     auto model = new Gui::ToolBarItem(root);
+     model->textUnderIcons = true;  // names under the icons: "Extrude" is found without hovering
++    model->hiddenWhileEditing = true;  // a sketch shows its own tools instead
+     model->setCommand("Unified Model");
+     *model << "PartDesign_NewSketch"
+            << "Separator"
+@@ -330,6 +328,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+ 
+     auto parts = new Gui::ToolBarItem(root);
+     parts->textUnderIcons = true;
++    parts->hiddenWhileEditing = true;
+     parts->setCommand("Unified Parts");
+     *parts << "PartDesign_Body"
+            << "Std_TransformManip"
+@@ -337,6 +336,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+ 
+     auto check = new Gui::ToolBarItem(root);
+     check->textUnderIcons = true;
++    check->hiddenWhileEditing = true;
+     check->setCommand("Unified Check");
+     *check << "Std_Measure"
+            << "Unified_DesignCheck"
+-- 
+2.43.0
+

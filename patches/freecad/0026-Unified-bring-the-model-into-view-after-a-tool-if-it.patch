@@ -1,8 +1,8 @@
 From cf28023dd16102283d1f38fc3978f62f2e2e8cbb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 02:15:55 +0900
-Subject: [PATCH 26/90] Unified: bring the model into view after a tool, if it
- grew out of it
+Subject: [PATCH 026/100] Unified: bring the model into view after a tool, if
+ it grew out of it
 
 Extruding or patterning often makes the part larger than the shown part
 of the scene. When a task dialog closes and the scene no longer fits in

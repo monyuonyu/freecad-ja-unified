@@ -1,0 +1,97 @@
+From 16b76fcfea8b6e60f1f5f76af99ebddb6c458e95 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:38:51 +0900
+Subject: [PATCH 097/100] Gui: translation files that win over the others,
+ whenever those are loaded
+
+Qt looks in the most recently installed translator first, so the wording
+of the integrated environment lost to modules loaded after it (Assembly's
+'Insert Component') and won again after a language change. Translator
+gets addOverride(baseName): after every refresh the override translators
+are installed again last. UnifiedGui registers Unified and
+UnifiedProperties.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/Translator.cpp       | 18 ++++++++++++++++++
+ src/Gui/Language/Translator.h         |  4 ++++
+ src/Mod/Unified/Gui/AppUnifiedGui.cpp |  5 ++++-
+ 3 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Language/Translator.cpp b/src/Gui/Language/Translator.cpp
+index 15e98a2be..d32c758bf 100644
+--- a/src/Gui/Language/Translator.cpp
++++ b/src/Gui/Language/Translator.cpp
+@@ -169,6 +169,7 @@ public:
+     TStringMap mapSupportedLocales;
+     std::vector<QTranslator*> translators; /**< A list of all created translators */
+     QStringList paths;
++    QStringList overrides; /**< Base names of .qm files that win over all others */
+ };
+ }  // namespace Gui
+ 
+@@ -445,6 +446,13 @@ void Translator::addPath(const QString& path)
+     d->paths.push_back(path);
+ }
+ 
++void Translator::addOverride(const QString& baseName)
++{
++    if (!d->overrides.contains(baseName)) {
++        d->overrides << baseName;
++    }
++}
++
+ void Translator::installQMFiles(const QDir& dir, const char* locale)
+ {
+     const QString filter = QStringLiteral("*_%1.qm").arg(QLatin1String(locale));
+@@ -491,6 +499,16 @@ void Translator::refresh()
+         QDir dir(it);
+         installQMFiles(dir, tld->second.c_str());
+     }
++    // Qt looks in the most recently installed translator first: install the overrides again
++    const QString suffix = QStringLiteral("_%1.qm").arg(QLatin1String(tld->second.c_str()));
++    for (const QString& base : std::as_const(d->overrides)) {
++        for (QTranslator* translator : d->translators) {
++            if (translator->objectName() == base + suffix) {
++                qApp->removeTranslator(translator);
++                qApp->installTranslator(translator);
++            }
++        }
++    }
+ }
+ 
+ /**
+diff --git a/src/Gui/Language/Translator.h b/src/Gui/Language/Translator.h
+index 736131a3f..26be2a5b5 100644
+--- a/src/Gui/Language/Translator.h
++++ b/src/Gui/Language/Translator.h
+@@ -94,6 +94,10 @@ public:
+     TStringMap supportedLocales() const;
+     /** Adds a path where localization files can be found */
+     void addPath(const QString& path);
++    /** Translations from the .qm files with this base name (e.g. "Unified" for
++     * Unified_ja.qm) take precedence over all others, whenever the others were loaded.
++     * For modules that deliberately word things differently from the modules they use. */
++    void addOverride(const QString& baseName);
+     /** eventFilter used to convert decimal separator **/
+     bool eventFilter(QObject* obj, QEvent* ev) override;
+     /** Enables/disables decimal separator conversion **/
+diff --git a/src/Mod/Unified/Gui/AppUnifiedGui.cpp b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+index 0f35dfe08..31c21dd51 100644
+--- a/src/Mod/Unified/Gui/AppUnifiedGui.cpp
++++ b/src/Mod/Unified/Gui/AppUnifiedGui.cpp
+@@ -50,7 +50,10 @@ PyMOD_INIT_FUNC(UnifiedGui)
+     // The task panel only while a tool uses it
+     UnifiedGui::installTaskPanelAutoHide();
+ 
+-    // Load Unified_<lang>.qm from the resources of this module
++    // Load Unified_<lang>.qm from the resources of this module. Its wording (and that of
++    // the properties) wins over the modules loaded later, e.g. Assembly's "Insert Component"
++    Gui::Translator::instance()->addOverride(QStringLiteral("Unified"));
++    Gui::Translator::instance()->addOverride(QStringLiteral("UnifiedProperties"));
+     Gui::Translator::instance()->refresh();
+ 
+     PyObject* mod = UnifiedGui::initModule();
+-- 
+2.43.0
+

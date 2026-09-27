@@ -1,8 +1,8 @@
 From b98d263bf8efe33d4489f29ea5d1d0e4575e8880 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:44:11 +0900
-Subject: [PATCH 77/90] Unified: "Hole" with nothing picked waits for the face
- to click
+Subject: [PATCH 077/100] Unified: "Hole" with nothing picked waits for the
+ face to click
 
 Instead of PartDesign's empty list of sketches, the hole asks for the
 flat face to click and makes the hole there.

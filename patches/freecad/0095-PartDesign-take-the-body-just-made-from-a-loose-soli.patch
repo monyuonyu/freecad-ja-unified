@@ -1,0 +1,65 @@
+From a97c366672e04df40afd199317b484ce91db72b2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:34:03 +0900
+Subject: [PATCH 095/100] PartDesign: take the body just made from a loose
+ solid, not the first one found
+
+adoptPickedLooseSolid searched the whole document for a base feature of the
+picked solid; with a second body made from the same solid it reselected
+the elements on the older one. Use the body that 'New body' made active
+and the base feature in it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/Utils.cpp | 34 ++++++++++++++++++++------------
+ 1 file changed, 21 insertions(+), 13 deletions(-)
+
+diff --git a/src/Mod/PartDesign/Gui/Utils.cpp b/src/Mod/PartDesign/Gui/Utils.cpp
+index 0d4005113..0642e8601 100644
+--- a/src/Mod/PartDesign/Gui/Utils.cpp
++++ b/src/Mod/PartDesign/Gui/Utils.cpp
+@@ -229,20 +229,28 @@ PartDesign::Body* adoptPickedLooseSolid()
+         return nullptr;
+     }
+     Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
+-    PartDesign::Body* body = nullptr;
+-    App::Document* doc = solid->getDocument();
+-    for (App::DocumentObject* obj : doc->getObjectsOfType(PartDesign::FeatureBase::getClassTypeId())) {
+-        auto* base = static_cast<PartDesign::FeatureBase*>(obj);
+-        if (base->BaseFeature.getValue() != solid) {
+-            continue;
+-        }
+-        body = PartDesign::Body::findBodyOf(base);
+-        doc->recompute();
+-        Gui::Selection().clearSelection();
+-        for (const std::string& element : elements) {
+-            Gui::Selection().addSelection(doc->getName(), base->getNameInDocument(), element.c_str());
++    // The command makes the new body active; the solid is its base, held by a base feature
++    // in the body. (Searching the whole document would find an older body made from it.)
++    Gui::MDIView* view = Gui::Application::Instance->activeView();
++    auto* body = view ? view->getActiveObject<PartDesign::Body*>(PDBODYKEY) : nullptr;
++    PartDesign::FeatureBase* base = nullptr;
++    if (body && body->BaseFeature.getValue() == solid) {
++        for (App::DocumentObject* obj : body->Group.getValues()) {
++            auto* candidate = dynamic_cast<PartDesign::FeatureBase*>(obj);
++            if (candidate && candidate->BaseFeature.getValue() == solid) {
++                base = candidate;
++                break;
++            }
+         }
+-        break;
++    }
++    if (!base) {
++        return nullptr;
++    }
++    App::Document* doc = solid->getDocument();
++    doc->recompute();
++    Gui::Selection().clearSelection();
++    for (const std::string& element : elements) {
++        Gui::Selection().addSelection(doc->getName(), base->getNameInDocument(), element.c_str());
+     }
+     return body;
+ }
+-- 
+2.43.0
+

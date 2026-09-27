@@ -1,0 +1,124 @@
+From e3111a52d3e416e5812d996bb295563f673fb687 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:35:21 +0900
+Subject: [PATCH 096/100] Gui: load the requested workbench when staying in the
+ integrated environment
+
+activateWorkbench() in single workbench mode returned true without doing
+anything, so a macro that activates e.g. the Draft workbench and then runs
+Draft_Line failed silently. Run the requested workbench's Initialize()
+(its commands get registered) without showing it, and log the request.
+The initialization is shared with the normal activation.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Application.cpp | 79 +++++++++++++++++++++++++++--------------
+ 1 file changed, 53 insertions(+), 26 deletions(-)
+
+diff --git a/src/Gui/Application.cpp b/src/Gui/Application.cpp
+index 9deb1ee7d..20d3a7b68 100644
+--- a/src/Gui/Application.cpp
++++ b/src/Gui/Application.cpp
+@@ -1859,6 +1859,41 @@ bool Application::setUserEditMode(const std::string& mode)
+  * The old workbench gets deactivated before. If the workbench to the handler is already
+  * active or if the switch fails false is returned.
+  */
++namespace
++{
++// Load the module of a workbench and let it set itself up (its Initialize()), once. Returns the
++// workbench type in \a type when it is known at this point.
++void initializeWorkbenchHandler(const char* name, Py::Object& handler, std::string& type)
++{
++    if (handler.hasAttr(std::string("__Workbench__"))) {
++        return;
++    }
++    // call its GetClassName method if possible
++    Py::Callable method(handler.getAttr(std::string("GetClassName")));
++    Py::Tuple args;
++    Py::String result(method.apply(args));
++    type = result.as_std_string("ascii");
++    if (Base::Type::fromName(type.c_str()).isDerivedFrom(Gui::PythonBaseWorkbench::getClassTypeId())) {
++        Workbench* wb = WorkbenchManager::instance()->createWorkbench(name, type);
++        if (!wb) {
++            throw Py::RuntimeError("Failed to instantiate workbench of type " + type);
++        }
++        handler.setAttr(std::string("__Workbench__"), Py::Object(wb->getPyObject(), true));
++    }
++
++    // import the matching module first
++    Py::Callable activate(handler.getAttr(std::string("Initialize")));
++    activate.apply(args);
++
++    // Dependent on the implementation of a workbench handler the type
++    // can be defined after the call of Initialize()
++    if (type.empty()) {
++        Py::String result(method.apply(args));
++        type = result.as_std_string("ascii");
++    }
++}
++}  // namespace
++
+ bool Application::activateWorkbench(const char* name)
+ {
+     // Single workbench mode: the user works in one integrated environment. Requests to
+@@ -1868,6 +1903,23 @@ bool Application::activateWorkbench(const char* name)
+     auto single = cfg.find("SingleWorkbench");
+     if (single != cfg.end() && !single->second.empty() && single->second != name
+         && std::strcmp(name, "NoneWorkbench") != 0 && workbenches().contains(QString::fromStdString(single->second))) {
++        // Load the requested workbench's commands, as a script that asked for it expects
++        // them, without showing it
++        {
++            Base::PyGILStateLocker lock;
++            if (PyObject* requested = PyDict_GetItemString(_pcWorkbenchDictionary, name)) {
++                try {
++                    Py::Object handler(requested);
++                    std::string type;
++                    initializeWorkbenchHandler(name, handler, type);
++                }
++                catch (Py::Exception&) {
++                    Base::PyException e;
++                    e.reportException();
++                }
++            }
++        }
++        Base::Console().log("Workbench {} requested: staying in {}\n", name, single->second);
+         Workbench* current = WorkbenchManager::instance()->active();
+         if (current && current->name() == single->second) {
+             return true;  // stay in the integrated environment
+@@ -1901,32 +1953,7 @@ bool Application::activateWorkbench(const char* name)
+     try {
+         std::string type;
+         Py::Object handler(pcWorkbench);
+-        if (!handler.hasAttr(std::string("__Workbench__"))) {
+-            // call its GetClassName method if possible
+-            Py::Callable method(handler.getAttr(std::string("GetClassName")));
+-            Py::Tuple args;
+-            Py::String result(method.apply(args));
+-            type = result.as_std_string("ascii");
+-            if (Base::Type::fromName(type.c_str())
+-                    .isDerivedFrom(Gui::PythonBaseWorkbench::getClassTypeId())) {
+-                Workbench* wb = WorkbenchManager::instance()->createWorkbench(name, type);
+-                if (!wb) {
+-                    throw Py::RuntimeError("Failed to instantiate workbench of type " + type);
+-                }
+-                handler.setAttr(std::string("__Workbench__"), Py::Object(wb->getPyObject(), true));
+-            }
+-
+-            // import the matching module first
+-            Py::Callable activate(handler.getAttr(std::string("Initialize")));
+-            activate.apply(args);
+-
+-            // Dependent on the implementation of a workbench handler the type
+-            // can be defined after the call of Initialize()
+-            if (type.empty()) {
+-                Py::String result(method.apply(args));
+-                type = result.as_std_string("ascii");
+-            }
+-        }
++        initializeWorkbenchHandler(name, handler, type);
+ 
+         // does the Python workbench handler have changed the workbench?
+         Workbench* curWb = WorkbenchManager::instance()->active();
+-- 
+2.43.0
+

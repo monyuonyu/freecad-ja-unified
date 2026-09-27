@@ -1,7 +1,7 @@
 From e555e4b0046bc189818153a7285f6578bb3fe566 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:09:48 +0900
-Subject: [PATCH 37/90] Unified: hide the overlaid task panel completely when
+Subject: [PATCH 037/100] Unified: hide the overlaid task panel completely when
  no tool is in use
 
 With the task panel overlaid on the view, hiding the panel left the

@@ -1,0 +1,176 @@
+From 6b3004412e6fc7c59571c356e43e50de216a976c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:24:46 +0900
+Subject: [PATCH 092/100] Unified: tell picks in the 3D view by their picked
+ point
+
+The action bar followed picks in the view by guessing: an application-wide
+event filter recorded the last left click over a view, and a selection
+within one second with the cursor over the view counted as a pick (missed
+on slow machines, wrong after a click followed by a tree selection). A
+selection from the 3D view carries its picked point: use that. Only the
+3D view is watched now (for double-clicks and working with the view). A
+sketch closed while its dialog is still going away is looked at again on
+the new dialogClosed signal instead of every 100 ms.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 57 +++++++++++++++++-------------
+ src/Mod/Unified/Gui/ContextBar.h   | 12 +++++--
+ 2 files changed, 41 insertions(+), 28 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 40252ae94..ae498ed3e 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -4,7 +4,6 @@
+ 
+ #include <QApplication>
+ #include <QCursor>
+-#include <QDateTime>
+ #include <QEvent>
+ #include <QHBoxLayout>
+ #include <QMouseEvent>
+@@ -90,7 +89,6 @@ ContextBar::ContextBar()
+     layout->setContentsMargins(3, 3, 3, 3);
+     layout->setSpacing(1);
+     hide();
+-    qApp->installEventFilter(this);
+ 
+     Gui::Application::Instance->signalResetEdit.connect([this](const Gui::ViewProviderDocumentObject& vp) {
+         // Look the object up again after the edit mode has been left completely: cancelling a
+@@ -98,6 +96,17 @@ ContextBar::ContextBar()
+         App::DocumentObjectT ref(vp.getObject());
+         QTimer::singleShot(0, this, [this, ref]() { onEditClosed(ref.getObject()); });
+     });
++    // A sketch closed while its dialog was still going away: look again once it is gone
++    connect(&Gui::Control(), &Gui::ControlSingleton::dialogClosed, this, [this]() {
++        if (closedSketch.getObjectName().empty()) {
++            return;
++        }
++        QTimer::singleShot(0, this, [this]() {
++            App::DocumentObjectT ref = closedSketch;
++            closedSketch = App::DocumentObjectT();
++            onEditClosed(ref.getObject());
++        });
++    });
+ }
+ 
+ void ContextBar::onEditClosed(const App::DocumentObject* obj)
+@@ -116,10 +125,9 @@ void ContextBar::onEditClosed(const App::DocumentObject* obj)
+             return;
+         }
+     }
+-    // The sketch's task dialog may still be closing: wait until it is gone
++    // The sketch's task dialog may still be closing: look again when it is gone
+     if (Gui::Control().activeDialog() || Gui::Application::Instance->editDocument()) {
+-        App::DocumentObjectT ref(obj);
+-        QTimer::singleShot(100, this, [this, ref]() { onEditClosed(ref.getObject()); });
++        closedSketch = App::DocumentObjectT(obj);
+         return;
+     }
+     anchoredObject = obj->getFullName();
+@@ -136,9 +144,19 @@ void ContextBar::onSelectionChanged(const Gui::SelectionChanges& msg)
+ {
+     switch (msg.Type) {
+         case Gui::SelectionChanges::AddSelection:
++            // Picks in a 3D view carry the picked point; the tree and commands do not
++            pickedInView = msg.hasPickedPoint;
++            if (pickedInView) {
++                if (Gui::View3DInventor* view = active3DView()) {
++                    watchView(view->getViewer()->getGLWidget());
++                }
++            }
++            break;
+         case Gui::SelectionChanges::RmvSelection:
++            break;
+         case Gui::SelectionChanges::SetSelection:
+         case Gui::SelectionChanges::ClrSelection:
++            pickedInView = false;
+             break;
+         default:
+             return;
+@@ -221,9 +239,7 @@ void ContextBar::refresh()
+     placeInView = anchored;
+     // Only for picks in the 3D view (or right after closing a sketch), and not while a tool
+     // is running or something is edited
+-    bool picked = QDateTime::currentMSecsSinceEpoch() - lastViewClick < 1000;
+-    bool inView = anchored
+-        || (picked && view && view->rect().contains(view->mapFromGlobal(QCursor::pos())));
++    bool inView = anchored || pickedInView;
+     bool usable = view && inView && !Gui::Control().activeDialog()
+         && !Gui::Application::Instance->editDocument();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+@@ -298,8 +314,11 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ 
+     // Leave the bar alone while the user works with the view: orbiting, panning or
+     // zooming hides it
+-    auto* viewer = static_cast<Gui::View3DInventor*>(view)->getViewer();
+-    QWidget* gl = viewer->getGLWidget();
++    watchView(static_cast<Gui::View3DInventor*>(view)->getViewer()->getGLWidget());
++}
++
++void ContextBar::watchView(QWidget* gl)
++{
+     if (watchedView != gl) {
+         if (watchedView) {
+             watchedView->removeEventFilter(this);
+@@ -311,22 +330,10 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
+-    if (event->type() == QEvent::MouseButtonDblClick
++    if (watched == watchedView && event->type() == QEvent::MouseButtonDblClick
+         && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+-        auto* widget = qobject_cast<QWidget*>(watched);
+-        Gui::View3DInventor* view = active3DView();
+-        if (widget && view && view->getViewer()->getGLWidget() == widget) {
+-            // After the view has handled the clicks and updated the selection
+-            QTimer::singleShot(0, this, [this]() { editPickedStep(); });
+-        }
+-    }
+-    if (event->type() == QEvent::MouseButtonRelease
+-        && static_cast<QMouseEvent*>(event)->button() == Qt::LeftButton) {
+-        auto* widget = qobject_cast<QWidget*>(watched);
+-        Gui::View3DInventor* view = active3DView();
+-        if (widget && view && view->getViewer()->getGLWidget() == widget) {
+-            lastViewClick = QDateTime::currentMSecsSinceEpoch();
+-        }
++        // After the view has handled the clicks and updated the selection
++        QTimer::singleShot(0, this, [this]() { editPickedStep(); });
+     }
+     if (watched == watchedView && isVisible()) {
+         if (event->type() == QEvent::Wheel) {
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index 0ccc8ff8f..b7bc0f3d2 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -7,6 +7,7 @@
+ 
+ #include <string>
+ 
++#include <App/DocumentObserver.h>
+ #include <Gui/Selection/Selection.h>
+ 
+ namespace App
+@@ -61,9 +62,14 @@ private:
+     /// middle of the view (the cursor is still over the task panel's OK button)
+     std::string anchoredObject;
+     bool placeInView {false};
+-    /// When the left mouse button was last released over a 3D view: the bar follows picks
+-    /// in the view, not selections made by commands or in the tree
+-    qint64 lastViewClick {0};
++    /// The last selection came from a pick in a 3D view (it has a picked point): the bar
++    /// follows picks in the view, not selections made by commands or in the tree
++    bool pickedInView {false};
++    /// A sketch that was closed while its dialog was still going away: looked at again
++    /// when the dialog is gone
++    App::DocumentObjectT closedSketch;
++    /// Watch the 3D view for double-clicks and for working with the view
++    void watchView(QWidget* gl);
+ };
+ 
+ }  // namespace UnifiedGui
+-- 
+2.43.0
+

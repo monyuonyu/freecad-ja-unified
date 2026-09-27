@@ -1,0 +1,128 @@
+From 0c5e19454e46c895b2f13f34c0ed6959b4ebcca4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:28:12 +0900
+Subject: [PATCH 093/100] Gui: a toolbar item can ask for the command names
+ under the icons
+
+ToolBarItem::textUnderIcons, applied by ToolBarManager::setup. The
+integrated workbench used a zero timer after activation that searched the
+main window for toolbars whose objectName starts with 'Unified '; toolbars
+set up again later (e.g. after customizing) lost the names.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/ToolBarManager.cpp        |  4 ++++
+ src/Gui/ToolBarManager.h          |  3 +++
+ src/Mod/Unified/Gui/Workbench.cpp | 20 +++-----------------
+ src/Mod/Unified/Gui/Workbench.h   |  1 -
+ 4 files changed, 10 insertions(+), 18 deletions(-)
+
+diff --git a/src/Gui/ToolBarManager.cpp b/src/Gui/ToolBarManager.cpp
+index 6709e904c..66d0ce4ac 100644
+--- a/src/Gui/ToolBarManager.cpp
++++ b/src/Gui/ToolBarManager.cpp
+@@ -100,6 +100,7 @@ ToolBarItem* ToolBarItem::copy() const
+ {
+     auto root = new ToolBarItem;
+     root->setCommand(command());
++    root->textUnderIcons = textUnderIcons;
+ 
+     QList<ToolBarItem*> items = getItems();
+     for (auto it : items) {
+@@ -756,6 +757,9 @@ void ToolBarManager::setup(ToolBarItem* toolBarItems)
+ 
+         // Initialise toolbar item visibility
+         toolbar->setVisible(visible);
++        if (it->textUnderIcons) {
++            toolbar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
++        }
+ 
+         // Store item visibility policy within the action
+         QAction* toggle = toolbar->toggleViewAction();
+diff --git a/src/Gui/ToolBarManager.h b/src/Gui/ToolBarManager.h
+index b84451d8f..28cf1e13f 100644
+--- a/src/Gui/ToolBarManager.h
++++ b/src/Gui/ToolBarManager.h
+@@ -87,6 +87,9 @@ public:
+     QList<ToolBarItem*> getItems() const;
+ 
+     DefaultVisibility visibilityPolicy;
++    /// Show the command names under the icons, like a ribbon (for the main toolbars of a
++    /// workbench); otherwise the style of the main window is kept
++    bool textUnderIcons {false};
+ 
+ private:
+     std::string _name;
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 2ff2c0c56..6b1334d8a 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -2,8 +2,6 @@
+ 
+ #include <algorithm>
+ 
+-#include <QTimer>
+-#include <QToolBar>
+ 
+ #include <Base/Console.h>
+ #include <Gui/Application.h>
+@@ -63,21 +61,6 @@ Workbench::Workbench() = default;
+ 
+ Workbench::~Workbench() = default;
+ 
+-void Workbench::activated()
+-{
+-    StdWorkbench::activated();
+-    // The main toolbars show the names under the icons, like a ribbon: a first-time user
+-    // should not have to hover over every button to find "Extrude". The other toolbars
+-    // (view, file, sketch tools) keep small icons. After the toolbars have been set up.
+-    QTimer::singleShot(0, Gui::getMainWindow(), []() {
+-        for (QToolBar* bar : Gui::getMainWindow()->findChildren<QToolBar*>()) {
+-            if (bar->objectName().startsWith(QLatin1String("Unified "))) {
+-                bar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+-            }
+-        }
+-    });
+-}
+-
+ namespace
+ {
+ // Put a menu before another one; at the end if that one is not there (renamed upstream),
+@@ -328,6 +311,7 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+ 
+     // The main flow from left to right: draw a sketch, turn it into a solid, refine it
+     auto model = new Gui::ToolBarItem(root);
++    model->textUnderIcons = true;  // names under the icons: "Extrude" is found without hovering
+     model->setCommand("Unified Model");
+     *model << "PartDesign_NewSketch"
+            << "Separator"
+@@ -345,12 +329,14 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+            << "PartDesign_PolarPattern";
+ 
+     auto parts = new Gui::ToolBarItem(root);
++    parts->textUnderIcons = true;
+     parts->setCommand("Unified Parts");
+     *parts << "PartDesign_Body"
+            << "Std_TransformManip"
+            << "PartDesign_Boolean";
+ 
+     auto check = new Gui::ToolBarItem(root);
++    check->textUnderIcons = true;
+     check->setCommand("Unified Check");
+     *check << "Std_Measure"
+            << "Unified_DesignCheck"
+diff --git a/src/Mod/Unified/Gui/Workbench.h b/src/Mod/Unified/Gui/Workbench.h
+index 37f5d823f..f75f7dde0 100644
+--- a/src/Mod/Unified/Gui/Workbench.h
++++ b/src/Mod/Unified/Gui/Workbench.h
+@@ -20,7 +20,6 @@ public:
+     Workbench();
+     ~Workbench() override;
+ 
+-    void activated() override;
+ 
+ protected:
+     Gui::MenuItem* setupMenuBar() const override;
+-- 
+2.43.0
+

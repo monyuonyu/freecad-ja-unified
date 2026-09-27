@@ -1,0 +1,93 @@
+From 41c618a93a086937cb322b9ce67d2a9fec634670 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:44:48 +0900
+Subject: [PATCH 100/100] Unified: ask for the face of a hole in a task panel
+ with Cancel
+
+With nothing picked, 'Hole' waited for a face with a bare selection
+observer and a status bar message: it could not be cancelled and the
+message stayed. Show a small task panel instead; the next face clicked
+closes it and makes the hole, Cancel ends the wait.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedCommands.py | 52 +++++++++++++++++++-----------
+ 1 file changed, 34 insertions(+), 18 deletions(-)
+
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 986a04c9e..9bdebeb5b 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -33,22 +33,43 @@ def _picked_plane_face():
+     return obj, name, sel.PickedPoints[0]
+ 
+ 
+-class _WaitForFace:
+-    """After "Hole" with nothing picked: the next face clicked in the view gets the hole."""
+-
+-    waiting = None  # the one waiting now: pressing "Hole" again does not add a second
++class _PickFacePanel:
++    """After "Hole" with nothing picked: a task panel asks for the face (with Cancel), and the
++    next face clicked in the view gets the hole."""
++
++    def __init__(self):
++        from PySide import QtWidgets
++
++        self.form = QtWidgets.QWidget()
++        self.form.setWindowTitle(translate("Unified_Hole", "Hole position"))
++        layout = QtWidgets.QVBoxLayout(self.form)
++        label = QtWidgets.QLabel(translate("Unified_Hole", "Click the flat face where the hole should go"))
++        label.setWordWrap(True)
++        layout.addWidget(label)
++        FreeCADGui.Selection.clearSelection()
++        FreeCADGui.Selection.addObserver(self)
+ 
+     def addSelection(self, doc, obj, sub, pnt):
+-        FreeCADGui.Selection.removeObserver(self)
+-        _WaitForFace.waiting = None
+         if sub and sub.startswith("Face"):
+-            # After the selection has been completed
+-            QtCore.QTimer.singleShot(0, lambda: FreeCADGui.runCommand("Unified_Hole"))
+-        else:
+-            FreeCADGui.getMainWindow().showMessage("")
++            # After the selection has been completed: close this panel, then make the hole
++            QtCore.QTimer.singleShot(0, self._picked)
+ 
+-    def clearSelection(self, doc):
+-        pass
++    def _picked(self):
++        self._close()
++        FreeCADGui.runCommand("Unified_Hole")
++
++    def _close(self):
++        FreeCADGui.Selection.removeObserver(self)
++        FreeCADGui.Control.closeDialog()
++
++    def getStandardButtons(self):
++        from PySide import QtWidgets
++
++        return QtWidgets.QDialogButtonBox.Cancel
++
++    def reject(self):
++        self._close()
++        return True
+ 
+ 
+ class HoleCommand:
+@@ -75,12 +96,7 @@ class HoleCommand:
+     def Activated(self):
+         if not FreeCADGui.Selection.getSelectionEx():
+             # Nothing picked: ask for the face instead of opening an empty list of sketches
+-            if _WaitForFace.waiting is None:
+-                _WaitForFace.waiting = _WaitForFace()
+-                FreeCADGui.Selection.addObserver(_WaitForFace.waiting)
+-            FreeCADGui.getMainWindow().showMessage(
+-                translate("Unified_Hole", "Click the flat face where the hole should go")
+-            )
++            FreeCADGui.Control.showDialog(_PickFacePanel())
+             return
+         picked = _picked_plane_face()
+         if not picked:
+-- 
+2.43.0
+

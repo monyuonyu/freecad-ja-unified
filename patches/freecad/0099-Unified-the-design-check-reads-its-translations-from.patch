@@ -1,0 +1,178 @@
+From e654dce2eacc8982981885aeb97392fc6efa09c2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 27 Sep 2026 13:43:38 +0900
+Subject: [PATCH 099/100] Unified: the design check reads its translations from
+ the .qm without the GUI
+
+Without the GUI the Qt translations are not loaded, so DesignCheck kept a
+hand-made copy of its Japanese texts that drifted from the .ts. The build
+now puts Unified_<lang>.qm into Mod/Unified/translations, and the check
+reads it with a QTranslator when there is no GUI.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py     | 110 +++++++++--------------------
+ src/Mod/Unified/Gui/CMakeLists.txt |  16 +++++
+ 2 files changed, 48 insertions(+), 78 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index ec13bdb0d..19e075b63 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -12,90 +12,44 @@ QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
+ 
+ 
+ def translate(context, text):
+-    """GUI では Qt の訳。GUI の無い FreeCADCmd では訳が読み込まれないので、日本語の環境なら _JA を使う"""
++    """GUI では Qt の訳。GUI の無い FreeCADCmd では Qt の訳が読み込まれないので、
++    Mod/Unified/translations の .qm（ビルドで作られる）を直接読む"""
+     r = App.Qt.translate(context, text)
+-    if r == text and context == "DesignCheck" and not App.GuiUp and _japanese():
+-        return _JA.get(text, text)
++    if r == text and not App.GuiUp:
++        t = _cli_translator()
++        if t is not None:
++            return t.translate(context, text) or text
+     return r
+ 
+ 
+-def _japanese():
++_translator = []
++
++
++def _cli_translator():
++    """利用者の言語の Unified_<言語>.qm。無ければ None（英語のまま）"""
++    if _translator:
++        return _translator[0]
+     import os
++    t = None
+     lang = App.ParamGet("User parameter:BaseApp/Preferences/General").GetString("Language", "")
+-    return lang == "Japanese" or (not lang and os.environ.get("LANG", "").startswith("ja"))
+-
+-
+-# CLI 用の日本語。Gui/Resources/translations/Unified_ja.ts の DesignCheck の文脈と同じ（ts を直したらここも）
+-_JA = {'Step failed to compute': '計算に失敗した手順',
+- 'Broken shape': '壊れた形',
+- 'Part split into pieces': 'ばらばらに分かれた部品',
+- 'Not a closed solid': '閉じていない形',
+- 'Parts overlap': '部品どうしの干渉',
+- 'Conflicting constraints': 'ぶつかる拘束',
+- 'Redundant constraints': '重なった拘束',
+- 'Malformed constraints': '不正な拘束',
+- 'Very short edges': '極端に短い辺',
+- 'Sketch not fully constrained': '決まりきっていないスケッチ',
+- 'Part touches no other part': 'どこにも接していない部品',
+- '{0}: {1}': '{0}: {1}',
+- '{0}: the shape is broken (isValid is false)': '{0}: 形が壊れている',
+- '{0} consists of {1} separate pieces': '{0} が {1} 個に分かれている（形が切れていないか）',
+- '{0} has open surfaces (not a closed solid)': '{0} に開いた面がある（立体になっていない）',
+- '{0} has {1} edges shorter than {2} mm': '{0} に {2} mm より短い辺が {1} 本ある（作図のミスの跡かも）',
+- '{0} and {1} overlap by {2:.1f} mm³': '{0} と {1} が {2:.1f} mm³ 重なっている',
+- '{0} touches no other part (floating?)': '{0} がどの部品にも接していない（浮いていないか）',
+- 'Drawing dimension lost its geometry': '図面の寸法が形を見失った',
+- 'Drawing view shows nothing': '何も映っていない図面の投影図',
+- '{0}: the edge or point it measures is gone (the value may be wrong; pick the geometry again)': '{0}: 測っていた辺や点が無くなった（値が違っているかもしれない。測る所を選び直す）',
+- '{0}: the part it shows was deleted': '{0}: 映していた部品が消されている',
+- '{0}: constraints {1} contradict each other': '{0}: 拘束 {1} がぶつかっている',
+- '{0}: constraints {1} are malformed': '{0}: 拘束 {1} が不正',
+- '{0}: constraints {1} say the same thing twice': '{0}: 拘束 {1} が同じことを二重に決めている',
+- '{0}: {1} places are not fixed yet': '{0}: まだ決まっていない所が {1} か所',
+- 'Error': 'エラー',
+- 'Warning': '警告',
+- 'Info': '情報',
+- 'Errors {0} · Warnings {1} · Info {2}': 'エラー {0}・警告 {1}・情報 {2}',
+- 'Design check': '設計の検査',
+- 'Kind': '種類',
+- 'What': '内容',
+- 'Pick a line to select and show the parts it is about.': '行を選ぶと、その部品を選んで画面に寄せます。',
+- 'Check again': 'もう一度検査',
+- 'No document is open.': 'ファイルが開いていません。',
+- 'No problems found.': '問題は見つかりませんでした。',
+- 'Result of the design check. Click to see the list.': '設計の検査の結果。押すと一覧を開きます。',
+- 'Check: OK': '検査: OK',
+- 'Check: ': '検査: ',
+- 'Ignore this one': 'この指摘を無視',
+- 'Mark the selected problem as intended. It is recorded in the file and not shown again.': '選んだ指摘を「わざと」として記録し、以後は出さない（ファイルに残る）',
+- '({0} ignored as intended)': '（わざととして無視した指摘 {0} 件）',
+- 'Ignore a design check problem': '設計の検査の指摘を無視',
+- 'Fix': '直す',
+- 'Fix all that can be fixed': '直せるものを全部直す',
+- 'Fixes every problem that has an automatic fix, one by one. One undo step reverts all of them.': '自動で直せる問題を 1 つずつ全部直す。「元に戻す」1 回で全部戻る',
+- '→ Can be fixed: {0}': '→ 直せる: {0}',
+- 'Fix a design check problem': '設計の検査の指摘を直す',
+- 'Fix all design check problems': '設計の検査の指摘をまとめて直す',
+- 'Fixed: {0}': '直した: {0}',
+- 'Could not fix: {0}': '直せなかった: {0}',
+- 'Nothing to fix.': '直せるものは無かった。',
+- 'Deleted {0} constraints in {1}': '{1} の拘束を {0} 個消した',
+- 'Deleted constraint {0} in {1}': '{1} の拘束 {0} を消した',
+- 'There is no other part to move it to': '寄せる先の部品が無い',
+- 'Moved {0} by {1:.2f} mm onto {2}': '{0} を {1:.2f} mm 動かして {2} に付けた',
+- 'Moved {0} by {1:.2f} mm': '{0} を {1:.2f} mm 動かした',
+- 'Could not find a short move that separates them': '短い移動では離せなかった',
+- 'Deleted {0}': '{0} を消した',
+- 'This problem cannot be fixed automatically': 'この問題は自動では直せない',
+- 'Delete the constraints that say the same thing twice': '重複した拘束を消す',
+- 'Delete the last added of the contradicting constraints': 'ぶつかる拘束のうち、最後に足したものを消す',
+- 'Delete the malformed constraints': '壊れた拘束を消す',
+- 'Move it until it touches the nearest part': 'いちばん近い部品に接するまで動かす',
+- 'Move the smaller part the shortest way out of the other': '小さい方の部品を、重ならなくなるいちばん短い向きへ動かす',
+- 'Delete the empty view': '空の投影図を消す',
+- 'Ask AI': 'AI に相談',
+- 'Hand the selected problem to the AI chat': '選んだ指摘を AI のチャットに渡す',
+- 'The design check reports: {0} — {1}. Find the cause and fix it.': '設計の検査で指摘が出ています: {0} — {1}。原因を調べて直してください。'}
++    code = {"Japanese": "ja"}.get(lang) or (os.environ.get("LANG", "")[:2] if not lang else "")
++    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations", "Unified_%s.qm" % code)
++    if code and os.path.exists(path):
++        try:
++            from PySide6 import QtCore
++        except ImportError:
++            try:
++                from PySide2 import QtCore
++            except ImportError:
++                QtCore = None
++        if QtCore is not None:
++            t = QtCore.QTranslator()
++            if not t.load(path):
++                t = None
++    _translator.append(t)
++    return t
++
++
+ 
+ ERROR, WARNING, INFO = "error", "warning", "info"
+ 
+diff --git a/src/Mod/Unified/Gui/CMakeLists.txt b/src/Mod/Unified/Gui/CMakeLists.txt
+index 01f423bf4..f9c7ab111 100644
+--- a/src/Mod/Unified/Gui/CMakeLists.txt
++++ b/src/Mod/Unified/Gui/CMakeLists.txt
+@@ -13,6 +13,16 @@ qt_find_and_add_translation(QM_SRCS "Resources/translations/*_*.ts"
+ qt_create_resource_file(${Unified_TR_QRC} ${QM_SRCS})
+ qt_add_resources(UnifiedGui_QRC_SRCS ${Unified_TR_QRC} OPTIONS ${FREECAD_RCC_OPTIONS})
+ 
++# The design check also runs without the GUI (FreeCADCmd, fcad drc), where the translations in
++# the resources are not loaded: it reads Unified_<lang>.qm from Mod/Unified/translations
++set(Unified_CLI_QM)
++foreach(qm ${QM_SRCS})
++    get_filename_component(qmname ${qm} NAME)
++    if(qmname MATCHES "^Unified_")
++        list(APPEND Unified_CLI_QM ${qm})
++    endif()
++endforeach()
++
+ SET(UnifiedGui_SRCS
+     ${UnifiedGui_QRC_SRCS}
+     AppUnifiedGui.cpp
+@@ -45,3 +55,9 @@ SET_BIN_DIR(UnifiedGui)
+ SET_PYTHON_PREFIX_SUFFIX(UnifiedGui)
+ 
+ INSTALL(TARGETS UnifiedGui DESTINATION ${CMAKE_INSTALL_LIBDIR})
++
++add_custom_command(TARGET UnifiedGui POST_BUILD
++    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/Mod/Unified/translations
++    COMMAND ${CMAKE_COMMAND} -E copy ${Unified_CLI_QM} ${CMAKE_BINARY_DIR}/Mod/Unified/translations
++)
++install(FILES ${Unified_CLI_QM} DESTINATION Mod/Unified/translations)
+-- 
+2.43.0
+

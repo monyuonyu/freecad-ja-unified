@@ -1,8 +1,8 @@
 From 9e9c9e407a1ef9d0768c50139c8b4e4633af1e8c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:29:58 +0900
-Subject: [PATCH 46/90] PartDesign: list the picked faces and edges of fillets,
- chamfers, drafts and thickness by their kind
+Subject: [PATCH 046/100] PartDesign: list the picked faces and edges of
+ fillets, chamfers, drafts and thickness by their kind
 
 The reference lists of the dress-up task panels showed the internal
 element names ("Edge4"). They now show "Edge 4" in the user's language
