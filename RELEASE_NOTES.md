@@ -11,6 +11,10 @@
 
 変更点は [README](https://github.com/monyuonyu/freecad-ja-unified#readme) を参照:
 作業場の切り替えを無くした一つの画面、選んだものの横に出る操作、1 種類に固定したマウス操作、
-プロパティ欄まで含めた日本語化、コマンドライン・スクリプトまわりの修正。
+プロパティ欄と失敗の知らせまで含めた日本語化、設計の検査（DRC のような間違い探しと自動修正）、
+AI チャット、今風のナビキューブ、コマンドライン・スクリプトまわりの修正。
+
+AI チャットを使うには、自分の Anthropic の API キーが要る（使った分はキーの持ち主に請求される。
+AI が実行するコードは毎回表示され、承認したときだけ動く）。
 
 Built from FreeCAD {BASE_VERSION} (main, commit {BASE_SHORT}) with the patches {TAG} of this repository. Unsigned preview build.
