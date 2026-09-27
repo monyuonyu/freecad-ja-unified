@@ -28,8 +28,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          # 元にした FreeCAD の版（version.json）を、題名・説明・ファイル名に入れる
+          curl -fsSL "https://raw.githubusercontent.com/FreeCAD/FreeCAD/$FREECAD_BASE/version.json" -o version.json
+          BASE_VERSION=$(python3 -c "import json; v=json.load(open('version.json')); print('%d.%d.%d%s' % (v['version_major'], v['version_minor'], v['version_patch'], v['version_suffix']))")
+          BASE_SHORT=${FREECAD_BASE:0:7}
+          sed -e "s/{BASE_VERSION}/$BASE_VERSION/g" -e "s/{BASE_SHORT}/$BASE_SHORT/g" \
+              -e "s/{BASE_SHA}/$FREECAD_BASE/g" -e "s/{TAG}/$BUILD_TAG/g" RELEASE_NOTES.md > notes.md
           gh release create "$BUILD_TAG" --target "${{ github.sha }}" --prerelease \
-            --title "freecad-ja-unified $BUILD_TAG" --notes-file RELEASE_NOTES.md \
+            --title "freecad-ja-unified $BUILD_TAG（FreeCAD $BASE_VERSION $BASE_SHORT ベース）" --notes-file notes.md \
           || gh release view "$BUILD_TAG" > /dev/null
 
   build:
@@ -111,6 +118,11 @@ jobs:
           WINDOWS_SIGN_RELEASE: "0"
         run: |
           set -euo pipefail
+          # ファイル名に元の FreeCAD の版とコミットを入れる: FreeCAD_26.3.0dev-b48098e_ja-unified-0.2.0-Windows-x86_64...
+          BASE_VERSION=$(python3 -c "import json; v=json.load(open('../../version.json')); print('%d.%d.%d%s' % (v['version_major'], v['version_minor'], v['version_patch'], v['version_suffix']))")
+          export ASSET_VERSION="${BASE_VERSION}-${FREECAD_BASE:0:7}_${BUILD_TAG}"
+          sed -i 's/^version_name="FreeCAD_${BUILD_TAG}-/version_name="FreeCAD_${ASSET_VERSION}-/' linux/create_bundle.sh windows/create_bundle.sh
+          grep -n '^version_name=' linux/create_bundle.sh windows/create_bundle.sh
           # AppImage の更新の確認先を本家からこのリポジトリに（そのままだと本家の版に置き換わる）
           sed -i "s#gh-releases-zsync|FreeCAD|FreeCAD|#gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|#" linux/create_bundle.sh
           grep -n "gh-releases-zsync" linux/create_bundle.sh
