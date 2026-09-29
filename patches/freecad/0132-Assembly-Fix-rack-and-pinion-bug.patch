@@ -1,7 +1,7 @@
 From e3f6c41f0b143e46b6cbcef5ab7c848b57aae071 Mon Sep 17 00:00:00 2001
 From: paddle <pierrelouis.boyer@gmail.com>
 Date: Thu, 24 Sep 2026 12:08:43 +0200
-Subject: [PATCH 132/201] Assembly: Fix rack and pinion bug
+Subject: [PATCH 132/202] Assembly: Fix rack and pinion bug
 
 ---
  src/Mod/Assembly/App/AssemblyObject.cpp    | 29 +++++-----

@@ -1,7 +1,7 @@
 From 8e7ed0fbdb9421c45bba049a1023ffc1868392fe Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 00:25:04 +0900
-Subject: [PATCH 194/201] Gui: Stop selection messages to a task dialog as soon
+Subject: [PATCH 194/202] Gui: Stop selection messages to a task dialog as soon
  as it is removed
 
 Dialogs and their panels are deleted later since 9de0c7502; meanwhile a

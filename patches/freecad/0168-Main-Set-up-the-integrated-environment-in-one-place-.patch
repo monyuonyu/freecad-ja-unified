@@ -1,7 +1,7 @@
 From 0973ae94100af9a02cd721196d64cb7fd347d320 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:33 +0900
-Subject: [PATCH 168/201] Main: Set up the integrated environment in one place,
+Subject: [PATCH 168/202] Main: Set up the integrated environment in one place,
  also for the command line and Python
 
 UserDataDirName, the single workbench and the JIS drawing standard are

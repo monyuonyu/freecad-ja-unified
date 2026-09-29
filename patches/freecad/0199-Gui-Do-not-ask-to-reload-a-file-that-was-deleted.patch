@@ -1,7 +1,7 @@
 From 2af9fb87b91001c4f5d248eb3e08fecc9c953582 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 05:40:45 +0900
-Subject: [PATCH 199/201] Gui: Do not ask to reload a file that was deleted
+Subject: [PATCH 199/202] Gui: Do not ask to reload a file that was deleted
 
 The source editor asked whether to reload a file changed outside it
 also when the file was gone, which cannot be reloaded; unattended runs

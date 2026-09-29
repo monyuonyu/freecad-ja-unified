@@ -1,7 +1,7 @@
 From e3111a52d3e416e5812d996bb295563f673fb687 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:35:21 +0900
-Subject: [PATCH 096/201] Gui: load the requested workbench when staying in the
+Subject: [PATCH 096/202] Gui: load the requested workbench when staying in the
  integrated environment
 
 activateWorkbench() in single workbench mode returned true without doing

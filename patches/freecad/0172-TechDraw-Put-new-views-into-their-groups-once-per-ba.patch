@@ -1,7 +1,7 @@
 From 405acd297fb3de409ed9de8fff5f668ce060796a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:35 +0900
-Subject: [PATCH 172/201] TechDraw: Put new views into their groups once per
+Subject: [PATCH 172/202] TechDraw: Put new views into their groups once per
  batch
 
 Each attached view scanned all scene items for parents, which made

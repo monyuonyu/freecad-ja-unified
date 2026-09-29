@@ -1,7 +1,7 @@
 From 3b7a4357186783774e72bcf0a463cc5f972bab57 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:02:50 +0900
-Subject: [PATCH 159/201] Unified: Fix design check and AI chat bugs found in
+Subject: [PATCH 159/202] Unified: Fix design check and AI chat bugs found in
  review
 
 Design check:

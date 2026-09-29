@@ -1,7 +1,7 @@
 From 1cfee620e4c1f267ffe831bae9a84d13752669ad Mon Sep 17 00:00:00 2001
 From: Billy Huddleston <billy@ivdc.com>
 Date: Sat, 19 Sep 2026 15:09:34 -0400
-Subject: [PATCH 120/201] Gui: Restore depth writes for BREP selection overlays
+Subject: [PATCH 120/202] Gui: Restore depth writes for BREP selection overlays
 
 Committed selection overlays for edges and points had depth writes disabled since #30791,
 so selected edge-only objects (wireframe shapes, Part curves, CAM paths) were overdrawn

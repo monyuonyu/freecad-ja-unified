@@ -1,7 +1,7 @@
 From 177a67f0e556d0714d1d69ebe4a5f2d6bceb09ae Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 05:40:45 +0900
-Subject: [PATCH 198/201] App: Free objects removed by recompute observers only
+Subject: [PATCH 198/202] App: Free objects removed by recompute observers only
  when they are through
 
 signalRecomputed() hands the observers the list of recomputed objects.

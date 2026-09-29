@@ -1,7 +1,7 @@
 From 35657fe742a97d653be0b89f4cf97c1da1bca364 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 09:05:02 +0900
-Subject: [PATCH 058/201] Translations: simpler Japanese question when closing
+Subject: [PATCH 058/202] Translations: simpler Japanese question when closing
  an unsaved file
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

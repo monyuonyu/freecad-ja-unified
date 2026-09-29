@@ -1,0 +1,167 @@
+From af598788e8533a0c121283401896349dc046c366 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 29 Sep 2026 20:08:48 +0900
+Subject: [PATCH 202/202] Unified AI chat: bundle the AI runtime in the release
+ packages
+
+The release bundles (Windows 7z/installer, Linux AppImage) now carry the
+Claude Agent SDK and keyring in <FreeCAD>/ai-runtime, installed for
+FreeCAD's own Python at the versions pinned in ai-requirements.txt, so the
+AI chat works right after installing without downloading anything. The
+chat uses: configured Python, then the bundled runtime, then the venv made
+with the Set up button (which now installs the same pinned versions).
+The bundle scripts check that the bridge starts from the bundled runtime.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   | 11 ++++++++
+ package/bundle/windows/create_bundle.sh | 11 ++++++++
+ src/Mod/Unified/AIChatGui.py            | 34 +++++++++++++++++++++----
+ src/Mod/Unified/CMakeLists.txt          |  1 +
+ src/Mod/Unified/ai-requirements.txt     |  4 +++
+ 5 files changed, 56 insertions(+), 5 deletions(-)
+ create mode 100644 src/Mod/Unified/ai-requirements.txt
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 8726b2040..d02e234e4 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -90,6 +90,17 @@ rm -rf ${conda_env}/share/vim
+ rm -rf ${conda_env}/aarch64-conda-linux-gnu
+ rm -rf ${conda_env}/x86_64-conda-linux-gnu
+ 
++# AI チャットの部品（Claude Agent SDK など）を同梱する。インストールしてすぐ、ダウンロードなしで使える。
++# FreeCAD 自身の Python で動かすので、その版の物を ai-runtime に入れる（版は Mod/Unified/ai-requirements.txt で固定）
++"${conda_env}/bin/python" -m pip install --disable-pip-version-check --no-compile --only-binary=:all: \
++    --target "${conda_env}/ai-runtime" -r "${conda_env}/Mod/Unified/ai-requirements.txt"
++# 同梱した物だけで仲介役が起動し、キーが無ければ need_key を返すこと（AI には接続しない）
++ai_out=$(echo "" | PYTHONPATH="${conda_env}/ai-runtime" PYTHONNOUSERSITE=1 \
++    PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring \
++    "${conda_env}/bin/python" "${conda_env}/Mod/Unified/AIAgentBridge.py" --datadir "$(mktemp -d)")
++echo "AI chat bridge: ${ai_out}"
++case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++
+ find . -name "*.h" -type f -delete
+ find . -name "*.cmake" -type f -delete
+ 
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index 6d4de9f15..db5d1ed4f 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -57,6 +57,17 @@ rm -rf ${copy_dir}/share/man
+ mv ${copy_dir}/bin/Lib/ssl.py .ssl-orig.py
+ cp ssl-patch.py ${copy_dir}/bin/Lib/ssl.py
+ 
++# AI チャットの部品（Claude Agent SDK など）を同梱する。インストールしてすぐ、ダウンロードなしで使える。
++# FreeCAD 自身の Python で動かすので、その版の物を ai-runtime に入れる（版は Mod/Unified/ai-requirements.txt で固定）
++"${conda_env}/python.exe" -m pip install --disable-pip-version-check --no-compile --only-binary=:all: \
++    --target "${copy_dir}/ai-runtime" -r "${copy_dir}/Mod/Unified/ai-requirements.txt"
++# 同梱した物だけで仲介役が起動し、キーが無ければ need_key を返すこと（AI には接続しない）
++ai_out=$(echo "" | PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime")" PYTHONNOUSERSITE=1 \
++    PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring \
++    "${copy_dir}/bin/python.exe" "${copy_dir}/Mod/Unified/AIAgentBridge.py" --datadir "$(cygpath -w "$(mktemp -d)")")
++echo "AI chat bridge: ${ai_out}"
++case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++
+ # Turn off the echo before we start actually calling "echo"
+ set +x
+ 
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index ce339ad71..aaa6bc23f 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -37,15 +37,40 @@ def _venv_python(d):
+     return os.path.join(d, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(d, "bin", "python")
+ 
+ 
++def _bundled_runtime():
++    """配布物に同梱した AI 用の部品（<FreeCAD>/ai-runtime）と、それを動かす FreeCAD 自身の Python。
++    無ければ (None, None)。インストールしてすぐ、ダウンロードなしで使える"""
++    root = os.path.dirname(os.path.dirname(HERE))  # Mod/Unified の 2 つ上
++    rt = os.path.join(root, "ai-runtime")
++    py = os.path.join(root, "bin", "python.exe" if sys.platform == "win32" else "python")
++    if os.path.isdir(os.path.join(rt, "claude_agent_sdk")) and os.path.exists(py):
++        return py, rt
++    return None, None
++
++
+ def find_python():
+-    """claude-agent-sdk の入った Python。設定 → 準備で作った venv の順"""
++    """claude-agent-sdk の入った Python。設定 → 同梱 → 準備で作った venv の順"""
+     p = _params().GetString("PythonPath", "")
+     if p and os.path.exists(p):
+         return p
++    py, _rt = _bundled_runtime()
++    if py:
++        return py
+     v = _venv_python(_venv_dir())
+     return v if os.path.exists(v) else None
+ 
+ 
++def ai_environment():
++    """仲介役を動かす環境。同梱の部品を使うときは、それだけを先に読むようにする"""
++    env = QtCore.QProcessEnvironment.systemEnvironment()
++    env.insert("PYTHONUTF8", "1")   # 仲介役の入出力を UTF-8 に（Windows の既定は cp932 など）
++    py, rt = _bundled_runtime()
++    if py and find_python() == py:
++        env.insert("PYTHONPATH", rt)
++        env.insert("PYTHONNOUSERSITE", "1")
++    return env
++
++
+ def _datadir():
+     return os.path.join(App.getUserAppDataDir(), "ai")
+ 
+@@ -248,9 +273,7 @@ class ChatPanel(QtWidgets.QWidget):
+         self.setup_btn.hide()
+         self.proc = QtCore.QProcess(self)
+         self.proc.setProcessChannelMode(QtCore.QProcess.SeparateChannels)
+-        env = QtCore.QProcessEnvironment.systemEnvironment()
+-        env.insert("PYTHONUTF8", "1")   # 仲介役の入出力を UTF-8 に（Windows の既定は cp932 など）
+-        self.proc.setProcessEnvironment(env)
++        self.proc.setProcessEnvironment(ai_environment())
+         self.proc.readyReadStandardOutput.connect(self.on_stdout)
+         self.proc.readyReadStandardError.connect(self.on_stderr)
+         self.proc.finished.connect(self.on_finished)
+@@ -419,6 +442,7 @@ class ChatPanel(QtWidgets.QWidget):
+         key = key.strip()
+         p = QtCore.QProcess(self)
+         p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
++        p.setProcessEnvironment(ai_environment())
+         bridge = os.path.join(HERE, "AIAgentBridge.py")
+ 
+         def done(code, *rest):
+@@ -453,7 +477,7 @@ class ChatPanel(QtWidgets.QWidget):
+         steps = []
+         if not os.path.exists(_venv_python(d)):
+             steps.append((_base_python(), ["-m", "venv", d]))
+-        steps.append((_venv_python(d), ["-m", "pip", "install", "--upgrade", "claude-agent-sdk", "keyring"]))
++        steps.append((_venv_python(d), ["-m", "pip", "install", "-r", os.path.join(HERE, "ai-requirements.txt")]))
+         self.setup_btn.setEnabled(False)
+         self._note(translate("AIChat", "Setting up in {0} …").format(d))
+         self._run_steps(steps)
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index e4ac090ba..24aaf090d 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -10,6 +10,7 @@ set(Unified_Scripts
+     DesignCheck.py
+     AITools.py
+     AIAgentBridge.py
++    ai-requirements.txt
+ )
+ 
+ if(BUILD_GUI)
+diff --git a/src/Mod/Unified/ai-requirements.txt b/src/Mod/Unified/ai-requirements.txt
+new file mode 100644
+index 000000000..49d47b7bb
+--- /dev/null
++++ b/src/Mod/Unified/ai-requirements.txt
+@@ -0,0 +1,4 @@
++# AI チャットが使うもの。配布物に同梱する物（ai-runtime）と「準備」ボタンが入れる物は、この版で固定する
++# claude-agent-sdk は Windows 用がある版に合わせる
++claude-agent-sdk==0.2.159
++keyring==25.7.0
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 3d12669c981f5990fbb1c29763e64801acb99d84 Mon Sep 17 00:00:00 2001
 From: Amine0x0 <lowtix15@gmail.com>
 Date: Fri, 26 Jun 2026 08:30:14 +0100
-Subject: [PATCH 185/201] Fix UAF crash when closing document while tool is
+Subject: [PATCH 185/202] Fix UAF crash when closing document while tool is
  active
 
 ---

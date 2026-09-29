@@ -1,7 +1,7 @@
 From ad2c25d0926617853da8ab4ab90af4e688a30208 Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Thu, 2 Jul 2026 10:11:32 -0700
-Subject: [PATCH 143/201] Gui: Fix property-editor editor use-after-free on
+Subject: [PATCH 143/202] Gui: Fix property-editor editor use-after-free on
  focus-out
 
 Clicking the 3D view while an inline property editor has focus delivers a

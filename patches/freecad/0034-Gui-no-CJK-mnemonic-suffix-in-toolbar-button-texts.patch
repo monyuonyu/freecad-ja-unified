@@ -1,7 +1,7 @@
 From 695748f47becb9415980a658283b507b7853ae42 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 07:58:07 +0900
-Subject: [PATCH 034/201] Gui: no CJK mnemonic suffix in toolbar button texts
+Subject: [PATCH 034/202] Gui: no CJK mnemonic suffix in toolbar button texts
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

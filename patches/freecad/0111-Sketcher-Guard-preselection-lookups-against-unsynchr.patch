@@ -1,7 +1,7 @@
 From 9815a23fd2960412f180418f3c4739534468da58 Mon Sep 17 00:00:00 2001
 From: alexdremov <dremov.me@gmail.com>
 Date: Wed, 9 Sep 2026 22:49:55 +0200
-Subject: [PATCH 111/201] Sketcher: Guard preselection lookups against
+Subject: [PATCH 111/202] Sketcher: Guard preselection lookups against
  unsynchronized coin mapping
 
 The preselection code resolves picked points and screen positions

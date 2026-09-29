@@ -1,7 +1,7 @@
 From 356486d38254ee7c6b36d9ba69923e7d04f947ca Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 14:22:16 +0900
-Subject: [PATCH 105/201] Gui: a flat, lightly shaded navigation cube whose
+Subject: [PATCH 105/202] Gui: a flat, lightly shaded navigation cube whose
  buttons show under the mouse
 
 SoNaviCube gets faceShading (faces shaded by their direction to the

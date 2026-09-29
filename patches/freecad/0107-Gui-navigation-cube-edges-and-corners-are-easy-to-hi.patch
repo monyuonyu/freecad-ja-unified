@@ -1,7 +1,7 @@
 From ce9f82af9111a7514fdf9dda73bde88f34af5847 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 14:47:34 +0900
-Subject: [PATCH 107/201] Gui: navigation cube edges and corners are easy to
+Subject: [PATCH 107/202] Gui: navigation cube edges and corners are easy to
  hit, and tooltips say what a click does
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

@@ -1,7 +1,7 @@
 From 2e1b68d2decc7a0cf2830b27ac76ed3ffaa2215c Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Fri, 3 Jul 2026 14:30:13 -0700
-Subject: [PATCH 145/201] Gui: Fix property-editor UAF from recompute during
+Subject: [PATCH 145/202] Gui: Fix property-editor UAF from recompute during
  editor close
 
 A second focus-out use-after-free in the property editor, sibling to the

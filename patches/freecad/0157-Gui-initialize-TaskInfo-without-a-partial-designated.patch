@@ -1,7 +1,7 @@
 From a2727b2e5c74188970c1923bca650e7199884da1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 19:58:54 +0900
-Subject: [PATCH 157/201] Gui: initialize TaskInfo without a partial designated
+Subject: [PATCH 157/202] Gui: initialize TaskInfo without a partial designated
  initializer
 
 -Werror,-Wmissing-designated-field-initializers rejected

@@ -1,7 +1,7 @@
 From b7d401bf49b0e71a0553e8bdc0033a93cfd8e26a Mon Sep 17 00:00:00 2001
 From: Alfredo Monclus <alfredomonclus@gmail.com>
 Date: Sun, 20 Sep 2026 09:45:20 -0300
-Subject: [PATCH 109/201] Sketcher: make fresh Coin geometry empty to avoid
+Subject: [PATCH 109/202] Sketcher: make fresh Coin geometry empty to avoid
  out-of-bounds preselection
 
 A freshly constructed SoCoordinate3 carries a default (0,0,0) vertex, so

@@ -1,7 +1,7 @@
 From c69d83d5764575db5ed265d6d9e50e0c2a47a7f4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 19:21:51 +0900
-Subject: [PATCH 139/201] Windows installer: install apart from FreeCAD when
+Subject: [PATCH 139/202] Windows installer: install apart from FreeCAD when
  the build has its own settings
 
 APP_NAME, which names the installation folder, registry keys, shortcuts

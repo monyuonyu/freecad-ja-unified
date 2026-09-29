@@ -1,7 +1,7 @@
 From 39d77bbfd03c739bfe4e4cca9ae87ecb360b0eff Mon Sep 17 00:00:00 2001
 From: wandererfan <wandererfan@gmail.com>
 Date: Mon, 24 Aug 2026 10:11:54 -0400
-Subject: [PATCH 116/201] prevent creation of invalid SavedGeometry
+Subject: [PATCH 116/202] prevent creation of invalid SavedGeometry
 
 ---
  src/Mod/TechDraw/App/DrawViewDimension.cpp | 16 +++++++++++-----

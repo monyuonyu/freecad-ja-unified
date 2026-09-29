@@ -1,7 +1,7 @@
 From a175b0dfb3d1d6afd1375c0b1923c20484f7ee01 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 29 Sep 2026 19:33:24 +0900
-Subject: [PATCH 201/201] Unified AI chat: personal-use auth path, clearer
+Subject: [PATCH 201/202] Unified AI chat: personal-use auth path, clearer
  errors on failed turns
 
 A failed turn reported its subtype (often "success") instead of the

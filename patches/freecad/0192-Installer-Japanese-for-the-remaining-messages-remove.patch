@@ -1,7 +1,7 @@
 From ecb629823d14401c3c8d1bc1128d9c43d7ba7a9b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 00:04:46 +0900
-Subject: [PATCH 192/201] Installer: Japanese for the remaining messages;
+Subject: [PATCH 192/202] Installer: Japanese for the remaining messages;
  remove the cache with the preferences
 
 The uninstaller's confirmation for deleting the user configuration and

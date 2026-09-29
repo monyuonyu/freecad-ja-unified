@@ -1,7 +1,7 @@
 From 970995b442c48b16aca076b5249a263a69b6e20c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 17:32:16 +0900
-Subject: [PATCH 136/201] TechDraw, Unified: fmt placeholders in the dimension
+Subject: [PATCH 136/202] TechDraw, Unified: fmt placeholders in the dimension
  reference messages, and translate the new messages
 
 The messages added by the dimension repair fix used printf's %s with
