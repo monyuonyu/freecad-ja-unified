@@ -1,7 +1,7 @@
 From 655db3171d59eed1b997014ad4e85200c4fd0d6a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 05:40:45 +0900
-Subject: [PATCH 200/200] Draft: Set only the given points of the polygon and
+Subject: [PATCH 200/201] Draft: Set only the given points of the polygon and
  rectangle trackers
 
 setValues(0, 50, ...) with a list of 4 or 5 points read past the list

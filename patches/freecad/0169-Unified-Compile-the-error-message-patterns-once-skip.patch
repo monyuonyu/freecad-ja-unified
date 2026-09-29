@@ -1,7 +1,7 @@
 From 24e6819eb3d4f046c0b94bddf437832c01dbb4fe Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:33 +0900
-Subject: [PATCH 169/200] Unified: Compile the error message patterns once;
+Subject: [PATCH 169/201] Unified: Compile the error message patterns once;
  skip other threads and English
 
 The translator runs for every lookup in the error contexts; it compiled

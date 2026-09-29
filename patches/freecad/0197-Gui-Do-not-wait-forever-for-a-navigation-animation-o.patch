@@ -1,7 +1,7 @@
 From 70ae1053ace6d98970e1a06ae080d0f9470965bd Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 28 Sep 2026 00:25:04 +0900
-Subject: [PATCH 197/200] Gui: Do not wait forever for a navigation animation
+Subject: [PATCH 197/201] Gui: Do not wait forever for a navigation animation
  of length 0
 
 Such an animation finishes within start(), before the event loop that

@@ -1,7 +1,7 @@
 From 0c5e19454e46c895b2f13f34c0ed6959b4ebcca4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 13:28:12 +0900
-Subject: [PATCH 093/200] Gui: a toolbar item can ask for the command names
+Subject: [PATCH 093/201] Gui: a toolbar item can ask for the command names
  under the icons
 
 ToolBarItem::textUnderIcons, applied by ToolBarManager::setup. The

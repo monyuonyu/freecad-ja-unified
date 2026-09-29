@@ -1,7 +1,7 @@
 From a725be900f0e01a1edee36c209be5e0181dd42ca Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 08:45:46 +0900
-Subject: [PATCH 050/200] TechDraw: put views added to an open page into their
+Subject: [PATCH 050/201] TechDraw: put views added to an open page into their
  groups
 
 The views of a new projection group were drawn at the page's origin

@@ -1,0 +1,93 @@
+From a175b0dfb3d1d6afd1375c0b1923c20484f7ee01 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 29 Sep 2026 19:33:24 +0900
+Subject: [PATCH 201/201] Unified AI chat: personal-use auth path, clearer
+ errors on failed turns
+
+A failed turn reported its subtype (often "success") instead of the
+reason; show the result text. A rejected API key (401) asks for the key
+again.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py | 35 +++++++++++++++++++++++++++-----
+ 1 file changed, 30 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index 254e34e7e..a1ac48931 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -21,6 +21,10 @@ import sys
+ KEY_SERVICE = "freecad-ja-unified"
+ KEY_USER = "anthropic-api-key"
+ 
++# 本人用: この環境変数に Claude の長期トークン（claude setup-token で発行）があれば、API キーの代わりに使う。
++# 読んだらすぐ環境から消す（子プロセスに渡さない）。KiCad の AI チャットと同じ名前
++TOKEN_ENV = "JA_CLAUDE_OAUTH_TOKEN"
++
+ 
+ def _key_file(datadir):
+     return os.path.join(datadir, "ai-api-key")
+@@ -132,7 +136,9 @@ class Bridge:
+ 
+     def options(self):
+         env = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
+-        if self.api_key:
++        if self.oauth_token:
++            env["CLAUDE_CODE_OAUTH_TOKEN"] = self.oauth_token
++        elif self.api_key:
+             env["ANTHROPIC_API_KEY"] = self.api_key
+         os.makedirs(self.args.workdir, exist_ok=True)
+         return ClaudeAgentOptions(
+@@ -185,25 +191,44 @@ class Bridge:
+     async def turn(self, text):
+         self.busy = True
+         error = None
++        said = []
+         try:
+             await self.client.query(text)
+             async for m in self.client.receive_response():
+                 if isinstance(m, AssistantMessage):
+                     for b in m.content:
+                         if isinstance(b, TextBlock) and b.text.strip():
++                            said.append(b.text)
+                             self.send(type="text", text=b.text)
+                 elif isinstance(m, ResultMessage) and m.is_error:
+-                    error = m.subtype or "error"
++                    # subtype は "success" のこともあるので、中身のある説明を選ぶ
++                    error = (getattr(m, "result", None) or "").strip() or \
++                        (m.subtype if m.subtype not in (None, "success") else "AI の回が失敗した")
+         except Exception as e:
+             error = "%s: %s" % (type(e).__name__, e)
+         finally:
+             self.busy = False
++        # 認証の失敗（401）: API キーなら入れ直してもらう。長期トークンなら発行し直してもらう
++        if error is not None and any("401" in t or "authenticate" in t.lower() for t in said + [error]):
++            if self.oauth_token:
++                error = "長期トークン（%s）が正しくないか、期限が切れています。claude setup-token で発行し直してください" % TOKEN_ENV
++            else:
++                self.send(type="need_key")
++                error = None
++        elif error is not None and error in said:
++            error = None  # 同じ説明はもう出した
+         self.send(type="done", error=error)
+ 
+     async def main(self):
+-        # 認証: 利用者自身の API キー。--local-login のときだけ、この PC の claude のログインを使う（本人の利用に限る）
+-        self.api_key = None if self.args.local_login else load_key(self.args.datadir)
+-        if not self.args.local_login and not self.api_key:
++        # 認証: 利用者自身の API キー。本人用に、長期トークン（環境変数）か、この PC の claude のログイン（--local-login）も使える
++        self.oauth_token = os.environ.pop(TOKEN_ENV, "").strip() or None
++        if self.oauth_token or self.args.local_login:
++            # API キーがあると claude はそちらを使うので、環境からも外す
++            os.environ.pop("ANTHROPIC_API_KEY", None)
++            self.api_key = None
++        else:
++            self.api_key = load_key(self.args.datadir)
++        if not self.oauth_token and not self.args.local_login and not self.api_key:
+             self.send(type="need_key")
+             return
+         import threading
+-- 
+2.43.0
+

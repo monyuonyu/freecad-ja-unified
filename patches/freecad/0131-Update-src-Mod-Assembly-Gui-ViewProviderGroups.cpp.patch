@@ -1,7 +1,7 @@
 From 70ba7da31258137f53620c481d544383b9b726cf Mon Sep 17 00:00:00 2001
 From: PaddleStroke <pierrelouis.boyer@gmail.com>
 Date: Fri, 25 Sep 2026 23:01:32 +0200
-Subject: [PATCH 131/200] Update src/Mod/Assembly/Gui/ViewProviderGroups.cpp
+Subject: [PATCH 131/201] Update src/Mod/Assembly/Gui/ViewProviderGroups.cpp
 
 Co-authored-by: Kacper Donat <kadet1090@gmail.com>
 ---

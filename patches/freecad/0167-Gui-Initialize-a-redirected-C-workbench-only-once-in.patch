@@ -1,7 +1,7 @@
 From f8c0da715f57ccce57da5463a8ad2fe9335b1f69 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:32 +0900
-Subject: [PATCH 167/200] Gui: Initialize a redirected C++ workbench only once
+Subject: [PATCH 167/201] Gui: Initialize a redirected C++ workbench only once
  in single workbench mode
 
 Its Initialize() ran on every request and leaked the Python commands it

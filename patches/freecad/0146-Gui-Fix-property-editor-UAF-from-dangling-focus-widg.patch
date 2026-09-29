@@ -1,7 +1,7 @@
 From a7c2e298e7fab87fe5a05c5c79086b698d71474e Mon Sep 17 00:00:00 2001
 From: Jacob Oursland <jacob.oursland@gmail.com>
 Date: Fri, 3 Jul 2026 15:08:19 -0700
-Subject: [PATCH 146/200] Gui: Fix property-editor UAF from dangling focus
+Subject: [PATCH 146/201] Gui: Fix property-editor UAF from dangling focus
  widget after row removal
 
 A third focus-out use-after-free in the property editor, sibling to the

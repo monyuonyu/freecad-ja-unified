@@ -1,7 +1,7 @@
 From d03d95e4b8a65cbc6877d5280891240d604da15e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:34 +0900
-Subject: [PATCH 171/200] Gui: A typed extension of another filter picks that
+Subject: [PATCH 171/201] Gui: A typed extension of another filter picks that
  filter when saving
 
 "part.step" with the 3MF filter selected became "part.step.3mf" in

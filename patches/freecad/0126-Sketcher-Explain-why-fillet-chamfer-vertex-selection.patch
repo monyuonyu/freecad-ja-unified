@@ -1,7 +1,7 @@
 From 8b7454b89644527393d4be1abbd657e411a9f98d Mon Sep 17 00:00:00 2001
 From: Vishal Ram K N <vishalramkn@gmail.com>
 Date: Thu, 17 Sep 2026 21:24:51 +0530
-Subject: [PATCH 126/200] Sketcher: Explain why fillet/chamfer vertex selection
+Subject: [PATCH 126/201] Sketcher: Explain why fillet/chamfer vertex selection
  is blocked for curves
 
 Fixes #24562

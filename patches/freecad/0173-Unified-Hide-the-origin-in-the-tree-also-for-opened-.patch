@@ -1,7 +1,7 @@
 From ab5c1d0955ca6e202d707c8a8743d9254876a2f3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:35 +0900
-Subject: [PATCH 173/200] Unified: Hide the origin in the tree also for opened
+Subject: [PATCH 173/201] Unified: Hide the origin in the tree also for opened
  files
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

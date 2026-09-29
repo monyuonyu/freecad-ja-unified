@@ -1,7 +1,7 @@
 From e409f8bfdcc5a907aaf2407fca699e578b146f8c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 21:43:32 +0900
-Subject: [PATCH 165/200] Unified: Keep the zoomed-in view when a tool closes;
+Subject: [PATCH 165/201] Unified: Keep the zoomed-in view when a tool closes;
  follow the active document's dialog
 
 The view was fitted to the model whenever part of it was off screen after

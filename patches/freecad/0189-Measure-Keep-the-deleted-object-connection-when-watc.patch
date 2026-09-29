@@ -1,7 +1,7 @@
 From c82cb723c4342cec1e247fed51d9553466d121ff Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 22:13:35 +0900
-Subject: [PATCH 189/200] Measure: Keep the deleted-object connection when
+Subject: [PATCH 189/201] Measure: Keep the deleted-object connection when
  watching the document
 
 The imported fix for FreeCAD PR #30997 assigned the document connection
