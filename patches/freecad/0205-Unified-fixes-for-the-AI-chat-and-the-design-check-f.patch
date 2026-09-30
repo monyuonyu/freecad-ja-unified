@@ -1,0 +1,635 @@
+From dcfa2ffb64b50e5efee3c2e6df0153692e4d3e6f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 30 Sep 2026 15:11:14 +0900
+Subject: [PATCH] Unified: fixes for the AI chat and the design check found by
+ the AI's own testing, and optional auto-approve
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- run_python: undo changes in every document on errors and switch back to the document that was active;
+  no undo step when nothing changed; added/removed objects are counted by events, not by names;
+  a pattern made with Body.newObject that ends up after the Tip is made the Tip (as the GUI command does);
+  a body with no visible step shows its Tip again
+- run_python: every run is logged to <user data>/ai/ai-runs.log (also before it runs); after three failures in
+  a row the result tells the AI to change its approach or ask the user
+- the AI is told not to start another FreeCAD (sys.executable is FreeCAD itself) and not to repeat failures
+- get_document: step parameters (Type etc.) go into params instead of overwriting the object's type
+- design check: steps after the Tip, bodies without a shape, hidden parts that were not checked;
+  no free-DoF note while constraints conflict; constraint numbers are 1-based
+- Japanese: the origin point is called 原点の点 (both were 原点)
+- AI chat: optional auto-approve (off by default, not saved; the code that ran stays in the chat)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py              |   7 +
+ src/Mod/Unified/AIChatGui.py                  |  39 ++-
+ src/Mod/Unified/AITools.py                    | 243 +++++++++++++++---
+ src/Mod/Unified/DesignCheck.py                |  70 ++++-
+ .../translations/UnifiedWording_ja.ts         |   7 +
+ .../Gui/Resources/translations/Unified_ja.ts  |  64 ++++-
+ 6 files changed, 383 insertions(+), 47 deletions(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index faca07330..baf1f7fb2 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -84,6 +84,13 @@ SYSTEM = """あなたは FreeCAD（日本語の統合環境）に組み込まれ
+ - 変える前に get_document で今の状態を見る。物は Name（内部名）で指し、利用者にはラベルで伝える
+ - 部品は PartDesign の Body の中で、スケッチ→押し出し…の手順で作るのが基本（後から直せるように）。
+   新しい物のラベルは日本語で付ける
++- 手順の取り付け先は AttachmentSupport（古い名前の Support は今の FreeCAD では使えない）
++- パターン（Mirrored・LinearPattern・PolarPattern・MultiTransform）を Python で作ったら、Originals などを
++  設定した後に body.Tip = その手順 とする（作った時は Tip へ進まず、部品の形に使われないことがある）。
++  手順を消す時は、その前の手順（新しい Tip）を見えるようにする（Visibility = True）
++- run_python の中で、別の FreeCAD や sys.executable（FreeCAD の中では Python ではなく FreeCAD 自身）を
++  subprocess で起動しない。FreeCAD がもう 1 つ立ち上がり、固まったり落ちたりする
++- 同じ失敗を 2 回続けたら、同じやり方を繰り返さない。原因を調べて変えるか、止めて利用者に聞く
+ - 変えたら design_check と screenshot で確かめてから「できた」と言う。確かめていないことは、確かめていないと言う
+ - 利用者のファイルを保存・上書き・削除するのは、頼まれたときだけ
+ - 何をしたかは、利用者が「元に戻す」で戻せることも含めて一言で伝える"""
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index aaa6bc23f..0be71ea43 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -161,6 +161,10 @@ class ChatPanel(QtWidgets.QWidget):
+         self.key_btn.clicked.connect(self.on_key)
+         row.addWidget(self.key_btn)
+         lay.addLayout(row)
++        # 自動で実行（承認を省く）。保存しない: FreeCAD を開き直すと、毎回たずねる形に戻る
++        self.auto_box = QtWidgets.QCheckBox(translate("AIChat", "Run the AI's code without asking (until FreeCAD closes)"))
++        self.auto_box.toggled.connect(self.on_auto)
++        lay.addWidget(self.auto_box)
+         self._note(translate("AIChat", "The AI looks at the model, changes it and checks the result. "
+                                        "Every change it makes is one step in Undo."))
+ 
+@@ -214,8 +218,29 @@ class ChatPanel(QtWidgets.QWidget):
+             link = ""
+         self._append_html('<span style="color:#888">🔧 %s%s</span>' % (html.escape(text), link))
+ 
++    def on_auto(self, on):
++        if not on:
++            self._note(translate("AIChat", "The AI's code will be shown for approval again."))
++            return
++        ok = QtWidgets.QMessageBox.warning(
++            self, translate("AIChat", "Run without asking"),
++            translate("AIChat", "The AI's code will run without being shown to you first. Changes to the model can be "
++                                "undone, but the code can also do things outside FreeCAD (for example, delete files). "
++                                "The code that ran stays in the chat (the \"code\" links).\n\n"
++                                "This lasts until FreeCAD is closed. Turn it on?"),
++            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
++        if ok != QtWidgets.QMessageBox.Yes:
++            self.auto_box.blockSignals(True)
++            self.auto_box.setChecked(False)
++            self.auto_box.blockSignals(False)
++            return
++        self._note(translate("AIChat", "The AI's code now runs without asking. Uncheck the box to be asked again."))
++
+     def approve(self, args):
+-        """AI のコードを実行する前に、利用者に見せて承認を取る（任意の Python なので、黙っては実行しない）"""
++        """AI のコードを実行する前に、利用者に見せて承認を取る（任意の Python なので、黙っては実行しない）。
++        利用者が「自動で実行」を選んでいる間だけ、たずねずに実行する（コードはチャットのリンクに残る）"""
++        if self.auto_box.isChecked():
++            return True
+         dlg = QtWidgets.QDialog(self)
+         dlg.setWindowTitle(translate("AIChat", "Run the AI's code?"))
+         v = QtWidgets.QVBoxLayout(dlg)
+@@ -233,13 +258,23 @@ class ChatPanel(QtWidgets.QWidget):
+         v.addWidget(note)
+         bb = QtWidgets.QDialogButtonBox()
+         run = bb.addButton(translate("AIChat", "Run"), QtWidgets.QDialogButtonBox.AcceptRole)
++        always = bb.addButton(translate("AIChat", "Run, and don't ask again"), QtWidgets.QDialogButtonBox.ApplyRole)
+         bb.addButton(translate("AIChat", "Don't run"), QtWidgets.QDialogButtonBox.RejectRole)
+         bb.accepted.connect(dlg.accept)
+         bb.rejected.connect(dlg.reject)
++        chose_always = []
++
++        def on_always():
++            chose_always.append(True)
++            dlg.accept()
++        always.clicked.connect(on_always)
+         v.addWidget(bb)
+         run.setDefault(True)
+         dlg.resize(720, 480)
+-        return dlg.exec() == QtWidgets.QDialog.Accepted
++        ok = dlg.exec() == QtWidgets.QDialog.Accepted
++        if ok and chose_always:
++            self.auto_box.setChecked(True)   # 注意を出し、「いいえ」ならこの 1 回だけ実行する
++        return ok
+ 
+     def on_link(self, url):
+         s = url.toString()
+diff --git a/src/Mod/Unified/AITools.py b/src/Mod/Unified/AITools.py
+index b979a902e..6fd3bcc2e 100644
+--- a/src/Mod/Unified/AITools.py
++++ b/src/Mod/Unified/AITools.py
+@@ -89,10 +89,14 @@ def _describe(o):
+         prof = getattr(o, "Profile", None)
+         if prof:
+             d["profile"] = prof[0].Name
++        # 手順の設定の値は params にまとめる（押し出しの Type などが、種類の "type" を上書きしないように）
++        params = {}
+         for p in ("Length", "Length2", "Angle", "Radius", "Size", "Occurrences", "Type"):
+             if hasattr(o, p):
+                 v = getattr(o, p)
+-                d[p.lower()] = str(v) if not isinstance(v, (int, float, str)) else v
++                params[p] = str(v) if not isinstance(v, (int, float, str)) else v
++        if params:
++            d["params"] = params
+     if hasattr(o, "Shape") and not o.isDerivedFrom("Sketcher::SketchObject"):
+         try:
+             s = o.Shape
+@@ -122,7 +126,89 @@ def get_document(args):
+     return _text(json.dumps(info, ensure_ascii=False))
+ 
+ 
++class _Watch:
++    """実行の間に起きた変更を、文書ごとに記録する（FreeCAD の文書の見張り）。
++    増えた物・消えた物は名前でなく出来事で数える（消して同じ名前で作り直しても分かるように）"""
++
++    def __init__(self):
++        self.changed = set()    # 変わった文書の名前
++        self.created = {}       # id(物) -> 物（この回に作って、まだある物）
++        self.deleted = []       # (文書, 名前, ラベル)（前からあって、この回に消えた物）
++        self.new_docs = []
++
++    def slotCreatedObject(self, obj):
++        self.changed.add(obj.Document.Name)
++        self.created[id(obj)] = obj
++
++    def slotDeletedObject(self, obj):
++        self.changed.add(obj.Document.Name)
++        if self.created.pop(id(obj), None) is None:
++            self.deleted.append((obj.Document.Name, obj.Name, obj.Label))
++
++    def slotChangedObject(self, obj, prop):
++        try:
++            self.changed.add(obj.Document.Name)
++        except Exception:
++            pass
++
++    def slotCreatedDocument(self, doc):
++        self.new_docs.append(doc.Name)
++
++
++def _activate(name):
++    """今開いている文書を name に戻す（画面の側も）"""
++    if name is None or name not in App.listDocuments():
++        return
++    App.setActiveDocument(name)
++    Gui = _gui()
++    if Gui is not None:
++        try:
++            Gui.setActiveDocument(name)
++        except Exception:
++            pass
++
++
++_fails = [0]   # 続けて失敗した回数（成功したら 0 に戻す）
++
++
++def _log_run(desc, code, result, is_error):
++    """AI が実行したコードと結果を、FreeCAD のユーザーデータの ai/ai-runs.log に残す（落ちた時などに後で確かめられるように）。
++    大きくなったら前の分を ai-runs.log.1 に回す"""
++    import datetime
++    try:
++        d = os.path.join(App.getUserAppDataDir(), "ai")
++        os.makedirs(d, exist_ok=True)
++        path = os.path.join(d, "ai-runs.log")
++        if os.path.exists(path) and os.path.getsize(path) > 2 * 1024 * 1024:
++            os.replace(path, path + ".1")
++        with open(path, "a", encoding="utf-8") as f:
++            f.write("===== %s %s: %s\n%s\n----- %s\n%s\n" % (
++                datetime.datetime.now().isoformat(timespec="seconds"), "失敗" if is_error else "成功", desc,
++                code.rstrip(), "結果", result.rstrip()[:4000]))
++    except Exception:
++        pass
++
++
+ def run_python(args):
++    code = args.get("code", "")
++    desc0 = (args.get("description") or "AI").strip()[:60]
++    # 実行の前にも書く（実行の途中で落ちても、何を実行していたか分かるように）
++    _log_run(desc0, code, "（実行中）", False)
++    r = _run_python(args)
++    text = r["content"][0]["text"]
++    if r["is_error"]:
++        _fails[0] += 1
++        if _fails[0] >= 3:
++            text += ("\n（失敗が %d 回続いている。同じやり方を繰り返さず、原因を調べてやり方を変えるか、"
++                     "止めて利用者に聞く）" % _fails[0])
++            r = _text(text, True)
++    else:
++        _fails[0] = 0
++    _log_run(desc0, "", text, r["is_error"])
++    return r
++
++
++def _run_python(args):
+     code = args.get("code", "")
+     desc = (args.get("description") or "AI").strip()[:60]
+     doc = App.ActiveDocument
+@@ -145,58 +231,145 @@ def run_python(args):
+     if tree.body and isinstance(tree.body[-1], ast.Expr):
+         last = ast.Expression(tree.body.pop().value)
+     out = io.StringIO()
+-    name = doc.Name if doc is not None else None   # コードが文書を閉じても名前で確かめられるように
+-    docs_before = set(App.listDocuments())
+-    if doc is not None:
+-        doc.openTransaction("AI: " + desc)
+-    before = set(o.Name for o in doc.Objects) if doc else set()
+-
+-    def still_open():
+-        return name is not None and name in App.listDocuments()
++    active = doc.Name if doc is not None else None
++    # 開いている全部の文書で取り消しの準備をする（コードがほかの文書を書き換えても取り消せるように）
++    docs_before = dict(App.listDocuments())
++    for d in docs_before.values():
++        d.openTransaction("AI: " + desc)
++    watch = _Watch()
++    App.addDocumentObserver(watch)
++
++    def open_docs():
++        return {n: d for n, d in App.listDocuments().items() if n in docs_before}
+     value = None
++    notes = []
+     try:
+-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+-            exec(compile(tree, "<AI>", "exec"), ns)
+-            if last is not None:
+-                value = eval(compile(last, "<AI>", "eval"), ns)
+-            cur = App.ActiveDocument
+-            if cur is not None:
+-                cur.recompute()
++        try:
++            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
++                exec(compile(tree, "<AI>", "exec"), ns)
++                if last is not None:
++                    value = eval(compile(last, "<AI>", "eval"), ns)
++                for n in watch.changed | ({App.ActiveDocument.Name} if App.ActiveDocument else set()):
++                    if n in App.listDocuments():
++                        App.getDocument(n).recompute()
++            notes = _advance_tips(watch)
++            for n in list(watch.changed):
++                if n in App.listDocuments():
++                    notes += _body_notes(App.getDocument(n))
++        finally:
++            App.removeDocumentObserver(watch)
+     except Exception:
+         note = []
+-        if still_open():
+-            App.getDocument(name).abortTransaction()
+-            note.append("この文書でのこの回の変更は取り消した")
+-        elif name is not None:
+-            note.append("文書 %s はコードの中で閉じられた" % name)
+-        new_docs = sorted(set(App.listDocuments()) - docs_before)
+-        if new_docs:
+-            note.append("この回に新しく作った文書は残っている（取り消していない）: " + ", ".join(new_docs))
+-        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（" + "。".join(note) + "）", True)
+-    if still_open():
+-        App.getDocument(name).commitTransaction()
++        for n, d in open_docs().items():
++            d.abortTransaction()
++        changed_old = sorted(n for n in watch.changed if n in docs_before)
++        if changed_old:
++            note.append("この回の変更は取り消した（" + "、".join(changed_old) + "）")
++        closed = sorted(n for n in docs_before if n not in App.listDocuments())
++        if closed:
++            note.append("コードの中で閉じられた文書: " + ", ".join(closed))
++        if watch.new_docs:
++            note.append("この回に新しく作った文書は残っている（取り消していない）: " + ", ".join(watch.new_docs))
++        if active is not None and App.ActiveDocument is not None and App.ActiveDocument.Name != active:
++            _activate(active)
++            note.append("今開いている文書を %s に戻した" % active)
++        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（" + "。".join(note or ["変更は無かった"]) + "）", True)
++    # 変わった文書だけを確定する（何も変えなかった回は、元に戻すの一覧に段を作らない）
++    for n, d in open_docs().items():
++        if n in watch.changed:
++            d.commitTransaction()
++        else:
++            d.abortTransaction()
+     lines = []
+     if out.getvalue():
+         lines.append(out.getvalue().rstrip())
+     if value is not None:
+         lines.append(repr(value))
++    added = [o for o in watch.created.values() if _alive(o)]
++    if added:
++        lines.append("増えた物: " + ", ".join("%s（%s）%s" % (o.Name, o.Label, "" if o.Document.Name == active else " [文書 %s]" % o.Document.Name)
++                                             for o in added))
++    if watch.deleted:
++        lines.append("消えた物: " + ", ".join("%s（%s）%s" % (nm, lb, "" if d == active else " [文書 %s]" % d)
++                                             for d, nm, lb in watch.deleted))
++    if watch.new_docs:
++        lines.append("新しく作った文書: " + ", ".join(watch.new_docs))
++    if not watch.changed:
++        lines.append("（どの文書も変えていないので、元に戻すの段は作っていない）")
+     cur = App.ActiveDocument
++    if cur is not None and cur.Name != active:
++        lines.append("今開いている文書は %s になった（前は %s）" % (cur.Name, active))
+     if cur is not None:
+-        after = set(o.Name for o in cur.Objects)
+-        same = name is not None and cur.Name == name
+-        added = sorted(after - before) if same else []
+-        removed = sorted(before - after) if same else []
+-        if added:
+-            lines.append("増えた物: " + ", ".join("%s（%s）" % (n, cur.getObject(n).Label) for n in added))
+-        if removed:
+-            lines.append("消えた物: " + ", ".join(removed))
+         bad = [o for o in cur.Objects if not o.isValid() and not o.isDerivedFrom("Sketcher::SketchObject")]
+         if bad:
+             lines.append("計算に失敗している物: " + "; ".join(
+                 "%s（%s）: %s" % (o.Name, o.Label, " ".join((o.getStatusString() or "").split())) for o in bad))
++    lines += notes
+     return _text("\n".join(lines) or "（出力なし）")
+ 
+ 
++def _alive(o):
++    try:
++        return o.Document is not None and o.Document.getObject(o.Name) is o
++    except Exception:
++        return False
++
++
++def _advance_tips(watch):
++    """この回に作った手順が部品の最後にあるのに Tip が進んでいなければ、進める
++    （Python の Body.newObject で作ったパターンは、作った時に Tip へ進まない。画面のボタンで作った時と同じ結果にする）"""
++    import DesignCheck
++    notes = []
++    created = set(watch.created)
++    bodies = {}
++    for o in watch.created.values():
++        if not _alive(o):
++            continue
++        for p in o.InList:
++            if p.isDerivedFrom("PartDesign::Body"):
++                bodies[p.Name + "@" + p.Document.Name] = p
++    for b in bodies.values():
++        steps = DesignCheck._solid_steps(b)
++        tip = b.Tip
++        if tip not in steps or tip is steps[-1]:
++            continue
++        later = steps[steps.index(tip) + 1:]
++        if all(id(o) in created for o in later):
++            b.Tip = later[-1]
++            for o in steps:
++                o.Visibility = o is later[-1]
++            b.Document.recompute()
++            notes.append("部品 %s（%s）の形に使う最後の手順（Tip）を %s（%s）に進めた（Python で作ったパターンは Tip へ進まないため）"
++                         % (b.Name, b.Label, later[-1].Name, later[-1].Label))
++    return notes
++
++
++def _body_notes(doc):
++    """部品（Body）の後始末と知らせ:
++    - 形を作る最後の手順（Tip）より後にある手順は、形に使われない（Python で作ったパターンは Tip へ進まないことがある）
++    - 見える手順が 1 つも無い部品（前の手順を隠したパターンを消した時など）は、Tip を見えるようにする"""
++    import DesignCheck
++    notes = []
++    for b in doc.Objects:
++        if not b.isDerivedFrom("PartDesign::Body"):
++            continue
++        steps = DesignCheck._solid_steps(b)
++        tip = b.Tip
++        if tip in steps and steps.index(tip) + 1 < len(steps):
++            later = steps[steps.index(tip) + 1:]
++            notes.append("注意: 部品 %s（%s）の形に使われていない手順がある: %s。形に使う最後の手順（Tip）は %s。"
++                         "使うなら %s.Tip = %s" % (b.Name, b.Label, ", ".join("%s（%s）" % (o.Name, o.Label) for o in later),
++                                                     tip.Name, "doc.getObject(%r)" % b.Name, "doc.getObject(%r)" % later[-1].Name))
++        try:
++            if b.Visibility and tip is not None and steps and not any(o.Visibility for o in steps):
++                tip.Visibility = True
++                notes.append("部品 %s（%s）の手順がどれも見えていなかったので、%s（%s）を見えるようにした"
++                             % (b.Name, b.Label, tip.Name, tip.Label))
++        except Exception:
++            pass
++    return notes
++
++
+ _VIEWS = {"isometric": "viewIsometric", "front": "viewFront", "back": "viewRear", "top": "viewTop",
+           "bottom": "viewBottom", "left": "viewLeft", "right": "viewRight"}
+ 
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 900811329..95827c93b 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -75,6 +75,9 @@ RULES = {
+     "floating": QT_TRANSLATE_NOOP("DesignCheck", "Part touches no other part"),
+     "drawing_dim": QT_TRANSLATE_NOOP("DesignCheck", "Drawing dimension lost its geometry"),
+     "drawing_view": QT_TRANSLATE_NOOP("DesignCheck", "Drawing view shows nothing"),
++    "empty_body": QT_TRANSLATE_NOOP("DesignCheck", "Part has no shape"),
++    "unused_step": QT_TRANSLATE_NOOP("DesignCheck", "Step not used for the shape"),
++    "hidden_skipped": QT_TRANSLATE_NOOP("DesignCheck", "Hidden parts were not checked"),
+ }
+ 
+ 
+@@ -225,6 +228,61 @@ def check_features(doc, issues, opt):
+             issues.append(Issue(ERROR, "feature_error", translate("DesignCheck", "{0}: {1}").format(o.Label, msg), [o.Name]))
+ 
+ 
++def _solid_steps(body):
++    """部品の中の、形を作る手順（押し出し・切り抜き・パターンなど。スケッチ・基準は除く）を並びの順に"""
++    out = []
++    for o in body.Group:
++        if not o.isDerivedFrom("PartDesign::Feature"):
++            continue
++        # マルチ変換の中の子（Transformations に入っている物）は、部品の形を作る手順ではない（Body::isSolidFeature と同じ）
++        if o.isDerivedFrom("PartDesign::Transformed") and any(
++                p.isDerivedFrom("PartDesign::MultiTransform") and o in p.Transformations for p in o.InList):
++            continue
++        out.append(o)
++    return out
++
++
++def check_hidden(doc, issues, opt):
++    """見えていない部品は、形・干渉・浮きの検査の対象から外している（わざと。組立に使っていない物が多い）。その数を知らせる"""
++    hidden = []
++    for o in doc.Objects:
++        if _visible(o):
++            continue
++        if o.isDerivedFrom("PartDesign::Body") or o.isDerivedFrom("App::Link") or (
++                o.isDerivedFrom("Part::Feature") and not _in_body(o) and not o.isDerivedFrom("Part::Part2DObject")
++                and not o.isDerivedFrom("Part::Datum")
++                and not o.TypeId.startswith(("PartDesign::", "Sketcher::", "App::", "TechDraw::", "Measure::"))):
++            hidden.append(o)
++    if hidden:
++        issues.append(Issue(INFO, "hidden_skipped",
++                            translate("DesignCheck", "{0} hidden parts were not checked for shapes, overlaps or floating: {1}").format(
++                                len(hidden), ", ".join(o.Label for o in hidden[:8]) + (" …" if len(hidden) > 8 else "")),
++                            [o.Name for o in hidden[:8]]))
++
++
++def check_bodies(doc, issues, opt):
++    """部品（Body）ごと: 形の無い部品と、最後の手順（Tip）より後にあって形に使われていない手順"""
++    for b in doc.Objects:
++        if not b.isDerivedFrom("PartDesign::Body") or not _visible(b):
++            continue
++        steps = _solid_steps(b)
++        shape = getattr(b, "Shape", None)
++        if not steps or shape is None or shape.isNull() or not shape.Faces:
++            issues.append(Issue(WARNING, "empty_body",
++                                translate("DesignCheck", "{0} has no shape yet (no steps that make a solid)").format(b.Label),
++                                [b.Name]))
++            continue
++        tip = b.Tip
++        if tip in steps:
++            after = steps[steps.index(tip) + 1:]
++            for o in after:
++                # Python で作ったパターンは、作った時に Tip へ進まないことがある（FreeCAD の判定による）
++                issues.append(Issue(WARNING, "unused_step",
++                                    translate("DesignCheck", "{0}: {1} comes after the last step used for the shape ({2}), "
++                                              "so it does not change the part").format(b.Label, o.Label, tip.Label),
++                                    [o.Name]))
++
++
+ def check_shapes(doc, issues, opt, shapes):
+     for n, s in shapes.items():
+         o = doc.getObject(n)
+@@ -508,18 +566,20 @@ def check_sketches(doc, issues, opt):
+         # それに続く手順が全部「要再計算」になり、文書も変更ありになる）
+         for attr, rule, sev, text, fix in (
+             ("ConflictingConstraints", "sketch_conflict", ERROR,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} contradict each other"), "remove_conflict_last"),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} (numbered from 1, as in the constraint list) contradict each other"), "remove_conflict_last"),
+             ("MalformedConstraints", "sketch_malformed", ERROR,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} are malformed"), "remove_malformed"),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} (numbered from 1, as in the constraint list) are malformed"), "remove_malformed"),
+             ("RedundantConstraints", "sketch_redundant", WARNING,
+-             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} say the same thing twice"), "remove_redundant"),
++             QT_TRANSLATE_NOOP("DesignCheck", "{0}: constraints {1} (numbered from 1, as in the constraint list) say the same thing twice"), "remove_redundant"),
+         ):
+             ids = list(getattr(o, attr, []) or [])
+             if ids:
+                 issues.append(Issue(sev, rule, translate("DesignCheck", text).format(o.Label, ", ".join(map(str, ids))),
+                                     [o.Name], fix=fix))
+         dof = getattr(o, "DoF", 0) or 0
+-        if dof > 0 and len(o.Geometry) > 0:
++        # 拘束がぶつかっている・崩れている間は、解けていないので「決まっていない所」の数に意味が無い
++        broken = getattr(o, "ConflictingConstraints", None) or getattr(o, "MalformedConstraints", None)
++        if dof > 0 and len(o.Geometry) > 0 and not broken:
+             issues.append(Issue(INFO, "sketch_free",
+                                 translate("DesignCheck", "{0}: {1} places are not fixed yet").format(o.Label, dof), [o.Name]))
+ 
+@@ -734,6 +794,8 @@ def iter_run(doc=None, **options):
+     yield Progress(0, 0, translate("DesignCheck", "Checking the steps, shapes, sketches and drawings"))
+     shapes = parts(doc)
+     check_features(doc, issues, opt)
++    check_bodies(doc, issues, opt)
++    check_hidden(doc, issues, opt)
+     check_shapes(doc, issues, opt, shapes)
+     check_sketches(doc, issues, opt)
+     check_drawings(doc, issues, opt)
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index ed50d734b..e853db582 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -85,6 +85,13 @@
+         <translation>外形線</translation>
+     </message>
+ </context>
++<context>
++    <name>App::LocalCoordinateSystem</name>
++    <message>
++        <source>Origin-Point</source>
++        <translation>原点の点</translation>
++    </message>
++</context>
+ <context>
+     <name>App::Property</name>
+     <message>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 702957712..bfe9bd1aa 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -476,6 +476,30 @@
+         <source>{0}: the shape is broken (isValid is false)</source>
+         <translation>{0}: 形が壊れている</translation>
+     </message>
++    <message>
++        <source>Hidden parts were not checked</source>
++        <translation>見えていない部品は調べていない</translation>
++    </message>
++    <message>
++        <source>{0} hidden parts were not checked for shapes, overlaps or floating: {1}</source>
++        <translation>見えていない部品 {0} 個は、形・干渉・浮きを調べていない: {1}</translation>
++    </message>
++    <message>
++        <source>Part has no shape</source>
++        <translation>部品に形が無い</translation>
++    </message>
++    <message>
++        <source>Step not used for the shape</source>
++        <translation>形に使われていない手順</translation>
++    </message>
++    <message>
++        <source>{0} has no shape yet (no steps that make a solid)</source>
++        <translation>{0} にはまだ形が無い（立体を作る手順が無い）</translation>
++    </message>
++    <message>
++        <source>{0}: {1} comes after the last step used for the shape ({2}), so it does not change the part</source>
++        <translation>{0}: {1} は、形に使う最後の手順（{2}）より後にあるので、部品の形を変えていない</translation>
++    </message>
+     <message>
+         <source>{0} consists of {1} separate pieces</source>
+         <translation>{0} が {1} 個に分かれている（形が切れていないか）</translation>
+@@ -513,16 +537,16 @@
+         <translation>{0}: 映していた部品が消されている</translation>
+     </message>
+     <message>
+-        <source>{0}: constraints {1} contradict each other</source>
+-        <translation>{0}: 拘束 {1} がぶつかっている</translation>
++        <source>{0}: constraints {1} (numbered from 1, as in the constraint list) contradict each other</source>
++        <translation>{0}: 拘束 {1}（拘束の一覧の 1 から数えた番号）がぶつかっている</translation>
+     </message>
+     <message>
+-        <source>{0}: constraints {1} are malformed</source>
+-        <translation>{0}: 拘束 {1} が不正</translation>
++        <source>{0}: constraints {1} (numbered from 1, as in the constraint list) are malformed</source>
++        <translation>{0}: 拘束 {1}（拘束の一覧の 1 から数えた番号）の形が崩れている</translation>
+     </message>
+     <message>
+-        <source>{0}: constraints {1} say the same thing twice</source>
+-        <translation>{0}: 拘束 {1} が同じことを二重に決めている</translation>
++        <source>{0}: constraints {1} (numbered from 1, as in the constraint list) say the same thing twice</source>
++        <translation>{0}: 拘束 {1}（拘束の一覧の 1 から数えた番号）が同じことを二重に決めている</translation>
+     </message>
+     <message>
+         <source>{0}: {1} places are not fixed yet</source>
+@@ -774,6 +798,34 @@
+ </context>
+ <context>
+     <name>AIChat</name>
++    <message>
++        <source>Run the AI's code without asking (until FreeCAD closes)</source>
++        <translation>AI のコードをたずねずに実行する（FreeCAD を閉じるまで）</translation>
++    </message>
++    <message>
++        <source>The AI's code will be shown for approval again.</source>
++        <translation>AI のコードは、また実行の前に見せてたずねます。</translation>
++    </message>
++    <message>
++        <source>Run without asking</source>
++        <translation>たずねずに実行</translation>
++    </message>
++    <message>
++        <source>The AI's code will run without being shown to you first. Changes to the model can be undone, but the code can also do things outside FreeCAD (for example, delete files). The code that ran stays in the chat (the &quot;code&quot; links).
++
++This lasts until FreeCAD is closed. Turn it on?</source>
++        <translation>AI のコードを、あなたに見せずに実行します。モデルの変更は元に戻せますが、コードは FreeCAD の外のこと（ファイルを消すなど）もできます。実行したコードはチャットに残ります（「コード」のリンク）。
++
++FreeCAD を閉じるまで続きます。有効にしますか？</translation>
++    </message>
++    <message>
++        <source>The AI's code now runs without asking. Uncheck the box to be asked again.</source>
++        <translation>AI のコードを、たずねずに実行します。またたずねるようにするには、チェックを外してください。</translation>
++    </message>
++    <message>
++        <source>Run, and don't ask again</source>
++        <translation>実行して、以後はたずねない</translation>
++    </message>
+     <message>
+         <source>Set up the AI (install claude-agent-sdk)</source>
+         <translation>AI の準備をする（claude-agent-sdk を入れる）</translation>
+-- 
+2.43.0
+
