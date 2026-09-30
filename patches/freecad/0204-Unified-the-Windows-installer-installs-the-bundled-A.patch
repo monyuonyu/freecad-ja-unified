@@ -1,0 +1,29 @@
+From 4fdfc91a37d57b3f7953b877b476d4e820b7f8e4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 30 Sep 2026 14:49:36 +0900
+Subject: [PATCH] Unified: the Windows installer installs the bundled AI
+ runtime (ai-runtime) as well
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/WindowsInstaller/setup/install.nsh | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/package/WindowsInstaller/setup/install.nsh b/package/WindowsInstaller/setup/install.nsh
+index 4ac80195d..e1402fb39 100644
+--- a/package/WindowsInstaller/setup/install.nsh
++++ b/package/WindowsInstaller/setup/install.nsh
+@@ -67,6 +67,10 @@ Section -ProgramFiles SecProgramFiles
+   ${DetailPrintToBoth} "Extracting files to '$INSTDIR\Mod\'"
+   SetOutPath "$INSTDIR\Mod"
+   File /r "${FILES_FREECAD}\Mod\*.*"
++  # AI chat runtime (Claude Agent SDK etc., bundled by package/bundle/windows/create_bundle.sh)
++  ${DetailPrintToBoth} "Extracting files to '$INSTDIR\ai-runtime\'"
++  SetOutPath "$INSTDIR\ai-runtime"
++  File /r "${FILES_FREECAD}\ai-runtime\*.*"
+   ${DetailPrintToBoth} "Extracting thumbnailer"
+   SetOutPath "$INSTDIR"
+   File /r "${FILES_THUMBS}"
+-- 
+2.43.0
+
