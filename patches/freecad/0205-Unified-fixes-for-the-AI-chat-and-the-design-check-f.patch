@@ -1,4 +1,4 @@
-From dcfa2ffb64b50e5efee3c2e6df0153692e4d3e6f Mon Sep 17 00:00:00 2001
+From ad3a707192ea414f56c125a0fb8b4348b2aca487 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 15:11:14 +0900
 Subject: [PATCH] Unified: fixes for the AI chat and the design check found by
@@ -11,7 +11,8 @@ Content-Transfer-Encoding: 8bit
   no undo step when nothing changed; added/removed objects are counted by events, not by names;
   a pattern made with Body.newObject that ends up after the Tip is made the Tip (as the GUI command does);
   a body with no visible step shows its Tip again
-- run_python: every run is logged to <user data>/ai/ai-runs.log (also before it runs); after three failures in
+- run_python: sys.exit and KeyboardInterrupt are caught like other errors (sys.exit used to run FreeCAD's own
+  shutdown and it crashed and hung); every run is logged to <user data>/ai/ai-runs.log (also before it runs); after three failures in
   a row the result tells the AI to change its approach or ask the user
 - the AI is told not to start another FreeCAD (sys.executable is FreeCAD itself) and not to repeat failures
 - get_document: step parameters (Type etc.) go into params instead of overwriting the object's type
@@ -22,19 +23,19 @@ Content-Transfer-Encoding: 8bit
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- src/Mod/Unified/AIAgentBridge.py              |   7 +
+ src/Mod/Unified/AIAgentBridge.py              |   8 +
  src/Mod/Unified/AIChatGui.py                  |  39 ++-
- src/Mod/Unified/AITools.py                    | 243 +++++++++++++++---
+ src/Mod/Unified/AITools.py                    | 248 +++++++++++++++---
  src/Mod/Unified/DesignCheck.py                |  70 ++++-
  .../translations/UnifiedWording_ja.ts         |   7 +
  .../Gui/Resources/translations/Unified_ja.ts  |  64 ++++-
- 6 files changed, 383 insertions(+), 47 deletions(-)
+ 6 files changed, 388 insertions(+), 48 deletions(-)
 
 diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
-index faca07330..baf1f7fb2 100644
+index faca07330..e1b8c6bb5 100644
 --- a/src/Mod/Unified/AIAgentBridge.py
 +++ b/src/Mod/Unified/AIAgentBridge.py
-@@ -84,6 +84,13 @@ SYSTEM = """あなたは FreeCAD（日本語の統合環境）に組み込まれ
+@@ -84,6 +84,14 @@ SYSTEM = """あなたは FreeCAD（日本語の統合環境）に組み込まれ
  - 変える前に get_document で今の状態を見る。物は Name（内部名）で指し、利用者にはラベルで伝える
  - 部品は PartDesign の Body の中で、スケッチ→押し出し…の手順で作るのが基本（後から直せるように）。
    新しい物のラベルは日本語で付ける
@@ -42,8 +43,9 @@ index faca07330..baf1f7fb2 100644
 +- パターン（Mirrored・LinearPattern・PolarPattern・MultiTransform）を Python で作ったら、Originals などを
 +  設定した後に body.Tip = その手順 とする（作った時は Tip へ進まず、部品の形に使われないことがある）。
 +  手順を消す時は、その前の手順（新しい Tip）を見えるようにする（Visibility = True）
-+- run_python の中で、別の FreeCAD や sys.executable（FreeCAD の中では Python ではなく FreeCAD 自身）を
-+  subprocess で起動しない。FreeCAD がもう 1 つ立ち上がり、固まったり落ちたりする
++- run_python の中で、FreeCAD を終わらせること（sys.exit・os._exit・Gui.getMainWindow().close() など）をしない。
++  別の FreeCAD や sys.executable（FreeCAD の中では Python ではなく FreeCAD 自身）を subprocess で起動しない。
++  FreeCAD が落ちたり固まったりして、利用者の作業が失われる
 +- 同じ失敗を 2 回続けたら、同じやり方を繰り返さない。原因を調べて変えるか、止めて利用者に聞く
  - 変えたら design_check と screenshot で確かめてから「できた」と言う。確かめていないことは、確かめていないと言う
  - 利用者のファイルを保存・上書き・削除するのは、頼まれたときだけ
@@ -120,7 +122,7 @@ index aaa6bc23f..0be71ea43 100644
      def on_link(self, url):
          s = url.toString()
 diff --git a/src/Mod/Unified/AITools.py b/src/Mod/Unified/AITools.py
-index b979a902e..6fd3bcc2e 100644
+index b979a902e..ae98cc92c 100644
 --- a/src/Mod/Unified/AITools.py
 +++ b/src/Mod/Unified/AITools.py
 @@ -89,10 +89,14 @@ def _describe(o):
@@ -229,7 +231,7 @@ index b979a902e..6fd3bcc2e 100644
      code = args.get("code", "")
      desc = (args.get("description") or "AI").strip()[:60]
      doc = App.ActiveDocument
-@@ -145,58 +231,145 @@ def run_python(args):
+@@ -145,58 +231,148 @@ def run_python(args):
      if tree.body and isinstance(tree.body[-1], ast.Expr):
          last = ast.Expression(tree.body.pop().value)
      out = io.StringIO()
@@ -261,6 +263,7 @@ index b979a902e..6fd3bcc2e 100644
 -            cur = App.ActiveDocument
 -            if cur is not None:
 -                cur.recompute()
+-    except Exception:
 +        try:
 +            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
 +                exec(compile(tree, "<AI>", "exec"), ns)
@@ -275,7 +278,8 @@ index b979a902e..6fd3bcc2e 100644
 +                    notes += _body_notes(App.getDocument(n))
 +        finally:
 +            App.removeDocumentObserver(watch)
-     except Exception:
++    except BaseException as ex:
++        # sys.exit・KeyboardInterrupt も捕まえる（捕まえないと FreeCAD 本体の終了処理が走り、落ちて固まる）
          note = []
 -        if still_open():
 -            App.getDocument(name).abortTransaction()
@@ -288,6 +292,8 @@ index b979a902e..6fd3bcc2e 100644
 -        return _text(out.getvalue() + traceback.format_exc(limit=6) + "\n（" + "。".join(note) + "）", True)
 -    if still_open():
 -        App.getDocument(name).commitTransaction()
++        if isinstance(ex, SystemExit):
++            note.append("sys.exit は FreeCAD を終わらせるので、実行しなかった")
 +        for n, d in open_docs().items():
 +            d.abortTransaction()
 +        changed_old = sorted(n for n in watch.changed if n in docs_before)
