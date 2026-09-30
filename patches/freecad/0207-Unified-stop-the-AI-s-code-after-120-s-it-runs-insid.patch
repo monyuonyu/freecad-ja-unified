@@ -1,0 +1,81 @@
+From c5605668c863c56cac439a0ab1bd3366b85ee27f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 30 Sep 2026 17:29:49 +0900
+Subject: [PATCH] Unified: stop the AI's code after 120 s (it runs inside
+ FreeCAD); a failing repr of the last value keeps the run
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AITools.py | 36 ++++++++++++++++++++++++++++++++----
+ 1 file changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Unified/AITools.py b/src/Mod/Unified/AITools.py
+index ae98cc92c..220b4d8b2 100644
+--- a/src/Mod/Unified/AITools.py
++++ b/src/Mod/Unified/AITools.py
+@@ -243,12 +243,32 @@ def _run_python(args):
+         return {n: d for n, d in App.listDocuments().items() if n in docs_before}
+     value = None
+     notes = []
++    # 終わらないコードは止める（FreeCAD の中で動くので、固まらないように）。見張りのスレッドから割り込みをかける
++    import signal
++    import threading
++    import _thread
++    timed_out = []
++
++    def _stop():
++        timed_out.append(True)
++        _thread.interrupt_main()
++    timer = threading.Timer(float(os.environ.get("FREECAD_AI_CODE_TIMEOUT", "120")), _stop)
++    timer.daemon = True
++    try:
++        old_sigint = signal.getsignal(signal.SIGINT)
++        signal.signal(signal.SIGINT, signal.default_int_handler)   # interrupt_main が KeyboardInterrupt になるように
++    except ValueError:
++        old_sigint = None   # 主のスレッドでない時は、打ち切りは効かない
+     try:
+         try:
+             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+-                exec(compile(tree, "<AI>", "exec"), ns)
+-                if last is not None:
+-                    value = eval(compile(last, "<AI>", "eval"), ns)
++                timer.start()
++                try:
++                    exec(compile(tree, "<AI>", "exec"), ns)
++                    if last is not None:
++                        value = eval(compile(last, "<AI>", "eval"), ns)
++                finally:
++                    timer.cancel()
+                 for n in watch.changed | ({App.ActiveDocument.Name} if App.ActiveDocument else set()):
+                     if n in App.listDocuments():
+                         App.getDocument(n).recompute()
+@@ -258,9 +278,13 @@ def _run_python(args):
+                     notes += _body_notes(App.getDocument(n))
+         finally:
+             App.removeDocumentObserver(watch)
++            if old_sigint is not None:
++                signal.signal(signal.SIGINT, old_sigint)
+     except BaseException as ex:
+         # sys.exit・KeyboardInterrupt も捕まえる（捕まえないと FreeCAD 本体の終了処理が走り、落ちて固まる）
+         note = []
++        if timed_out:
++            note.append("%s 秒で終わらなかったので止めた" % os.environ.get("FREECAD_AI_CODE_TIMEOUT", "120"))
+         if isinstance(ex, SystemExit):
+             note.append("sys.exit は FreeCAD を終わらせるので、実行しなかった")
+         for n, d in open_docs().items():
+@@ -287,7 +311,11 @@ def _run_python(args):
+     if out.getvalue():
+         lines.append(out.getvalue().rstrip())
+     if value is not None:
+-        lines.append(repr(value))
++        # 値を文字にできなくても、済んだ変更は取り消さない
++        try:
++            lines.append(repr(value))
++        except Exception as e:
++            lines.append("（最後の式の値を表示できない: %s: %s）" % (type(e).__name__, e))
+     added = [o for o in watch.created.values() if _alive(o)]
+     if added:
+         lines.append("増えた物: " + ", ".join("%s（%s）%s" % (o.Name, o.Label, "" if o.Document.Name == active else " [文書 %s]" % o.Document.Name)
+-- 
+2.43.0
+
