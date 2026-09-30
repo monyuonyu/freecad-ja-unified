@@ -10,7 +10,8 @@ cd "$SRC"
 if ! git merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
   echo "注意: HEAD は元にした版 $BASE を含んでいない（当たらない可能性がある）" >&2
 fi
-git submodule update --init src/3rdParty/OndselSolver
+# 同梱のサブモジュール（OndselSolver・Coin・Pivy・GSL・AddonManager）を全部取る。Coin と Pivy が無いと cmake で止まる
+git submodule update --init --recursive
 # FreeCAD のソースは CRLF のファイルが多いので --keep-cr が要る
 # git am は当てた人の名前を記録する。そのリポジトリで git に名前が無ければ仮の名前で当てる
 am() {
