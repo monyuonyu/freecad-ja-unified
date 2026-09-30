@@ -144,7 +144,8 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 
 ## AI チャットを使うには
 
-1. 右の「AI」パネルの「AI の準備をする」を押す（Python の仮想環境に claude-agent-sdk と keyring を入れる。ネットワークが要る）
+1. 配布物（0.3.5 から）には、AI チャットに要る部品（claude-agent-sdk・keyring・Claude Code）が最初から入っている。準備は要らない。
+   自分でビルドした場合は、右の「AI」パネルの「AI の準備をする」を押す（Python の仮想環境に入れる。ネットワークが要る）
 2. [console.anthropic.com](https://console.anthropic.com/) で API キーを作り、「API キー…」で入れる。
    キーは OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）にしまう。
    鍵保管庫の無い環境では、本人だけが読めるファイル（FreeCAD のユーザーデータの `ai/ai-api-key`）
@@ -256,6 +257,11 @@ AI が実行しようとするコードは毎回表示され、「実行する�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.3.5 の変更
+
+- AI チャットに要る部品を配布物に同梱した。インストールしてすぐ、ネットワークからの準備なしで AI パネルが使える（AI との会話そのものにはネットワークが要る）
+- AI チャットで失敗したとき（キーが無効など）の説明を分かりやすくした
 
 ## 当て方とビルド
 
