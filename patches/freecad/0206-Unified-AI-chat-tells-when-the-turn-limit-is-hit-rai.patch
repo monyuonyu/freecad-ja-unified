@@ -1,0 +1,48 @@
+From b8207438a5988d80b6e3bf27f4393cf6afa74a6b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 30 Sep 2026 17:10:13 +0900
+Subject: [PATCH] Unified: AI chat tells when the turn limit is hit (raised to
+ 80) instead of stopping silently
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index e1b8c6bb5..793dd0a37 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -112,6 +112,9 @@ TOOLS = [
+ ]
+ 
+ 
++# 1 回の依頼で、AI が道具を呼んで考えを進められる回数の上限
++MAX_TURNS = 80
++
+ class Bridge:
+     def __init__(self, args):
+         self.args = args
+@@ -153,7 +156,7 @@ class Bridge:
+             model=self.args.model, system_prompt=SYSTEM,
+             cli_path=self.args.claude or None,
+             tools=[], allowed_tools=["mcp__freecad__*"], mcp_servers={"freecad": self.make_server()},
+-            strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=40, env=env)
++            strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=MAX_TURNS, env=env)
+ 
+     def _stdin_thread(self, loop):
+         # Windows でも動くように、標準入力はスレッドで読む（asyncio のパイプは Windows で使えない）
+@@ -208,6 +211,10 @@ class Bridge:
+                         if isinstance(b, TextBlock) and b.text.strip():
+                             said.append(b.text)
+                             self.send(type="text", text=b.text)
++                elif isinstance(m, ResultMessage) and m.subtype == "error_max_turns":
++                    # やり取りの回数の上限。黙って止まったように見えないように知らせる
++                    error = ("やり取りの回数の上限（%d 回）に達したので、途中で止めた。続けるには「続けて」と送る"
++                             % MAX_TURNS)
+                 elif isinstance(m, ResultMessage) and m.is_error:
+                     # subtype は "success" のこともあるので、中身のある説明を選ぶ
+                     error = (getattr(m, "result", None) or "").strip() or \
+-- 
+2.43.0
+
