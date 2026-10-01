@@ -1,0 +1,99 @@
+From 1695fc131ab5580b9dd24a06d620fb7c6241cf5d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 2 Oct 2026 07:18:57 +0900
+Subject: [PATCH] Unified: name the bundled claude agent.bin; the bridge points
+ the SDK at it
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   | 11 +++++++++++
+ package/bundle/windows/create_bundle.sh | 11 +++++++++++
+ src/Mod/Unified/AIAgentBridge.py        | 14 ++++++++++++--
+ 3 files changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index d02e234e4..447ea0064 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -100,6 +100,17 @@ ai_out=$(echo "" | PYTHONPATH="${conda_env}/ai-runtime" PYTHONNOUSERSITE=1 \
+     "${conda_env}/bin/python" "${conda_env}/Mod/Unified/AIAgentBridge.py" --datadir "$(mktemp -d)")
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++# SDK に同梱の claude は agent.bin という名前にする（仲介役の bundled_agent() がこの名前で探して指す）
++bundled="${conda_env}/ai-runtime/claude_agent_sdk/_bundled"
++for f in "${bundled}"/claude.exe "${bundled}"/claude; do
++    [ -f "$f" ] && mv -f "$f" "${bundled}/agent.bin"
++done
++[ -f "${bundled}/agent.bin" ] || { echo "The bundled claude is missing."; exit 1; }
++# 仲介役と同じ探し方で見つけて動かせること
++agent_out=$(PYTHONPATH="${conda_env}/ai-runtime:${conda_env}/Mod/Unified" PYTHONNOUSERSITE=1 \
++    "${conda_env}/bin/python" -c "import subprocess, AIAgentBridge as b; b.read_bundled_pth(); p = b.bundled_agent(); assert p and p.endswith('agent.bin'), p; print(subprocess.run([p, '--version'], capture_output=True, text=True).stdout.strip())")
++echo "Bundled agent: ${agent_out}"
++case "${agent_out}" in *Claude*) ;; *) echo "The bundled claude (agent.bin) does not start."; exit 1 ;; esac
+ 
+ find . -name "*.h" -type f -delete
+ find . -name "*.cmake" -type f -delete
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index db5d1ed4f..ee2907976 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -67,6 +67,17 @@ ai_out=$(echo "" | PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime")" PYTHONNOU
+     "${copy_dir}/bin/python.exe" "${copy_dir}/Mod/Unified/AIAgentBridge.py" --datadir "$(cygpath -w "$(mktemp -d)")")
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++# SDK に同梱の claude は agent.bin という名前にする（仲介役の bundled_agent() がこの名前で探して指す）
++bundled="${copy_dir}/ai-runtime/claude_agent_sdk/_bundled"
++for f in "${bundled}"/claude.exe "${bundled}"/claude; do
++    [ -f "$f" ] && mv -f "$f" "${bundled}/agent.bin"
++done
++[ -f "${bundled}/agent.bin" ] || { echo "The bundled claude is missing."; exit 1; }
++# 仲介役と同じ探し方で見つけて動かせること
++agent_out=$(PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime");$(cygpath -w "${copy_dir}/Mod/Unified")" PYTHONNOUSERSITE=1 \
++    "${copy_dir}/bin/python.exe" -c "import subprocess, AIAgentBridge as b; b.read_bundled_pth(); p = b.bundled_agent(); assert p and p.endswith('agent.bin'), p; print(subprocess.run([p, '--version'], capture_output=True, text=True).stdout.strip())")
++echo "Bundled agent: ${agent_out}"
++case "${agent_out}" in *Claude*) ;; *) echo "The bundled claude (agent.bin) does not start."; exit 1 ;; esac
+ 
+ # Turn off the echo before we start actually calling "echo"
+ set +x
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index 793dd0a37..0d48ea7b3 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -154,7 +154,7 @@ class Bridge:
+         os.makedirs(self.args.workdir, exist_ok=True)
+         return ClaudeAgentOptions(
+             model=self.args.model, system_prompt=SYSTEM,
+-            cli_path=self.args.claude or None,
++            cli_path=self.args.claude or bundled_agent(),
+             tools=[], allowed_tools=["mcp__freecad__*"], mcp_servers={"freecad": self.make_server()},
+             strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=MAX_TURNS, env=env)
+ 
+@@ -278,6 +278,16 @@ def read_bundled_pth():
+             site.addsitedir(p)
+ 
+ 
++def bundled_agent():
++    """配布物では、SDK に同梱の claude を agent.bin という名前にしてある。SDK は元の名前でしか探さないので、ここで指す"""
++    try:
++        import claude_agent_sdk
++    except ImportError:
++        return None
++    p = os.path.join(os.path.dirname(claude_agent_sdk.__file__), "_bundled", "agent.bin")
++    return p if os.path.isfile(p) else None
++
++
+ def main():
+     # FreeCAD とのやり取りは UTF-8 の JSON 行（Windows のパイプは既定でロケールの符号 cp932 などになる）
+     for stream in (sys.stdin, sys.stdout, sys.stderr):
+@@ -291,7 +301,7 @@ def main():
+     ap.add_argument("--store-key", action="store_true", help="標準入力の API キーを保管して終わる")
+     ap.add_argument("--delete-key", action="store_true", help="保管した API キーを消して終わる")
+     ap.add_argument("--model", default="opus")
+-    ap.add_argument("--claude", default="", help="claude の実行ファイル（空なら SDK に同梱のもの）")
++    ap.add_argument("--claude", default="", help="claude の実行ファイル（空なら SDK に同梱のもの。配布物では agent.bin）")
+     ap.add_argument("--workdir", default=os.path.join(os.path.expanduser("~"), ".cache", "freecad-ai"))
+     args = ap.parse_args()
+     if args.store_key:
+-- 
+2.43.0
+
