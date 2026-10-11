@@ -1,0 +1,44 @@
+From a5f95c028d78e0807d935241e2a6de8c05d8de09 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 09:39:28 +0900
+Subject: [PATCH 11/37] out_json: write NaN and infinite doubles as 0.0, JSON
+ has no NaN
+
+dwgread -O json printed "-nan" for a misread RAPIDRTRENDERSETTINGS
+(gh44-error.dwg) and the whole output became unreadable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/out_json.c | 16 +++++++---------
+ 1 file changed, 7 insertions(+), 9 deletions(-)
+
+diff --git a/src/out_json.c b/src/out_json.c
+index cc1a329..7a187eb 100644
+--- a/src/out_json.c
++++ b/src/out_json.c
+@@ -171,15 +171,13 @@ static char *_path_field (const char *path);
+ #define VALUE_RLx(value, dxf) VALUE ((BITCODE_RL)value, RL, dxf)
+ #define VALUE_RLL(value, dxf) VALUE (value, RLL, dxf)
+ #define VALUE_RLLd(value, dxf) VALUE (value, RLLd, dxf)
+-#ifdef IS_RELEASE
+-#  define VALUE_RD(value, dxf)                                                \
+-    if (bit_isnan (value))                                                    \
+-      _VALUE_RD (0.0, dxf)                                                    \
+-    else                                                                      \
+-      _VALUE_RD (value, dxf)
+-#else
+-#  define VALUE_RD(value, dxf) _VALUE_RD (value, dxf)
+-#endif
++// JSON has no NaN or Infinity: "nan", "-nan" or "inf" made the whole output
++// unreadable (gh44-error.dwg, a misread RAPIDRTRENDERSETTINGS). Write 0.0.
++#define VALUE_RD(value, dxf)                                                  \
++  if (bit_isnan (value) || !isfinite (value))                                 \
++    _VALUE_RD (0.0, dxf)                                                      \
++  else                                                                        \
++    _VALUE_RD (value, dxf)
+ #define _VALUE_RD(value, dxf)                                                 \
+   {                                                                           \
+     char _buf[256];                                                           \
+-- 
+2.43.0
+

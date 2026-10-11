@@ -1,0 +1,65 @@
+From 12e239232955701b9dcfbe9a677d1af1ffac6cb3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:30:34 +0900
+Subject: [PATCH 30/37] dwg_is_valid_tag: any character but space and ! as
+ AutoCAD
+
+Only letters, digits, $ _ - were accepted; aec_objects' ATTDEF tag
+SPACEOBJECTS:NUMBER was rejected and lost via DXF. The ASCII-only variant
+accepted the empty tag.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg_api.c                | 10 +++++++---
+ test/unit-testing/add_test.c |  3 +++
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/dwg_api.c b/src/dwg_api.c
+index 4773214..853d3d5 100644
+--- a/src/dwg_api.c
++++ b/src/dwg_api.c
+@@ -24595,8 +24595,10 @@ dwg_is_valid_tag (const char *tag)
+     for (size_t i = 0; i < len; i++)
+       {
+         uint16_t c = wstr[i];
+-        if (iswlower (c)
+-            || !(c == '$' || c == '_' || c == '-' || iswalnum (c)))
++        // AutoCAD: any character but space and ! (and no lowercase, it
++        // converts them). "SPACEOBJECTS:NUMBER" (aec_objects) was rejected
++        // and the tag lost via DXF.
++        if (iswlower (c) || c == ' ' || c == '!' || c < 0x20)
+           goto fail1;
+       }
+     free (wstr);
+@@ -24607,11 +24609,13 @@ dwg_is_valid_tag (const char *tag)
+   }
+ #else
+   // only ascii support, no wctype nor maxlen checks
++  if (!*tag)
++    return false;
+   {
+     uint8_t c;
+     while (c = *tag++)
+       {
+-        if (islower (c) || !(c == '$' || c == '_' || c == '-' || isalnum (c)))
++        if (islower (c) || c == ' ' || c == '!' || c < 0x20)
+           return false;
+       }
+   }
+diff --git a/test/unit-testing/add_test.c b/test/unit-testing/add_test.c
+index e428eae..8821b4e 100644
+--- a/test/unit-testing/add_test.c
++++ b/test/unit-testing/add_test.c
+@@ -1215,6 +1215,9 @@ test_names (void)
+     fail ("!dwg_is_valid_tag(\"a\")");
+   if (!dwg_is_valid_tag ("ABC"))
+     fail ("dwg_is_valid_tag(\"ABC\")");
++  // AutoCAD allows any character but space and ! (aec_objects)
++  if (!dwg_is_valid_tag ("SPACEOBJECTS:NUMBER"))
++    fail ("dwg_is_valid_tag(\"SPACEOBJECTS:NUMBER\")");
+ 
+   dwg = dwg_new_Document (R_2000, 0, tracelevel);
+   dwg->header.codepage = CP_CP869; // DOS Greek
+-- 
+2.43.0
+

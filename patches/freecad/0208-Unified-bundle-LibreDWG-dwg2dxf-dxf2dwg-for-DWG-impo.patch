@@ -1,0 +1,99 @@
+From 7290c52bae62e238ddc3a015b1984535b30fdac7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:39:04 +0900
+Subject: [PATCH 208/208] Unified: bundle LibreDWG (dwg2dxf, dxf2dwg) for DWG
+ import and export
+
+Init.py sets the bundled dwg2dxf as the DWG converter of Draft/importDWG
+(LibreDWG) unless the user has set one. create_bundle.sh copies the
+converters from LIBREDWG_BIN (built by the release workflow) and checks
+that they start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   | 12 ++++++++++++
+ package/bundle/windows/create_bundle.sh | 11 +++++++++++
+ src/Mod/Unified/Init.py                 | 26 +++++++++++++++++++++++++
+ 3 files changed, 49 insertions(+)
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index d02e234e4..77f7d4550 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -101,6 +101,18 @@ ai_out=$(echo "" | PYTHONPATH="${conda_env}/ai-runtime" PYTHONNOUSERSITE=1 \
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
+ 
++# DWG の読み書き: LibreDWG の dwg2dxf / dxf2dwg（自前の修正入り、静的リンク）を同梱する。
++# LIBREDWG_BIN はリリースの手順で作った物の場所。Mod/Unified/Init.py が同梱の物を DWG の変換器に設定する
++if [ -n "${LIBREDWG_BIN:-}" ]; then
++  for p in dwg2dxf dxf2dwg; do
++    cp "${LIBREDWG_BIN}/${p}" "${conda_env}/bin/"
++    chmod +x "${conda_env}/bin/${p}"  # the artifact upload drops the permissions
++  done
++  dwg_out=$("${conda_env}/bin/dwg2dxf" --version 2>&1 | head -1)
++  echo "LibreDWG: ${dwg_out}"
++  case "${dwg_out}" in *dwg2dxf*) ;; *) echo "The bundled dwg2dxf does not start."; exit 1 ;; esac
++fi
++
+ find . -name "*.h" -type f -delete
+ find . -name "*.cmake" -type f -delete
+ 
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index db5d1ed4f..0250c47aa 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -68,6 +68,17 @@ ai_out=$(echo "" | PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime")" PYTHONNOU
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
+ 
++# DWG の読み書き: LibreDWG の dwg2dxf / dxf2dwg（自前の修正入り、静的リンク）を同梱する。
++# LIBREDWG_BIN はリリースの手順で作った物の場所。Mod/Unified/Init.py が同梱の物を DWG の変換器に設定する
++if [ -n "${LIBREDWG_BIN:-}" ]; then
++  for p in dwg2dxf dxf2dwg; do
++    cp "${LIBREDWG_BIN}/${p}.exe" "${copy_dir}/bin/"
++  done
++  dwg_out=$("${copy_dir}/bin/dwg2dxf.exe" --version 2>&1 | head -1)
++  echo "LibreDWG: ${dwg_out}"
++  case "${dwg_out}" in *dwg2dxf*) ;; *) echo "The bundled dwg2dxf does not start."; exit 1 ;; esac
++fi
++
+ # Turn off the echo before we start actually calling "echo"
+ set +x
+ 
+diff --git a/src/Mod/Unified/Init.py b/src/Mod/Unified/Init.py
+index 204269461..3ca0649c9 100644
+--- a/src/Mod/Unified/Init.py
++++ b/src/Mod/Unified/Init.py
+@@ -1,2 +1,28 @@
+ # SPDX-License-Identifier: LGPL-2.1-or-later
+ # Unified: the single integrated working environment (nothing to do on the App side)
++#
++# 同梱の LibreDWG（dwg2dxf / dxf2dwg）を DWG の変換器として自動設定する。
++# FreeCAD 本体の Draft/importDWG は、設定 Mod/Draft/TeighaFileConverter に
++# dwg2dxf のパスがあればそれで DWG↔DXF を変換する（ODA でなく LibreDWG を使う）。
++# 利用者が自分で変換器を設定していれば、それを尊重して何もしない。
++import os
++
++import FreeCAD
++
++
++def _setup_bundled_dwg_converter():
++    try:
++        grp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
++        current = grp.GetString("TeighaFileConverter", "")
++        if current and os.path.isfile(current):
++            return  # 利用者が設定済み。触らない
++        exe = "dwg2dxf.exe" if os.name == "nt" else "dwg2dxf"
++        bundled = os.path.join(FreeCAD.getHomePath(), "bin", exe)
++        if os.path.isfile(bundled):
++            grp.SetString("TeighaFileConverter", bundled)
++            grp.SetInt("DWGConversion", 1)  # 1 = LibreDWG
++    except Exception:
++        pass  # 設定に失敗しても FreeCAD の起動は止めない
++
++
++_setup_bundled_dwg_converter()
+-- 
+2.43.0
+

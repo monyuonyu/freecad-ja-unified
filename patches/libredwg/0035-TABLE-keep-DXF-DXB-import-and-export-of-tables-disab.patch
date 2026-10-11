@@ -1,0 +1,127 @@
+From 51adf011503afc4a12079332d76c2d3929fb0707 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:32:49 +0900
+Subject: [PATCH 35/37] TABLE: keep DXF/DXB import and export of tables
+ disabled
+
+With TABLE/TABLECONTENT now UNSTABLE instead of DEBUGGING:
+- in_dxf failed on the unknown ACAD_TABLE groups (343 ...): they are
+  not importable (is_dxf_class_importable), and tables from DXF are still
+  written as placeholders, as before (encode, DWG_OPTS_INDXF).
+- out_dxfb wrote the tables with the DWG fields (DXF output already skips
+  unstable classes); skip them as in DXF.
+- dxf.test/dxfb.test: tables are not written to DXF, do not expect them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ programs/dxf.test.in  | 6 +++---
+ programs/dxfb.test.in | 6 +++---
+ src/classes.c         | 5 ++++-
+ src/encode.c          | 9 +++++++--
+ src/out_dxfb.c        | 9 +++++++++
+ 5 files changed, 26 insertions(+), 9 deletions(-)
+
+diff --git a/programs/dxf.test.in b/programs/dxf.test.in
+index bd5d102..d569cde 100755
+--- a/programs/dxf.test.in
++++ b/programs/dxf.test.in
+@@ -292,11 +292,11 @@ check_roundtrip() {
+             fi
+         else
+             if [ "$log1" = "example_r14.log1" ]; then
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MULTILEADER)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MULTILEADER|TABLE)')"
+             elif [ "$log1" = "example_r13.log1" ]; then
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MINSERT)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MINSERT|TABLE)')"
+             else
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|TABLE)')"
+             fi
+         fi
+         got="$(grep -E -c '^Add entity' "$log2")"
+diff --git a/programs/dxfb.test.in b/programs/dxfb.test.in
+index 6cd3922..4e22cbc 100755
+--- a/programs/dxfb.test.in
++++ b/programs/dxfb.test.in
+@@ -116,11 +116,11 @@ check_roundtrip() {
+             fi
+         else
+             if [ "$log1" = "example_r14.log1" ]; then
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MULTILEADER)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MULTILEADER|TABLE)')"
+             elif [ "$log1" = "example_r13.log1" ]; then
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MINSERT)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|LIGHT|MINSERT|TABLE)')"
+             else
+-                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT)')"
++                expect="$(grep -E '^Add entity' "$log1" | grep -E -c -v 'entity (WIPEOUT|ARC_DIMENSION|HELIX|UNKNOWN_ENT|TABLE)')"
+             fi
+         fi
+         got="$(grep -E -c '^Add entity' "$log2")"
+diff --git a/src/classes.c b/src/classes.c
+index 52c5f8c..f20b864 100644
+--- a/src/classes.c
++++ b/src/classes.c
+@@ -1360,7 +1360,10 @@ is_dxf_class_importable (const char *name)
+           return !strEQc (name, "MATERIAL") &&     // 72 missing
+                  !strEQc (name, "SUN") &&          // 421 missing
+                  !strEQc (name, "PROXY_ENTITY") && // 90 missing
+-                 !strEQc (name, "PROXY_OBJECT");   // 90 missing
++                 !strEQc (name, "PROXY_OBJECT") && // 90 missing
++                 // the ACAD_TABLE DXF groups are not imported (343, ...)
++                 !strEQc (name, "TABLE") &&
++                 !strEQc (name, "TABLECONTENT");
+         }
+       else
+         return stability == DWG_CLASS_STABLE;
+diff --git a/src/encode.c b/src/encode.c
+index 3a7e50c..7364a7a 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -2871,7 +2871,10 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+               || (dwg->opts & DWG_OPTS_INDXF
+                   && (/*obj->fixedtype == DWG_TYPE_WIPEOUT (GH #244) || */
+                       obj->fixedtype == DWG_TYPE_TABLEGEOMETRY
+-                      || obj->fixedtype == DWG_TYPE_MATERIAL))
++                      || obj->fixedtype == DWG_TYPE_MATERIAL
++                      // the ACAD_TABLE DXF groups are not imported
++                      || obj->fixedtype == DWG_TYPE_TABLE
++                      || obj->fixedtype == DWG_TYPE_TABLECONTENT))
+ #  endif
+           )
+             {
+@@ -2907,7 +2910,9 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                           && (/*obj->fixedtype == DWG_TYPE_WIPEOUT (GH #244) ||
+                                */
+                               obj->fixedtype == DWG_TYPE_TABLEGEOMETRY
+-                              || obj->fixedtype == DWG_TYPE_MATERIAL))
++                              || obj->fixedtype == DWG_TYPE_MATERIAL
++                              || obj->fixedtype == DWG_TYPE_TABLE
++                              || obj->fixedtype == DWG_TYPE_TABLECONTENT))
+ #  endif
+                   )
+                     {
+diff --git a/src/out_dxfb.c b/src/out_dxfb.c
+index e68914a..562bd9f 100644
+--- a/src/out_dxfb.c
++++ b/src/out_dxfb.c
+@@ -1529,6 +1529,15 @@ dwg_dxfb_variable_type (const Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+         }
+     }
+ 
++  // as in DXF, the tables are not written yet (the DXF groups of ACAD_TABLE
++  // differ from the DWG fields)
++  if (obj->fixedtype == DWG_TYPE_TABLE
++      || obj->fixedtype == DWG_TYPE_TABLECONTENT)
++    {
++      LOG_WARN ("Skip %s\n", klass->dxfname);
++      return DWG_ERR_UNHANDLEDCLASS;
++    }
++
+     // clang-format off
+   #include "classes.inc"
+   // clang-format on
+-- 
+2.43.0
+

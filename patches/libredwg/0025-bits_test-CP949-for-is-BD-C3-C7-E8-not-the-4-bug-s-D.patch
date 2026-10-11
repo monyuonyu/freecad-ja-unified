@@ -1,0 +1,33 @@
+From 04c25fd30af7c795c629777072551041b79a9013 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:06:42 +0900
+Subject: [PATCH 25/37] =?UTF-8?q?bits=5Ftest:=20CP949=20for=20=EC=8B=9C?=
+ =?UTF-8?q?=ED=97=98=20is=20BD=20C3=20C7=20E8,=20not=20the=20>>=204=20bug'?=
+ =?UTF-8?q?s=20DC=20C3=207E=20E8?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ test/unit-testing/bits_test.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/test/unit-testing/bits_test.c b/test/unit-testing/bits_test.c
+index e423733..7918efc 100644
+--- a/test/unit-testing/bits_test.c
++++ b/test/unit-testing/bits_test.c
+@@ -955,7 +955,9 @@ bit_utf8_to_TV_tests (void)
+     fail ("bit_utf8_to_TV %s as CP949", p);
+   p = bit_utf8_to_TV (dest, (const unsigned char *)"시험", sizeof (dest),
+                       strlen ("시험"), 0, CP_CP949);
+-  if (strEQc (p, "\xdc\xc3\x7e\xe8"))
++  // CP949 for 시험 is BD C3 C7 E8 (Python, Windows). The old expectation
++  // DC C3 7E E8 was the >> 4 bug of the lead byte.
++  if (strEQc (p, "\xbd\xc3\xc7\xe8"))
+     pass ();
+   else
+     fail ("bit_utf8_to_TV %s as CP949", p);
+-- 
+2.43.0
+

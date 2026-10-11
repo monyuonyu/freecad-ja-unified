@@ -1,0 +1,89 @@
+From f424367b09fbd9d6ed2a97f3b3ce61eac902c994 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 08:14:19 +0900
+Subject: [PATCH 10/37] tests: compare the revision guid arrays of ACIS
+ entities by contents
+
+revision_guid and revision_bytes are RC arrays; CHK_ENTITY_TYPE compared
+the local array with the struct field by ==, i.e. by address, which never
+matches.  This was never reached: the R2013+ ACIS entities were misread, so
+has_revision_guid came out 0.  Now that they are read correctly
+(example_2018.dwg 3DSOLID: {7CF5F000-46FC-4A48-BEEF-14B47A01FB47}), compare
+with memcmp.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ test/unit-testing/3dsolid.c | 16 ++++++++++++++--
+ test/unit-testing/body.c    |  7 ++++++-
+ test/unit-testing/region.c  |  7 ++++++-
+ 3 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/test/unit-testing/3dsolid.c b/test/unit-testing/3dsolid.c
+index 16ca7a4..d32b9e2 100644
+--- a/test/unit-testing/3dsolid.c
++++ b/test/unit-testing/3dsolid.c
+@@ -184,11 +184,23 @@ api_process (dwg_object *obj)
+     CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, has_revision_guid, B);
+     if (has_revision_guid)
+       {
+-        CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, revision_guid, TF);
++        /* an array: compare the contents, not the addresses */
++        if (!dwg_dynapi_entity_value (_3dsolid, "3DSOLID", "revision_guid",
++                                      &revision_guid, NULL)
++            || memcmp (revision_guid, _3dsolid->revision_guid, sizeof (revision_guid)))
++          fail ("3DSOLID.revision_guid");
++        else
++          pass ();
+         CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, revision_major, BL);
+         CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, revision_minor1, BS);
+         CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, revision_minor2, BS);
+-        CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, revision_bytes, TF);
++        /* an array: compare the contents, not the addresses */
++        if (!dwg_dynapi_entity_value (_3dsolid, "3DSOLID", "revision_bytes",
++                                      &revision_bytes, NULL)
++            || memcmp (revision_bytes, _3dsolid->revision_bytes, sizeof (revision_bytes)))
++          fail ("3DSOLID.revision_bytes");
++        else
++          pass ();
+       }
+     CHK_ENTITY_TYPE (_3dsolid, 3DSOLID, end_marker, BL);
+   }
+diff --git a/test/unit-testing/body.c b/test/unit-testing/body.c
+index a22946a..81c334d 100644
+--- a/test/unit-testing/body.c
++++ b/test/unit-testing/body.c
+@@ -150,7 +150,12 @@ api_process (dwg_object *obj)
+       CHK_ENTITY_TYPE (body, BODY, revision_major, BL);
+       CHK_ENTITY_TYPE (body, BODY, revision_minor1, BS);
+       CHK_ENTITY_TYPE (body, BODY, revision_minor2, BS);
+-      CHK_ENTITY_TYPE (body, BODY, revision_bytes, TV);
++      /* an array: compare the contents, not the addresses */
++      if (!dwg_dynapi_entity_value (body, "BODY", "revision_bytes", &revision_bytes, NULL)
++          || memcmp (revision_bytes, body->revision_bytes, sizeof (revision_bytes)))
++        fail ("BODY.revision_bytes");
++      else
++        pass ();
+       CHK_ENTITY_TYPE (body, BODY, end_marker, BL);
+     }
+ 
+diff --git a/test/unit-testing/region.c b/test/unit-testing/region.c
+index 539683b..fcd2387 100644
+--- a/test/unit-testing/region.c
++++ b/test/unit-testing/region.c
+@@ -155,7 +155,12 @@ api_process (dwg_object *obj)
+       CHK_ENTITY_TYPE (region, REGION, revision_major, BL);
+       CHK_ENTITY_TYPE (region, REGION, revision_minor1, BS);
+       CHK_ENTITY_TYPE (region, REGION, revision_minor2, BS);
+-      CHK_ENTITY_TYPE (region, REGION, revision_bytes, TV);
++      /* an array: compare the contents, not the addresses */
++      if (!dwg_dynapi_entity_value (region, "REGION", "revision_bytes", &revision_bytes, NULL)
++          || memcmp (revision_bytes, region->revision_bytes, sizeof (revision_bytes)))
++        fail ("REGION.revision_bytes");
++      else
++        pass ();
+       CHK_ENTITY_TYPE (region, REGION, end_marker, BL);
+     }
+ 
+-- 
+2.43.0
+

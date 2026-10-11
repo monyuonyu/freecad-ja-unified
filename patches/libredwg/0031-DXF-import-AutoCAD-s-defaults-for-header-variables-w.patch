@@ -1,0 +1,59 @@
+From eb0dccd77cdcb284d6675aad444ea4bb176805eb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:35:34 +0900
+Subject: [PATCH 31/37] DXF import: AutoCAD's defaults for header variables
+ where 0 is invalid
+
+DXF may omit any header variable. FreeCAD's DXF has no $TEXTSIZE and
+$DIMTXT; FreeCAD's DWG export (dxf2dwg) had text heights 0, which ACadSharp
+rejects. TEXTSIZE, DIMTXT (acad or acadiso with MEASUREMENT 1), LTSCALE,
+CELTSCALE, DIMLFAC, DIMTFAC, DIMALTF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 203d24f..52c7dba 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -1813,6 +1813,35 @@ dxf_fixup_header (Bit_Chain *dat, Dwg_Data *dwg)
+   else
+     dxf_set_default_DWGCODEPAGE (dat, dwg);
+ 
++  // DXF may omit any header variable; those where 0 is invalid get
++  // AutoCAD's defaults (acad.dwt, or acadiso.dwt with MEASUREMENT 1).
++  // FreeCAD's DXF has no $TEXTSIZE nor $DIMTXT: the DWG had text heights 0,
++  // which ACadSharp rejects ("TextHeight must be greater than zero").
++  {
++    const int metric = vars->MEASUREMENT == 1;
++#  define DXF_DEFAULT_IF_ZERO(var, imperial, iso)                             \
++    if (vars->var <= 0.0)                                                     \
++      {                                                                       \
++        vars->var = metric ? (iso) : (imperial);                              \
++        LOG_TRACE ("HEADER.%s => %g (default)\n", #var, vars->var);           \
++      }
++    DXF_DEFAULT_IF_ZERO (TEXTSIZE, 0.2, 2.5)
++    DXF_DEFAULT_IF_ZERO (DIMTXT, 0.18, 2.5)
++#  define DXF_ONE_IF_ZERO(var)                                                \
++    if (vars->var <= 0.0)                                                     \
++      {                                                                       \
++        vars->var = 1.0;                                                      \
++        LOG_TRACE ("HEADER.%s => 1 (default)\n", #var);                       \
++      }
++    DXF_ONE_IF_ZERO (LTSCALE)
++    DXF_ONE_IF_ZERO (CELTSCALE)
++    DXF_ONE_IF_ZERO (DIMLFAC)
++    DXF_ONE_IF_ZERO (DIMTFAC)
++#  undef DXF_ONE_IF_ZERO
++    DXF_DEFAULT_IF_ZERO (DIMALTF, 25.4, 0.03937007874016)
++#  undef DXF_DEFAULT_IF_ZERO
++  }
++
+   if (_verp)
+     {
+       hdr->dwg_version = _verp->dwg_version;
+-- 
+2.43.0
+

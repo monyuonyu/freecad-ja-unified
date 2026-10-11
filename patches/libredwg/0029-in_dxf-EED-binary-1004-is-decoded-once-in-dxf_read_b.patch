@@ -1,0 +1,54 @@
+From f2043cc06c09ab17791e0b99bb1bd60385e4e827 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:28:12 +0900
+Subject: [PATCH 29/37] in_dxf: EED binary (1004) is decoded once, in
+ dxf_read_binary
+
+add_eed decoded the hex again ("Invalid hex string member"), and lost the
+EED binary data of every object of ASCII DXF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 18 +++++-------------
+ 1 file changed, 5 insertions(+), 13 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 83c800c..203d24f 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -2206,9 +2206,10 @@ add_eed (Dwg_Object *restrict obj, const char *restrict name,
+     case 4:
+       {
+         // BINARY
+-        const size_t blen = (dwg->opts & DWG_OPTS_DXFB)
+-                                ? pair->value.s.len
+-                                : strlen (pair->value.s.ptr) >> 1;
++        // dxf_read_binary has decoded the hex already, also for ASCII DXF
++        // (decoding it again failed: "Invalid hex string member", and the
++        // EED binary data of every object was lost)
++        const size_t blen = pair->value.s.len;
+         const size_t cblen = blen > 0xff ? 0xff : blen;
+         if (blen > 0xff)
+           LOG_WARN ("EED binary data too long: %" PRIuSIZE " > 255, "
+@@ -2227,17 +2228,8 @@ add_eed (Dwg_Object *restrict obj, const char *restrict name,
+         eed[i].data->code = code; // 1004
+         eed[i].data->u.eed_4.length = cblen & 0xFF;
+         LOG_TRACE ("binary[%" PRIuSIZE "]: ", cblen);
+-        if (dwg->opts & DWG_OPTS_DXFB)
++        if (cblen)
+           memcpy (eed[i].data->u.eed_4.data, pair->value.s.ptr, cblen);
+-        else
+-          {
+-            size_t read;
+-            if ((read = in_hex2bin (eed[i].data->u.eed_4.data,
+-                                    pair->value.s.ptr, cblen)
+-                        != cblen))
+-              LOG_ERROR ("in_hex2bin read only %" PRIuSIZE " of %" PRIuSIZE,
+-                         read, cblen);
+-          }
+         eed[i].size += size;
+       }
+       break;
+-- 
+2.43.0
+

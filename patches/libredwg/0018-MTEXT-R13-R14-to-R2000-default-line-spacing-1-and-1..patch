@@ -1,0 +1,37 @@
+From 7f6ff68df74467b72512cbee77ace58e0329f99c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 10:20:33 +0900
+Subject: [PATCH 18/37] MTEXT: R13/R14 to R2000+, default line spacing 1 and
+ 1.0, not 0
+
+R13/R14 MTEXT has no line spacing fields; writing them as 0 collapsed the
+lines of every MTEXT (55 in sample_AC1014 and example_r14 written as R2000).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index a83162d..51d44c1 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -2965,6 +2965,15 @@ DWG_ENTITY (MTEXT)
+ 
+   SINCE (R_2000b)
+     {
++      // R13/R14 have no line spacing: AutoCAD's defaults, at least 1 (73)
++      // and 1.0 (44). 0.0 collapsed the lines.
++      IF_ENCODE_FROM_EARLIER {
++        if (FIELD_VALUE (linespace_factor) == 0.0)
++          {
++            FIELD_VALUE (linespace_style) = 1;
++            FIELD_VALUE (linespace_factor) = 1.0;
++          }
++      }
+       FIELD_BS (linespace_style, 73);
+       FIELD_BD (linespace_factor, 44);
+       FIELD_B (unknown_b0, 0);
+-- 
+2.43.0
+

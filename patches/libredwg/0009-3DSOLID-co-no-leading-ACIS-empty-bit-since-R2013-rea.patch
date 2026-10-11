@@ -1,0 +1,145 @@
+From b62130e73a145f9e4a92a5c677c2a1388c8297f6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 08:52:08 +0900
+Subject: [PATCH 09/37] 3DSOLID & co: no leading ACIS empty bit since R2013,
+ read the R2007+ unknown BL
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/dwg.h         |  1 +
+ src/dwg_spec_shared.h | 14 ++++++++++++++
+ src/dynapi.c          | 18 ++++++++++++++++++
+ 3 files changed, 33 insertions(+)
+
+diff --git a/include/dwg.h b/include/dwg.h
+index e18eeea..5e85895 100644
+--- a/include/dwg.h
++++ b/include/dwg.h
+@@ -3006,6 +3006,7 @@ typedef struct _dwg_3DSOLID_material
+   BITCODE_BS revision_minor2;                                           \
+   BITCODE_RC revision_bytes[9];                                         \
+   BITCODE_BL end_marker;                                                \
++  BITCODE_BL unknown_2007; /* R2007+, before the R2013 revision guid */   \
+   BITCODE_H history_id;                                                 \
+   BITCODE_B has_revision_guid;                                          \
+   BITCODE_B acis_empty_bit
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index f53f3c1..50761b7 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -184,6 +184,13 @@ decode_3dsolid (Bit_Chain *dat, Bit_Chain *hdl_dat, Dwg_Object *restrict obj,
+   int acis_data_idx;
+   int error = 0;
+ 
++  // R2013+: the SAB is in the AcDsPrototype_1b DataStorage section, and the
++  // entity starts directly with the wireframe data, without ACIS empty bit.
++  SINCE (R_2013b)
++    {
++      FIELD_VALUE (acis_empty) = 1;
++      return error;
++    }
+   FIELD_B (acis_empty, 290);
+   if (dat->byte >= dat->size)
+     return DWG_ERR_VALUEOUTOFBOUNDS;
+@@ -537,6 +544,13 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+         END_REPEAT (materials);                                               \
+       }                                                                       \
+     }                                                                         \
++  /* ODA 20.4.41 "R2007+: Unknown BL". Missing it shifted the R2013 */       \
++  /* revision guid by 2 bits: AutoCAD's R2018 3DSOLID ends exactly after */  \
++  /* end_marker with it. */                                                   \
++  SINCE (R_2007a)                                                             \
++  {                                                                           \
++    FIELD_BL (unknown_2007, 0);                                               \
++  }                                                                           \
+   SINCE (R_2013b)                                                             \
+   {                                                                           \
+     FIELD_B (has_revision_guid, 0);                                           \
+diff --git a/src/dynapi.c b/src/dynapi.c
+index 98fa7a9..d29b6b9 100644
+--- a/src/dynapi.c
++++ b/src/dynapi.c
+@@ -934,6 +934,8 @@ static const Dwg_DYNAPI_field _dwg_3DSOLID_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_3DSOLID, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_3DSOLID, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_3DSOLID, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_3DSOLID, has_revision_guid),
+@@ -1784,6 +1786,8 @@ static const Dwg_DYNAPI_field _dwg_EXTRUDEDSURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_EXTRUDEDSURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_EXTRUDEDSURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_EXTRUDEDSURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_EXTRUDEDSURFACE, has_revision_guid),
+@@ -2432,6 +2436,8 @@ static const Dwg_DYNAPI_field _dwg_LOFTEDSURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_LOFTEDSURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_LOFTEDSURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_LOFTEDSURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_LOFTEDSURFACE, has_revision_guid),
+@@ -2898,6 +2904,8 @@ static const Dwg_DYNAPI_field _dwg_NURBSURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_NURBSURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_NURBSURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_NURBSURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_NURBSURFACE, has_revision_guid),
+@@ -3020,6 +3028,8 @@ static const Dwg_DYNAPI_field _dwg_PLANESURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_PLANESURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_PLANESURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_PLANESURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_PLANESURFACE, has_revision_guid),
+@@ -3410,6 +3420,8 @@ static const Dwg_DYNAPI_field _dwg_REVOLVEDSURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_REVOLVEDSURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_REVOLVEDSURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_REVOLVEDSURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_REVOLVEDSURFACE, has_revision_guid),
+@@ -3672,6 +3684,8 @@ static const Dwg_DYNAPI_field _dwg_SWEPTSURFACE_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_SWEPTSURFACE, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_entity_SWEPTSURFACE, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_entity_SWEPTSURFACE, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_entity_SWEPTSURFACE, has_revision_guid),
+@@ -4409,6 +4423,8 @@ static const Dwg_DYNAPI_field _dwg_ACSH_BREP_CLASS_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_object_ACSH_BREP_CLASS, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_object_ACSH_BREP_CLASS, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_object_ACSH_BREP_CLASS, history_id),
+     1,0,0, 350 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_object_ACSH_BREP_CLASS, has_revision_guid),
+@@ -5125,6 +5141,8 @@ static const Dwg_DYNAPI_field _dwg_ASSOCASMBODYACTIONPARAM_fields[] = {
+     0,0,0, 0 },
+   { "end_marker",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_object_ASSOCASMBODYACTIONPARAM, end_marker),
+     0,0,0, 0 },
++  { "unknown_2007",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_object_ASSOCASMBODYACTIONPARAM, unknown_2007),
++    0,0,0, 0 },
+   { "history_id",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_object_ASSOCASMBODYACTIONPARAM, history_id),
+     1,0,0, 0 },
+   { "has_revision_guid",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_object_ASSOCASMBODYACTIONPARAM, has_revision_guid),
+-- 
+2.43.0
+

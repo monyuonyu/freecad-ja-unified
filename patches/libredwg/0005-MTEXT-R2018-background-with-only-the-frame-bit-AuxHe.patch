@@ -1,0 +1,52 @@
+From fe766914945731774594dc65be7babfc9eee45d6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 08:50:41 +0900
+Subject: [PATCH 05/37] MTEXT: R2018 background with only the frame bit;
+ AuxHeader zero_7/8 for R2000
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/auxheader.spec | 9 +++++----
+ src/dwg.spec       | 6 +++++-
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/auxheader.spec b/src/auxheader.spec
+index 3c1254b..ee2eb35 100644
+--- a/src/auxheader.spec
++++ b/src/auxheader.spec
+@@ -65,10 +65,11 @@
+   FIELD_RL (numsaves_4, 0);
+   FIELD_RL (zero_5, 0);
+   FIELD_RL (zero_6, 0);
+-  SINCE (R_2004a) {
+-    FIELD_RL (zero_7, 0);
+-    FIELD_RL (zero_8, 0);
+-  }
++  // ODA 27 has these two for all versions: AutoCAD's R2000 AuxHeader is
++  // 123 bytes. Without them R2000 output had a 115-byte AuxHeader, and other
++  // readers (ACadSharp) read past its end.
++  FIELD_RL (zero_7, 0);
++  FIELD_RL (zero_8, 0);
+   SINCE (R_2018) {
+     FIELD_VECTOR_INL (zero_18, RS, 3, 0);
+   }
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 1073a94..62d6d2e 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -2928,7 +2928,11 @@ DWG_ENTITY (MTEXT)
+   SINCE (R_2004a)
+     {
+       FIELD_BL0 (bg_fill_flag, 90);
+-      if (FIELD_VALUE (bg_fill_flag) & (dat->version <= R_2018 ? 1 : 16))
++      // R2018+ also has the scale, color and transparency with only 0x10
++      // (text frame) set, as ACadSharp reads them. Missing them misaligned
++      // the rest of the MTEXT.
++      if ((FIELD_VALUE (bg_fill_flag) & 1)
++          || (dat->version >= R_2018b && (FIELD_VALUE (bg_fill_flag) & 0x10)))
+         {
+           FIELD_BD (bg_fill_scale, 45); // def: 1.5
+           FIELD_CMC (bg_fill_color, 63);
+-- 
+2.43.0
+

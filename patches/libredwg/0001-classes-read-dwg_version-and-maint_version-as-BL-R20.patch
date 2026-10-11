@@ -1,0 +1,48 @@
+From 37a723c35c30041538398d0d77b1ce8b4e35f7bc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 08:49:49 +0900
+Subject: [PATCH 01/37] classes: read dwg_version and maint_version as BL
+ (R2004+), keep unknown_1
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/decode.c       | 6 +++---
+ src/decode_r2007.c | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/decode.c b/src/decode.c
+index c28e472..8eca837 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -2384,10 +2384,10 @@ read_2004_section_classes (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+                      dwg->dwg_class[i].item_class_id);
+ 
+           dwg->dwg_class[i].num_instances = bit_read_BL (&sec_dat);
+-          dwg->dwg_class[i].dwg_version = bit_read_BS (&sec_dat);
+-          dwg->dwg_class[i].maint_version = bit_read_BS (&sec_dat);
+-          dwg->dwg_class[i].unknown_1 = bit_read_BL (&sec_dat);
++          dwg->dwg_class[i].dwg_version = bit_read_BL (&sec_dat);
++          dwg->dwg_class[i].maint_version = bit_read_BL (&sec_dat);
+           dwg->dwg_class[i].unknown_1 = bit_read_BL (&sec_dat);
++          dwg->dwg_class[i].unknown_2 = bit_read_BL (&sec_dat);
+           LOG_TRACE ("num_instances:    %u\n",
+                      dwg->dwg_class[i].num_instances);
+           LOG_HANDLE ("dwg version:      %u (%u)\n",
+diff --git a/src/decode_r2007.c b/src/decode_r2007.c
+index 193a902..f9bdbbd 100644
+--- a/src/decode_r2007.c
++++ b/src/decode_r2007.c
+@@ -1573,8 +1573,8 @@ read_2007_section_classes (Bit_Chain *restrict dat, Dwg_Data *restrict dwg,
+           dwg->dwg_class[i].item_class_id = bit_read_BS (&sec_dat);
+ 
+           dwg->dwg_class[i].num_instances = bit_read_BL (&sec_dat); // DXF 91
+-          dwg->dwg_class[i].dwg_version = bit_read_BS (&sec_dat);
+-          dwg->dwg_class[i].maint_version = bit_read_BS (&sec_dat);
++          dwg->dwg_class[i].dwg_version = bit_read_BL (&sec_dat);
++          dwg->dwg_class[i].maint_version = bit_read_BL (&sec_dat);
+           dwg->dwg_class[i].unknown_1 = bit_read_BL (&sec_dat); // 0
+           dwg->dwg_class[i].unknown_2 = bit_read_BL (&sec_dat); // 0
+ 
+-- 
+2.43.0
+

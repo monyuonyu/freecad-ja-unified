@@ -1,0 +1,641 @@
+From 71f42b3a41294b0676a5dbaf04a013e1b1ee2348 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 09:31:32 +0900
+Subject: [PATCH 15/37] ATTRIB/ATTDEF: decode the R2018 embedded MTEXT of
+ multi-line attributes
+
+ODA 20.4.4: for mtext_type 2 or 4 "all fields of an embedded MTEXT
+object are written, starting from the Entmode". As ACadSharp
+readCommonAttData (readEntityMode + readMText without the common data),
+and measured on AutoCAD's R2018 sample_AC1032.dwg (ATTDEF 796, ATTRIB
+79D):
+
+- the common entity part has the ownerhandle (if entmode 0, written as
+  0), reactors, xdic, has_ds_data, a full ENC color (RGB before the
+  transparency), and the flags in the order ltype, material, shadow,
+  plotstyle (not as in the common entity data), with the LAYER, LTYPE,
+  MATERIAL, PLOTSTYLE and visualstyle handles.
+- the MTEXT has extents_height before extents_width, the bg fill
+  fields with 0x10 too, and the R2018 annotation fields incl. the
+  redundant ones and columns, as DWG_ENTITY (MTEXT).
+- the STYLE handle of the ATTRIB/ATTDEF comes before the embedded MTEXT
+  handles in the handle stream.
+- after the MTEXT: annotative_data_size, and if > 0 the data, the
+  registered application (annotative_style) and a BS (annotative_flag).
+
+Before, the MTEXT layer pointed to the STYLE Standard and the ATTRIB
+layer was wrong. Now the data stream ends exactly at the string stream
+(@106.7 and @137.7) and all handles point to LAYER 0, LTYPE ByLayer,
+MATERIAL ByLayer and STYLE Standard. dwgdiff against ACadSharp on the
+22 acadsharp samples: value differences 10 -> 0, nothing else changed.
+
+The fields are now written as mtext.<field> in JSON, which in_json
+reads back into the embedded struct (before, flat keys like ins_pt
+clashed with the ATTRIB fields). New struct fields ownerhandle,
+reactors, xdicobjhandle, ltype, material, plotstyle and the 3
+visualstyle handles (dynapi.c and dynapi.texi edited by hand,
+gen-dynapi.pl needs Convert::Binary::C).
+
+GEOPOSITIONMARKER uses the same macro and keeps its former trailing
+is_really_locked and annotative data; it is unverified, no sample.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ doc/dynapi.texi       |  18 +++
+ include/dwg.h         |  34 +++--
+ src/dwg.spec          |  35 ++++-
+ src/dwg2.spec         |   9 ++
+ src/dwg_spec_shared.h | 330 ++++++++++++++++++++++++++++--------------
+ src/dynapi.c          |  18 +++
+ 6 files changed, 322 insertions(+), 122 deletions(-)
+
+diff --git a/doc/dynapi.texi b/doc/dynapi.texi
+index ba6248c..4d42b05 100644
+--- a/doc/dynapi.texi
++++ b/doc/dynapi.texi
+@@ -13166,14 +13166,20 @@ H
+ 
+ @item entmode
+ BB
++@item ownerhandle
++H
+ @item num_reactors
+ BL
++@item reactors
++H*
+ @item has_ds_data
+ B
+ @item color
+ CMC
+ @item is_xdic_missing
+ B
++@item xdicobjhandle
++H
+ @item ltype_scale
+ BD
+ @item ltype_flags
+@@ -13196,6 +13202,18 @@ BS
+ RC
+ @item layer
+ H
++@item ltype
++H
++@item material
++H
++@item plotstyle
++H
++@item full_visualstyle
++H
++@item face_visualstyle
++H
++@item edge_visualstyle
++H
+ @item ins_pt
+ 3BD
+ @item extrusion
+diff --git a/include/dwg.h b/include/dwg.h
+index 5e85895..0870238 100644
+--- a/include/dwg.h
++++ b/include/dwg.h
+@@ -2166,12 +2166,16 @@ typedef struct _dwg_entity_TEXT
+  */
+ typedef struct _dwg_AcDbMTextObjectEmbedded
+ {
+-  /* common fields */
++  /* common entity fields, starting from the entmode. R2018+: the order
++     differs from the common entity data, see dwg_spec_shared.h */
+   BITCODE_BB entmode;      	/*<! DXF 70 */
++  BITCODE_H ownerhandle;        /* only if entmode == 0, can be 0 */
+   BITCODE_BL num_reactors;
++  BITCODE_H *reactors;
+   BITCODE_B has_ds_data;
+-  BITCODE_CMC color;
++  BITCODE_CMC color;            /* ENC */
+   BITCODE_B is_xdic_missing;
++  BITCODE_H xdicobjhandle;
+   BITCODE_BD ltype_scale;
+   BITCODE_BB ltype_flags;
+   BITCODE_BB plotstyle_flags;
+@@ -2183,6 +2187,12 @@ typedef struct _dwg_AcDbMTextObjectEmbedded
+   BITCODE_BS invisible;
+   BITCODE_RC linewt;
+   BITCODE_H layer;
++  BITCODE_H ltype;              /* if ltype_flags == 3 */
++  BITCODE_H material;           /* if material_flags == 3 */
++  BITCODE_H plotstyle;          /* if plotstyle_flags == 3 */
++  BITCODE_H full_visualstyle;
++  BITCODE_H face_visualstyle;
++  BITCODE_H edge_visualstyle;
+   /* MTEXT fields. See there. */
+   BITCODE_3BD ins_pt; 		/*!< DXF 10 */
+   BITCODE_3BD extrusion; 	/*!< DXF 210 */
+@@ -2254,11 +2264,11 @@ typedef struct _dwg_entity_ATTRIB
+   BITCODE_H style;
+   BITCODE_RC mtext_type;    /* R2018+ */
+   Dwg_AcDbMTextObjectEmbedded mtext;
+-  BITCODE_B is_really_locked;      	/*<! DXF 70 */
+-  BITCODE_BS annotative_data_size;/* R2018+ */
+-  BITCODE_RC* annotative_data;    /* R2018+ */
+-  BITCODE_BS annotative_flag;     /* R2018+ */
+-  BITCODE_H  annotative_style;    /* R2018+ */
++  BITCODE_B is_really_locked;      	/*<! unused */
++  BITCODE_BS annotative_data_size;/* R2018+, if mtext_type > 1 */
++  BITCODE_RC* annotative_data;    /* R2018+, if annotative_data_size > 0 */
++  BITCODE_BS annotative_flag;     /* R2018+, unknown BS, 0 */
++  BITCODE_H  annotative_style;    /* R2018+, the registered application */
+ } Dwg_Entity_ATTRIB;
+ 
+ /** \ref Dwg_Entity_ATTDEF
+@@ -2297,11 +2307,11 @@ typedef struct _dwg_entity_ATTDEF
+   BITCODE_H style;
+   BITCODE_RC mtext_type;          /* R2018+ */
+   Dwg_AcDbMTextObjectEmbedded mtext;
+-  BITCODE_B is_really_locked;      	/*<! DXF 70 */
+-  BITCODE_BS annotative_data_size;/* R2018+ */
+-  BITCODE_RC* annotative_data;    /* R2018+ */
+-  BITCODE_BS annotative_flag;    /* R2018+ */
+-  BITCODE_H  annotative_style;    /* R2018+ */
++  BITCODE_B is_really_locked;      	/*<! unused */
++  BITCODE_BS annotative_data_size;/* R2018+, if mtext_type > 1 */
++  BITCODE_RC* annotative_data;    /* R2018+, if annotative_data_size > 0 */
++  BITCODE_BS annotative_flag;     /* R2018+, unknown BS, 0 */
++  BITCODE_H  annotative_style;    /* R2018+, the registered application */
+   // BITCODE_BS num_secondary_atts;  /* R2018+ TODO */
+   // BITCODE_H *secondary_atts;
+ 
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 31f31b4..1e5b62e 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -365,7 +365,16 @@ DWG_ENTITY (ATTRIB)
+     {
+       FIELD_RC (mtext_type, 70); // 1=single line, 2=multi line attrib, 4=multi line attdef
+       if (FIELD_VALUE (mtext_type) > 1)
+-        CALL_SUBCLASS (_obj, ATTRIB, AcDbMTextObjectEmbedded);
++        {
++#if defined(IS_DECODER) || defined(IS_ENCODER)
++          // The handle stream has the STYLE of the ATTRIB first, then the
++          // handles of the embedded MTEXT (as ACadSharp, and AutoCAD's
++          // files: else the MTEXT layer is the STYLE).
++          FIELD_HANDLE (style, 5, 0);
++#endif
++          CALL_SUBCLASS (_obj, ATTRIB, AcDbMTextObjectEmbedded);
++          AcDbAttrib_annotative_fields;
++        }
+     }
+ 
+   SINCE (R_13b1) {
+@@ -387,7 +396,11 @@ DWG_ENTITY (ATTRIB)
+   }
+   COMMON_ENTITY_HANDLE_DATA;
+   SINCE (R_13b1) {
+-    FIELD_HANDLE (style, 5, 0); // unexpected here in DXF
++#if defined(IS_DECODER) || defined(IS_ENCODER)
++    // R2018+ multi-line: already before the embedded MTEXT
++    if (!(dat->version >= R_2018b && FIELD_VALUE (mtext_type) > 1))
++#endif
++      FIELD_HANDLE (style, 5, 0); // unexpected here in DXF
+   }
+ 
+ DWG_ENTITY_END
+@@ -583,7 +596,14 @@ DWG_ENTITY (ATTDEF)
+       // 1=single line, 2=multi line attrib, 4=multi line attdef
+       FIELD_RC (mtext_type, 0); // 70
+       if (FIELD_VALUE (mtext_type) > 1)
+-        CALL_SUBCLASS (_obj, ATTDEF, AcDbMTextObjectEmbedded);
++        {
++#if defined(IS_DECODER) || defined(IS_ENCODER)
++          // The STYLE of the ATTDEF comes first, as with ATTRIB
++          FIELD_HANDLE (style, 5, 0);
++#endif
++          CALL_SUBCLASS (_obj, ATTDEF, AcDbMTextObjectEmbedded);
++          AcDbAttrib_annotative_fields;
++        }
+     }
+   SINCE (R_13b1) {
+     FIELD_T (tag, 0);
+@@ -601,8 +621,13 @@ DWG_ENTITY (ATTDEF)
+   }
+ 
+   COMMON_ENTITY_HANDLE_DATA;
+-  SINCE (R_13b1)
+-    FIELD_HANDLE (style, 5, 0);
++  SINCE (R_13b1) {
++#if defined(IS_DECODER) || defined(IS_ENCODER)
++    // R2018+ multi-line: already before the embedded MTEXT
++    if (!(dat->version >= R_2018b && FIELD_VALUE (mtext_type) > 1))
++#endif
++      FIELD_HANDLE (style, 5, 0);
++  }
+ 
+ DWG_ENTITY_END
+ 
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 2e7dea3..7e45b37 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -3915,6 +3915,15 @@ DWG_ENTITY (GEOPOSITIONMARKER)
+   if (FIELD_VALUE (enable_frame_text)) {
+     DXF { FIELD_VALUE (ins_pt) = FIELD_VALUE (position); }
+     CALL_SUBCLASS (_obj, GEOPOSITIONMARKER, AcDbMTextObjectEmbedded);
++    // unverified, kept from the former AcDbMTextObjectEmbedded_fields
++    FIELD_B (is_really_locked, 0);
++    DXF {} else {
++      FIELD_BS (annotative_data_size, 70);
++      if (FIELD_VALUE (annotative_data_size) > 0)
++        {
++          FIELD_BINARY (annotative_data, FIELD_VALUE (annotative_data_size), 310);
++        }
++    }
+   }
+   COMMON_ENTITY_HANDLE_DATA;
+ DWG_ENTITY_END
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index 50761b7..86dced8 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -672,112 +672,232 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+ #  define JSON_END_REPEAT(f)  END_REPEAT (f)
+ #endif
+ 
+-// R2010+ Subclass of ATTRIB, ATTDEF, GEOPOSITIONMARKER.
+-// Similar to MTEXTOBJECTCONTEXTDATA?
+-// TODO: this really should use dwg_##action##_entity +
+-// dwg_##action##_MTEXT_private
++// R2018+ embedded MTEXT of a multi-line ATTRIB or ATTDEF (mtext_type 2 or 4),
++// also used by GEOPOSITIONMARKER.
++// ODA 20.4.4: "MTEXT fields: Here all fields of an embedded MTEXT object are
++// written, starting from the Entmode (entity mode). The owner handle can be
++// 0. For DXF this is marked with <101, Embedded Object>, followed by the MTEXT
++// fields, starting with the Insertion point (group 10)."
++// As ACadSharp readCommonAttData: readEntityMode, then readMText without the
++// common entity data. Only the R2007+ layout of the common entity data, as
++// only R2013+ files have it. The handles are read in place, i.e. after the
++// common entity handles and the STYLE of the ATTRIB/ATTDEF (see there).
++// Verified on AutoCAD's R2018 sample_AC1032.dwg (ACadSharp samples): the
++// data stream ends exactly at the string stream, and all handles point to the
++// expected LAYER, LTYPE, MATERIAL and STYLE objects.
+ // clang-format off
+-#define AcDbMTextObjectEmbedded_fields                       \
+-  SUB_FIELD_BB (mtext, entmode, 0);                          \
+-  SUB_FIELD_BL (mtext, num_reactors, 0);                     \
+-  SUB_FIELD_B (mtext, is_xdic_missing, 0);                   \
+-  SUB_FIELD_B (mtext, has_ds_data, 0);                       \
+-  SUB_FIELD_BSx (mtext, color.raw, 0);                       \
+-  SUB_FIELD_BD (mtext, ltype_scale, 48);                     \
+-  SUB_FIELD_BB (mtext, ltype_flags, 0);                      \
+-  SUB_FIELD_BB (mtext, plotstyle_flags, 0);                  \
+-  SUB_FIELD_BB (mtext, material_flags, 0);                   \
+-  SUB_FIELD_RC (mtext, shadow_flags, 0);                     \
+-  SUB_FIELD_B (mtext, has_full_visualstyle, 0);              \
+-  SUB_FIELD_B (mtext, has_face_visualstyle, 0);              \
+-  SUB_FIELD_B (mtext, has_edge_visualstyle, 0);              \
+-  SUB_FIELD_BS (mtext, invisible, 60);                       \
+-  SUB_FIELD_RC (mtext, linewt, 370);                         \
+-  SUB_FIELD_HANDLE (mtext, layer, 5, 8);                     \
+-  \
+-  DXF { VALUE_TFF ("Embedded Object", 101); }                \
+-  SUB_FIELD_3BD (mtext, ins_pt, 10);                         \
+-  SUB_FIELD_3BD (mtext, extrusion, 210);                     \
+-  SUB_FIELD_3BD (mtext, x_axis_dir, 11);                     \
+-  DXF {                                                      \
+-    SUB_FIELD_BD (mtext, text_height, 40);                   \
+-    SUB_FIELD_BD (mtext, rect_width, 40);                    \
+-    SUB_FIELD_BD (mtext, rect_height, 41);                   \
+-  } else {                                                   \
+-    SUB_FIELD_BD (mtext, rect_width, 40);                    \
+-    SUB_FIELD_BD (mtext, rect_height, 41);                   \
+-    SUB_FIELD_BD (mtext, text_height, 40);                   \
+-  }                                                          \
+-  SUB_FIELD_BS (mtext, attachment, 71);                      \
+-  SUB_FIELD_BS (mtext, flow_dir, 72);                        \
+-  SUB_FIELD_BD (mtext, extents_width, 42);                   \
+-  SUB_FIELD_BD (mtext, extents_height, 43);                  \
+-  SUB_FIELD_T (mtext, text, 1);                              \
+-  SUB_FIELD_HANDLE0 (mtext, style, 5, 7);                    \
+-  SUB_FIELD_BS (mtext, linespace_style, 73);                 \
+-  SUB_FIELD_BD (mtext, linespace_factor, 44);                \
+-  SUB_FIELD_B (mtext, unknown_b0, 0);                        \
+-  SUB_FIELD_BL0 (mtext, bg_fill_flag, 90);                   \
+-  if (SUB_FIELD_VALUE (mtext, bg_fill_flag) &                \
+-      (dat->version <= R_2018 ? 1 : 16))                     \
+-    {                                                        \
+-      SUB_FIELD_BD (mtext, bg_fill_scale, 45);               \
+-      SUB_FIELD_CMC (mtext, bg_fill_color, 63);              \
+-      SUB_FIELD_BL (mtext, bg_fill_trans, 441);              \
+-    }                                                        \
+-  SUB_FIELD_B (mtext, is_not_annotative, 0);                 \
+-  /* What about the duplicate MTEXT AnnotScaleObject         \
+-     fields here?  */                                        \
+-  FIELD_B (is_really_locked, 0);                             \
+-  DXF                                                        \
+-  {                                                          \
+-    SUB_FIELD_BL (mtext, column_type, 71);                   \
+-    SUB_VALUEOUTOFBOUNDS (mtext, column_type, 2)             \
+-    if (SUB_FIELD_VALUE (mtext, column_type))                \
+-      {                                                      \
+-        SUB_FIELD_BL (mtext, num_column_heights, 72);        \
+-        SUB_FIELD_BD (mtext, column_width, 44);              \
+-        SUB_FIELD_BD (mtext, gutter, 45);                    \
+-        SUB_FIELD_B (mtext, auto_height, 73);                \
+-        SUB_FIELD_B (mtext, flow_reversed, 74);              \
+-        if (!SUB_FIELD_VALUE (mtext, auto_height)            \
+-            && SUB_FIELD_VALUE (mtext, column_type) == 2)    \
+-          {                                                  \
+-            SUB_FIELD_VECTOR (mtext, column_heights, BD,     \
+-                              num_column_heights, 46);       \
+-          }                                                  \
+-      }                                                      \
+-    }                                                        \
+-  else                                                       \
+-    {                                                        \
+-      FIELD_BS (annotative_data_size, 70);                   \
+-      if (FIELD_VALUE (annotative_data_size) > 0)            \
+-        {                                                    \
+-          FIELD_BINARY(annotative_data,                      \
+-            FIELD_VALUE (annotative_data_size), 310);        \
+-        }                                                    \
+-    }
+-
+-// FIXME
+-#if 0
+-        SUB_FIELD_BL (mtext, column_type, 71);               \
+-        SUB_VALUEOUTOFBOUNDS (mtext, column_type, 2)         \
+-        if (SUB_FIELD_VALUE (mtext, column_type))            \
+-          {                                                  \
+-            SUB_FIELD_BL (mtext, num_column_heights, 72);    \
+-            SUB_FIELD_BD (mtext, column_width, 44);          \
+-            SUB_FIELD_BD (mtext, gutter, 45);                \
+-            SUB_FIELD_B (mtext, auto_height, 73);            \
+-            SUB_FIELD_B (mtext, flow_reversed, 74);          \
+-            if (!SUB_FIELD_VALUE (mtext, auto_height) &&     \
+-                 SUB_FIELD_VALUE (mtext, column_type) == 2)  \
+-              {                                              \
+-                SUB_FIELD_VECTOR (mtext, column_heights, BD, \
+-                                  num_column_heights, 46);   \
+-              }                                              \
+-            }                                                \
+-        FIELD_BS (annotative_flag, 0);
+-#endif
++#define AcDbMTextObjectEmbedded_fields                                        \
++  DXF {                                                                       \
++    VALUE_TFF ("Embedded Object", 101);                                       \
++    FIELD_3BD (mtext.ins_pt, 10);                                             \
++    FIELD_BD (mtext.text_height, 40);                                         \
++    FIELD_BD (mtext.rect_width, 41);                                          \
++    FIELD_BD (mtext.rect_height, 46);                                         \
++    FIELD_BS (mtext.attachment, 71);                                          \
++    FIELD_BS (mtext.flow_dir, 72);                                            \
++    FIELD_T (mtext.text, 1);                                                  \
++    FIELD_HANDLE0 (mtext.style, 5, 7);                                        \
++    FIELD_BS (mtext.linespace_style, 73);                                     \
++    FIELD_BD (mtext.linespace_factor, 44);                                    \
++    FIELD_3BD (mtext.x_axis_dir, 11);                                         \
++    FIELD_BE (mtext.extrusion, 210);                                          \
++  }                                                                           \
++  else                                                                        \
++  {                                                                           \
++    /* common entity data, from the entmode */                               \
++    FIELD_BB (mtext.entmode, 0);                                              \
++    if (FIELD_VALUE (mtext.entmode) == 0)                                     \
++      {                                                                       \
++        FIELD_HANDLE (mtext.ownerhandle, 4, 0);                               \
++      }                                                                       \
++    FIELD_BL (mtext.num_reactors, 0);                                         \
++    if (FIELD_VALUE (mtext.num_reactors) > 10000)                             \
++      {                                                                       \
++        LOG_ERROR ("Invalid mtext.num_reactors " FORMAT_BL,                   \
++                   FIELD_VALUE (mtext.num_reactors));                         \
++        DECODER { FIELD_VALUE (mtext.num_reactors) = 0; }                     \
++        return DWG_ERR_VALUEOUTOFBOUNDS;                                      \
++      }                                                                       \
++    HANDLE_VECTOR (mtext.reactors, mtext.num_reactors, 4, 0);                 \
++    FIELD_B (mtext.is_xdic_missing, 0);                                       \
++    if (!FIELD_VALUE (mtext.is_xdic_missing))                                 \
++      {                                                                       \
++        FIELD_HANDLE (mtext.xdicobjhandle, 3, 0);                             \
++      }                                                                       \
++    FIELD_B (mtext.has_ds_data, 0);                                           \
++    /* ENC, as in common_entity_data.spec: RGB before the transparency */    \
++    JSON {                                                                    \
++      FIELD_CMC (mtext.color, 0);                                             \
++    }                                                                         \
++    else                                                                      \
++    {                                                                         \
++      ENCODER {                                                               \
++        _obj->mtext.color.raw = (BITCODE_BS)((_obj->mtext.color.flag << 8)   \
++                                     | (_obj->mtext.color.index & 0x1ff));    \
++      }                                                                       \
++      FIELD_BSx (mtext.color.raw, 0);                                         \
++      DECODER {                                                               \
++        _obj->mtext.color.flag = _obj->mtext.color.raw >> 8;                  \
++        _obj->mtext.color.index = _obj->mtext.color.raw & 0x1ff;              \
++      }                                                                       \
++      if ((_obj->mtext.color.flag & 0x80) && !(_obj->mtext.color.flag & 0x40)) \
++        {                                                                     \
++          FIELD_BLx (mtext.color.rgb, 0);                                     \
++        }                                                                     \
++      if (_obj->mtext.color.flag & 0x20)                                      \
++        {                                                                     \
++          ENCODER {                                                           \
++            _obj->mtext.color.alpha_raw                                       \
++                = _obj->mtext.color.alpha_type << 24 | _obj->mtext.color.alpha; \
++          }                                                                   \
++          FIELD_BLx (mtext.color.alpha_raw, 0);                               \
++          DECODER {                                                           \
++            _obj->mtext.color.alpha_type = _obj->mtext.color.alpha_raw >> 24; \
++            _obj->mtext.color.alpha = _obj->mtext.color.alpha_raw & 0xFF;     \
++          }                                                                   \
++        }                                                                     \
++      if (_obj->mtext.color.flag & 0x40)                                      \
++        {                                                                     \
++          FIELD_HANDLE (mtext.color.handle, 0, 0);                            \
++        }                                                                     \
++      if ((_obj->mtext.color.flag & 0x41) == 0x41)                            \
++        {                                                                     \
++          FIELD_T (mtext.color.name, 0);                                      \
++        }                                                                     \
++      if ((_obj->mtext.color.flag & 0x42) == 0x42)                            \
++        {                                                                     \
++          FIELD_T (mtext.color.book_name, 0);                                 \
++        }                                                                     \
++    }                                                                         \
++    FIELD_BD1 (mtext.ltype_scale, 0);                                         \
++    /* Not the order of the common entity data: material and shadow before  \
++       the plotstyle, as ACadSharp readEntityMode. AutoCAD writes           \
++       ltype_flags = material_flags = 3 with LTYPE and MATERIAL ByLayer. */ \
++    FIELD_BB (mtext.ltype_flags, 0);                                          \
++    FIELD_BB (mtext.material_flags, 0);                                       \
++    FIELD_RC (mtext.shadow_flags, 0);                                         \
++    FIELD_BB (mtext.plotstyle_flags, 0);                                      \
++    FIELD_B (mtext.has_full_visualstyle, 0);                                  \
++    FIELD_B (mtext.has_face_visualstyle, 0);                                  \
++    FIELD_B (mtext.has_edge_visualstyle, 0);                                  \
++    FIELD_BS (mtext.invisible, 0);                                            \
++    FIELD_RC (mtext.linewt, 0);                                               \
++    FIELD_HANDLE (mtext.layer, 5, 0);                                         \
++    if (FIELD_VALUE (mtext.ltype_flags) == 3)                                 \
++      {                                                                       \
++        FIELD_HANDLE (mtext.ltype, 5, 0);                                     \
++      }                                                                       \
++    if (FIELD_VALUE (mtext.material_flags) == 3)                              \
++      {                                                                       \
++        FIELD_HANDLE (mtext.material, 5, 0);                                  \
++      }                                                                       \
++    if (FIELD_VALUE (mtext.plotstyle_flags) == 3)                             \
++      {                                                                       \
++        FIELD_HANDLE (mtext.plotstyle, 5, 0);                                 \
++      }                                                                       \
++    if (FIELD_VALUE (mtext.has_full_visualstyle))                             \
++      {                                                                       \
++        FIELD_HANDLE (mtext.full_visualstyle, 5, 0);                          \
++      }                                                                       \
++    if (FIELD_VALUE (mtext.has_face_visualstyle))                             \
++      {                                                                       \
++        FIELD_HANDLE (mtext.face_visualstyle, 5, 0);                          \
++      }                                                                       \
++    if (FIELD_VALUE (mtext.has_edge_visualstyle))                             \
++      {                                                                       \
++        FIELD_HANDLE (mtext.edge_visualstyle, 5, 0);                          \
++      }                                                                       \
++    /* MTEXT data, as DWG_ENTITY (MTEXT) R2018+ */                            \
++    FIELD_3BD (mtext.ins_pt, 0);                                              \
++    FIELD_3BD (mtext.extrusion, 0);                                           \
++    FIELD_3BD (mtext.x_axis_dir, 0);                                          \
++    FIELD_BD (mtext.rect_width, 0);                                           \
++    FIELD_BD (mtext.rect_height, 0);                                          \
++    FIELD_BD (mtext.text_height, 0);                                          \
++    FIELD_BS (mtext.attachment, 0);                                           \
++    FIELD_BS (mtext.flow_dir, 0);                                             \
++    FIELD_BD (mtext.extents_height, 0);                                       \
++    FIELD_BD (mtext.extents_width, 0);                                        \
++    FIELD_T (mtext.text, 0);                                                  \
++    FIELD_HANDLE (mtext.style, 5, 0);                                         \
++    FIELD_BS (mtext.linespace_style, 0);                                      \
++    FIELD_BD (mtext.linespace_factor, 0);                                     \
++    FIELD_B (mtext.unknown_b0, 0);                                            \
++    FIELD_BL (mtext.bg_fill_flag, 0);                                         \
++    if ((FIELD_VALUE (mtext.bg_fill_flag) & 1)                                \
++        || (dat->version >= R_2018b                                           \
++            && (FIELD_VALUE (mtext.bg_fill_flag) & 0x10)))                    \
++      {                                                                       \
++        FIELD_BD (mtext.bg_fill_scale, 0);                                    \
++        FIELD_CMC (mtext.bg_fill_color, 0);                                   \
++        FIELD_BL (mtext.bg_fill_trans, 0);                                    \
++      }                                                                       \
++    FIELD_B (mtext.is_not_annotative, 0);                                     \
++    if (FIELD_VALUE (mtext.is_not_annotative))                                \
++      {                                                                       \
++        FIELD_BS (mtext.class_version, 0);                                    \
++        FIELD_B (mtext.default_flag, 0);                                      \
++        FIELD_HANDLE (mtext.appid, 5, 0);                                     \
++        /* redundant fields, as in MTEXT and ACadSharp */                     \
++        FIELD_BL (mtext.ignore_attachment, 0);                                \
++        FIELD_3BD (mtext.x_axis_dir, 0);                                      \
++        FIELD_3BD (mtext.ins_pt, 0);                                          \
++        FIELD_BD (mtext.rect_width, 0);                                       \
++        FIELD_BD (mtext.rect_height, 0);                                      \
++        FIELD_BD (mtext.extents_width, 0);                                    \
++        FIELD_BD (mtext.extents_height, 0);                                   \
++        /* end redundant fields */                                            \
++        FIELD_BS (mtext.column_type, 0);                                      \
++        if (FIELD_VALUE (mtext.column_type) > 2)                              \
++          {                                                                   \
++            LOG_ERROR ("Invalid mtext.column_type %u",                        \
++                       (unsigned)FIELD_VALUE (mtext.column_type));            \
++            DECODER { FIELD_VALUE (mtext.column_type) = 0; }                  \
++            return DWG_ERR_VALUEOUTOFBOUNDS;                                  \
++          }                                                                   \
++        if (FIELD_VALUE (mtext.column_type))                                  \
++          {                                                                   \
++            if (FIELD_VALUE (mtext.column_type) == 1)                         \
++              {                                                               \
++                FIELD_VALUE (mtext.num_column_heights) = 0;                   \
++                FIELD_BL (mtext.numfragments, 0);                             \
++              }                                                               \
++            else                                                              \
++              {                                                               \
++                FIELD_BL (mtext.num_column_heights, 0);                       \
++              }                                                               \
++            FIELD_BD (mtext.column_width, 0);                                 \
++            FIELD_BD (mtext.gutter, 0);                                       \
++            FIELD_B (mtext.auto_height, 0);                                   \
++            FIELD_B (mtext.flow_reversed, 0);                                 \
++            if (!FIELD_VALUE (mtext.auto_height)                              \
++                && FIELD_VALUE (mtext.column_type) == 2)                      \
++              {                                                               \
++                FIELD_VECTOR (mtext.column_heights, BD,                       \
++                              mtext.num_column_heights, 0);                   \
++              }                                                               \
++          }                                                                   \
++      }                                                                       \
++  }
+ 
++// The annotative data after the embedded MTEXT of an ATTRIB/ATTDEF (ODA
++// 20.4.4, ACadSharp): size BS, and if > 0: the data bytes, the registered
++// application (H) and an unknown BS 0.
++#define AcDbAttrib_annotative_fields                                          \
++  DXF {}                                                                      \
++  else                                                                        \
++  {                                                                           \
++    ENCODER {                                                                 \
++      if (FIELD_VALUE (annotative_data_size) && !FIELD_VALUE (annotative_data)) \
++        FIELD_VALUE (annotative_data_size) = 0;                               \
++    }                                                                         \
++    FIELD_BS (annotative_data_size, 0);                                       \
++    if (FIELD_VALUE (annotative_data_size) > 0)                               \
++      {                                                                       \
++        FIELD_BINARY (annotative_data, FIELD_VALUE (annotative_data_size), 0); \
++        FIELD_HANDLE (annotative_style, 5, 0);                                \
++        FIELD_BS (annotative_flag, 0);                                        \
++      }                                                                       \
++  }
+ // clang-format on
+ #endif /* DWG_SPEC_SHARED_H */
+diff --git a/src/dynapi.c b/src/dynapi.c
+index d29b6b9..39f2a15 100644
+--- a/src/dynapi.c
++++ b/src/dynapi.c
+@@ -10798,14 +10798,20 @@ static const Dwg_DYNAPI_field _dwg_ASSOCSURFACEACTIONBODY_fields[] = {
+ static const Dwg_DYNAPI_field _dwg_AcDbMTextObjectEmbedded_fields[] = {
+   { "entmode",	"BB", sizeof (BITCODE_BB),  OFF (struct _dwg_AcDbMTextObjectEmbedded, entmode),
+     0,0,0, 0 },
++  { "ownerhandle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, ownerhandle),
++    1,0,0, 0 },
+   { "num_reactors",	"BL", sizeof (BITCODE_BL),  OFF (struct _dwg_AcDbMTextObjectEmbedded, num_reactors),
+     0,0,0, 0 },
++  { "reactors",	"H*", sizeof (BITCODE_H*),  OFF (struct _dwg_AcDbMTextObjectEmbedded, reactors),
++    1,1,0, 0 },
+   { "has_ds_data",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_AcDbMTextObjectEmbedded, has_ds_data),
+     0,0,0, 0 },
+   { "color",	"CMC", sizeof (BITCODE_CMC),  OFF (struct _dwg_AcDbMTextObjectEmbedded, color),
+     0,0,0, 0 },
+   { "is_xdic_missing",	"B", sizeof (BITCODE_B),  OFF (struct _dwg_AcDbMTextObjectEmbedded, is_xdic_missing),
+     0,0,0, 0 },
++  { "xdicobjhandle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, xdicobjhandle),
++    1,0,0, 0 },
+   { "ltype_scale",	"BD", sizeof (BITCODE_BD),  OFF (struct _dwg_AcDbMTextObjectEmbedded, ltype_scale),
+     0,0,0, 0 },
+   { "ltype_flags",	"BB", sizeof (BITCODE_BB),  OFF (struct _dwg_AcDbMTextObjectEmbedded, ltype_flags),
+@@ -10828,6 +10834,18 @@ static const Dwg_DYNAPI_field _dwg_AcDbMTextObjectEmbedded_fields[] = {
+     0,0,0, 0 },
+   { "layer",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, layer),
+     1,0,0, 0 },
++  { "ltype",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, ltype),
++    1,0,0, 0 },
++  { "material",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, material),
++    1,0,0, 0 },
++  { "plotstyle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, plotstyle),
++    1,0,0, 0 },
++  { "full_visualstyle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, full_visualstyle),
++    1,0,0, 0 },
++  { "face_visualstyle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, face_visualstyle),
++    1,0,0, 0 },
++  { "edge_visualstyle",	"H", sizeof (BITCODE_H),  OFF (struct _dwg_AcDbMTextObjectEmbedded, edge_visualstyle),
++    1,0,0, 0 },
+   { "ins_pt",	"3BD", sizeof (BITCODE_3BD),  OFF (struct _dwg_AcDbMTextObjectEmbedded, ins_pt),
+     1,0,0, 0 },
+   { "extrusion",	"3BD", sizeof (BITCODE_3BD),  OFF (struct _dwg_AcDbMTextObjectEmbedded, extrusion),
+-- 
+2.43.0
+

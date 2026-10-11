@@ -1,0 +1,320 @@
+From 7fa308fc1a308ebb61ed3b2759bcd129f4fbd81e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 06:47:24 +0900
+Subject: [PATCH 22/37] EED layer (1003) is big-endian and a name in DXF; DXF
+ SPATIAL_FILTER; JSON NaN in vectors
+
+- EED code 3 is the LAYER handle big-endian, as the entity handle 5:
+  AutoCAD's sample_AC1015 has 00..00 08 F5 for its LAYER app_layer 8F5;
+  it was read as 0xF508000000000000.
+- out_dxf wrote the handle number for 1003, which is the layer name in
+  DXF; in_dxf did not implement 1003 and now resolves the name.
+- in_dxf: SPATIAL_FILTER has all its doubles as 40 (front clip z and both
+  12-double matrices): a dedicated reader, the generic one garbled the
+  clip vertices and filled the inverse matrix with NaN, and ACadSharp
+  could not read it after DXF to DWG.
+- out_json: NaN/Inf also in vectors (FIELD_VECTOR_N), one check in
+  _VALUE_RD.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/decode.c   |   6 ++-
+ src/encode.c   |   4 +-
+ src/in_dxf.c   | 142 +++++++++++++++++++++++++++++++++++++++++++++++++
+ src/out_dxf.c  |  18 +++++--
+ src/out_json.c |  32 +++++++----
+ 5 files changed, 186 insertions(+), 16 deletions(-)
+
+diff --git a/src/decode.c b/src/decode.c
+index d18ab4c..1e81712 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -3926,8 +3926,10 @@ dwg_decode_eed_data (Bit_Chain *restrict dat, Dwg_Eed_Data *restrict data,
+       }
+       LATER_VERSIONS
+       {
+-        data->u.eed_3.layer = bit_read_RLL (dat);
+-        LOG_TRACE ("layer: " FORMAT_RLL " [RLL]", data->u.eed_3.layer);
++        // big-endian as the entity handle (5): AutoCAD's sample_AC1015 has
++        // 00..00 08 F5 for its LAYER app_layer 8F5
++        data->u.eed_3.layer = bit_read_RLL_BE (dat);
++        LOG_TRACE ("layer: " FORMAT_RLL " [RLL_BE]", data->u.eed_3.layer);
+       }
+       break;
+     case 4:
+diff --git a/src/encode.c b/src/encode.c
+index a438d1a..f76db02 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -7084,8 +7084,8 @@ dwg_encode_eed_data (Bit_Chain *restrict dat, Dwg_Eed_Data *restrict data,
+       }
+       LATER_VERSIONS
+       {
+-        bit_write_RLL (dat, data->u.eed_3.layer);
+-        LOG_TRACE ("layer: " FORMAT_RLL " [RLL]", data->u.eed_3.layer);
++        bit_write_RLL_BE (dat, data->u.eed_3.layer);
++        LOG_TRACE ("layer: " FORMAT_RLL " [RLL_BE]", data->u.eed_3.layer);
+       }
+       break;
+     case 4:
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 249e37f..ef63794 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -2336,6 +2336,32 @@ add_eed (Dwg_Object *restrict obj, const char *restrict name,
+         eed[i].size += size;
+         break;
+       }
++    case 3:
++      {
++        // DXF has the layer name, DWG the handle of the LAYER (RLL)
++        BITCODE_H hdl = pair->value.s.ptr
++            ? dwg_find_tablehandle_silent (dwg, pair->value.s.ptr, "LAYER")
++            : NULL;
++        size = 1 + 8;
++        eed[i].data
++            = (Dwg_Eed_Data *)xcalloc (1, MAX (size, sizeof (Dwg_Eed_Data)));
++        if (!eed[i].data)
++          {
++            LOG_ERROR ("Out of memory");
++            dwg_free_eed (obj);
++            return;
++          }
++        eed[i].data->code = code; // 1003
++        if (hdl)
++          eed[i].data->u.eed_3.layer = hdl->absolute_ref;
++        else
++          LOG_WARN ("EED layer %s not found, 0",
++                    pair->value.s.ptr ? pair->value.s.ptr : "");
++        LOG_TRACE ("layer: " FORMAT_RLL " [RLL]\n",
++                   eed[i].data->u.eed_3.layer);
++        eed[i].size += size;
++        break;
++      }
+     default:
+       LOG_ERROR ("Not yet implemented EED[%d] code %d", i, pair->code);
+     }
+@@ -2624,6 +2650,114 @@ add_MLINESTYLE_lines (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+   return pair;
+ }
+ 
++/* SPATIAL_FILTER: 70 n, n x (10, 20), 210, 11, 71, 72 [40], 73 [41],
++   12 x 40 inverse_transform, 12 x 40 transform. All the doubles are 40,
++   which the generic importer could not tell apart (clip_verts and both
++   matrices were garbage, NaN in the inverse). */
++static Dxf_Pair *
++new_SPATIAL_FILTER (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
++                    Dxf_Pair *restrict pair)
++{
++  Dwg_Object_SPATIAL_FILTER *o = obj->tio.object->tio.SPATIAL_FILTER;
++  int j = -1;   // clip vertex
++  int k = 0;    // index into the 24 matrix doubles
++  int state = 0; // 1 after 72, 2 after 73: which 40/41 is a clip z
++  o->num_clip_verts = (BITCODE_BS)pair->value.i;
++  LOG_TRACE ("SPATIAL_FILTER.num_clip_verts = %u [BS 70]\n",
++             (unsigned)o->num_clip_verts);
++  if (o->num_clip_verts > 10000)
++    {
++      LOG_ERROR ("Invalid SPATIAL_FILTER.num_clip_verts %u",
++                 (unsigned)o->num_clip_verts);
++      o->num_clip_verts = 0;
++      return NULL;
++    }
++  if (o->num_clip_verts)
++    {
++      o->clip_verts = (BITCODE_2RD *)xcalloc (o->num_clip_verts,
++                                              sizeof (BITCODE_2RD));
++      if (!o->clip_verts)
++        {
++          o->num_clip_verts = 0;
++          return NULL;
++        }
++    }
++  if (!o->inverse_transform)
++    o->inverse_transform = (BITCODE_BD *)xcalloc (12, sizeof (BITCODE_BD));
++  if (!o->transform)
++    o->transform = (BITCODE_BD *)xcalloc (12, sizeof (BITCODE_BD));
++  if (!o->inverse_transform || !o->transform)
++    return NULL;
++  while (pair != NULL && pair->code != 0)
++    {
++      dxf_free_pair (pair);
++      pair = dxf_read_pair (dat);
++      if (pair == NULL || pair->code == 0)
++        return pair;
++      switch (pair->code)
++        {
++        case 10:
++          j++;
++          if (j < 0 || j >= (int)o->num_clip_verts)
++            return NULL;
++          o->clip_verts[j].x = pair->value.d;
++          break;
++        case 20:
++          if (j < 0 || j >= (int)o->num_clip_verts)
++            return NULL;
++          o->clip_verts[j].y = pair->value.d;
++          LOG_TRACE ("SPATIAL_FILTER.clip_verts[%d] = (%f, %f) [2RD 10]\n",
++                     j, o->clip_verts[j].x, o->clip_verts[j].y);
++          break;
++        case 210: o->extrusion.x = pair->value.d; break;
++        case 220: o->extrusion.y = pair->value.d; break;
++        case 230: o->extrusion.z = pair->value.d; break;
++        case 11: o->origin.x = pair->value.d; break;
++        case 21: o->origin.y = pair->value.d; break;
++        case 31: o->origin.z = pair->value.d; break;
++        case 71: o->display_boundary_on = (BITCODE_BS)pair->value.i; break;
++        case 72:
++          o->front_clip_on = (BITCODE_BS)pair->value.i;
++          state = 1;
++          break;
++        case 73:
++          o->back_clip_on = (BITCODE_BS)pair->value.i;
++          state = 2;
++          break;
++        case 40:
++          if (state == 1 && o->front_clip_on)
++            {
++              o->front_clip_z = pair->value.d;
++              state = 3; // the front z is read, the 40 after 73 are matrices
++            }
++          else if (k < 24)
++            {
++              if (k < 12)
++                o->inverse_transform[k] = pair->value.d;
++              else
++                o->transform[k - 12] = pair->value.d;
++              k++;
++            }
++          else
++            LOG_WARN ("SPATIAL_FILTER: ignored extra 40");
++          break;
++        case 41:
++          o->back_clip_z = pair->value.d;
++          break;
++        default:
++          if (pair->code >= 1000 && pair->code < 1999)
++            add_eed (obj, "SPATIAL_FILTER", pair);
++          else
++            {
++              LOG_ERROR ("Invalid DXF code %d for %s", pair->code,
++                         "SPATIAL_FILTER");
++              return NULL;
++            }
++        }
++    }
++  return pair;
++}
++
+ static Dxf_Pair *
+ new_LWPOLYLINE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+                 Dxf_Pair *restrict pair)
+@@ -11857,6 +11991,14 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                          o->VIEWMODE);
+               goto next_pair;
+             }
++          else if (pair->code == 70
++                   && obj->fixedtype == DWG_TYPE_SPATIAL_FILTER)
++            {
++              pair = new_SPATIAL_FILTER (obj, dat, pair);
++              if (pair != NULL && pair->code == 0)
++                return pair;
++              goto next_pair;
++            }
+           else if (pair->code == 90 && obj->fixedtype == DWG_TYPE_LWPOLYLINE)
+             {
+               pair = new_LWPOLYLINE (obj, dat, pair);
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index cb5dd4c..a664208 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -1599,9 +1599,21 @@ dxf_write_eed (Bit_Chain *restrict dat, const Dwg_Object_Object *restrict obj)
+                 VALUE_TFF ("{", 1002)
+               break;
+             case 3:
+-              GROUP (dxf);
+-              fprintf (dat->fh, "%9" PRIu64 "\r\n", data->u.eed_3.layer);
+-              // VALUE_RLL (data->u.eed_3.layer, dxf);
++              {
++                // DXF has the layer name, not the handle
++                Dwg_Object *lo
++                    = dwg_resolve_handle_silent (dwg, data->u.eed_3.layer);
++                char *lname = NULL;
++                char zero[] = "0";
++                char *lv;
++                int lerr = 0;
++                if (lo && lo->fixedtype == DWG_TYPE_LAYER)
++                  lname = dwg_obj_table_get_name (lo, &lerr);
++                lv = (lname && !lerr) ? lname : zero;
++                VALUE_TV (lv, dxf);
++                if (lname && IS_FROM_TU_DWG (dwg))
++                  free (lname);
++              }
+               break;
+             case 4:
+               VALUE_BINARY (data->u.eed_4.data, data->u.eed_4.length, dxf);
+diff --git a/src/out_json.c b/src/out_json.c
+index 7a187eb..6af01d5 100644
+--- a/src/out_json.c
++++ b/src/out_json.c
+@@ -171,18 +171,18 @@ static char *_path_field (const char *path);
+ #define VALUE_RLx(value, dxf) VALUE ((BITCODE_RL)value, RL, dxf)
+ #define VALUE_RLL(value, dxf) VALUE (value, RLL, dxf)
+ #define VALUE_RLLd(value, dxf) VALUE (value, RLLd, dxf)
++#define VALUE_RD(value, dxf) _VALUE_RD (value, dxf)
+ // JSON has no NaN or Infinity: "nan", "-nan" or "inf" made the whole output
+-// unreadable (gh44-error.dwg, a misread RAPIDRTRENDERSETTINGS). Write 0.0.
+-#define VALUE_RD(value, dxf)                                                  \
+-  if (bit_isnan (value) || !isfinite (value))                                 \
+-    _VALUE_RD (0.0, dxf)                                                      \
+-  else                                                                        \
+-    _VALUE_RD (value, dxf)
++// unreadable (gh44-error.dwg, a misread RAPIDRTRENDERSETTINGS; a SPATIAL_FILTER
++// matrix from DXF). Write 0.0.
+ #define _VALUE_RD(value, dxf)                                                 \
+   {                                                                           \
+     char _buf[256];                                                           \
+     size_t k;                                                                 \
+-    snprintf (_buf, 255, FORMAT_RD, value);                                   \
++    double _v = (double)(value);                                              \
++    if (!isfinite (_v))                                                       \
++      _v = 0.0;                                                               \
++    snprintf (_buf, 255, FORMAT_RD, _v);                                      \
+     k = strlen (_buf);                                                        \
+     if (k > 0 && strrchr (_buf, '.') && _buf[k - 1] == '0')                   \
+       {                                                                       \
+@@ -663,7 +663,14 @@ field_cmc (Bit_Chain *dat, const char *restrict key,
+     {                                                                         \
+       for (vcount = 0; vcount < (BITCODE_BL)size; vcount++)                   \
+         {                                                                     \
+-          FIRSTPREFIX fprintf (dat->fh, FORMAT_##type, _obj->nam[vcount]);    \
++          if (#type[0] == 'B' && #type[1] == 'D' && !#type[2])            \
++            {                                                                 \
++              FIRSTPREFIX _VALUE_RD (_obj->nam[vcount], dxf);                        \
++            }                                                                 \
++          else                                                                \
++            {                                                                 \
++              FIRSTPREFIX fprintf (dat->fh, FORMAT_##type, _obj->nam[vcount]);       \
++            }    \
+         }                                                                     \
+     }                                                                         \
+   else                                                                        \
+@@ -676,7 +683,14 @@ field_cmc (Bit_Chain *dat, const char *restrict key,
+     {                                                                         \
+       for (vcount = 0; vcount < (BITCODE_BL)size; vcount++)                   \
+         {                                                                     \
+-          FIRSTPREFIX fprintf (dat->fh, FORMAT_##type, _obj->o.nam[vcount]);  \
++          if (#type[0] == 'B' && #type[1] == 'D' && !#type[2])            \
++            {                                                                 \
++              FIRSTPREFIX _VALUE_RD (_obj->o.nam[vcount], dxf);                        \
++            }                                                                 \
++          else                                                                \
++            {                                                                 \
++              FIRSTPREFIX fprintf (dat->fh, FORMAT_##type, _obj->o.nam[vcount]);       \
++            }  \
+         }                                                                     \
+     }                                                                         \
+   else                                                                        \
+-- 
+2.43.0
+

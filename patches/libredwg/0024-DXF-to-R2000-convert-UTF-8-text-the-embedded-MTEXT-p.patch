@@ -1,0 +1,267 @@
+From e7046e6d940133ccc376cbfede9533bc0befe4ec Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:02:53 +0900
+Subject: [PATCH 24/37] DXF to R2000: convert UTF-8 text, the embedded MTEXT
+ parts; Asian codepages: lead byte
+
+- bit_utf8_to_TV: the lead byte of two-byte characters was wc1 >> 4, not
+  >> 8 (0xB8F4 written as 8F F4); single-byte characters of Asian
+  codepages (CP932 half-width katakana) got a 0x00 before them, which cut
+  the string. Every Chinese/Japanese/Korean string converted to a codepage
+  was garbled.
+- dxf_read_pair: R2007+ DXF is UTF-8; for R2000 output convert to the
+  drawing codepage (\U+XXXX for the rest, as AutoCAD) - dynapi copies TV
+  strings as they are, R2000 got raw UTF-8 (gh109_1, ANSI_936).
+  MTEXT text chunks likewise, only for R2007+ targets.
+- in_dxf: the embedded MTEXT of R2018 multi-line ATTRIB/ATTDEF after
+  <101, Embedded Object> ("Invalid DXF code 46": dxf2dwg failed on
+  sample_AC1032), and the annotation/column part of MTEXT, whose 40 (rect
+  width) overwrote the text height (36 MTEXT with height 0).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c   |  16 +++--
+ src/in_dxf.c | 179 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 191 insertions(+), 4 deletions(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 36c7649..c45af09 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -3365,8 +3365,12 @@ bit_utf8_to_TV (char *restrict dest, const unsigned char *restrict src,
+                   && (wc1 = dwg_codepage_wc ((Dwg_Codepage)codepage, wc)))
+                 {
+                   if (wc1 > 0xFF)
+-                    *dest++ = wc1 >> 4;
+-                  *dest++ = wc1 & 0xff;
++                    // two bytes, the lead byte first (was >> 4: 0xB8F4 gave 0x8F), or
++                  // one for the single-byte ones of the codepage (CP932 half-width
++                  // katakana): 0x00 before them cut the string.
++                  if (wc1 > 0xff)
++                    *dest++ = (char)(wc1 >> 8);
++                  *dest++ = (char)(wc1 & 0xff);
+                 }
+               // is representable as byte
+               else if (!is_asian_cp
+@@ -3411,8 +3415,12 @@ bit_utf8_to_TV (char *restrict dest, const unsigned char *restrict src,
+               if (is_asian_cp
+                   && (wc1 = dwg_codepage_wc ((Dwg_Codepage)codepage, wc)))
+                 {
+-                  *dest++ = wc1 >> 4;
+-                  *dest++ = wc1 & 0xff;
++                  // two bytes, the lead byte first (was >> 4: 0xB8F4 gave 0x8F), or
++                  // one for the single-byte ones of the codepage (CP932 half-width
++                  // katakana): 0x00 before them cut the string.
++                  if (wc1 > 0xff)
++                    *dest++ = (char)(wc1 >> 8);
++                  *dest++ = (char)(wc1 & 0xff);
+                 }
+               else if (!is_asian_cp
+                        && (c1 = dwg_codepage_wc ((Dwg_Codepage)codepage, wc)))
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index ef63794..29782bd 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -891,6 +891,37 @@ dxf_read_pair (Bit_Chain *dat)
+           return NULL;
+         }
+       LOG_TRACE ("  dxf (%d, \"%s\")\n", (int)pair->code, pair->value.s.ptr);
++      // R2007+ DXF is UTF-8. Written as R2000 (TV, in the drawing codepage),
++      // non-ASCII must be converted here: dynapi_set_helper copies TV
++      // strings as they are, and R2000 got raw UTF-8 bytes (gh109_1, ANSI_936:
++      // "隔日1" read back as "闅旀棩1"). Unrepresentable characters become
++      // \U+XXXX as AutoCAD writes them. Older DXF is in the codepage already.
++      if (dat->from_version >= R_2007 && dat->version < R_2007
++          && pair->value.s.ptr)
++        {
++          const unsigned char *u = (const unsigned char *)pair->value.s.ptr;
++          size_t ulen = strlen (pair->value.s.ptr);
++          size_t ui;
++          for (ui = 0; ui < ulen && u[ui] < 0x80; ui++)
++            ;
++          if (ui < ulen) // not plain ASCII
++            {
++              size_t dsize = (ulen * 4) + 8;
++              char *dest = (char *)malloc (dsize);
++              char *tgt = dest ? bit_utf8_to_TV (dest, u, dsize, ulen, 0,
++                                                 dat->codepage)
++                               : NULL;
++              if (tgt)
++                {
++                  free (pair->value.s.ptr);
++                  pair->value.s.ptr = dest;
++                  LOG_TRACE ("  => \"%s\" [TV cp %u]\n", dest,
++                             (unsigned)dat->codepage);
++                }
++              else
++                free (dest);
++            }
++        }
+       // dynapi_set_helper converts from utf-8 to unicode, not here.
+       // we need to know the type of the target field, if TV or T
+       if (dat->from_version <= R_12 && pair->code == 2 && pair->value.s.ptr
+@@ -10520,6 +10551,136 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                pair->value.l == 0L)
+         goto next_pair;
+ #  endif
++      // The annotation scale and column part of an MTEXT, after
++      // <101, Embedded Object>: 70, 10, 11, 40, 41, 42, 43, 71 [72 44 45 73 74
++      // 46...]. The generic importer took this 40 (rect width) as the text
++      // height and every such MTEXT got height 0 (sample_AC1032 via DXF).
++      if (in_embedobj && obj->fixedtype == DWG_TYPE_MTEXT)
++        {
++          Dwg_Entity_MTEXT *m = obj->tio.entity->tio.MTEXT;
++          int done = 1;
++          switch (pair->code)
++            {
++            case 70:
++              m->default_flag = pair->value.i ? 1 : 0;
++              m->is_not_annotative = 1;
++              break;
++            case 10: case 20: case 30: break; // redundant ins_pt
++            case 11: case 21: case 31: break; // redundant x_axis_dir
++            case 40: m->rect_width = pair->value.d; break;
++            case 41: m->rect_height = pair->value.d; break;
++            case 42: m->extents_width = pair->value.d; break;
++            case 43: m->extents_height = pair->value.d; break;
++            case 71: m->column_type = (BITCODE_BS)pair->value.i; break;
++            case 72:
++              if (m->column_type == 1)
++                m->numfragments = (BITCODE_BL)pair->value.i;
++              else
++                m->num_column_heights = (BITCODE_BL)pair->value.i;
++              break;
++            case 44: m->column_width = pair->value.d; break;
++            case 45: m->gutter = pair->value.d; break;
++            case 73: m->auto_height = pair->value.i ? 1 : 0; break;
++            case 74: m->flow_reversed = pair->value.i ? 1 : 0; break;
++            case 46:
++              {
++                // the column heights, num_column_heights of them
++                BITCODE_BL n = m->num_column_heights;
++                BITCODE_BL ci;
++                if (!n || n > 1000)
++                  break;
++                if (!m->column_heights)
++                  m->column_heights
++                      = (BITCODE_BD *)xcalloc (n + 1, sizeof (BITCODE_BD));
++                if (!m->column_heights)
++                  break;
++                // the next empty slot (heights are > 0)
++                for (ci = 0; ci < n && m->column_heights[ci] != 0.0; ci++)
++                  ;
++                if (ci < n)
++                  m->column_heights[ci] = pair->value.d;
++                break;
++              }
++            default:
++              done = 0;
++              in_embedobj = 0;
++            }
++          if (done)
++            {
++              LOG_TRACE ("MTEXT embedded: DXF %d\n", pair->code);
++              goto next_pair;
++            }
++        }
++      // The embedded MTEXT of R2018 multi-line ATTRIB/ATTDEF, after
++      // <101, Embedded Object>: 10, 40, 41, 46, 71, 72, 1, 7, 73, 44, 11, 210
++      // as out_dxf writes them (ACadSharp, ODA). Before, 46 was "Invalid DXF
++      // code" and dxf2dwg failed on any drawing with one (sample_AC1032).
++      if (in_embedobj
++          && (obj->fixedtype == DWG_TYPE_ATTRIB
++              || obj->fixedtype == DWG_TYPE_ATTDEF))
++        {
++          Dwg_AcDbMTextObjectEmbedded *m
++              = obj->fixedtype == DWG_TYPE_ATTRIB
++                    ? &obj->tio.entity->tio.ATTRIB->mtext
++                    : &obj->tio.entity->tio.ATTDEF->mtext;
++          int done = 1;
++          switch (pair->code)
++            {
++            case 10: m->ins_pt.x = pair->value.d; break;
++            case 20: m->ins_pt.y = pair->value.d; break;
++            case 30: m->ins_pt.z = pair->value.d; break;
++            case 40: m->text_height = pair->value.d; break;
++            case 41: m->rect_width = pair->value.d; break;
++            case 46: m->rect_height = pair->value.d; break;
++            case 71: m->attachment = (BITCODE_BS)pair->value.i; break;
++            case 72: m->flow_dir = (BITCODE_BS)pair->value.i; break;
++            case 1:
++            case 3:
++              {
++                // 3 are the first parts of a long text, 1 the last one
++                char *prev = m->text && !IS_FROM_TU_DWG (dwg)
++                                 ? (char *)m->text : NULL;
++                if (pair->value.s.ptr)
++                  {
++                    if (prev)
++                      {
++                        size_t l1 = strlen (prev),
++                               l2 = strlen (pair->value.s.ptr);
++                        char *t = (char *)realloc (prev, l1 + l2 + 1);
++                        if (t)
++                          {
++                            memcpy (t + l1, pair->value.s.ptr, l2 + 1);
++                            m->text = (BITCODE_T)t;
++                          }
++                      }
++                    else if (dwg->header.version >= R_2007)
++                      m->text = dwg_add_u8_input (dwg, pair->value.s.ptr);
++                    else // TV, converted by dxf_read_pair if from UTF-8
++                      m->text = (BITCODE_T)strdup (pair->value.s.ptr);
++                  }
++                break;
++              }
++            case 7:
++              m->style = find_tablehandle (dwg, pair);
++              break;
++            case 73: m->linespace_style = (BITCODE_BS)pair->value.i; break;
++            case 44: m->linespace_factor = pair->value.d; break;
++            case 11: m->x_axis_dir.x = pair->value.d; break;
++            case 21: m->x_axis_dir.y = pair->value.d; break;
++            case 31: m->x_axis_dir.z = pair->value.d; break;
++            case 210: m->extrusion.x = pair->value.d; break;
++            case 220: m->extrusion.y = pair->value.d; break;
++            case 230: m->extrusion.z = pair->value.d; break;
++            default:
++              done = 0;
++              in_embedobj = 0; // the embedded object ends
++            }
++          if (done)
++            {
++              LOG_TRACE ("%s.mtext: DXF %d\n", obj->name, pair->code);
++              goto next_pair;
++            }
++        }
+       // start_switch:
+       switch (pair->code)
+         {       // common flags: name, xref
+@@ -11870,6 +12031,24 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                     LOG_ERROR ("Out of memory appending MTEXT.text chunk. "
+                                "Keep it partial.");
+                 }
++              // R2007+ DXF chunks are UTF-8; code 1 is the last one: convert the
++              // whole text to the target as all other DXF strings
++              // (dwg_add_u8_input: UTF-16, or the codepage with \U+XXXX).
++              // Kept as UTF-8, R2000 got raw UTF-8 bytes ("∅" became "âˆ…").
++              // Only R2007+ DXF is UTF-8; older DXF is in $DWGCODEPAGE
++              // already (example_2000: "108\xb0" for 108 degrees).
++              // For R2000 output dxf_read_pair has converted already.
++              if (pair->code == 1 && o->text
++                  && dwg->header.from_version >= R_2007
++                  && dwg->header.version >= R_2007)
++                {
++                  BITCODE_T conv = dwg_add_u8_input (dwg, (char *)o->text);
++                  if (conv)
++                    {
++                      free (o->text);
++                      o->text = conv;
++                    }
++                }
+               goto next_pair;
+             }
+           /*
+-- 
+2.43.0
+

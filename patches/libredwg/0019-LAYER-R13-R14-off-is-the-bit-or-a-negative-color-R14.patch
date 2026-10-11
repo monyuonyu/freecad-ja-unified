@@ -1,0 +1,52 @@
+From c723e2157e4ddb52c1bce9aca479fcb6144a78c6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 10:36:46 +0900
+Subject: [PATCH 19/37] LAYER: R13/R14 off is the bit or a negative color; R14
+ to R2000 plots
+
+The R13/R14 decoder overwrote the off bit with color < 0, but AutoCAD's
+R14 drawings keep the color positive and set the bit, so off layers were
+read as on. R13/R14 have no plot flag and lineweight; writing them as
+R2000+ made every layer not plottable with 0.00mm lines. Use AutoCAD's
+defaults, plot and DEFAULT (31).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 51d44c1..4789618 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -3390,6 +3390,15 @@ DWG_TABLE (LAYER)
+     // separate DXF flag 70 from the internal DWG flag0 bitmask
+     int flag0;
+     ENCODER {
++      // R13/R14 have no plot flag and lineweight: AutoCAD's defaults, plot
++      // and lineweight DEFAULT (31). 0 made every layer not plottable, 0.00mm.
++      IF_ENCODE_FROM_EARLIER {
++        if (dat->from_version < R_2000b && !(dwg->opts & DWG_OPTS_INJSON))
++          {
++            FIELD_VALUE (plotflag) = 1;
++            FIELD_VALUE (linewt) = 31;
++          }
++      }
+       // with json we only use flag0, with DXF we use flag
+       if (dwg->opts & DWG_OPTS_INDXF) {
+         FIELD_VALUE (off)           = FIELD_VALUE (color.index) < 0;
+@@ -3461,7 +3470,10 @@ DWG_TABLE (LAYER)
+   }
+   VERSIONS (R_13b1, R_14) {
+     DECODER {
+-      FIELD_VALUE (off) = FIELD_VALUE (color.index) < 0;
++      // Off is the bit read above, or a negative color. AutoCAD's R14
++      // drawings keep the color positive and set the bit (sample_AC1014
++      // LAYER_OFF), overwriting the bit turned off layers on.
++      FIELD_VALUE (off) = FIELD_VALUE (off) || FIELD_VALUE (color.index) < 0;
+       LOG_LAYER_FLAG(off);
+     }
+     // for DWG
+-- 
+2.43.0
+

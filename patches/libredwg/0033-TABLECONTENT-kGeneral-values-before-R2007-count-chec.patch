@@ -1,0 +1,145 @@
+From 77927fe7417049788f973ac8fb5cd6e9dc22e64a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:04:15 +0900
+Subject: [PATCH 33/37] TABLECONTENT: kGeneral values before R2007, count
+ checks
+
+- 20.4.99 kGeneral (512) also occurs in the R14-R2004 TABLECONTENT
+  objects (AutoCAD 2008 round trip data): BL byte count + bytes, as since
+  R2007. Before, the read stopped with "kGeneral <r2007".
+- The REPEAT size checks of the table content (columns, rows, cells,
+  cell contents) compare count * sizeof (struct) with the available bits
+  and rejected the last rows of valid tables; check with a minimal bit
+  size per element instead.
+  that compare ACAD_TABLE position, block, row and column counts, column
+  widths, row heights, merged ranges and the cell values; tablecheck.py
+  checks the data end of TABLE/TABLECONTENT (and FIELD with --noend).
+
+All 24 tables and 9 TABLECONTENT objects of the corpus end where they
+should, and all 24 tables match ACadSharp field by field.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec         | 28 ++++++++++++++++++++++++----
+ src/dwg_spec_shared.h | 19 +++++++++++++------
+ 2 files changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 55864da..dec5ec3 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -349,6 +349,22 @@ DWG_OBJECT_END
+ #define attr content.attrs[rcount4]
+ #define merged fdata.merged_cells[rcount1]
+ 
++// The generic REPEAT check compares count * sizeof (struct) with the
++// available bits, which rejects valid tables (the structs are hundreds of
++// bytes, an empty cell only ~14 bits). Check with a minimal bit size.
++#ifdef IS_DECODER
++#  define TABLE_CHKCOUNT(nam, minbits)                                        \
++    if ((int64_t)_obj->nam * (minbits) > AVAIL_BITS (dat))                    \
++      {                                                                       \
++        LOG_ERROR ("Invalid %s." #nam " %u", SAFEDXFNAME,                     \
++                   (unsigned)_obj->nam);                                      \
++        _obj->nam = 0;                                                        \
++        return DWG_ERR_VALUEOUTOFBOUNDS;                                      \
++      }
++#else
++#  define TABLE_CHKCOUNT(nam, minbits)
++#endif
++
+ // pg.237 20.4.97 for TABLE (2010+) and TABLECONTENT, without the
+ // table style handle at the end (H 340).
+ // Checked against the ODA spec 20.4.97, ACadSharp readTableContent, and the
+@@ -360,7 +376,8 @@ DWG_OBJECT_END
+   SUBCLASS (AcDbLinkedTableData)                                \
+   FIELD_BL (tdata.num_cols, 90);				\
+   VALUEOUTOFBOUNDS (tdata.num_cols, 5000)			\
+-  REPEAT (tdata.num_cols, tdata.cols, Dwg_TableDataColumn)	\
++  TABLE_CHKCOUNT (tdata.num_cols, 12)				\
++  REPEAT_C (tdata.num_cols, tdata.cols, Dwg_TableDataColumn)	\
+   REPEAT_BLOCK							\
+       SUB_FIELD_T (tcol,name, 300);				\
+       DXF { VALUE_TFF ("LINKEDTABLEDATACOLUMN_BEGIN", 1) }      \
+@@ -389,11 +406,13 @@ DWG_OBJECT_END
+   END_REPEAT (tdata.cols);					\
+   FIELD_BL (tdata.num_rows, 91);				\
+   VALUEOUTOFBOUNDS (tdata.num_rows, 50000)			\
+-  REPEAT (tdata.num_rows, tdata.rows, Dwg_TableRow)		\
++  TABLE_CHKCOUNT (tdata.num_rows, 12)				\
++  REPEAT_C (tdata.num_rows, tdata.rows, Dwg_TableRow)		\
+   REPEAT_BLOCK							\
+       FIELD_BL (row.num_cells, 90);				\
+       VALUEOUTOFBOUNDS (row.num_cells, 5000)			\
+-      REPEAT2 (row.num_cells, row.cells, Dwg_TableCell)		\
++      TABLE_CHKCOUNT (row.num_cells, 14)			\
++      REPEAT2_C (row.num_cells, row.cells, Dwg_TableCell)	\
+       REPEAT_BLOCK						\
+           SUB_FIELD_BL (cell,flag, 90);				\
+           SUB_FIELD_T (cell,tooltip, 300);			\
+@@ -425,7 +444,8 @@ DWG_OBJECT_END
+           VALUEOUTOFBOUNDS (cell.num_cell_contents, 5000)	\
+           DXF { VALUE_TFF ("CONTENT", 302) }                    \
+           DXF { VALUE_TFF ("CELLCONTENT_BEGIN", 1) }            \
+-          REPEAT3 (cell.num_cell_contents, cell.cell_contents, Dwg_TableCellContent) \
++          TABLE_CHKCOUNT (cell.num_cell_contents, 6)		\
++          REPEAT3_C (cell.num_cell_contents, cell.cell_contents, Dwg_TableCellContent) \
+           REPEAT_BLOCK						\
+               SUB_FIELD_BL (content,type, 90);			\
+               if (FIELD_VALUE (content.type) == 1)		\
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index 5d93eaa..170deb6 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -634,12 +634,20 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+       }                                                                       \
+   }
+ #elif defined(IS_ENCODER)
++/* before R2007 the bytes are the TV string with its zero (a guess for
++   kGeneral, the only pre-R2007 user: no example decodes to text) */
+ #  define TABLE_value_bytes(value)                                            \
+   {                                                                           \
+     BITCODE_TU _ws = NULL;                                                    \
++    BITCODE_TF _bytes = NULL;                                                 \
+     int _free_ws = 0;                                                         \
+     BITCODE_BL _n = 0;                                                        \
+-    if (_obj->value.data_string)                                              \
++    if (_obj->value.data_string && dat->version < R_2007)                     \
++      {                                                                       \
++        _bytes = (BITCODE_TF)_obj->value.data_string;                         \
++        _n = (BITCODE_BL)strlen (_obj->value.data_string) + 1;                \
++      }                                                                       \
++    else if (_obj->value.data_string)                                         \
+       {                                                                       \
+         if (IS_FROM_TU (dat))                                                 \
+           _ws = (BITCODE_TU)_obj->value.data_string;                          \
+@@ -650,11 +658,12 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+           }                                                                   \
+         if (_ws)                                                              \
+           _n = (BITCODE_BL)((bit_wcs2len (_ws) + 1) * 2);                     \
++        _bytes = (BITCODE_TF)_ws;                                             \
+       }                                                                       \
+     _obj->value.data_size = _n;                                               \
+     FIELD_BL (value.data_size, 92);                                           \
+     if (_n)                                                                   \
+-      bit_write_TF (dat, (BITCODE_TF)_ws, _n);                                \
++      bit_write_TF (dat, _bytes, _n);                                         \
+     if (_free_ws)                                                             \
+       free (_ws);                                                             \
+   }
+@@ -712,10 +721,8 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+         case 256: /* kResBuf */                                               \
+           LOG_ERROR ("Unknown data type in TABLE_value_fields: kResBuf");     \
+           break;                                                              \
+-        case 512: /* kGeneral since r2007*/                                   \
+-          SINCE (R_2007a) { TABLE_value_bytes (value) }                       \
+-          else                                                                \
+-            LOG_ERROR ("Unknown data type in TABLE_value_fields: kGeneral <r2007"); \
++        case 512: /* kGeneral. Also in R14-R2004 TABLECONTENT objects */     \
++          TABLE_value_bytes (value)                                           \
+           break;                                                              \
+         default:                                                              \
+           LOG_ERROR ("Invalid data type in TABLE_value_fields");              \
+-- 
+2.43.0
+

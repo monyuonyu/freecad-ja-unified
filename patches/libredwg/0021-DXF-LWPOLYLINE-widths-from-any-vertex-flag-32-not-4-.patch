@@ -1,0 +1,146 @@
+From dca8590dd567a4447462684d32587e6214989935 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 06:32:43 +0900
+Subject: [PATCH 21/37] DXF LWPOLYLINE: widths from any vertex, flag 32 not 4;
+ off layers positive in DWG
+
+in_dxf allocated the widths only when the first vertex had 40/41, so
+dwg2dxf output of sample_AC1015 (widths only on the last vertex) could not
+be read back ("Invalid DXF code 41 for LWPOLYLINE"). It also set the
+constant width flag 4 instead of 32, overwrote the flags with 70 and
+dropped plinegen of closed polylines. out_dxf wrote the widths only with
+bulges. The negative DXF color of an off layer was written into the DWG
+as index 65529, which ACadSharp rejects; the bit says off, the color stays
+positive as AutoCAD writes it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 13 ++++++++++++-
+ src/in_dxf.c | 50 ++++++++++++++++++++++++++++++++------------------
+ 2 files changed, 44 insertions(+), 19 deletions(-)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 5897173..735f2a6 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -3466,6 +3466,16 @@ DWG_TABLE (LAYER)
+         FIELD_VALUE (color.index) = abs (FIELD_VALUE (color.index));
+       }
+     }
++    ENCODER {
++      // DWG: off is the bit, the color stays positive as AutoCAD writes it.
++      // The negative DXF color of an off layer made an index of 65529,
++      // which ACadSharp rejects ("True index must be between 0 and 257").
++      if (FIELD_VALUE (color.index) < 0)
++        {
++          FIELD_VALUE (off) = 1;
++          FIELD_VALUE (color.index) = -FIELD_VALUE (color.index);
++        }
++    }
+     FIELD_CMC (color, 62);
+   }
+   VERSIONS (R_13b1, R_14) {
+@@ -5580,9 +5590,10 @@ DWG_ENTITY (LWPOLYLINE)
+     REPEAT (num_points, points, BITCODE_2RD)
+       {
+         FIELD_2RD (points[rcount1], 10);
++        // the widths do not depend on the bulges: without bulges the
++        // per-vertex widths were dropped from the DXF
+         if (FIELD_VALUE (num_widths) && FIELD_VALUE (widths) &&
+             rcount1 < FIELD_VALUE (num_widths) &&
+-            FIELD_VALUE (num_bulges) == FIELD_VALUE (num_points) &&
+             (FIELD_VALUE (widths[rcount1].start) != 0.0 ||
+              FIELD_VALUE (widths[rcount1].end) != 0.0))
+           {
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index a2eaa9a..249e37f 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -2659,11 +2659,14 @@ new_LWPOLYLINE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+         }
+       else if (pair->code == 70)
+         {
+-          o->flag = pair->value.i;
+-          if (pair->value.i & 1) /* only if closed or not */
+-            o->flag = (o->flag - 1) + 512;
+-          else if (pair->value.i & 128) /* plinegen? */
+-            o->flag = (o->flag - 128) + 256;
++          // DXF 1 closed, 128 plinegen; DWG 512 and 256. Keep the DWG bits
++          // set by other codes (4 const width, 16 bulges, 32 widths...),
++          // and map both DXF bits (else-if dropped plinegen of closed ones).
++          o->flag &= ~(512 | 256);
++          if (pair->value.i & 1)
++            o->flag |= 512;
++          if (pair->value.i & 128)
++            o->flag |= 256;
+           LOG_TRACE ("LWPOLYLINE.flag = %d [BS 70]\n", o->flag);
+         }
+       else if (pair->code == 38)
+@@ -2740,7 +2743,7 @@ new_LWPOLYLINE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+         }
+       else if (pair->code == 91)
+         {
+-          if (!j)
++          if (!o->num_vertexids)
+             {
+               o->vertexids
+                   = (BITCODE_BL *)xcalloc (num_points, sizeof (BITCODE_BL));
+@@ -2750,32 +2753,43 @@ new_LWPOLYLINE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+                   return NULL;
+                 }
+               o->num_vertexids = num_points;
++              o->flag |= 1024;
+             }
+           CHK_array (j, vertexids);
+           o->vertexids[j] = pair->value.i;
+           LOG_TRACE ("LWPOLYLINE.vertexids[%d] = %d [BL 91]\n", j,
+                      pair->value.i);
+         }
+-      else if (pair->code == 40) // not const_width
++      else if ((pair->code == 40 || pair->code == 41) && !o->num_widths)
+         {
+-          if (!j)
++          // The first vertex with a width needs not be the first vertex
++          // (sample_AC1015 written by dwg2dxf: only the last one has 40/41).
++          // The DWG flag for widths is 32; 4 is the constant width (43).
++          o->widths = (Dwg_LWPOLYLINE_width *)xcalloc (
++              num_points, sizeof (Dwg_LWPOLYLINE_width));
++          if (!o->widths)
+             {
+-              o->widths = (Dwg_LWPOLYLINE_width *)xcalloc (
+-                  num_points, sizeof (Dwg_LWPOLYLINE_width));
+-              if (!o->widths)
+-                {
+-                  o->num_widths = 0;
+-                  return NULL;
+-                }
+-              o->flag |= 4;
+-              o->num_widths = num_points;
++              o->num_widths = 0;
++              return NULL;
+             }
++          o->flag |= 32;
++          o->num_widths = num_points;
++          CHK_array (j, widths);
++          if (pair->code == 40)
++            o->widths[j].start = pair->value.d;
++          else
++            o->widths[j].end = pair->value.d;
++          LOG_TRACE ("LWPOLYLINE.widths[%d] = %f [BD %d]\n", j,
++                     pair->value.d, pair->code);
++        }
++      else if (pair->code == 40) // not const_width
++        {
+           CHK_array (j, widths);
+           o->widths[j].start = pair->value.d;
+           LOG_TRACE ("LWPOLYLINE.widths[%d].start = %f [BD 40]\n", j,
+                      pair->value.d);
+         }
+-      else if (pair->code == 41 && (o->flag & 4)) // not const_width
++      else if (pair->code == 41) // not const_width
+         {
+           CHK_array (j, widths);
+           o->widths[j].end = pair->value.d;
+-- 
+2.43.0
+

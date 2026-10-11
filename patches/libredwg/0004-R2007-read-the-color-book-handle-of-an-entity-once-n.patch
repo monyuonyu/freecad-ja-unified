@@ -1,0 +1,31 @@
+From 40586cc5840aa5935008f5e7ea2a7badde0d167f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 08:50:22 +0900
+Subject: [PATCH 04/37] R2007+: read the color book handle of an entity once,
+ not twice
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/common_entity_data.spec | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/common_entity_data.spec b/src/common_entity_data.spec
+index d2a4535..1c0f7ea 100644
+--- a/src/common_entity_data.spec
++++ b/src/common_entity_data.spec
+@@ -466,6 +466,12 @@
+       if (flags & 0x40)
+         {
+ #ifndef IS_ENCODER
++#ifdef IS_DECODER
++          // R2007+: read once, later, by dwg_decode_common_entity_handle_data.
++          // Reading it here as well consumed the next handle, the layer, so
++          // entities with a color book color lost their layer.
++          if (dat->from_version < R_2007)
++#endif
+           FIELD_HANDLE (color.handle, 0, 430); // DBCOLOR 1E9F74 => 1F05B9 lgtm[cpp/use-after-free] codeql[cpp/use-after-free]
+ #endif
+         }
+-- 
+2.43.0
+

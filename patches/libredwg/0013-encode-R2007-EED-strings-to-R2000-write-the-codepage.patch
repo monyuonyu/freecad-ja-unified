@@ -1,0 +1,66 @@
+From 17d2a82a13cee2703b9f64838cf54c9dbc6358ee Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 09:42:19 +0900
+Subject: [PATCH 13/37] encode: R2007+ EED strings to R2000, write the codepage
+ big-endian, the converted length
+
+The R13-R2007 branch for UTF-16 EED strings wrote the codepage with
+bit_write_RS, so ANSI_1252 (30) became 0x1E00, and the length was the
+number of UTF-16 characters, not of the converted string (characters above
+U+00FF become \U+XXXX). ACadSharp could not read the STYLE of an R2013
+drawing written as R2000 (font name in the EED). The buffer check was
+inverted and underflowed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 31 ++++++++++++++++++++++---------
+ 1 file changed, 22 insertions(+), 9 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 14e715c..d4245b0 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -6852,18 +6852,31 @@ dwg_encode_eed_data (Bit_Chain *restrict dat, Dwg_Eed_Data *restrict data,
+               BITCODE_RS length = data->u.eed_0_r2007.length;
+               BITCODE_RS *s = (BITCODE_RS *)&data->u.eed_0_r2007.string;
+               char *dest;
+-              if (length + 5 + dat->byte < dat->size)
+-                bit_chain_alloc_size (dat,
+-                                      (length + 5 + dat->byte) - dat->size);
+-              if (length > 255)
++              dest = bit_embed_TU_size (s, length);
++              // The length is of the converted string: characters above
++              // U+00FF become \U+XXXX, longer than one byte.
++              if (dest)
+                 {
+-                  LOG_ERROR ("eed: overlong string %d stripped", (int)length);
+-                  length = 255;
++                  size_t dlen = strlen (dest);
++                  if (dlen > 255)
++                    {
++                      LOG_ERROR ("eed: overlong string %d stripped",
++                                 (int)dlen);
++                      dlen = 255;
++                    }
++                  length = (BITCODE_RS)dlen;
+                 }
+-              dest = bit_embed_TU_size (s, length);
++              else
++                length = 0;
++              // was "< dat->size": the unsigned difference underflowed
++              if (dat->byte + length + 5 >= dat->size)
++                bit_chain_alloc_size (dat, length + 5);
+               bit_write_RC (dat, length);
+-              bit_write_RS (dat, dat->codepage);
+-              bit_write_TF (dat, (unsigned char *)dest, length);
++              // big-endian as in the other branch, the decoder and ODA:
++              // little-endian gave 0x1E00 for ANSI_1252, and ACadSharp
++              // failed on the STYLE with its font name in the EED.
++              bit_write_RS_BE (dat, dat->codepage);
++              bit_write_TF (dat, (unsigned char *)(dest ? dest : ""), length);
+               LOG_TRACE ("string: len=" FORMAT_RS " [RC] cp=" FORMAT_RS
+                          " [RS] \"%s\" [TF]",
+                          length, dat->codepage, dest);
+-- 
+2.43.0
+

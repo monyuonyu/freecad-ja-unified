@@ -1,0 +1,55 @@
+From 7bd10fe8d6e46d31d6dcf75ae98d452b3f799aa0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 07:19:06 +0900
+Subject: [PATCH 26/37] in_dxf: HATCH seed at (0,0) is no elevation; 3DSOLID
+ revision_guid field names
+
+After the paths, 10/20 of 0.0 are seed points, not the elevation: a seed
+at the origin was dropped and num_seeds 1 became 0 (sample_AC10xx via DXF).
+The revision guid was set as "revision_guid[39]" and "revision_bytes[9]",
+which dynapi does not know ("Invalid 3DSOLID field").
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 29782bd..588b9bf 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -11471,7 +11471,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+               strncpy (revision_guid, pair->value.s.ptr, 38);
+               revision_guid[38] = '\0';
+               if (!dwg_dynapi_entity_set_value (
+-                      _obj, obj->name, "revision_guid[39]", revision_guid, 0))
++                      _obj, obj->name, "revision_guid", revision_guid, 0))
+                 break;
+               if (revision_guid[0] != '{' ||  /* 8 */
+                   revision_guid[9] != '-' ||  /* 4 */
+@@ -11507,7 +11507,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+               dwg_dynapi_entity_set_value (_obj, obj->name, "revision_minor2",
+                                            &revision_minor2, 0);
+               dwg_dynapi_entity_set_value (
+-                  _obj, obj->name, "revision_bytes[9]", revision_bytes, 0);
++                  _obj, obj->name, "revision_bytes", revision_bytes, 0);
+               break;
+             }
+           // fall through
+@@ -12224,8 +12224,12 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+             }
+           else if (obj->fixedtype == DWG_TYPE_HATCH)
+             {
++              // the elevation point comes before the paths (91); after them
++              // 10/20 are the seed points, and a seed at (0, 0) was dropped
++              // as "elevation": num_seeds 1 became 0 (sample_AC1015 via DXF)
+               if ((pair->code == 10 || pair->code == 20)
+-                  && pair->value.d == 0.0)
++                  && pair->value.d == 0.0
++                  && !obj->tio.entity->tio.HATCH->num_paths)
+                 break; // elevation
+               else if (pair->code == 91 || pair->code == 78
+                        || pair->code == 453)
+-- 
+2.43.0
+

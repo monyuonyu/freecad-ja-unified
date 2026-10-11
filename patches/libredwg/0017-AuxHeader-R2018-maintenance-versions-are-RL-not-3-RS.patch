@@ -1,0 +1,72 @@
+From 09cbd289fbd945df6003d2d5d9b2bf10d2f1a6b9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 8 Oct 2026 10:00:56 +0900
+Subject: [PATCH 17/37] AuxHeader: R2018 maintenance versions are RL, not 3 RS
+ at the end
+
+AutoCAD's R2013 and R2018 saves of the same drawing have 123 and 129 byte
+AuxHeaders; the 6 bytes are the upper halves of maint_version,
+maint_version_1 and maint_version_2. Reading them as zero_18 at the end
+shifted everything after maint_version by 2 bytes: minus_1 was 0xffff0000,
+TDCREATE/TDUPDATE garbage, and R2018 drawings written as R2000 carried the
+garbage dates, which ACadSharp could not read. Now minus_1 is -1 and the
+dates and HANDSEED match the header.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/auxheader.spec | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/src/auxheader.spec b/src/auxheader.spec
+index ee2eb35..df4a394 100644
+--- a/src/auxheader.spec
++++ b/src/auxheader.spec
+@@ -43,6 +43,15 @@
+   FIELD_VECTOR_INL (aux_intro, RC, 3, 0); /* ff 77 01 */
+   FIELD_RSx (dwg_version, 0);
+   FIELD_RSx (maint_version, 0);
++  // R2018: the three maintenance versions are RL. These are the upper
++  // halves, not 3 RS at the end: AutoCAD's R2013 and R2018 saves of the same
++  // drawing are 123 and 129 bytes, and only so all later fields match
++  // (minus_1 was 0xffff0000 and TDCREATE garbage before).
++#ifndef IS_JSON
++  SINCE (R_2018b) {
++    FIELD_RS (zero_18[0], 0);
++  }
++#endif
+   FIELD_RL (numsaves, 0);
+   FIELD_RLd (minus_1, 0);
+   FIELD_RS (numsaves_1, 0);
+@@ -50,8 +59,18 @@
+   FIELD_RL (zero, 0);
+   FIELD_RSx (dwg_version_1, 0);
+   FIELD_RSx (maint_version_1, 0);
++#ifndef IS_JSON
++  SINCE (R_2018b) {
++    FIELD_RS (zero_18[1], 0);
++  }
++#endif
+   FIELD_RSx (dwg_version_2, 0);
+   FIELD_RSx (maint_version_2, 0);
++#ifndef IS_JSON
++  SINCE (R_2018b) {
++    FIELD_RS (zero_18[2], 0);
++  }
++#endif
+   FIELD_VECTOR_INL (unknown_6rs, RS, 6, 0); /* 5, 0x893, 5, 0x893, 0, 1 */
+   FIELD_VECTOR_INL (unknown_5rl, RL, 5, 0); /* all 0 */
+   FIELD_TIMERLL (TDCREATE, 0);
+@@ -70,6 +89,9 @@
+   // readers (ACadSharp) read past its end.
+   FIELD_RL (zero_7, 0);
+   FIELD_RL (zero_8, 0);
+-  SINCE (R_2018) {
++#ifdef IS_JSON
++  // the names in_json knows
++  SINCE (R_2018b) {
+     FIELD_VECTOR_INL (zero_18, RS, 3, 0);
+   }
++#endif
+-- 
+2.43.0
+
