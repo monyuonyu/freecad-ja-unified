@@ -1,7 +1,7 @@
 From 7e2811bd65a0e961f949eae63c58e0ee653f46fa Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 10:46:12 +0900
-Subject: [PATCH 20/37] LWPOLYLINE: no vertex id flag (1024) before R2010
+Subject: [PATCH 20/54] LWPOLYLINE: no vertex id flag (1024) before R2010
 
 R2010+ LWPOLYLINEs written as R2000 kept the flag; ACadSharp then read a
 num_vertexids that is not there and lost the points (Dynblocks.dwg).

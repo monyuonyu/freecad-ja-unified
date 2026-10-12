@@ -1,0 +1,67 @@
+From 814020f411f48401d122e41d2d03c17ce177a62f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 12:01:19 +0900
+Subject: [PATCH 38/54] Keep the class name of unknown objects; DXF: hatch
+ names as in the DWG
+
+- Unknown (undecodable) entities and objects get their class name as
+  dxfname (AEC_WALL, TCH_WALL...), as other readers do; JSON said only
+  UNKNOWN_ENT.
+- DXF HATCH/MPOLYGON: write the name with its island style suffix
+  ("SOLID,_O") as AutoCAD keeps it; only a solid fill without a name is
+  written as SOLID.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/decode.c |  4 ++++
+ src/dwg.spec | 12 ++++++++----
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/decode.c b/src/decode.c
+index 1e81712..dc9eea6 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -5859,6 +5859,10 @@ dwg_decode_add_object (Dwg_Data *restrict dwg, Bit_Chain *dat,
+               // obj->type = DWG_TYPE_UNKNOWN_OBJ;
+               error |= dwg_decode_UNKNOWN_OBJ (dat, obj);
+             }
++          // keep the class name (AEC_WALL, TCH_WALL...), as other readers do:
++          // the JSON and DXF said only UNKNOWN_ENT
++          if (klass && klass->dxfname)
++            obj->dxfname = klass->dxfname;
+ 
+           if (error >= DWG_ERR_CRITICAL)
+             *dat = abs_dat;
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 735f2a6..521c755 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -4754,8 +4754,10 @@ DWG_ENTITY (HATCH)
+   FIELD_3BD (extrusion, 210);
+   DECODER { normalize_BE (FIELD_VALUE (extrusion)); }
+   DXF {
+-    if (FIELD_VALUE (is_solid_fill)) {
+-      VALUE_TFF ("SOLID", 2); // not "SOLID,_I"
++    // The name as in the DWG, with the island style suffix (",_O", ",_I")
++    // as AutoCAD keeps it: "SOLID,_O" became "SOLID" via DXF.
++    if (FIELD_VALUE (is_solid_fill) && !FIELD_VALUE (name)) {
++      VALUE_TFF ("SOLID", 2);
+     } else {
+       FIELD_T (name, 2);
+     }
+@@ -5024,8 +5026,10 @@ DWG_ENTITY (MPOLYGON)
+   FIELD_3BD (extrusion, 210);
+   DECODER { normalize_BE (FIELD_VALUE (extrusion)); }
+   DXF {
+-    if (FIELD_VALUE (is_solid_fill)) {
+-      VALUE_TFF ("SOLID", 2); // not "SOLID,_I"
++    // The name as in the DWG, with the island style suffix (",_O", ",_I")
++    // as AutoCAD keeps it: "SOLID,_O" became "SOLID" via DXF.
++    if (FIELD_VALUE (is_solid_fill) && !FIELD_VALUE (name)) {
++      VALUE_TFF ("SOLID", 2);
+     } else {
+       FIELD_T (name, 2);
+     }
+-- 
+2.43.0
+

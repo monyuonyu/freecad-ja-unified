@@ -1,7 +1,7 @@
 From 51adf011503afc4a12079332d76c2d3929fb0707 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:32:49 +0900
-Subject: [PATCH 35/37] TABLE: keep DXF/DXB import and export of tables
+Subject: [PATCH 35/54] TABLE: keep DXF/DXB import and export of tables
  disabled
 
 With TABLE/TABLECONTENT now UNSTABLE instead of DEBUGGING:

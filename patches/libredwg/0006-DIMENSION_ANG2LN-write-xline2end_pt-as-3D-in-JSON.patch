@@ -1,7 +1,7 @@
 From 4a12d900df9f240a9d537b938c0caba6c910c527 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:02:35 +0900
-Subject: [PATCH 06/37] DIMENSION_ANG2LN: write xline2end_pt as 3D in JSON
+Subject: [PATCH 06/54] DIMENSION_ANG2LN: write xline2end_pt as 3D in JSON
 
 The previous change wrote xline2end_pt as 2RD (as stored in the DWG) in JSON
 too, but in_json expects the 3D struct field: "JSON 3DPOINT must be ARRAY of

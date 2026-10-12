@@ -1,0 +1,43 @@
+From 321f5d81715896263de87cb62f683d267755bf8d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 12:43:28 +0900
+Subject: [PATCH 41/54] out_dxf: Standard/ByLayer/ByBlock spelling only when
+ converting from R13/R14
+
+R2000+ drawings kept their names as is: gh109_1 (R2013) has a DIMSTYLE
+STANDARD and its DIMENSIONs referred to Standard in DXF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/out_dxf.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index 9730cf8..8a09078 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -1855,8 +1855,10 @@ dxf_cvt_tablerecord (Bit_Chain *restrict dat, const Dwg_Object *restrict obj,
+           else
+             fprintf (dat->fh, "%3i\r\n%s\r\n", dxf, value);
+         }
+-      else
+-        { // downcase some standard names
++      else if (dat->from_version < R_2000 && dat->version >= R_2000)
++        { // downcase some standard names, only from R13/R14 to R2000+: a
++          // drawing of R2000+ with STANDARD (gh109_1) had its DIMENSIONs
++          // refer to Standard
+           if (dat->version >= R_2000 && strEQc (value, "STANDARD"))
+             fprintf (dat->fh, "%3i\r\nStandard\r\n", dxf);
+           else if (dat->version >= R_2000 && strEQc (value, "BYLAYER"))
+@@ -1868,6 +1870,8 @@ dxf_cvt_tablerecord (Bit_Chain *restrict dat, const Dwg_Object *restrict obj,
+           else
+             fprintf (dat->fh, "%3i\r\n%s\r\n", dxf, value);
+         }
++      else
++        fprintf (dat->fh, "%3i\r\n%s\r\n", dxf, value);
+       if (IS_FROM_TU (dat))
+         free (value);
+     }
+-- 
+2.43.0
+

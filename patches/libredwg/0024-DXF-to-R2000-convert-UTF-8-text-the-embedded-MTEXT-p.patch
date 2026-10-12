@@ -1,7 +1,7 @@
 From e7046e6d940133ccc376cbfede9533bc0befe4ec Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:02:53 +0900
-Subject: [PATCH 24/37] DXF to R2000: convert UTF-8 text, the embedded MTEXT
+Subject: [PATCH 24/54] DXF to R2000: convert UTF-8 text, the embedded MTEXT
  parts; Asian codepages: lead byte
 
 - bit_utf8_to_TV: the lead byte of two-byte characters was wc1 >> 4, not

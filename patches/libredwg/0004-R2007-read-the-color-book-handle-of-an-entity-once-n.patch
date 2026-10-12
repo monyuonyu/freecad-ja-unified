@@ -1,7 +1,7 @@
 From 40586cc5840aa5935008f5e7ea2a7badde0d167f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:50:22 +0900
-Subject: [PATCH 04/37] R2007+: read the color book handle of an entity once,
+Subject: [PATCH 04/54] R2007+: read the color book handle of an entity once,
  not twice
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

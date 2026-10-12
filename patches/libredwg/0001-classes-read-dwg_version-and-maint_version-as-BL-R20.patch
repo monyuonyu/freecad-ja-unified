@@ -1,7 +1,7 @@
 From 37a723c35c30041538398d0d77b1ce8b4e35f7bc Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:49:49 +0900
-Subject: [PATCH 01/37] classes: read dwg_version and maint_version as BL
+Subject: [PATCH 01/54] classes: read dwg_version and maint_version as BL
  (R2004+), keep unknown_1
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

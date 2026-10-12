@@ -1,7 +1,7 @@
 From cf9e911f85708bcf7d5befb7aa6f85c6526029d9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 7 Oct 2026 22:40:42 +0900
-Subject: [PATCH 02/37] DIMENSION_ANG2LN: keep the DXF meaning of def_pt (10)
+Subject: [PATCH 02/54] DIMENSION_ANG2LN: keep the DXF meaning of def_pt (10)
  and xline2end_pt (16)
 
 R13+ stores 16-pt (2RD), 13, 14, 15, 10-pt (3BD) (ODA 20.4.27).  The 2RD was

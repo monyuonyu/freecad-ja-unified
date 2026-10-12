@@ -1,0 +1,163 @@
+From 9ed795d444355a8558e06095e8928f225ba022f4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 15:56:03 +0900
+Subject: [PATCH 51/54] R2000 from newer: DXF entities via the handles, table
+ cell display text, R14 names
+
+- get_first_owned_entity/get_next_owned_block_entity: by the handles; the
+  refs added by dwg_fixup_BLOCKS_entities were unresolved and
+  dwg2dxf --as r2000 of R2004+ drawings wrote no entities.
+- TABLE R2007 to R2000: the formatted value text (302) first ("0.500000",
+  "$100.00", "CELL FORMAT 1"), as AutoCAD's R2000 save of the same
+  drawing (sample_AC1021 vs sample_AC1015).
+- R13/R14 to R2000+: ByBlock, ByLayer, Continuous, Standard and the
+  dictionary keys Standard, as AutoCAD's R2000 save (example_r14 vs
+  example_2000); MLINESTYLE keeps STANDARD.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.c     |  9 +++++++--
+ src/dwg2.spec | 21 ++++++++++++++-----
+ src/encode.c  | 56 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 79 insertions(+), 7 deletions(-)
+
+diff --git a/src/dwg.c b/src/dwg.c
+index 9f88f30..b653530 100644
+--- a/src/dwg.c
++++ b/src/dwg.c
+@@ -1229,7 +1229,11 @@ get_first_owned_entity (const Dwg_Object *hdr)
+         dwg_resolve_objectrefs_silent (dwg);
+       _hdr->__iterator = 0; /* reset step counter for cycle detection */
+       /* With r2000 we rather follow the next_entity chain */
+-      return _hdr->first_entity ? _hdr->first_entity->obj : NULL;
++      // by the handle: refs added by dwg_fixup_BLOCKS_entities (R2004+ to
++      // R2000) are not resolved yet, ->obj was NULL and dwg2dxf --as r2000
++      // wrote no entities
++      return _hdr->first_entity ? dwg_ref_object (dwg, _hdr->first_entity)
++                                : NULL;
+     }
+   else if (version >= R_2004 || version < R_13b1)
+     {
+@@ -1588,7 +1592,8 @@ get_next_owned_block_entity (const Dwg_Object *restrict hdr,
+       BITCODE_BL max_steps;
+       /* With r2000 we rather follow the next_entity chain. It may jump around
+        * the linked list. */
+-      if (!_hdr->last_entity || current == _hdr->last_entity->obj)
++      if (!_hdr->last_entity
++          || current->handle.value == _hdr->last_entity->absolute_ref)
+         return NULL;
+       /* Cycle detection: __iterator was reset in get_first_owned_entity */
+       _hdr->__iterator++;
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 229385b..6ac87ec 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -832,15 +832,26 @@ DWG_ENTITY (TABLE)
+               // R2007 to R2000/R2004: the text is in the value (UTF-16),
+               // text_value is empty. Without this every cell lost its text
+               // (example_2007, sample_AC1021 written as R2000).
++              // The formatted text (302) first, as AutoCAD writes it in
++              // R2000: "0.500000", "$100.00", "35.00%", "CELL FORMAT 1"
++              // (sample_AC1021 vs AutoCAD's sample_AC1015); else the string.
+               if (dat->from_version >= R_2007a
+-                  && FIELD_VALUE (cell.value.data_type) == 4
+-                  && FIELD_VALUE (cell.value.data_string)
+                   && (!FIELD_VALUE (cell.text_value)
+                       || !*(BITCODE_TU)FIELD_VALUE (cell.text_value)))
+                 {
+-                  free (FIELD_VALUE (cell.text_value));
+-                  FIELD_VALUE (cell.text_value) = (BITCODE_T)bit_wcs2dup (
+-                      (BITCODE_TU)FIELD_VALUE (cell.value.data_string));
++                  BITCODE_TU src = NULL;
++                  if (FIELD_VALUE (cell.value.value_string)
++                      && *(BITCODE_TU)FIELD_VALUE (cell.value.value_string))
++                    src = (BITCODE_TU)FIELD_VALUE (cell.value.value_string);
++                  else if (FIELD_VALUE (cell.value.data_type) == 4
++                           && FIELD_VALUE (cell.value.data_string))
++                    src = (BITCODE_TU)FIELD_VALUE (cell.value.data_string);
++                  if (src)
++                    {
++                      free (FIELD_VALUE (cell.text_value));
++                      FIELD_VALUE (cell.text_value)
++                          = (BITCODE_T)bit_wcs2dup (src);
++                    }
+                 }
+ #endif
+               if (FIELD_VALUE (cell.type) == 1
+diff --git a/src/encode.c b/src/encode.c
+index c674589..3123663 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3242,6 +3242,58 @@ encode_objfreespace_2ndheader (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+  * Skip all MATERIAL objects, DICTS and common properties
+  */
+ AFL_GCC_TOOBIG
++/* R13/R14 to R2000+: the names AutoCAD 2000 uses. AutoCAD's R14 and R2000
++   saves of the same drawing (example_r14, example_2000): LTYPE BYBLOCK,
++   BYLAYER, CONTINUOUS become ByBlock, ByLayer, Continuous; STYLE and DIMSTYLE
++   STANDARD become Standard, and so the dictionary keys STANDARD (the
++   MLINESTYLE keeps its name STANDARD). */
++static void
++upconvert_r14_names (Dwg_Data *restrict dwg)
++{
++  static const char *const from[] = { "BYBLOCK", "BYLAYER", "CONTINUOUS",
++                                      "STANDARD" };
++  static const char *const to[] = { "ByBlock", "ByLayer", "Continuous",
++                                    "Standard" };
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      if (obj->supertype != DWG_SUPERTYPE_OBJECT || !obj->tio.object
++          || !obj->tio.object->tio.APPID)
++        continue;
++      if (obj->fixedtype == DWG_TYPE_LTYPE || obj->fixedtype == DWG_TYPE_STYLE
++          || obj->fixedtype == DWG_TYPE_DIMSTYLE)
++        {
++          // all table records start with the same common fields
++          char **namep = (char **)&obj->tio.object->tio.LTYPE->name;
++          unsigned k0 = obj->fixedtype == DWG_TYPE_LTYPE ? 0 : 3;
++          unsigned k1 = obj->fixedtype == DWG_TYPE_LTYPE ? 3 : 4;
++          if (!*namep)
++            continue;
++          for (unsigned k = k0; k < k1; k++)
++            if (strEQ (*namep, from[k]))
++              {
++                LOG_TRACE ("%s.name %s => %s\n", obj->name, *namep, to[k]);
++                free (*namep);
++                *namep = strdup (to[k]);
++                break;
++              }
++        }
++      else if (obj->fixedtype == DWG_TYPE_DICTIONARY
++               || obj->fixedtype == DWG_TYPE_DICTIONARYWDFLT)
++        {
++          Dwg_Object_DICTIONARY *d = obj->tio.object->tio.DICTIONARY;
++          for (BITCODE_BL j = 0; d->texts && j < d->numitems; j++)
++            if (d->texts[j] && strEQc ((char *)d->texts[j], "STANDARD"))
++              {
++                LOG_TRACE ("DICTIONARY.texts[%u] STANDARD => Standard\n",
++                           (unsigned)j);
++                free (d->texts[j]);
++                d->texts[j] = (BITCODE_T)strdup ("Standard");
++              }
++        }
++    }
++}
++
+ EXPORT int
+ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+ {
+@@ -3279,6 +3331,10 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                dwg_version_codes (dwg->header.version),
+                dwg_version_type (dwg->header.version));
+ 
++  if (dwg->header.from_version >= R_13b1 && dwg->header.from_version < R_2000
++      && dwg->header.version >= R_2000)
++    upconvert_r14_names (dwg);
++
+ #ifdef ENCODE_UNKNOWN_AS_DUMMY
+   // We cannot write unknown_bits into another version, or when it's coming
+   // from DXF. Same-version JSON imports keep the raw unknown_bits dump.
+-- 
+2.43.0
+

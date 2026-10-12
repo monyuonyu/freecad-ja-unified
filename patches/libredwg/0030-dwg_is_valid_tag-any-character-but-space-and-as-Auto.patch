@@ -1,7 +1,7 @@
 From 12e239232955701b9dcfbe9a677d1af1ffac6cb3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:30:34 +0900
-Subject: [PATCH 30/37] dwg_is_valid_tag: any character but space and ! as
+Subject: [PATCH 30/54] dwg_is_valid_tag: any character but space and ! as
  AutoCAD
 
 Only letters, digits, $ _ - were accepted; aec_objects' ATTDEF tag

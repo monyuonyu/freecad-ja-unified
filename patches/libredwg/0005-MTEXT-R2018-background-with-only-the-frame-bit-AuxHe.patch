@@ -1,7 +1,7 @@
 From fe766914945731774594dc65be7babfc9eee45d6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:50:41 +0900
-Subject: [PATCH 05/37] MTEXT: R2018 background with only the frame bit;
+Subject: [PATCH 05/54] MTEXT: R2018 background with only the frame bit;
  AuxHeader zero_7/8 for R2000
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

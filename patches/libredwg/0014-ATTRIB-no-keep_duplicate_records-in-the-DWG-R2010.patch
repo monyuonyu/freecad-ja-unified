@@ -1,7 +1,7 @@
 From 2a5484af0a4e482f5e1152cde2d0013d520be4ed Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:31:32 +0900
-Subject: [PATCH 14/37] ATTRIB: no keep_duplicate_records in the DWG (R2010+)
+Subject: [PATCH 14/54] ATTRIB: no keep_duplicate_records in the DWG (R2010+)
 
 In AutoCAD's R2010, R2013 and R2018 files (ACadSharp samples
 sample_AC1024/1027/1032.dwg) the data stream of an ATTRIB ends right

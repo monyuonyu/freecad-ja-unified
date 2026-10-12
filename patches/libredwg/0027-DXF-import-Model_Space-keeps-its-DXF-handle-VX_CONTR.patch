@@ -1,7 +1,7 @@
 From 652521ebc2d3eda72423d7307a9174c3bf293ccb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:23:16 +0900
-Subject: [PATCH 27/37] DXF import: *Model_Space keeps its DXF handle;
+Subject: [PATCH 27/54] DXF import: *Model_Space keeps its DXF handle;
  VX_CONTROL B only if free
 
 object[0] (*Model_Space) was created with 0x1F before the TABLES; a quick

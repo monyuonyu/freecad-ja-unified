@@ -1,0 +1,196 @@
+From 4b7c86331598e35d71bc7eb2550da8a2062a848b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 16:44:59 +0900
+Subject: [PATCH 54/54] To R2000 as AutoCAD: gradient hatches solid in the
+ first color, MTEXT \P
+
+Against AutoCAD's own R2000 save of the same drawings (sample_AC1015,
+example_2000):
+- gradient HATCHes (R2004+) become solid fills of the first gradient color
+  (R2000 has no gradients; the entity stayed ByLayer).
+- MTEXT line breaks (LF, in sample_AC1018..AC1032) are written as \P in
+  DWG and DXF, as AutoCAD does; DXF had them as ^J, kept as text by DXF
+  readers (dwg_fixup_mtext_linebreaks).
+Now example_2004..2018 written as R2000, directly or via DXF, equal AutoCAD's
+R2000 save in all 222 entities; over both groups 3258 of 3405 entities are
+equal, the rest are AutoCAD's renumbered handles and anonymous blocks, R14
+lacking lineweights, and three conversions not done (stacked fraction
+codes, dynamic block references, fit-point splines to control points).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/dwg.h  |  2 ++
+ src/dwg.c      | 63 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/encode.c   | 36 +++++++++++++++++++++++++++++
+ src/out_dxf.c  |  1 +
+ src/out_dxfb.c |  1 +
+ 5 files changed, 103 insertions(+)
+
+diff --git a/include/dwg.h b/include/dwg.h
+index 972f5a0..7d17c81 100644
+--- a/include/dwg.h
++++ b/include/dwg.h
+@@ -11726,6 +11726,8 @@ EXPORT BITCODE_BL dwg_rgb_palette_index (BITCODE_BS index);
+    returns 256 if not found, i.e. the default ByLayer.
+  */
+ EXPORT BITCODE_BS dwg_find_color_index (BITCODE_BL rgb);
++/* MTEXT line breaks (LF) as \\P */
++EXPORT void dwg_fixup_mtext_linebreaks (Dwg_Data *restrict dwg);
+ /* the nearest ACI color 1-255 */
+ EXPORT BITCODE_BS dwg_nearest_color_index (BITCODE_BL rgb);
+ 
+diff --git a/src/dwg.c b/src/dwg.c
+index 0bd521b..2ecff25 100644
+--- a/src/dwg.c
++++ b/src/dwg.c
+@@ -3268,6 +3268,69 @@ dwg_rgb_palette_index (BITCODE_BS index)
+     }
+ }
+ 
++/* MTEXT line breaks are \P. AutoCAD writes them so in DWG and DXF (its own
++   R2000 save of sample_AC1032, whose MTEXT has LF). A raw LF in DXF was
++   written as ^J, which DXF readers keep as text. */
++EXPORT void
++dwg_fixup_mtext_linebreaks (Dwg_Data *restrict dwg)
++{
++  const int is_tu = IS_FROM_TU_DWG (dwg);
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      Dwg_Entity_MTEXT *m;
++      size_t len, n = 0, k = 0;
++      if (obj->fixedtype != DWG_TYPE_MTEXT || !obj->tio.entity
++          || !obj->tio.entity->tio.MTEXT || !obj->tio.entity->tio.MTEXT->text)
++        continue;
++      m = obj->tio.entity->tio.MTEXT;
++      if (is_tu)
++        {
++          BITCODE_TU t = (BITCODE_TU)m->text, nt;
++          len = bit_wcs2len (t);
++          for (size_t j = 0; j < len; j++)
++            n += t[j] == 0x0A;
++          if (!n || !(nt = (BITCODE_TU)calloc (len + n + 1, sizeof (*nt))))
++            continue;
++          for (size_t j = 0; j < len; j++)
++            if (t[j] == 0x0D && j + 1 < len && t[j + 1] == 0x0A)
++              ; // CR LF is one break
++            else if (t[j] == 0x0A)
++              {
++                nt[k++] = '\\';
++                nt[k++] = 'P';
++              }
++            else
++              nt[k++] = t[j];
++          free (m->text);
++          m->text = (BITCODE_T)nt;
++        }
++      else
++        {
++          char *t = (char *)m->text, *nt;
++          len = strlen (t);
++          for (size_t j = 0; j < len; j++)
++            n += t[j] == '\n';
++          if (!n || !(nt = (char *)calloc (len + n + 1, 1)))
++            continue;
++          for (size_t j = 0; j < len; j++)
++            if (t[j] == '\r' && j + 1 < len && t[j + 1] == '\n')
++              ;
++            else if (t[j] == '\n')
++              {
++                nt[k++] = '\\';
++                nt[k++] = 'P';
++              }
++            else
++              nt[k++] = t[j];
++          free (m->text);
++          m->text = (BITCODE_T)nt;
++        }
++      LOG_TRACE ("MTEXT " FORMAT_HV ": %u line breaks => \\P\n",
++                 obj->handle.value, (unsigned)n);
++    }
++}
++
+ /* The nearest ACI color 1-255 of an RGB (squared distance). */
+ EXPORT BITCODE_BS
+ dwg_nearest_color_index (BITCODE_BL rgb)
+diff --git a/src/encode.c b/src/encode.c
+index 3123663..d4d7949 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3242,6 +3242,39 @@ encode_objfreespace_2ndheader (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+  * Skip all MATERIAL objects, DICTS and common properties
+  */
+ AFL_GCC_TOOBIG
++/* R2004+ to R2000 as AutoCAD does it (sample_AC1032 vs AutoCAD's own R2000
++   save sample_AC1015):
++   - gradient HATCHes become solid fills of the first gradient color: R2000
++     has no gradients, the entity color was ByLayer instead of 5.
++   - MTEXT line breaks (LF): dwg_fixup_mtext_linebreaks. */
++static void
++downconvert_for_r2000 (Dwg_Data *restrict dwg)
++{
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      if (obj->supertype != DWG_SUPERTYPE_ENTITY || !obj->tio.entity
++          || !obj->tio.entity->tio.HATCH)
++        continue;
++      if (obj->fixedtype == DWG_TYPE_HATCH)
++        {
++          Dwg_Entity_HATCH *h = obj->tio.entity->tio.HATCH;
++          Dwg_Color *c = &obj->tio.entity->color;
++          if (h->is_gradient_fill && h->num_colors && h->colors
++              && h->colors[0].color.index > 0 && h->colors[0].color.index < 256)
++            {
++              LOG_TRACE ("HATCH " FORMAT_HV " gradient => color %d\n",
++                         obj->handle.value, h->colors[0].color.index);
++              c->index = h->colors[0].color.index;
++              c->flag = 0;
++              c->method = 0;
++              c->rgb = 0;
++              c->raw = c->index;
++            }
++        }
++    }
++}
++
+ /* R13/R14 to R2000+: the names AutoCAD 2000 uses. AutoCAD's R14 and R2000
+    saves of the same drawing (example_r14, example_2000): LTYPE BYBLOCK,
+    BYLAYER, CONTINUOUS become ByBlock, ByLayer, Continuous; STYLE and DIMSTYLE
+@@ -3334,6 +3367,9 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+   if (dwg->header.from_version >= R_13b1 && dwg->header.from_version < R_2000
+       && dwg->header.version >= R_2000)
+     upconvert_r14_names (dwg);
++  if (dwg->header.from_version >= R_2004 && dwg->header.version < R_2004)
++    downconvert_for_r2000 (dwg);
++  dwg_fixup_mtext_linebreaks (dwg);
+ 
+ #ifdef ENCODE_UNKNOWN_AS_DUMMY
+   // We cannot write unknown_bits into another version, or when it's coming
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index 3f6932c..4a9b3ea 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -4352,6 +4352,7 @@ dwg_write_dxf (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+   loglevel = dwg->opts & DWG_OPTS_LOGLEVEL;
+   if (dat->from_version == R_INVALID)
+     dat->from_version = dwg->header.from_version;
++  dwg_fixup_mtext_linebreaks (dwg); // \P, as AutoCAD writes them
+   if (dwg->dirty_refs)
+     dwg_resolve_objectrefs_silent (dwg);
+   if (dwg->header.version <= R_2000 && dwg->header.from_version > R_2000)
+diff --git a/src/out_dxfb.c b/src/out_dxfb.c
+index 2c8eaed..90c5175 100644
+--- a/src/out_dxfb.c
++++ b/src/out_dxfb.c
+@@ -2610,6 +2610,7 @@ dwg_write_dxfb (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+   loglevel = dwg->opts & DWG_OPTS_LOGLEVEL;
+   if (dat->from_version == R_INVALID)
+     dat->from_version = dat->version;
++  dwg_fixup_mtext_linebreaks (dwg); // \P, as AutoCAD writes them
+   if (dwg->header.version <= R_2000 && dwg->header.from_version > R_2000)
+     dwg_fixup_BLOCKS_entities (dwg);
+   dwg_resolve_objectrefs_silent (dwg);
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 3c3550b824f0324ac28c26e29f045f4242092493 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:31:32 +0900
-Subject: [PATCH 16/37] ATTRIB/ATTDEF: R2018 multi-line to earlier versions as
+Subject: [PATCH 16/54] ATTRIB/ATTDEF: R2018 multi-line to earlier versions as
  single-line text
 
 Before R2018 there is no multi-line attribute in the DWG. AutoCAD's own

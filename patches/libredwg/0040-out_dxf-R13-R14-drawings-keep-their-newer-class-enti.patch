@@ -1,0 +1,34 @@
+From e6ae9241bd3c612c554c7357b2eb72304af66d0d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 12 Oct 2026 12:08:34 +0900
+Subject: [PATCH 40/54] out_dxf: R13/R14 drawings keep their newer class
+ entities in DXF
+
+An R14 DWG saved by newer AutoCAD has MULTILEADER, WIPEOUT, MESH,
+PDFUNDERLAY, ARC_DIMENSION classes; its DXF dropped them all. Skip them only
+when converting newer drawings to R13/R14 DXF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/out_dxf.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index 3521c03..9730cf8 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -2839,7 +2839,10 @@ dwg_dxf_variable_type (const Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+   if (!klass || !klass->dxfname)
+     return DWG_ERR_INTERNALERROR;
+   is_entity = dwg_class_is_entity (klass);
+-  if (dat->version < R_2000)
++  // Only when converting newer drawings to R13/R14 DXF. An R13/R14 DWG that
++  // has these classes (MULTILEADER, WIPEOUT, MESH... saved by newer AutoCAD)
++  // keeps them in its DXF, with the same CLASSES; they were all dropped.
++  if (dat->version < R_2000 && dat->from_version >= R_2000)
+     {
+       // keep only: IMAGE, LWPOLYLINE, HATCH
+       if (is_entity && strNE (klass->dxfname, "IMAGE")
+-- 
+2.43.0
+
