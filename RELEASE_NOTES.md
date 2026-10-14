@@ -10,7 +10,7 @@
 設定フォルダは本家の FreeCAD とは別（`FreeCAD-ja-unified`）。0.3.1 以前の設定は引き継がない。
 アンインストールでは、画面の「ユーザー設定も削除」を選ぶと設定も消える（選ばなければ残る。本家の設定には触れない）。
 
-変更点は [README](https://github.com/monyuonyu/freecad-ja-unified#readme) を参照:
+変更点は [README](https://github.com/monyuonyu/freecad-ja-unified/blob/main/README.ja.md) を参照:
 作業場の切り替えを無くした一つの画面、選んだものの横に出る操作、1 種類に固定したマウス操作、
 プロパティ欄と失敗の知らせまで含めた日本語化、設計の検査（DRC のような間違い探しと自動修正）、
 AI チャット、今風のナビキューブ、コマンドライン・スクリプトまわりの修正。
