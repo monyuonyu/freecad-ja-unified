@@ -1,0 +1,364 @@
+[English](README.md) | [日本語](README.ja.md) | **简体中文**
+
+> 译自 [README.ja.md](README.ja.md)（日文版为原文），对应提交 `513d863`。
+
+# freecad-ja-unified
+
+把 FreeCAD 整合成“不会迷路的单一界面”，并让它能用日语使用。
+取消了工作台的切换，选中对象后就在旁边给出下一步操作，
+界面用语统一为浅显的日语。还加入了找出错误的“设计检查”，以及能查看并修改模型的 AI 聊天。
+从命令行或脚本使用时的问题也一并修复了。所有改动都以 FreeCAD 上游的补丁形式保存（没有提交到上游）。
+
+本软件的界面是日语。本页中需要在屏幕上找到的日语标签，会用引号保留原文并附上中文含义。
+
+![点击一个面，旁边就会出现下一步操作](docs/images/08_face_actions.png)
+
+- 基于的版本：FreeCAD main `b48098efa`（2026-09-26，版本号 26.3.0dev）
+- 随附的 OndselSolver：`4be80eef`
+
+## 下载
+
+[Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) 中提供已构建好的版本。
+
+- Linux：`FreeCAD_<版本>-Linux-x86_64.AppImage`（加上执行权限后直接运行）
+- Windows：`FreeCAD_<版本>-Windows-x86_64-installer.exe`（安装程序）或 `.7z`（解压后运行 `bin/FreeCAD.exe`）
+
+没有做代码签名，所以 Windows 会弹出 SmartScreen 警告（点“更多信息”→“仍要运行”）。
+
+设置、宏和窗口布局保存在与上游 FreeCAD 不同的位置（`FreeCAD-ja-unified`）。Windows 安装程序也会
+安装到与上游不同的位置（`FreeCAD-ja-unified 26.3`）。0.3.1 及以前与上游共用（与上游并用时设置会混在一起）。
+
+卸载时，程序、快捷方式、文件关联和注册信息都会被删除（已在 Windows 上确认）。
+用户自己的设置与上游一样默认保留（便于重新安装后继续使用）。要删除时，在卸载程序界面中勾选
+“ユーザー設定も削除”（同时删除用户设置）。只会删除本版本的设置，不会动上游 FreeCAD 的设置。
+
+## 界面一览
+
+### 首次启动
+
+只需选择语言、单位和外观（浅色／深色）。之后可以在“編集 → 設定”（编辑 → 首选项）中修改。
+
+![首次启动的界面](docs/images/01_first_start.png)
+
+### 新建零件 → 点击要绘制的位置
+
+开始界面只有“新しい部品”（新建零件）和“ファイルを開く”（打开文件）。点击新建零件后，会直接询问在哪里绘制。
+不需要像上游那样在对话框里选面再点 OK，只要在 3D 视图中点一下平面或零件上的平整面即可。
+
+![开始界面](docs/images/02_start.png)
+
+![在 3D 视图中点击要绘制的位置](docs/images/03_pick_plane.png)
+
+### 绘制草图时只显示草图工具
+
+绘制草图期间，工具栏会切换为草图工具，结束后恢复原样。
+会吸附到网格点上，所以即使用鼠标随手画，尺寸也是整齐的数值。剩余的自由度数量以日语显示。
+
+![编辑草图](docs/images/04_sketch.png)
+
+### 画完之后，下一步就出现在旁边
+
+关闭草图后，旁边会出现“押し出す・回転・編集・AI に頼む”（拉伸、旋转、编辑、交给 AI）。不必在工具栏里找。
+工具栏上的主要工具在图标下方也标有名称（押し出し“凸台”、切り抜き“凹槽”、丸め“圆角”…）。
+
+![关闭草图后的候选操作](docs/images/05_after_sketch.png)
+
+任务面板只在使用工具时出现，用完就消失（同时调整视角，让模型完整显示在画面中）。
+
+![凸台的设置](docs/images/06_pad_panel.png)
+
+### 点击一个面，显示对该面能做的操作
+
+面会给出草图、凸台、凹槽、孔、抽壳；边会给出圆角、倒角（见最上方的图）。
+“穴”（孔）会直接开在点击的位置（上游需要先在草图里画一个点）。
+光标下的对象以名称和位置显示，而不是 `Preselected: Unnamed.Body.Pad.Face6`。
+双击一个面，会打开生成该面的特征（凸台、圆角…）的编辑。
+
+![光标下的显示](docs/images/08b_hover.png)
+
+### 设计检查与“直す”（修复）
+
+类似 PCB 设计软件中的 DRC，列出整个模型中的错误：失败的特征、零件之间的干涉、草图约束的冲突、
+悬空的零件、工程图中丢失了几何的尺寸等。选中一行会缩放到对应零件，并在出问题的位置显示红色标记。
+状态栏始终显示检查结果（“検査: エラー 2・警告 2”，即“检查：错误 2、警告 2”）。
+
+![设计检查](docs/images/09_design_check.png)
+
+修复方法明确的问题（重复或冲突的约束、悬空的零件、重叠的零件、空的投影视图）可以用“直す”（修复）一键修复。
+下图是按下“直せるものを全部直す”（修复所有可修复的问题）之后的结果。“撤销”一次即可全部恢复。
+
+![修复之后](docs/images/10_design_fixed.png)
+
+### 交给 AI
+
+在右侧的“AI”面板中提出请求，AI（Claude）会查看模型、进行修改，再用设计检查和画面确认，然后汇报结果。
+选中面或边后点“AI に頼む”（交给 AI），选中的对象也会一并传过去。AI 要执行的代码每次都会显示出来，
+只有点“実行する”（执行）时才会运行。每执行一次就是“撤销”的一步。
+
+![批准 AI 的代码](docs/images/11_ai_approve.png)
+
+![AI 加上圆角并确认了结果](docs/images/12_ai_done.png)
+
+### 失败提示也是日语
+
+在上游仍是英文的失败信息（如 `BRep_API: command not done`）也会用日语说明哪里出了问题、该怎么办。
+含有约束编号或边编号的信息也会翻译。
+
+![失败提示](docs/images/13_error_ja.png)
+
+### 导航立方体
+
+右上角用来改变视角的立方体，平时只显示立方体本身。鼠标移上去后才出现箭头等控件，
+点击靠近面边缘或角落的位置，就会转到那条边或那个角的方向（更容易点中）。将会发生什么由工具提示说明。
+
+![导航立方体的前后对比](docs/images/14_navicube.png)
+
+## 与上游的差异（一览）
+
+| | 上游 FreeCAD | 本补丁 |
+|---|---|---|
+| 工作台 | 在 Part / PartDesign / Sketcher / Draft / TechDraw / Assembly … 之间切换 | 无需切换。草图、实体、工程图、装配都在同一个界面 |
+| 2D 绘图 | Sketcher 与 Draft 两套并存 | 统一为 Sketcher（只在绘制草图时显示草图工具） |
+| 工程图、装配 | 各自有独立的工作台 | 收在“図面”（工程图）和“アセンブリ”（装配）菜单中，并附说明 |
+| 第一步 | 开始界面选项很多 | 只有“新建零件”和“打开”。新建零件后直接进入选择草图平面 |
+| 选择草图平面 | 在对话框中选面后点 OK | 在 3D 视图中点一下面或基准平面 |
+| 选中后的操作 | 去工具栏里找 | 在选中对象旁给出候选操作（面→草图/凸台/凹槽/抽壳，边→圆角/倒角，草图→凸台/旋转/编辑，零件→移动/隐藏） |
+| 工具栏 | 只有图标。即使 1600 宽也有一部分藏在“»”里 | 主要工具在图标下方标有名称（凸台、凹槽、圆角…）。草图工具也能排成一行 |
+| 草图吸附 | 默认关闭 | 靠近网格点时吸附（用鼠标画也能得到整齐的尺寸） |
+| 光标下的显示 | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6`（“凸台的面 6”） |
+| 双击面 | 没有反应 | 打开生成该面的特征（凸台、圆角…）的编辑 |
+| 选中面后点“孔” | 以“找不到轴”失败（需要先在草图里画点） | 在点击的位置开孔 |
+| 工程图的投影视图 | 在重新打开文件之前会出现在图纸左下角（上游的缺陷）。默认第一角投影 | 出现在图纸中央。默认第三角投影（JIS） |
+| 修改导入的实体（STEP 等） | 弹出“需要活动的实体（Body）”对话框 | 可直接绘制草图、倒圆角、拉伸（自动转为零件） |
+| 不选任何对象就导出 | 停在“请选择对象” | 导出所有可见的零件 |
+| 查找错误 | “检查几何”只检查所选的一个形状是否损坏 | “設計の検査”（设计检查，接近 PCB 设计软件的 DRC）：列出失败的特征、分裂的零件、零件之间的干涉、草图约束的冲突、极短的边、悬空的零件、丢失了几何的工程图尺寸。选中一行会选中并缩放到该零件，并在位置上显示红色标记。“有意为之”的问题可以标记为忽略并记录在文档中。可修复的问题（重复或冲突的约束、悬空的零件、重叠的零件、空的投影视图）用“修复”按钮修复（撤销一次即可恢复）。状态栏始终显示结果（错误和警告的数量）。命令行中也可使用：`FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')"` |
+| 交给 AI | 无 | 在右侧的“AI”面板中，AI（Claude）查看模型、修改模型，并用检查和画面确认。选中面或边时的候选操作以及设计检查的列表中都有“交给 AI”。默认情况下 AI 要执行的代码每次都会显示，批准后才执行（每次为一步撤销。也有跳过确认的开关）。使用时需要你自己的 Anthropic API 密钥（见下文） |
+| 菜单 | “宏”和面向开发者的工具排在顶部菜单 | 顶部菜单减少一个，视图和工具中面向高级用户的项目移到子菜单 |
+| 线性阵列的初始间距 | 固定 100 mm（零件较小时副本会跑到画面外） | 被阵列形状尺寸的 2 倍 |
+| 鼠标操作 | 从 7 种方式中选择 | 默认只有 1 种（右键拖动旋转，中键拖动平移，滚轮缩放）。不显示选择界面 |
+| 任务面板 | 始终占用空间 | 只在使用工具时出现。结束后调整视角，让模型可见 |
+| 右键菜单 | 项目很多 | 只保留建模需要的（其余仍在顶部菜单中） |
+| 首选项界面 | 包含 BIM、插件等用不到的页面 | 只保留会用到的页面 |
+| 插件管理器 | 有 | 无（它是用来添加工作台的机制） |
+
+没有删除任何功能。平时不常用的功能都附上说明放在菜单里。
+
+## 使用 AI 聊天
+
+1. 发布包（自 0.3.5 起）已经包含 AI 聊天所需的组件（claude-agent-sdk、keyring、Claude Code），无需准备。
+   如果是自己构建的，请在右侧“AI”面板中点击“AI の準備をする”（准备 AI）（会安装到 Python 虚拟环境中，需要联网）
+2. 在 [console.anthropic.com](https://console.anthropic.com/) 创建 API 密钥，通过“API キー…”（API 密钥…）输入。
+   密钥保存在操作系统的密钥库中（Windows 凭据管理器、macOS 钥匙串、Linux Secret Service）。
+   在没有密钥库的环境中，保存在只有本人可读的文件中（FreeCAD 用户数据中的 `ai/ai-api-key`）
+3. 使用费用计入 API 密钥所有者的账户。本补丁不包含任何密钥或登录信息
+
+AI 会把文档内容、画面图像和设计检查的结果发送给模型（默认为 Opus）。
+AI 要执行的代码默认每次都会显示，只有点“実行する”（执行）时才会运行（代码也可以做 FreeCAD 以外的事情，请先读一遍）。
+勾选面板下方的“たずねずに実行する”（不询问直接执行）可以跳过确认（直到关闭 FreeCAD 为止。执行过的代码会保留在聊天记录和 ai/ai-runs.log 中）。
+
+## 日语
+
+- 补全了菜单、工具栏、任务面板、通知和首选项中未翻译的部分，并把术语统一为浅显的说法
+  （例：Pad → 押し出し，Pocket → 切り抜き，Body → 部品，Constraint → 拘束）
+- 左侧的属性栏（属性名、分组、说明、选项值）改为日语
+- 新建对象的名称也是日语（部品、スケッチ、押し出し …）
+- 零件中的原点（Origin）在树中隐藏
+
+在日语以外的语言下，显示与上游相同。
+
+## 命令行与脚本
+
+| | 原版 FreeCAD | 打补丁后 |
+|---|---|---|
+| 脚本因异常而终止 | 退出码为 **0**，而且会**执行两次**，错误只有一行 | 只执行一次，退出码 1，显示完整的回溯 |
+| `if __name__ == "__main__":` | 不执行（脚本被当作模块 import） | 执行 |
+| `sys.argv` | 原样是 FreeCAD 自己的参数 | `FreeCADCmd a.py -- x y` → `['a.py', 'x', 'y']` |
+| `sys.exit()` / `sys.exit("msg")` | 1 / 不输出消息 | 0 / 消息输出到标准错误 |
+| 异常或 `sys.exit()` 之前的 `print` | 有时会丢失 | 会输出 |
+| 不存在的文件 | 退出码 0 | `No such file`，退出码 1 |
+| `FreeCADCmd < a.py` | 以交互模式逐行处理（混入 `>>>`，出错也返回 0） | 作为一个完整脚本执行 |
+| 执行脚本时的横幅 | 显示 | 不显示（交互模式下显示） |
+| 导出 STEP | OCC 的统计信息在标准输出中出现两次 | 不输出（转到日志） |
+| 打开装配 | 约束求解器的信息输出到标准输出 | 不输出 |
+| `Part.export([shape], "a.step")` | **悄无声息地写出空的 STEP** | 接受 Shape／没有内容时抛出 `ValueError` |
+| `--output` 转换失败 | 退出码 0 | 退出码 1 |
+| `--help` | 名称总是“FreeCAD”，没有用法说明 | 显示可执行文件名、示例和退出码。显示 `--output`（`-o`）和 `--hidden` |
+| 设置文件 | 即使什么都不做每次也会重写。并行运行时设置会丢失 | 只在值改变时写入 |
+| `FreeCAD --hidden a.py` 失败 | 退出码 0 | 退出码 1 |
+| 用 `--hidden` 改变视角后保存 | 保存的是动画进行到一半的画面 | 不播放动画 |
+| 用 `--hidden` 且存在旧版本的设置 | 设置迁移对话框出现在看不见的屏幕上，**永远卡住** | 不显示对话框 |
+| 以 `--hidden` 运行 | 会改写最近使用的文件和窗口布局 | 不改写 |
+| Python 的 `saveImage()` | 导航立方体会被拍进图像 | 不会（与“保存图像”菜单相同） |
+| 输出图像 | 需要显示环境（xvfb）和 GUI | `FreeCADCmd a.FCStd --render a.png --view iso`（不需要显示环境和 OpenGL。`--render-style shaded\|hidden-lines\|lines`、`--size 1600x1200`，Python 中为 `Part.renderImage`） |
+| 干涉检查 | 对零件两两穷举（300 个零件需 106 秒） | `FreeCADCmd a.FCStd --interference`／`Part.findInterferences`（先用包围盒筛选并并行处理，1.2 秒） |
+| 消隐后的 2D 图 | 需要 TechDraw 图纸页 | `--export-svg`、`--export-polygons`（按面的多边形 JSON）、`--export-pptx`（图形可编辑的 PowerPoint）／`Part.projectVisible` |
+| `Mesh.addFacets(shape.tessellate(d))` | **悄无声息地丢弃**相互接触的盒子之间的面（52 个盒子时 624 → 12 个面） | 全部加入（只有 `check=True` 时才丢弃，并警告数量） |
+
+## 从上游引入的修复（PR 列表）
+
+已提交到上游 FreeCAD 但尚未合并的 PR 中，经过审查后引入的部分（作者姓名原样保留在提交中）。
+从 541 个开放的 PR 中，以本界面用到部分的崩溃、缺陷和回退为主进行筛选，阅读了改动内容，并确认能在补丁之上应用且通过测试。
+
+**崩溃**
+
+- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) 进入草图编辑或移动鼠标时崩溃（@alfrix）
+- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) 草图预选时越界读取导致崩溃（@alexdremov）
+- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) 镜像草图时崩溃（@alfrix）
+- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) 关闭任务面板时访问已释放的内存而崩溃（@alexdremov）
+- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) 在属性栏编辑时点击 3D 视图等操作导致崩溃（6 种。任务面板中的 1 处与 #32970 重复，已排除）（@oursland）
+- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) 打开外部引用的文件时崩溃（@chennes）
+- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) 刚启动时操作 SpaceMouse 导致崩溃（@Maik-0000FF）
+
+**形状与草图**
+
+- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) 对多段线倒圆角时最后一个点消失（@alfrix）
+- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) 无法在曲线之间的点上倒圆角时，给出原因（@VishalRamKN）
+- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) 圆角、倒角失败时，给出原因（半径过大、面会扭曲…）和解决办法（@paragforwork）
+
+**工程图**
+
+- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) 锁定位置的视图在加载后跳到原点（@WandererFan）
+- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) 修复尺寸引用时遇到损坏的引用会失败（@WandererFan）
+
+**装配**
+
+- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) 给零件添加固定关节时出错（@ryneeverett）
+- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) 失去父对象的关节组无法删除（@PaddleStroke）
+- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) 齿条齿轮动作异常（@PaddleStroke）
+
+**显示与界面**
+
+- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) 浅色／深色主题下，合并后形状的颜色错乱（@chennes）
+- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) 选中高亮显示的深度出现回退（@Connor9220）
+- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) 属性栏的选项中日语等文字乱码（@maxwxyz）
+- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) 用键盘在树中选择时更新状态栏（@007stevendigar-lgtm）
+
+**文件**
+
+- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) 无法读取 ASCII 格式的 STL（名称较长、末尾没有换行）（@maxwxyz）
+
+**0.3.3 中新增**
+
+- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) 草图中的点只移动一点点就会弹回原处（@Reqrefusion）
+- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) 在测量工具打开时关闭文档会崩溃（@Amine0x0）。直接应用的话，在本版本中会覆盖另一个观察者，之后导致崩溃，因此一并修复了
+- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) 抽壳结果是无效形状时没有任何提示（@007stevendigar-lgtm）。另外补充了厚度过大导致形状不变时的提示
+
+### 已向上游报告但尚未修复、由我们修复的问题
+
+附有复现步骤，并在本地复现或查明原因的问题。
+
+- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) 用表达式编辑器输入草图尺寸后，退出工具时尺寸消失（本月出现的回退）
+- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) “保存到变量集”因单位不匹配而失败（在 macOS 上会崩溃）
+- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) 打开不可见的文档时，当前正在处理的文档被抢走（在 macOS 上会崩溃）
+- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) 比零件还厚的抽壳厚度会悄无声息地什么也不做
+- 删除中间的特征（如凹槽）后，后面的阵列仍带着被删除的孔，却显示为“正常”
+- STEP 中日语等名称乱码（导出改为符合标准的写法，导入默认使用 UTF-8。其他 CAD 生成的 STEP 也能读取）
+- 长度为 0 的视角移动会导致画面卡死
+
+用检测内存错误使用的构建（AddressSanitizer）运行上游测试时发现的问题（0.3.4）：
+
+- 在重新计算过程中删除零件，后续处理会读取已删除零件的内存（CAM 的刀具会触发）
+- 宏编辑器对已删除的文件询问“是否重新加载”而卡住
+- Draft 的选择框显示读取的点数多于传入的点数
+
+此外还修复了装配求解器（OndselSolver）中，在 Linux 和 macOS 上导出装配（ASMT）时关节类型名损坏的问题
+（截取类型名时以 Windows 的格式为前提。是在上游测试 #32922 于 Linux 上失败时发现的）。
+
+## 0.5.0 的变更
+
+- DWG：**现在可以写出 R2004、R2010、R2013、R2018 的 DWG**（此前最高为 R2000）。
+  把 149 个测试图纸写成各个版本，再用 ACadSharp 读回：无法读取的图纸 0、丢失的图元 0、类型改变的图元 0（经由 DXF 也一样）。
+  也与 AutoCAD 以相同版本保存的文件逐个图元进行了比对
+  - 3D 实体（ACIS）：读写 R2013 及以后的存放位置（AcDs），从旧图纸或 DXF 写成 R2013 及以后的版本时形状不会丢失
+  - 修复了 DXF → DWG（dxf2dwg）写成 R2010 及以后版本时丢失近两成图元的问题
+  - FreeCAD 自身的 DWG 导出仍为 R2000（任何 AutoCAD 都能打开）。新版本请使用随附的 `dxf2dwg --as r2018`
+- 命令行：一行命令输出图像（`--render`，不需要显示环境和 OpenGL）、快速干涉检查（`--interference`）、
+  导出消隐后的 2D 图（SVG、按面的多边形、PowerPoint）。参见“命令行与脚本”的表格
+- Mesh：修复了 `addFacets` 悄无声息地丢弃相互接触零件之间的面、导致 STL 出现破洞的问题
+
+## 0.4.1 的变更
+
+- DWG：与 AutoCAD 自己用不同版本保存的同一图纸进行比对，使写成 R2000 时的转换与 AutoCAD 一致。
+  example_2004〜2018 写成 R2000 的所有图元都与 AutoCAD 的 R2000 保存结果一致（经由 DXF 也一样）
+  - 颜色：ByBlock 的图元变成了 ByLayer；代替 RGB 颜色的颜色编号改为与 AutoCAD 相同；颜色表改用当前 AutoCAD 的值
+  - R14 图纸：图元的线型（CONTINUOUS 等）变成了 ByLayer、线宽变成了 0.00mm；标准名称改为与 AutoCAD 相同
+  - 渐变填充改为第一种颜色的实心填充，MTEXT 的换行使用 \P（DXF 中也一样）
+- DWG：支持读写表格（TABLE）（经由 DXF 也不会丢失）。读取 R2010 及以后的全部表格样式
+- DWG：无法解析内容的第三方应用程序图元（建筑插件等），在写成旧版本或 DXF 时，与 AutoCAD 一样作为代理图元连同原始数据一起保留
+- DWG：修复了经由 DXF 时表格样式名、标注样式名、填充图案名被改变，以及 R14 的 DXF 中新类型图元丢失的问题
+
+## 0.4.0 的变更
+
+- DWG 读写：随附 LibreDWG（`dwg2dxf` / `dxf2dwg`），可以通过“文件 → 打开／导入／导出”处理 DWG。
+  读取支持 R13〜R2018（包括 AutoCAD 2018〜2025 的 AC1032），写出时使用所打开图纸的版本（R2000 及以前）。
+  在 LibreDWG 0.14.8601 上应用了修复补丁，这些读写缺陷是通过与独立实现（ACadSharp）在 149 个图纸上比对发现的
+  （`patches/libredwg`：表格、多行属性、字符编码、写成 R2000 等）。如果自己设置了转换器，则使用自己设置的
+- AI 聊天：因交互次数上限（80 次）而停止时，不再沉默，而是提示可以用“続けて”（继续）接着进行
+- AI 聊天：120 秒内没有结束的代码会被中止，并撤销本次的修改（避免 FreeCAD 卡死）。即使无法显示最后一个表达式的值，也不会撤销已完成的修改
+
+## 0.3.6 的变更
+
+- 修复了使用 Windows 安装程序安装时缺少 AI 聊天组件（ai-runtime）的问题（0.3.5 的 7z 中包含）
+- AI 聊天：新增“たずねずに実行する”（不询问直接执行）开关（默认关闭。开启时会显示提醒。不会保存，关闭 FreeCAD 后恢复为每次询问。
+  执行过的代码会保留在聊天中）。批准窗口中新增“実行して、以後はたずねない”（执行，以后不再询问）
+- AI 聊天：修复了 AI 代码中的 sys.exit 导致 FreeCAD 崩溃卡死的问题（与其他错误一样，撤销本次的修改并给出提示）
+- AI 聊天：把 AI 执行的代码及结果记录到用户数据中的 ai/ai-runs.log
+- AI 工具的缺陷（由 AI 自身的测试发现）：出错时也撤销对其他文档的修改，并回到原先打开的文档。
+  什么都没改的那次不再产生“撤销”步骤。新增和删除的对象按事件计数而不是按名称。
+  用 Python 创建的阵列位于零件最后时推进 Tip。get_document 的类型字段被特征的设置（如 Length）覆盖的问题
+- 设计检查：提示未被形状使用的特征（Tip 之后的）、没有形状的零件、未被检查的隐藏零件。
+  约束冲突期间不显示“剩余自由度”。注明约束编号从 1 开始计数
+- 日语：原点中的点改称“原点の点”（原点的点）（此前它和容器的原点都叫“原点”）
+
+## 0.3.5 的变更
+
+- 把 AI 聊天所需的组件打包进发布包。安装后无需联网准备即可使用 AI 面板（与 AI 的对话本身仍需联网）
+- AI 聊天失败时（密钥无效等）的说明更易懂
+
+## 应用补丁与构建
+
+```sh
+git clone https://github.com/FreeCAD/FreeCAD.git
+cd FreeCAD && git checkout b48098efa && cd ..
+./apply.sh FreeCAD
+
+# ビルド（Linux、pixi を使う公式の手順）。FEM/CAM/Robot は時間短縮のため外している
+cd FreeCAD
+pixi install
+pixi run cmake --preset conda-linux-release -DBUILD_FEM=OFF -DBUILD_CAM=OFF -DBUILD_ROBOT=OFF
+pixi run cmake --build build/release -j4      # 2 コア 4 スレッドのノートで約 2 時間
+pixi run cmake --install build/release        # .pixi/envs/default/bin に FreeCADCmd と FreeCAD
+```
+
+（命令中注释的意思：在 Linux 上按使用 pixi 的官方步骤构建，为节省时间关闭了 FEM/CAM/Robot；在 2 核 4 线程的笔记本上构建约需 2 小时；安装后 FreeCADCmd 和 FreeCAD 位于 .pixi/envs/default/bin。）
+
+## 测试
+
+```sh
+XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
+  tests/run.sh <FreeCADCmd のパス> <FreeCAD のパス>
+```
+
+（`<FreeCADCmd のパス>` 和 `<FreeCAD のパス>` 分别是 FreeCADCmd 和 FreeCAD 的路径。）
+
+务必把设置文件夹指向临时目录（以免弄脏真实的设置）。GUI 相关的项目需要 `xvfb-run`。
+原版 FreeCAD 1.1.3 通过 4/17，打补丁后全部项目（31）通过。
+也确认了 FreeCAD 自身的测试（`FreeCADCmd -t 0`，以及 Base/App/Part/Gui 的 C++ 测试）在打补丁后全部通过。
+
+## LibreDWG（DWG 转换器）
+
+`tools/build_libredwg.sh <输出目录> [linux|win64]` 会在上游 LibreDWG 0.14.8601 上应用 `patches/libredwg`，
+生成 `dwg2dxf` / `dxf2dwg`（Windows 版为 MinGW-w64 交叉编译，不需要 DLL）。发布流程也使用它。
+
+## 制作发布版
+
+补丁用 `tools/export_patches.sh` 导出（从 FreeCAD 克隆中的 unified-ui 重新生成 patches/）。
+
+
+手动运行 GitHub Actions 的“Build release”（`.github/workflows/release.yml`），输入标签名。
+它会在基础版本上应用补丁，按与上游相同的 `package/bundle` 流程构建 Linux 和 Windows 版，并上传到发布页（需要数小时）。
+
+
+## 许可证
+
+补丁与 FreeCAD 相同，采用 LGPL-2.1-or-later（`LICENSE`）。

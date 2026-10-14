@@ -1,320 +1,321 @@
+**English** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+
+> Translated from [README.ja.md](README.ja.md) (the Japanese version is the original) at commit `513d863`.
+
 # freecad-ja-unified
 
-FreeCAD を「迷わない一つの画面」にまとめ、日本語で使えるようにしたもの。
-作業場（ワークベンチ）の切り替えを無くし、選んだものに応じてその場で次の操作を出し、
-画面の言葉を平易な日本語にそろえた。間違いを見つける「設計の検査」と、モデルを見て直す AI チャットも入れた。
-コマンドラインやスクリプトから使うときの不具合も直している。FreeCAD 本家へのパッチの形で置いている（上流には送っていない）。
+FreeCAD turned into a single screen where you don't get lost, and made usable in Japanese.
+Workbench switching is gone, the next actions appear right where you picked something,
+and the UI wording is plain Japanese throughout. It also adds a "design check" that finds mistakes and an AI chat that looks at the model and fixes it.
+Bugs that show up when using FreeCAD from the command line or from scripts are fixed as well. Everything is kept as patches on top of upstream FreeCAD (not submitted upstream).
 
-FreeCAD with one integrated, Japanese-first working environment: no workbench switching,
-actions offered next to what you picked, plain Japanese throughout, a design check that finds
-and fixes mistakes, an AI chat that works on the model, and fixes for using FreeCAD from the
-command line and from scripts. Kept as patches on top of FreeCAD; not submitted upstream.
+The application's UI is in Japanese. In this page, Japanese labels you need to find on screen are given in quotes next to their English meaning.
 
-![面をクリックすると、その横に次の操作が出る](docs/images/08_face_actions.png)
+![Click a face and the next actions appear next to it](docs/images/08_face_actions.png)
 
-- 元にした版: FreeCAD main `b48098efa`（2026-09-26、バージョン表記 26.3.0dev）
-- 同梱の OndselSolver: `4be80eef`
+- Based on: FreeCAD main `b48098efa` (2026-09-26, version string 26.3.0dev)
+- Bundled OndselSolver: `4be80eef`
 
-## ダウンロード
+## Download
 
-[Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) にビルド済みのものを置いている。
+Prebuilt packages are on [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases).
 
-- Linux: `FreeCAD_<版>-Linux-x86_64.AppImage`（実行権限を付けてそのまま起動）
-- Windows: `FreeCAD_<版>-Windows-x86_64-installer.exe`（インストーラー）または `.7z`（展開して `bin/FreeCAD.exe`）
+- Linux: `FreeCAD_<version>-Linux-x86_64.AppImage` (make it executable and run it)
+- Windows: `FreeCAD_<version>-Windows-x86_64-installer.exe` (installer) or `.7z` (extract and run `bin/FreeCAD.exe`)
 
-署名はしていないので、Windows では SmartScreen の警告が出る（「詳細情報」→「実行」）。
+The builds are not signed, so Windows shows a SmartScreen warning ("More info" → "Run anyway").
 
-設定・マクロ・ウィンドウの配置は本家の FreeCAD と別の場所（`FreeCAD-ja-unified`）に置く。Windows のインストーラーも
-本家と別の場所（`FreeCAD-ja-unified 26.3`）に入る。0.3.1 までは本家と共通だった（本家と並べて使うと設定が混ざる）。
+Settings, macros and window layout are stored in a separate place from upstream FreeCAD (`FreeCAD-ja-unified`). The Windows installer also
+installs to a separate location (`FreeCAD-ja-unified 26.3`). Up to 0.3.1 they were shared with upstream (running both side by side mixed up the settings).
 
-アンインストールすると、プログラム・ショートカット・ファイルの関連付け・登録はすべて消える（Windows で確かめた）。
-自分の設定は、本家と同じく既定では残る（入れ直したときに引き継ぐため）。消すときはアンインストーラーの画面で
-「ユーザー設定も削除」を選ぶ。消えるのはこの版の設定だけで、本家の FreeCAD の設定には触れない。
+Uninstalling removes the program, shortcuts, file associations and registry entries (verified on Windows).
+Your own settings are kept by default, as with upstream (so they carry over if you reinstall). To remove them, choose
+"ユーザー設定も削除" (also delete user settings) in the uninstaller. Only this build's settings are removed; upstream FreeCAD's settings are not touched.
 
-## 画面で見る
+## A tour in screenshots
 
-### 最初の起動
+### First start
 
-言語・単位・見た目（ライト／ダーク）を選ぶだけ。あとから「編集 → 設定」で変えられる。
+Just pick the language, units and look (light/dark). You can change them later under "編集 → 設定" (Edit → Preferences).
 
-![最初の起動の画面](docs/images/01_first_start.png)
+![The first-start screen](docs/images/01_first_start.png)
 
-### 新しい部品 → 描く場所をクリック
+### New part → click where to draw
 
-スタート画面は「新しい部品」「ファイルを開く」だけ。新しい部品を押すと、そのまま描く場所を聞いてくる。
-本家のように面を選んでダイアログで OK を押す必要はなく、3D 画面の平面か部品の平らな面を 1 回クリックする。
+The start screen only has "新しい部品" (New part) and "ファイルを開く" (Open file). Pressing New part immediately asks where to draw.
+Unlike upstream, there is no dialog where you select a face and press OK: you click a plane in the 3D view, or a flat face of a part, once.
 
-![スタート画面](docs/images/02_start.png)
+![The start screen](docs/images/02_start.png)
 
-![描く場所を 3D 画面でクリック](docs/images/03_pick_plane.png)
+![Click where to draw in the 3D view](docs/images/03_pick_plane.png)
 
-### スケッチ中はスケッチの道具だけ
+### Only sketch tools while sketching
 
-スケッチを描いている間は、ツールバーがスケッチの道具に切り替わり、終われば元に戻る。
-グリッドの点に吸い付くので、マウスで描いても切りのいい寸法になる。決まっていない所の数は日本語で出る。
+While you are drawing a sketch, the toolbar switches to the sketch tools and switches back when you finish.
+Points snap to the grid, so even freehand mouse drawing gives round dimensions. The number of degrees of freedom left is shown in Japanese.
 
-![スケッチの編集](docs/images/04_sketch.png)
+![Editing a sketch](docs/images/04_sketch.png)
 
-### 描いたら、次の一手が横に出る
+### After drawing, the next step appears alongside
 
-スケッチを閉じると、その横に「押し出す・回転・編集・AI に頼む」が出る。ツールバーから探さなくてよい。
-ツールバーも主な道具はアイコンの下に名前（押し出し・切り抜き・丸め…）が付いている。
+When you close a sketch, "押し出す・回転・編集・AI に頼む" (Extrude, Revolve, Edit, Ask AI) appear next to it. No need to hunt through the toolbar.
+The main toolbar tools also have names under their icons (押し出し "Pad", 切り抜き "Pocket", 丸め "Fillet", …).
 
-![スケッチを閉じた後の候補](docs/images/05_after_sketch.png)
+![Suggestions after closing a sketch](docs/images/05_after_sketch.png)
 
-作業パネルは道具を使っている間だけ出て、終わったら消える（モデルが画面に収まるように視点も合わせる）。
+The task panel only appears while a tool is in use and disappears when you are done (the view is also adjusted so the model fits on screen).
 
-![押し出しの設定](docs/images/06_pad_panel.png)
+![Pad settings](docs/images/06_pad_panel.png)
 
-### 面をクリックすると、その面でできること
+### Click a face to see what you can do with it
 
-面ならスケッチ・押し出し・切り抜き・穴・厚み、辺なら丸め・面取りが出る（一番上の画像）。
-「穴」は、クリックした位置にそのまま開く（本家は先にスケッチに点を描く必要がある）。
-カーソルの下の物は `Preselected: Unnamed.Body.Pad.Face6` ではなく、名前と場所で出る。
-面をダブルクリックすると、その面を作った手順（押し出し・丸め…）の編集が開く。
+For a face you get Sketch, Pad, Pocket, Hole and Thickness; for an edge, Fillet and Chamfer (top image).
+"穴" (Hole) is made right at the point you clicked (upstream requires drawing a point in a sketch first).
+The object under the cursor is shown by name and location instead of `Preselected: Unnamed.Body.Pad.Face6`.
+Double-clicking a face opens the editor of the feature that created it (Pad, Fillet, …).
 
-![カーソルの下の表示](docs/images/08b_hover.png)
+![What is shown under the cursor](docs/images/08b_hover.png)
 
-### 設計の検査と「直す」
+### Design check and "直す" (Fix)
 
-基板 CAD の DRC のように、モデル全体の間違いを一覧にする。失敗した手順・部品どうしの干渉・スケッチの拘束の矛盾・
-浮いた部品・形を見失った図面の寸法など。行を選ぶと部品に寄って、場所に赤い印が出る。
-ステータスバーには常に結果（「検査: エラー 2・警告 2」）が出る。
+Like DRC in PCB CAD, it lists the mistakes in the whole model: failed features, interference between parts, conflicting sketch constraints,
+floating parts, drawing dimensions that have lost their geometry, and so on. Selecting a row zooms to the part and puts a red marker at the spot.
+The status bar always shows the result ("検査: エラー 2・警告 2", i.e. "Check: 2 errors, 2 warnings").
 
-![設計の検査](docs/images/09_design_check.png)
+![Design check](docs/images/09_design_check.png)
 
-直し方がはっきりしているもの（重複・矛盾した拘束、浮いた部品、重なった部品、空の投影図）は「直す」で直る。
-下は「直せるものを全部直す」を押した後。「元に戻す」1 回で全部戻る。
+Issues with an obvious fix (redundant or conflicting constraints, floating parts, overlapping parts, empty projection views) are fixed with "直す" (Fix).
+Below is the result after pressing "直せるものを全部直す" (Fix everything that can be fixed). A single Undo reverts all of it.
 
-![直した後](docs/images/10_design_fixed.png)
+![After fixing](docs/images/10_design_fixed.png)
 
-### AI に頼む
+### Ask AI
 
-右の「AI」パネルで頼むと、AI（Claude）がモデルを見て、直して、設計の検査と画面で確かめて報告する。
-面や辺を選んで「AI に頼む」を押せば、選んだ物も一緒に伝わる。AI が実行するコードは毎回表示され、
-「実行する」を押したときだけ動く。1 回ごとに「元に戻す」の 1 段になる。
+Ask in the "AI" panel on the right, and the AI (Claude) looks at the model, makes the change, verifies it with the design check and the view, and reports back.
+If you select faces or edges and press "AI に頼む" (Ask AI), the selection is passed along too. The code the AI wants to run is shown every time,
+and it only runs when you press "実行する" (Run). Each run becomes one Undo step.
 
-![AI のコードを承認する](docs/images/11_ai_approve.png)
+![Approving the AI's code](docs/images/11_ai_approve.png)
 
-![AI が丸めを付けて確かめた](docs/images/12_ai_done.png)
+![The AI added a fillet and checked it](docs/images/12_ai_done.png)
 
-### 失敗の知らせも日本語で
+### Error messages in Japanese too
 
-本家では英語のままの失敗の文（`BRep_API: command not done` など）も、何が悪いか・どうすればよいかを日本語で出す。
-拘束の番号や辺の番号が入る文も訳す。
+Failure messages that stay in English upstream (such as `BRep_API: command not done`) are shown in Japanese, explaining what went wrong and what to do.
+Messages containing constraint numbers or edge numbers are translated as well.
 
-![失敗の知らせ](docs/images/13_error_ja.png)
+![An error message](docs/images/13_error_ja.png)
 
-### ナビキューブ
+### NaviCube
 
-右上の向きを変える立方体は、ふだんは立方体だけ。マウスを乗せると矢印などが現れ、
-面の縁や隅に近い所を押せばその辺・角の向きになる（押しやすい）。何が起きるかはツールチップで出る。
+The orientation cube at the top right normally shows just the cube. Hovering the mouse over it reveals the arrows and other controls,
+and clicking near an edge or corner of a face turns the view to that edge or corner (easier to hit). Tooltips tell you what will happen.
 
-![ナビキューブの前後](docs/images/14_navicube.png)
+![NaviCube before and after](docs/images/14_navicube.png)
 
-## 本家との違い（一覧）
+## Differences from upstream (summary)
 
-| | 本家 FreeCAD | このパッチ |
+| | Upstream FreeCAD | This patch set |
 |---|---|---|
-| 作業場（ワークベンチ） | Part / PartDesign / Sketcher / Draft / TechDraw / Assembly … を切り替える | 切り替え無し。一つの画面にスケッチ・立体・図面・アセンブリ |
-| 2D の作図 | Sketcher と Draft の二本立て | Sketcher に一本化（スケッチ中だけスケッチの道具を出す） |
-| 図面・アセンブリ | それぞれの作業場 | 「図面」「アセンブリ」メニューに説明付きで収納 |
-| 最初の一歩 | スタート画面の選択肢が多い | 「新しい部品」「開く」だけ。新しい部品はすぐスケッチ面の選択へ |
-| スケッチ面の選択 | ダイアログで面を選んで OK | 3D 画面の面や基準面を1回クリック |
-| 選んだあとの操作 | ツールバーから探す | 選んだものの横に候補を出す（面→スケッチ/押し出し/切り抜き/薄肉化、辺→角丸め/面取り、スケッチ→押し出し/回転/編集、部品→移動/隠す） |
-| ツールバー | アイコンだけ。1600 幅でも一部が「»」の奥に隠れる | 主な道具はアイコンの下に名前（押し出し・切り抜き・丸め…）。スケッチの道具も一列に収まる |
-| スケッチの吸着 | 既定では切 | グリッドの点の近くで吸着（マウスで描いても切りのいい寸法になる） |
-| カーソルの下の表示 | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6` |
-| 面をダブルクリック | 何も起きない | その面を作った手順（押し出し・丸め…）の編集が開く |
-| 面を選んで「穴」 | 「軸が見つかりません」で失敗（先にスケッチに点を描く必要がある） | クリックした位置に穴 |
-| 図面の投影図 | 開き直すまでページの左下に出る（本家の不具合）。第一角法が既定 | ページの中央に出る。第三角法（JIS）が既定 |
-| 読み込んだ立体（STEP など）に手を加える | 「アクティブな部品が必要です」のダイアログ | そのままスケッチ・丸め・押し出しができる（自動で部品にする） |
-| 何も選ばずにエクスポート | 「オブジェクトを選択してください」で止まる | 見えている部品を書き出す |
-| 間違い探し | 「形状を確認」は選んだ 1 つの形が壊れていないかだけ | 「設計の検査」（基板 CAD の DRC に近い）: 失敗した手順・分かれた部品・部品どうしの干渉・スケッチの拘束の矛盾・極端に短い辺・浮いた部品・形を見失った図面の寸法を一覧に。行を選ぶと部品を選んで寄せ、場所に赤い印。「わざと」は無視として文書に記録。直せるもの（重複・矛盾した拘束、浮いた部品、重なった部品、空の投影図）は「直す」ボタンで直す（元に戻す 1 回で戻る）。ステータスバーに常に結果（エラー・警告の数）。コマンドラインでも `FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')"` |
-| AI に頼む | 無し | 右の「AI」パネルで、AI（Claude）がモデルを見て・直して・検査と画面で確かめる。面や辺を選んだときの候補と、設計の検査の一覧に「AI に頼む」。AI が実行するコードは既定では毎回見せて、承認してから実行（1 回ごとに元に戻す 1 段。確認を省く切り替えもある）。使うには自分の Anthropic API キーが要る（下記） |
-| メニュー | 「マクロ」や開発者向けの道具が上に並ぶ | 上のメニューを 1 つ減らし、表示・ツールの上級者向けはサブメニューへ |
-| 直線配列の最初の間隔 | 常に 100 mm（小さい部品だと複製が画面の外） | 並べる形の大きさの 2 倍 |
-| マウス操作 | 7 種類から選ぶ | 既定は 1 種類（右ドラッグで回転、中ドラッグで移動、ホイールで拡大縮小）。選ぶ画面は出さない |
-| 作業パネル | 常に場所をとる | 道具を使っている間だけ出る。終わったらモデルが見えるように視点を合わせる |
-| 右クリックメニュー | 項目が多い | モデリングに要るものだけ（ほかは上のメニューに残る） |
-| 設定画面 | BIM・アドオンなど使わない頁もある | 使う頁だけ |
-| アドオン管理 | あり | 無し（作業場を足す仕組みのため） |
+| Workbenches | Switch between Part / PartDesign / Sketcher / Draft / TechDraw / Assembly … | No switching. Sketch, solids, drawings and assemblies on one screen |
+| 2D drafting | Two systems: Sketcher and Draft | Sketcher only (sketch tools shown only while sketching) |
+| Drawings and assemblies | Each in its own workbench | Under the "図面" (Drawing) and "アセンブリ" (Assembly) menus, with descriptions |
+| First step | Many choices on the start screen | Only "New part" and "Open". New part goes straight to choosing the sketch plane |
+| Choosing the sketch plane | Select a face in a dialog and press OK | Click a face or datum plane in the 3D view once |
+| Actions after selecting | Hunt for them in the toolbar | Suggestions next to the selection (face → Sketch/Pad/Pocket/Thickness, edge → Fillet/Chamfer, sketch → Pad/Revolve/Edit, part → Move/Hide) |
+| Toolbar | Icons only. Even at 1600 px wide some are hidden behind "»" | Main tools have names under their icons (Pad, Pocket, Fillet, …). The sketch tools fit in one row too |
+| Sketch snapping | Off by default | Snaps near grid points (round dimensions even when drawing with the mouse) |
+| What is shown under the cursor | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6` ("Face 6 of Pad") |
+| Double-click a face | Nothing happens | Opens the editor of the feature that created it (Pad, Fillet, …) |
+| Select a face and press "Hole" | Fails with "no axis found" (you must draw a point in a sketch first) | A hole at the point you clicked |
+| Drawing projection views | Appear at the bottom-left of the page until the file is reopened (an upstream bug). First-angle projection by default | Appear at the center of the page. Third-angle projection (JIS) by default |
+| Modifying an imported solid (STEP etc.) | A dialog saying an active body is required | Sketch, fillet and pad work directly (it is turned into a part automatically) |
+| Export with nothing selected | Stops with "Please select an object" | Exports the visible parts |
+| Finding mistakes | "Check geometry" only checks whether the one selected shape is broken | "設計の検査" (Design check, similar to DRC in PCB CAD): lists failed features, split parts, interference between parts, conflicting sketch constraints, extremely short edges, floating parts and drawing dimensions that lost their geometry. Selecting a row selects and zooms to the part, with a red marker at the spot. Things done "on purpose" are recorded in the document as ignored. Fixable issues (redundant or conflicting constraints, floating parts, overlapping parts, empty projection views) are fixed with the "Fix" button (one Undo reverts it). The status bar always shows the result (number of errors and warnings). Also from the command line: `FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')"` |
+| Ask AI | None | In the "AI" panel on the right, the AI (Claude) looks at the model, changes it, and verifies with the check and the view. "Ask AI" is offered among the suggestions when you select a face or edge, and in the design check list. By default the code the AI runs is shown every time and runs only after you approve it (each run is one Undo step; there is also a switch to skip confirmation). Requires your own Anthropic API key (see below) |
+| Menus | "Macro" and developer tools sit in the top menus | One fewer top-level menu; advanced items of View and Tools moved to submenus |
+| Initial spacing of a linear pattern | Always 100 mm (with small parts the copies end up off-screen) | Twice the size of the shape being patterned |
+| Mouse navigation | Choose from 7 styles | One style by default (right-drag to rotate, middle-drag to pan, wheel to zoom). No screen to choose a style |
+| Task panel | Always takes up space | Only shown while a tool is in use. When done, the view is adjusted so the model is visible |
+| Context menu | Many items | Only what modeling needs (the rest stays in the top menus) |
+| Preferences | Includes pages you don't use, such as BIM and Addons | Only the pages you use |
+| Addon manager | Present | Removed (it is a mechanism for adding workbenches) |
 
-機能は消していない。普段使わないものはメニューの中に説明付きで入れてある。
+No features have been removed. Things you rarely use are in the menus, with descriptions.
 
-## AI チャットを使うには
+## Using the AI chat
 
-1. 配布物（0.3.5 から）には、AI チャットに要る部品（claude-agent-sdk・keyring・Claude Code）が最初から入っている。準備は要らない。
-   自分でビルドした場合は、右の「AI」パネルの「AI の準備をする」を押す（Python の仮想環境に入れる。ネットワークが要る）
-2. [console.anthropic.com](https://console.anthropic.com/) で API キーを作り、「API キー…」で入れる。
-   キーは OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）にしまう。
-   鍵保管庫の無い環境では、本人だけが読めるファイル（FreeCAD のユーザーデータの `ai/ai-api-key`）
-3. 使った分は API キーの持ち主のアカウントに請求される。このパッチにキーやログインは含まれない
+1. Release packages (from 0.3.5) already include what the AI chat needs (claude-agent-sdk, keyring, Claude Code). No setup required.
+   If you built it yourself, press "AI の準備をする" (Set up AI) in the "AI" panel on the right (installs into a Python virtual environment; needs network access)
+2. Create an API key at [console.anthropic.com](https://console.anthropic.com/) and enter it via "API キー…" (API key…).
+   The key is stored in the OS keystore (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+   On systems without a keystore, it goes into a file readable only by you (`ai/ai-api-key` in FreeCAD's user data)
+3. Usage is billed to the account that owns the API key. This patch set contains no keys or logins
 
-AI はモデル（既定は Opus）に、文書の中身・画面の画像・設計の検査の結果を送る。
-AI が実行しようとするコードは、既定では毎回表示され、「実行する」を押したときだけ動く（FreeCAD の外のことも書けるので、読んでから）。
-パネルの下の「たずねずに実行する」を入れると確認を省ける（FreeCAD を閉じるまで。実行したコードはチャットと ai/ai-runs.log に残る）。
+The AI sends the document contents, images of the view and the design check results to the model (Opus by default).
+By default the code the AI wants to run is shown every time and only runs when you press "実行する" (Run) (it can do things outside FreeCAD too, so read it first).
+Turning on "たずねずに実行する" (Run without asking) at the bottom of the panel skips confirmation (until FreeCAD is closed; executed code is kept in the chat and in ai/ai-runs.log).
 
-## 日本語
+## Japanese
 
-- メニュー・ツールバー・作業パネル・通知・設定画面の未訳を埋め、用語を平易な言葉にそろえた
-  （例: Pad → 押し出し、Pocket → 切り抜き、Body → 部品、Constraint → 拘束）
-- 左のプロパティ欄（項目名・分類・説明・選択肢の値）を日本語に
-- 新しく作ったものの名前も日本語（部品、スケッチ、押し出し …）
-- 部品の中の原点（Origin）は木の表示から隠す
+- Filled in untranslated text in menus, toolbars, task panels, notifications and preferences, and made the terms plain
+  (e.g. Pad → 押し出し, Pocket → 切り抜き, Body → 部品, Constraint → 拘束)
+- The property editor on the left (property names, groups, descriptions and enum values) is in Japanese
+- Newly created objects get Japanese names (部品, スケッチ, 押し出し …)
+- The Origin inside a part is hidden from the tree
 
-日本語以外の言語では本家と同じ表示になる。
+In languages other than Japanese, the UI looks the same as upstream.
 
-## コマンドライン・スクリプト
+## Command line and scripts
 
-| | 素の FreeCAD | パッチ後 |
+| | Plain FreeCAD | With the patches |
 |---|---|---|
-| スクリプトが例外で落ちる | 終了コード **0**、しかも**2回実行**される、エラーは1行だけ | 1回だけ実行、終了コード 1、トレースバックを表示 |
-| `if __name__ == "__main__":` | 実行されない（モジュールとして import される） | 実行される |
-| `sys.argv` | FreeCAD の引数そのまま | `FreeCADCmd a.py -- x y` → `['a.py', 'x', 'y']` |
-| `sys.exit()` / `sys.exit("msg")` | 1 / メッセージが出ない | 0 / メッセージを標準エラーに |
-| 例外や `sys.exit()` の直前の `print` | 消えることがある | 出る |
-| 存在しないファイル | 終了コード 0 | `No such file`、終了コード 1 |
-| `FreeCADCmd < a.py` | 対話モードで1行ずつ処理（`>>>` が混ざり、エラーでも 0） | 1本のスクリプトとして実行 |
-| スクリプト実行時のバナー | 出る | 出ない（対話モードでは出る） |
-| STEP の書き出し | OCC の統計が標準出力に2重に出る | 出ない（ログに回す） |
-| アセンブリを開く | 拘束ソルバーのメッセージが標準出力に出る | 出ない |
-| `Part.export([shape], "a.step")` | **空の STEP を黙って書く** | Shape を受け付ける／何も無ければ `ValueError` |
-| `--output` での変換失敗 | 終了コード 0 | 終了コード 1 |
-| `--help` | 名前が常に「FreeCAD」、使い方の説明なし | 実行ファイル名・例・終了コード。`--output`（`-o`）と `--hidden` を表示 |
-| 設定ファイル | 何もしない実行でも毎回書き直す。並列に走らせると設定が消える | 値が変わったときだけ書く |
-| `FreeCAD --hidden a.py` が失敗 | 終了コード 0 | 終了コード 1 |
-| `--hidden` で視点を変えて保存 | アニメーションの途中が保存される | アニメーションしない |
-| `--hidden` で旧版の設定がある | 設定移行のダイアログが見えない画面に出て**永久に止まる** | ダイアログを出さない |
-| `--hidden` の実行 | 最近使ったファイル・ウィンドウ配置を書き換える | 書き換えない |
-| Python の `saveImage()` | ナビゲーションキューブが写り込む | 写らない（「画像を保存」メニューと同じ） |
-| 画像を出す | 画面（xvfb）と GUI が要る | `FreeCADCmd a.FCStd --render a.png --view iso`（画面も OpenGL も不要。`--render-style shaded\|hidden-lines\|lines`、`--size 1600x1200`、Python は `Part.renderImage`） |
-| 干渉チェック | 部品の組を総当たり（300 部品で 106 秒） | `FreeCADCmd a.FCStd --interference`／`Part.findInterferences`（外形で絞って並列、1.2 秒） |
-| 隠れ線を消した 2D 図 | TechDraw のページが要る | `--export-svg`、`--export-polygons`（面ごとの多角形 JSON）、`--export-pptx`（編集できる図形の PowerPoint）／`Part.projectVisible` |
-| `Mesh.addFacets(shape.tessellate(d))` | 接した箱どうしの面を**黙って捨てる**（52 個の箱で 624 → 12 面） | 全部入れる（`check=True` のときだけ捨て、数を警告） |
+| Script dies with an exception | Exit code **0**, the script **runs twice**, and the error is a single line | Runs once, exit code 1, full traceback |
+| `if __name__ == "__main__":` | Not executed (the script is imported as a module) | Executed |
+| `sys.argv` | FreeCAD's own arguments as-is | `FreeCADCmd a.py -- x y` → `['a.py', 'x', 'y']` |
+| `sys.exit()` / `sys.exit("msg")` | 1 / message not printed | 0 / message printed to stderr |
+| `print` right before an exception or `sys.exit()` | Can get lost | Printed |
+| Nonexistent file | Exit code 0 | `No such file`, exit code 1 |
+| `FreeCADCmd < a.py` | Processed line by line in interactive mode (`>>>` mixed into output, 0 even on errors) | Runs as a single script |
+| Banner when running a script | Printed | Not printed (still printed in interactive mode) |
+| STEP export | OCC statistics printed twice to stdout | Not printed (sent to the log) |
+| Opening an assembly | Constraint solver messages printed to stdout | Not printed |
+| `Part.export([shape], "a.step")` | **Silently writes an empty STEP** | Accepts Shapes / `ValueError` if there is nothing to write |
+| Conversion failure with `--output` | Exit code 0 | Exit code 1 |
+| `--help` | Name is always "FreeCAD", no usage explanation | Executable name, examples, exit codes. Shows `--output` (`-o`) and `--hidden` |
+| Settings file | Rewritten on every run, even one that does nothing. Running in parallel can wipe settings | Written only when a value changes |
+| `FreeCAD --hidden a.py` fails | Exit code 0 | Exit code 1 |
+| Changing the view and saving with `--hidden` | Saves a frame from the middle of the animation | No animation |
+| `--hidden` with settings from an older version | The settings migration dialog opens on an invisible screen and **hangs forever** | The dialog is not shown |
+| Running with `--hidden` | Rewrites recent files and window layout | Leaves them alone |
+| Python `saveImage()` | The navigation cube appears in the image | Not included (same as the "Save image" menu) |
+| Rendering images | Needs a display (xvfb) and the GUI | `FreeCADCmd a.FCStd --render a.png --view iso` (no display or OpenGL needed. `--render-style shaded\|hidden-lines\|lines`, `--size 1600x1200`, `Part.renderImage` from Python) |
+| Interference check | Tests every pair of parts (106 s for 300 parts) | `FreeCADCmd a.FCStd --interference` / `Part.findInterferences` (bounding-box prefilter and parallel, 1.2 s) |
+| 2D views with hidden lines removed | Needs a TechDraw page | `--export-svg`, `--export-polygons` (polygon JSON per face), `--export-pptx` (PowerPoint with editable shapes) / `Part.projectVisible` |
+| `Mesh.addFacets(shape.tessellate(d))` | **Silently drops** faces where boxes touch each other (624 → 12 faces with 52 boxes) | Adds everything (drops only with `check=True`, with a warning giving the count) |
 
-## 本家から取り込んだ修正（PR 一覧）
+## Fixes taken from upstream (PR list)
 
-本家 FreeCAD に出されていて、まだ本家に入っていない PR のうち、精査して取り込んだもの（作者の名前はコミットにそのまま残している）。
-開いている 541 件から、この画面が使う部分の落ちる・不具合・退行を中心に絞り、中身を読み、パッチに当たることと試験を確かめた。
+Pull requests submitted to upstream FreeCAD but not yet merged there, which were reviewed and taken in (author names are kept in the commits as-is).
+From the 541 open PRs, we narrowed down to crashes, bugs and regressions in the parts this UI uses, read the changes, and confirmed that they apply on top of the patches and pass the tests.
 
-**落ちる（クラッシュ）**
+**Crashes**
 
-- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) スケッチの編集に入るとき・マウスを動かしたときに落ちる（@alfrix）
-- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) スケッチの事前選択で範囲外を読んで落ちる（@alexdremov）
-- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) スケッチの反転で落ちる（@alfrix）
-- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) 作業パネルを閉じるときに、解放済みのメモリを触って落ちる（@alexdremov）
-- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) プロパティ欄で編集中に 3D 画面をクリックするなどして落ちる（6 種類。作業パネルの 1 か所は #32970 と重なるので除いた）（@oursland）
-- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) 外部参照のファイルを開くと落ちる（@chennes）
-- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) 起動直後の SpaceMouse の操作で落ちる（@Maik-0000FF）
+- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) Crash when entering sketch edit mode or when moving the mouse (@alfrix)
+- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) Crash from an out-of-range read during sketch preselection (@alexdremov)
+- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) Crash when mirroring a sketch (@alfrix)
+- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) Crash from use-after-free when closing the task panel (@alexdremov)
+- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) Crashes such as clicking the 3D view while editing in the property editor (6 kinds; one spot in the task panel overlaps with #32970 and was left out) (@oursland)
+- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) Crash when opening an externally linked file (@chennes)
+- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) Crash on SpaceMouse input right after startup (@Maik-0000FF)
 
-**形・スケッチ**
+**Shapes and sketches**
 
-- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) ポリラインを角丸めすると最後の点が消える（@alfrix）
-- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) 曲線どうしの点で角丸めできないとき、その理由を出す（@VishalRamKN）
-- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) 丸め・面取りが失敗したとき、原因（半径が大きすぎる・面がねじれる…）と直し方を出す（@paragforwork）
+- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) Filleting a polyline loses its last point (@alfrix)
+- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) Explain why a fillet cannot be made at a point between curves (@VishalRamKN)
+- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) When a fillet or chamfer fails, show the cause (radius too large, face would twist, …) and how to fix it (@paragforwork)
 
-**図面**
+**Drawings**
 
-- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) 位置をロックしたビューが、読み込むと原点に飛ぶ（@WandererFan）
-- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) 寸法の参照の修復が、壊れた参照で失敗する（@WandererFan）
+- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) Views with a locked position jump to the origin on load (@WandererFan)
+- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) Repairing dimension references fails on broken references (@WandererFan)
 
-**組立**
+**Assembly**
 
-- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) 部品に固定ジョイントを付けるとエラー（@ryneeverett）
-- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) 親を失ったジョイントのグループを消せない（@PaddleStroke）
-- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) ラックとピニオンの誤動作（@PaddleStroke）
+- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) Error when adding a fixed joint to a part (@ryneeverett)
+- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) Orphaned joint groups cannot be deleted (@PaddleStroke)
+- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) Rack and pinion misbehaves (@PaddleStroke)
 
-**表示・画面**
+**Display and UI**
 
-- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) ライト／ダークのテーマで、結合した形の色が崩れる（@chennes）
-- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) 選択の表示の奥行きの退行（@Connor9220）
-- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) プロパティ欄の選択肢で日本語などが化ける（@maxwxyz）
-- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) キーボードでツリーを選んだときにステータスバーを更新する（@007stevendigar-lgtm）
+- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) Colors of fused shapes break with the light/dark themes (@chennes)
+- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) Regression in the depth of the selection highlight (@Connor9220)
+- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) Garbled Japanese and other non-ASCII text in property editor choices (@maxwxyz)
+- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) Update the status bar when selecting in the tree with the keyboard (@007stevendigar-lgtm)
 
-**ファイル**
+**Files**
 
-- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII の STL（長い名前・末尾の改行なし）が読めない（@maxwxyz）
+- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII STL files (long names, no trailing newline) cannot be read (@maxwxyz)
 
-**0.3.3 で追加**
+**Added in 0.3.3**
 
-- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) スケッチの点を少しだけ動かすと元に戻る（@Reqrefusion）
-- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) 計測を開いたまま文書を閉じると落ちる（@Amine0x0）。そのまま当てると、この版では別の見張りを上書きして後で落ちるので、合わせて直した
-- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) 厚みの結果が不正な形でも黙っている（@007stevendigar-lgtm）。厚みが大きすぎて形が変わらない場合も知らせるよう足した
+- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) Moving a sketch point only slightly snaps it back (@Reqrefusion)
+- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) Crash when closing a document while Measure is open (@Amine0x0). Applied as-is, it overwrote another observer in this build and caused a later crash, so that was fixed too
+- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) Thickness stays silent when the result is an invalid shape (@007stevendigar-lgtm). Added a notice for when the thickness is so large that the shape doesn't change
 
-### 本家に報告されていて、まだ直っていない不具合を直したもの
+### Upstream-reported bugs, not yet fixed upstream, that we fixed
 
-再現手順が付いていて、手元で再現または原因まで確かめたもの。
+Ones with reproduction steps, which we reproduced locally or traced to the cause.
 
-- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) スケッチの寸法を式エディタで入れると、ツールを抜けたときに寸法が消える（今月の退行）
-- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) 「変数セットに保存」で単位が合わずに失敗する（macOS では落ちる）
-- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) 見えない文書を開くと、作業中の文書が奪われる（macOS では落ちる）
-- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) 部品より厚い厚みが、黙って何もしない
-- 途中の手順（切り抜きなど）を消すと、後の配列が消した穴を持ったまま「正常」と表示される
-- STEP で日本語などの名前が化ける（書き出しを規格どおりの書き方にし、読み込みの既定を UTF-8 にした。他の CAD の STEP も読める）
-- 長さ 0 の視点の動きで、画面が固まる
+- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) Entering a sketch dimension in the expression editor loses the dimension when leaving the tool (a regression this month)
+- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) "Save to variable set" fails on mismatched units (crashes on macOS)
+- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) Opening a hidden document steals the active document (crashes on macOS)
+- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) A thickness larger than the part silently does nothing
+- Deleting an intermediate feature (such as a pocket) leaves a later pattern still carrying the deleted hole while shown as "OK"
+- Japanese and other non-ASCII names get garbled in STEP (export now uses the encoding the standard specifies, and import defaults to UTF-8; STEP files from other CAD tools still read)
+- A zero-length view movement freezes the screen
 
-メモリの誤った使い方を見張るビルド（AddressSanitizer）で本家の試験を走らせて見つけたもの（0.3.4）:
+Found by running the upstream tests under a memory-error detecting build (AddressSanitizer) (0.3.4):
 
-- 再計算の最中に部品を消すと、後の処理が消えた部品のメモリを読む（CAM の工具で起きる）
-- マクロの編集画面が、消えたファイルについて「読み直しますか」と聞いて止まる
-- Draft の選択枠の表示が、渡した点より多くの点を読む
+- Deleting a part during a recompute makes later processing read the deleted part's memory (happens with CAM tools)
+- The macro editor asks "reload?" about a deleted file and gets stuck
+- Draft's selection box display reads more points than it was given
 
-あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
-（型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
+(type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
-## 0.5.0 の変更
+## Changes in 0.5.0
 
-- DWG: **R2004・R2010・R2013・R2018 の DWG を書けるようにした**（これまでは R2000 まで）。
-  試験用の 149 図面を各版に書いて ACadSharp で読み直し、読めない図面 0・消えた図形 0・種類が変わった図形 0（DXF 経由でも同じ）。
-  AutoCAD が同じ版で保存したものとも図形ごとに突き合わせた
-  - 3D ソリッド（ACIS）: R2013 以降の置き場所（AcDs）を読み書きし、古い図面や DXF から R2013 以降に書いても形が消えない
-  - DXF → DWG（dxf2dwg）で R2010 以降に書くと図形の 2 割近くが消えていたのを直した
-  - FreeCAD の DWG 書き出しは従来どおり R2000（どの AutoCAD でも開ける）。新しい版は同梱の `dxf2dwg --as r2018` で
-- コマンドライン: 画像を 1 行で出す（`--render`、画面も OpenGL も不要）、速い干渉チェック（`--interference`）、
-  隠れ線を消した 2D 図の書き出し（SVG・面ごとの多角形・PowerPoint）。「コマンドライン・スクリプト」の表を参照
-- Mesh: `addFacets` が接した部品の面を黙って捨て、STL に穴が開いていたのを直した
+- DWG: **can now write R2004, R2010, R2013 and R2018 DWG** (previously up to R2000).
+  The 149 test drawings were written in each version and read back with ACadSharp: 0 unreadable drawings, 0 lost entities, 0 entities that changed type (same via DXF).
+  Also compared entity by entity with files AutoCAD saved in the same version
+  - 3D solids (ACIS): reads and writes the R2013+ storage (AcDs), so shapes are not lost when writing old drawings or DXF to R2013 or later
+  - Fixed DXF → DWG (dxf2dwg) losing nearly 20% of entities when writing R2010 or later
+  - FreeCAD's own DWG export stays at R2000 (opens in any AutoCAD). For newer versions use the bundled `dxf2dwg --as r2018`
+- Command line: images in one line (`--render`, no display or OpenGL needed), a fast interference check (`--interference`),
+  and export of 2D views with hidden lines removed (SVG, per-face polygons, PowerPoint). See the "Command line and scripts" table
+- Mesh: fixed `addFacets` silently dropping faces where parts touch, which left holes in STL files
 
-## 0.4.1 の変更
+## Changes in 0.4.1
 
-- DWG: 同じ図面を AutoCAD 自身が版を変えて保存したものと突き合わせ、R2000 に書くときの変換を AutoCAD に合わせた。
-  example_2004〜2018 は R2000 に書いた全図形が AutoCAD の R2000 保存と一致（DXF 経由でも同じ）
-  - 色: ByBlock の図形が ByLayer になっていた、RGB の色の代わりの色番号を AutoCAD と同じにした、色の表を今の AutoCAD の値に
-  - R14 の図面: 図形の線種（CONTINUOUS など）が ByLayer になっていた、線の太さが 0.00mm になっていた、標準の名前を AutoCAD と同じに
-  - グラデーションのハッチングは最初の色の塗りつぶしに、MTEXT の改行は \P で（DXF でも）
-- DWG: 表（TABLE）を読み書きできるようにした（DXF 経由でも消えない）。R2010 以降の表スタイルを全部読む
-- DWG: 中身を解読できない独自アプリの図形（建築アドオンなど）を、古い版や DXF に書くとき AutoCAD と同じプロキシ図形として元のデータごと残す
-- DWG: DXF 経由で表スタイル名・寸法スタイル名・ハッチングの名前が変わっていた、R14 の DXF で新しい種類の図形が落ちていたのを直した
+- DWG: compared against the same drawings saved by AutoCAD itself in different versions, and made conversion when writing R2000 match AutoCAD.
+  For example_2004 to 2018, every entity written to R2000 matches AutoCAD's R2000 save (same via DXF)
+  - Colors: ByBlock entities had become ByLayer; color indices used in place of RGB colors now match AutoCAD; the color table uses current AutoCAD values
+  - R14 drawings: entity linetypes (CONTINUOUS etc.) had become ByLayer, lineweights had become 0.00mm; standard names now match AutoCAD
+  - Gradient hatches become a solid fill of the first color; MTEXT line breaks use \P (also in DXF)
+- DWG: tables (TABLE) can now be read and written (not lost via DXF). All R2010+ table styles are read
+- DWG: entities from proprietary applications whose contents can't be decoded (architecture add-ons etc.) are kept, with their original data, as proxy entities the same way AutoCAD does when writing to older versions or DXF
+- DWG: fixed table style, dimension style and hatch names changing via DXF, and newer entity types being dropped from R14 DXF
 
-## 0.4.0 の変更
+## Changes in 0.4.0
 
-- DWG の読み書き: LibreDWG（`dwg2dxf` / `dxf2dwg`）を同梱し、ファイル → 開く／取り込み／書き出しで DWG を扱えるようにした。
-  読みは R13〜R2018（AutoCAD 2018〜2025 の AC1032 を含む）、書きは開いた図面の版（R2000 以前）で書く。
-  LibreDWG 0.14.8601 に、独立した実装（ACadSharp）と 149 図面で突き合わせて見つけた読み書きの不具合の修正を当てている
-  （`patches/libredwg`。表・複数行属性・文字コード・R2000 への書き出しなど）。自分で変換器を設定している場合はそちらを使う
-- AI チャット: やり取りの回数の上限（80 回）で止まった時は、黙らずに「続けて」で続けられると知らせる
-- AI チャット: 120 秒で終わらないコードは止めて、その回の変更を取り消す（FreeCAD が固まらないように）。最後の式の値を表示できなくても、済んだ変更は取り消さない
+- Reading and writing DWG: bundles LibreDWG (`dwg2dxf` / `dxf2dwg`), so File → Open / Import / Export handle DWG.
+  Reads R13 to R2018 (including AC1032 from AutoCAD 2018 to 2025); writes in the version of the opened drawing (R2000 or earlier).
+  LibreDWG 0.14.8601 is patched with fixes for read/write bugs found by comparing against an independent implementation (ACadSharp) on 149 drawings
+  (`patches/libredwg`: tables, multi-line attributes, character encodings, writing to R2000, etc.). If you have configured your own converter, that one is used
+- AI chat: when it stops at the limit on the number of turns (80), it now says so instead of going quiet, and tells you that "続けて" (continue) carries on
+- AI chat: code that doesn't finish within 120 seconds is stopped and that run's changes are undone (so FreeCAD doesn't freeze). Completed changes are not undone just because the value of the last expression can't be displayed
 
-## 0.3.6 の変更
+## Changes in 0.3.6
 
-- Windows のインストーラーで入れた時に、AI チャットの部品（ai-runtime）が入っていなかったのを直した（0.3.5 の 7z には入っている）
-- AI チャット: 「たずねずに実行する」の切り替え（既定は切。入れる時に注意が出る。保存しないので、FreeCAD を閉じると毎回たずねる形に戻る。
-  実行したコードはチャットに残る）。承認の窓に「実行して、以後はたずねない」
-- AI チャット: AI のコードの sys.exit で FreeCAD が落ちて固まったのを直した（ほかの誤りと同じく、その回の変更を取り消して知らせる）
-- AI チャット: AI が実行したコードと結果を、ユーザーデータの ai/ai-runs.log に残す
-- AI の道具の不具合（AI 自身の試験で見つかったもの）: エラーの時にほかの文書の変更も取り消し、開いていた文書に戻す。
-  何も変えなかった回は「元に戻す」の段を作らない。増えた物・消えた物を名前でなく出来事で数える。
-  Python で作ったパターンが部品の最後にある時は Tip を進める。get_document の種類の欄が手順の設定（Length など）で上書きされていた
-- 設計の検査: 形に使われていない手順（Tip より後）、形の無い部品、調べていない見えない部品を知らせる。
-  拘束がぶつかっている間は「決まっていない所」を出さない。拘束の番号が 1 から数えたものだと書く
-- 日本語: 原点の中の点を「原点の点」に（入れ物の原点と、どちらも「原点」だった）
+- Fixed the AI chat components (ai-runtime) missing when installed with the Windows installer (the 0.3.5 7z has them)
+- AI chat: a "たずねずに実行する" (Run without asking) switch (off by default; a warning appears when turning it on; not saved, so it goes back to asking every time once FreeCAD is closed.
+  Executed code stays in the chat). "実行して、以後はたずねない" (Run, and don't ask again) in the approval window
+- AI chat: fixed FreeCAD crashing and freezing on sys.exit in the AI's code (like other errors, that run's changes are undone and you are told)
+- AI chat: the code the AI ran and its results are logged to ai/ai-runs.log in the user data
+- Bugs in the AI's tools (found by the AI's own tests): on error, changes to other documents are also undone and the previously open document is restored.
+  Runs that changed nothing no longer create an Undo step. Added and removed objects are counted by events, not by name.
+  When a pattern created from Python is the last feature of a part, the Tip is advanced. The type field of get_document was being overwritten by feature properties (such as Length)
+- Design check: reports features not used by the shape (after the Tip), parts with no shape, and hidden parts that were not checked.
+  "Degrees of freedom left" is not shown while constraints are in conflict. States that constraint numbers count from 1
+- Japanese: the points inside an origin are now called "原点の点" (origin point) (previously both they and the container's origin were "原点" (origin))
 
-## 0.3.5 の変更
+## Changes in 0.3.5
 
-- AI チャットに要る部品を配布物に同梱した。インストールしてすぐ、ネットワークからの準備なしで AI パネルが使える（AI との会話そのものにはネットワークが要る）
-- AI チャットで失敗したとき（キーが無効など）の説明を分かりやすくした
+- The components the AI chat needs are bundled in the release packages. The AI panel works right after installing, with no setup over the network (talking to the AI itself still needs network access)
+- Clearer explanations when the AI chat fails (invalid key etc.)
 
-## 当て方とビルド
+## Applying the patches and building
 
 ```sh
 git clone https://github.com/FreeCAD/FreeCAD.git
@@ -329,31 +330,35 @@ pixi run cmake --build build/release -j4      # 2 コア 4 スレッドのノー
 pixi run cmake --install build/release        # .pixi/envs/default/bin に FreeCADCmd と FreeCAD
 ```
 
-## 試験
+(The comments in the commands: building on Linux with the official pixi procedure, with FEM/CAM/Robot turned off to save time; the build takes about 2 hours on a 2-core, 4-thread laptop; install puts FreeCADCmd and FreeCAD in .pixi/envs/default/bin.)
+
+## Tests
 
 ```sh
 XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
   tests/run.sh <FreeCADCmd のパス> <FreeCAD のパス>
 ```
 
-設定フォルダは必ず一時フォルダに向けること（本物の設定を汚さないため）。GUI の項目には `xvfb-run` が要る。
-素の FreeCAD 1.1.3 では 4/17、パッチ後は全項目（31）合格。
-FreeCAD 自身の試験（`FreeCADCmd -t 0`、C++ の Base/App/Part/Gui の試験）もパッチ後にすべて通ることを確かめている。
+(`<FreeCADCmd のパス>` and `<FreeCAD のパス>` are the paths to FreeCADCmd and FreeCAD.)
 
-## LibreDWG（DWG の変換器）
+Always point the settings folders at temporary directories (so your real settings are not polluted). The GUI items need `xvfb-run`.
+Plain FreeCAD 1.1.3 passes 4/17; with the patches, all items (31) pass.
+FreeCAD's own tests (`FreeCADCmd -t 0`, and the C++ tests for Base/App/Part/Gui) were also confirmed to pass with the patches.
 
-`tools/build_libredwg.sh <出力先> [linux|win64]` で、本家の LibreDWG 0.14.8601 に `patches/libredwg` を当てて
-`dwg2dxf` / `dxf2dwg` を作る（Windows 用は MinGW-w64 のクロスビルド、DLL 不要）。リリースの手順もこれを使う。
+## LibreDWG (the DWG converter)
 
-## リリースの作り方
+`tools/build_libredwg.sh <output dir> [linux|win64]` applies `patches/libredwg` to upstream LibreDWG 0.14.8601 and
+builds `dwg2dxf` / `dxf2dwg` (the Windows build is a MinGW-w64 cross build, no DLLs needed). The release procedure uses this too.
 
-パッチの書き出しは `tools/export_patches.sh`（FreeCAD の clone の unified-ui から patches/ を作り直す）。
+## Making a release
 
-
-GitHub Actions の「Build release」（`.github/workflows/release.yml`）をタグ名を入れて手で実行する。
-元の版にパッチを当て、本家と同じ `package/bundle` の手順で Linux と Windows を作ってリリースに載せる（数時間かかる）。
+Patches are exported with `tools/export_patches.sh` (regenerates patches/ from unified-ui in a FreeCAD clone).
 
 
-## ライセンス
+Run the "Build release" GitHub Actions workflow (`.github/workflows/release.yml`) manually, entering the tag name.
+It applies the patches to the base version, builds Linux and Windows with the same `package/bundle` procedure as upstream, and attaches them to the release (takes several hours).
 
-パッチは FreeCAD と同じ LGPL-2.1-or-later（`LICENSE`）。
+
+## License
+
+The patches are LGPL-2.1-or-later, the same as FreeCAD (`LICENSE`).
