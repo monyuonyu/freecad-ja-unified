@@ -1,7 +1,7 @@
 From 9ed795d444355a8558e06095e8928f225ba022f4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 15:56:03 +0900
-Subject: [PATCH 51/54] R2000 from newer: DXF entities via the handles, table
+Subject: [PATCH 051/116] R2000 from newer: DXF entities via the handles, table
  cell display text, R14 names
 
 - get_first_owned_entity/get_next_owned_block_entity: by the handles; the

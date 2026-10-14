@@ -1,7 +1,7 @@
 From eb0dccd77cdcb284d6675aad444ea4bb176805eb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:35:34 +0900
-Subject: [PATCH 31/54] DXF import: AutoCAD's defaults for header variables
+Subject: [PATCH 031/116] DXF import: AutoCAD's defaults for header variables
  where 0 is invalid
 
 DXF may omit any header variable. FreeCAD's DXF has no $TEXTSIZE and

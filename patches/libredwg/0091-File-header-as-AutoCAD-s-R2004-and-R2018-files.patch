@@ -1,0 +1,85 @@
+From a71db1fd3723b7c42f98b614a4803d8fc0a30520 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:50:21 +0900
+Subject: [PATCH 091/116] File header: as AutoCAD's R2004+ and R2018 files
+
+AutoCAD's R2004+ files have 3 at 0x0C, R2018 files the maintenance
+version also at 0x0B and 0 at 0x15-0x17 (all 37 AC1032 drawings of the
+corpus). Our R2018 rewrite of them had 0x1D at 0x0B and the application
+version 0x21 at 0x16, and the R2004+ files of earlier versions 1 at
+0x0C and the application version of the source at 0x11.
+
+* src/encode.c (dwg_encode): Across versions, 3 at 0x0C for R2004+,
+for R2010+ our dwg_version, for R2018 maintenance version 0. For R2018
+the maintenance version at 0x0B, 0 at 0x15-0x17.
+* src/header.spec: Not the application versions for R2018.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c    | 31 +++++++++++++++++++++++++++----
+ src/header.spec |  7 +++++--
+ 2 files changed, 32 insertions(+), 6 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index ae8e654..c964ec5 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3976,10 +3976,33 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+         if (_obj->maint_version <= 3)
+           _obj->maint_version = _obj->maint_rel_version;
+       }
+-    if (!_obj->app_dwg_version)
+-      _obj->app_dwg_version = _obj->dwg_version;
+-    if (!_obj->app_maint_version)
+-      _obj->app_maint_version = _obj->maint_version;
++    if (dwg->header.version >= R_2004a
++        && dwg->header.version != dwg->header.from_version)
++      {
++        // as AutoCAD's R2004+ files
++        _obj->zero_one_or_three = 3;
++        // written by us for this version, not by the source's application
++        if (_verp && dwg->header.version >= R_2010b)
++          _obj->dwg_version = _verp->dwg_version;
++        if (dwg->header.version >= R_2018b)
++          _obj->maint_version = 0;
++      }
++    if (dwg->header.version >= R_2018b)
++      {
++        // AutoCAD's R2018 files: the maintenance version also at 0x0B, and
++        // 0 at 0x15-0x17
++        _obj->maint_rel_version = _obj->maint_version;
++        _obj->unknown_0 = 0;
++        _obj->app_dwg_version = 0;
++        _obj->app_maint_version = 0;
++      }
++    else
++      {
++        if (!_obj->app_dwg_version)
++          _obj->app_dwg_version = _obj->dwg_version;
++        if (!_obj->app_maint_version)
++          _obj->app_maint_version = _obj->maint_version;
++      }
+     if (!_obj->codepage)
+       _obj->codepage = dat->codepage;
+     if (!_obj->blocks_size)
+diff --git a/src/header.spec b/src/header.spec
+index d1d86cc..5706619 100644
+--- a/src/header.spec
++++ b/src/header.spec
+@@ -71,8 +71,11 @@
+   /* Until R_2004 here follows the sections */
+   SINCE (R_2004a) {
+     IF_ENCODE_FROM_EARLIER {
+-      FIELD_VALUE (app_dwg_version) = FIELD_VALUE (dwg_version);
+-      FIELD_VALUE (app_maint_version) = FIELD_VALUE (maint_version);
++      if (dat->version < R_2018b) // 0 in AutoCAD's R2018 files
++        {
++          FIELD_VALUE (app_dwg_version) = FIELD_VALUE (dwg_version);
++          FIELD_VALUE (app_maint_version) = FIELD_VALUE (maint_version);
++        }
+       FIELD_VALUE (r2004_header_address) = 0x80;
+     }
+     FIELD_RC (unknown_0, 0);
+-- 
+2.43.0
+

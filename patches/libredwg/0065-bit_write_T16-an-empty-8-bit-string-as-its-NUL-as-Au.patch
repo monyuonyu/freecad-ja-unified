@@ -1,0 +1,55 @@
+From 5dd04cb4bfff86da98045b2494706d0bb18653db Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:31:34 +0900
+Subject: [PATCH 065/116] bit_write_T16: an empty 8-bit string as its NUL, as
+ AutoCAD
+
+AutoCAD's R2004 SummaryInfo has 01 00 00 for an empty title, subject,
+etc.; we wrote 00 00.
+
+* src/bits.c (bit_write_T16): Before R2007, write an empty string with the
+length 1 and the NUL. 2004/Line.dwg written as R2004 now has AutoCAD's
+SummaryInfo byte for byte.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 7e7745a..8cb3293 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -2781,7 +2781,16 @@ bit_write_T16 (Bit_Chain *restrict dat, BITCODE_T16 restrict chain)
+       chain[INT16_MAX - 1] = '\0';
+     }
+   else if (length == 0)
+-    bit_write_RS (dat, 0);
++    {
++      // 8-bit: the NUL only, as AutoCAD (01 00 00)
++      if (dat->version < R_2007)
++        {
++          bit_write_RS (dat, 1);
++          bit_write_RC (dat, 0);
++        }
++      else
++        bit_write_RS (dat, 0);
++    }
+   else if (dat->version >= R_2007)
+     {
+       if (!IS_FROM_TU (dat))
+@@ -2816,7 +2825,10 @@ bit_write_T16 (Bit_Chain *restrict dat, BITCODE_T16 restrict chain)
+                 bit_write_RC (dat, dest[i]);
+             }
+           else
+-            bit_write_RS (dat, 0);
++            {
++              bit_write_RS (dat, 1);
++              bit_write_RC (dat, 0);
++            }
+           free (u8);
+         }
+       else
+-- 
+2.43.0
+

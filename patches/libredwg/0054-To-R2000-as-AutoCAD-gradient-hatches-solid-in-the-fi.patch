@@ -1,7 +1,7 @@
 From 4b7c86331598e35d71bc7eb2550da8a2062a848b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 16:44:59 +0900
-Subject: [PATCH 54/54] To R2000 as AutoCAD: gradient hatches solid in the
+Subject: [PATCH 054/116] To R2000 as AutoCAD: gradient hatches solid in the
  first color, MTEXT \P
 
 Against AutoCAD's own R2000 save of the same drawings (sample_AC1015,

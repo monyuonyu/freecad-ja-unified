@@ -1,0 +1,36 @@
+From 9c2e013472b86fd60e15bbd77a0f04d72d6c5a41 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:38:15 +0900
+Subject: [PATCH 068/116] 3DSOLID, REGION, BODY: write the history handle only
+ since R2007
+
+AutoCAD's R2004 drawings have no history handle after the ACIS data
+(example_2004, sample_AC1018), ACadSharp reads it only for R2007+. It was
+written as an extra null handle into R2004 and R2000 DWGs.
+
+* src/dwg_spec_shared.h (COMMON_3DSOLID): Encode history_id only for
+R2007+; the decoder still reads it when present.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg_spec_shared.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index 170deb6..a68b245 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -581,7 +581,9 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+     }                                                                         \
+   } else if (FIELD_VALUE (version) > 1                                        \
+-             && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)) {              \
++             && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)                 \
++             /* R2007+ (ACadSharp, AutoCAD's R2004 drawings have none) */     \
++             && (!IF_IS_ENCODER || dat->version >= R_2007a)) {                \
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+   }                                                                           \
+   FREE { FIELD_HANDLE (history_id, 4, 350); }
+-- 
+2.43.0
+

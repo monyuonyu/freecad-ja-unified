@@ -1,0 +1,1721 @@
+From 46d679e5fd00aa6807daef454225c23ac3364d38 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:30:40 +0900
+Subject: [PATCH 210/212] Part: headless pictures without OpenGL
+ (Part.renderImage, FreeCADCmd --render)
+
+A one-line picture from the command line, without a display, xvfb or GL:
+
+  FreeCADCmd model.FCStd --render out.png [--view iso|front|top|...|dx,dy,dz]
+             [--size 1600x1200] [--render-style shaded|shaded-only|hidden-lines|lines]
+
+Works for anything FreeCADCmd opens (FCStd, STEP, STL ...).  Several views
+(--view iso,front,top) write out_<view>.png each.
+
+The renderer runs on the CPU (Part/App/ViewTools.cpp): the shapes are
+tessellated (deflection from the size of the scene), drawn into a z-buffer
+with 3x supersampling and smooth two-light shading, and edges come from
+changes of face, depth jumps and creases, so outlines and silhouettes need
+no extra geometry.  Meshes are split into smooth patches so STL parts look
+like their CAD originals.  The PNG is written with zlib.
+
+Python: Part.renderImage(objects, filename, view, width, height, style,
+lineWidth, deflection, background, supersample) takes shapes, meshes
+(points, facets), Mesh.Mesh or document objects (dicts for colours).
+PartViews.render() collects the visible objects of a document (placement of
+App::Part containers, links, bodies) and is what --render runs.
+
+Tests check pixels (shaded area, edge pixels, styles), not file existence.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |  36 +
+ src/Mod/Part/App/AppPart.cpp            |   2 +
+ src/Mod/Part/App/CMakeLists.txt         |   4 +
+ src/Mod/Part/App/ViewTools.cpp          | 860 ++++++++++++++++++++++++
+ src/Mod/Part/App/ViewTools.h            |  88 +++
+ src/Mod/Part/App/ViewToolsPy.cpp        | 248 +++++++
+ src/Mod/Part/CMakeLists.txt             |   2 +
+ src/Mod/Part/PartViews.py               | 214 ++++++
+ src/Mod/Part/TestPartApp.py             |   1 +
+ src/Mod/Part/parttests/TestPartViews.py |  95 +++
+ 10 files changed, 1550 insertions(+)
+ create mode 100644 src/Mod/Part/App/ViewTools.cpp
+ create mode 100644 src/Mod/Part/App/ViewTools.h
+ create mode 100644 src/Mod/Part/App/ViewToolsPy.cpp
+ create mode 100644 src/Mod/Part/PartViews.py
+ create mode 100644 src/Mod/Part/parttests/TestPartViews.py
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index e23af94df..4e62915f2 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2481,6 +2481,10 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("pass", boost::program_options::value< std::vector<std::string> >()->multitoken(), "Ignores the following arguments and pass them through to be used by a script (same as '--')")
+     ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
+     ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
++    ("render", boost::program_options::value<std::string>(), "Write a PNG picture of the visible objects after processing the input files; needs no display or OpenGL (e.g. --render out.png)")
++    ("view", boost::program_options::value<std::string>(), "View for --render: iso (default), front, back, right, left, top, bottom, iso-back, iso-low, dimetric, trimetric, dx,dy,dz; several names separated by commas write one picture each")
++    ("size", boost::program_options::value<std::string>(), "Picture size for --render, WxH or W (default 1200x900)")
++    ("render-style", boost::program_options::value<std::string>(), "Style for --render: shaded (default), shaded-only, hidden-lines, lines")
+     ;
+ 
+ 
+@@ -2706,6 +2710,19 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         mConfig["StartHidden"] = "1";
+     }
+ 
++    // headless views and checks, run by the Python module PartViews after the input files
++    static const std::pair<const char*, const char*> viewOptions[] = {
++        {"render", "RenderFile"},
++        {"view", "RenderView"},
++        {"size", "RenderSize"},
++        {"render-style", "RenderStyle"},
++    };
++    for (const auto& [option, key] : viewOptions) {
++        if (vm.contains(option)) {
++            mConfig[key] = vm[option].as<std::string>();
++        }
++    }
++
+     if (vm.contains("write-log")) {
+         mConfig["LoggingFile"] = "1";
+         mConfig["LoggingFileName"] = mConfig["UserAppData"] + mConfig["ExeName"] + ".log";
+@@ -3359,6 +3376,25 @@ void Application::processCmdLineFiles()
+         }
+     }
+ 
++    static const char* viewKeys[] = {
++        "RenderFile",
++    };
++    if (std::any_of(std::begin(viewKeys), std::end(viewKeys), [&cfg](const char* key) {
++            return cfg.contains(key);
++        })) {
++        try {
++            Base::Interpreter().runString("import PartViews\nPartViews.cli_main()");
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("PartViews", e);
++            failed.emplace_back("PartViews");
++        }
++        catch (const Base::Exception& e) {
++            Base::Console().error("{}\n", e.what());
++            failed.emplace_back("PartViews");
++        }
++    }
++
+     // When running non-interactively, a file that could not be processed must not end
+     // in exit code 0, otherwise scripts and CI cannot detect the failure.
+     if (!failed.empty() && mConfig["RunMode"] == "Exit") {
+diff --git a/src/Mod/Part/App/AppPart.cpp b/src/Mod/Part/App/AppPart.cpp
+index eb8993fc9..4d28f26ab 100644
+--- a/src/Mod/Part/App/AppPart.cpp
++++ b/src/Mod/Part/App/AppPart.cpp
+@@ -41,6 +41,7 @@
+ #include <Base/ServiceProvider.h>
+ #include <Base/PrecisionPy.h>
+ 
++#include "ViewTools.h"
+ #include "ArcOfCirclePy.h"
+ #include "ArcOfConicPy.h"
+ #include "ArcOfEllipsePy.h"
+@@ -250,6 +251,7 @@ PyMOD_INIT_FUNC(Part)
+ #endif
+ 
+     PyObject* partModule = Part::initModule();
++    Part::ViewTools::addPythonFunctions(partModule);
+     Base::Console().log("Loading Part module... done\n");
+ 
+     Py::Object module(partModule);
+diff --git a/src/Mod/Part/App/CMakeLists.txt b/src/Mod/Part/App/CMakeLists.txt
+index 016f6eec7..61c1a55d9 100644
+--- a/src/Mod/Part/App/CMakeLists.txt
++++ b/src/Mod/Part/App/CMakeLists.txt
+@@ -23,6 +23,7 @@ set(Part_LIBS
+     ${OCC_DEBUG_LIBRARIES}
+     FreeCADApp
+     Materials
++    ${ZLIB_LIBRARIES}
+ )
+ 
+ target_link_directories(Part PUBLIC ${OCC_LIBRARY_DIR})
+@@ -624,6 +625,9 @@ SET(Part_SRCS
+     PyException.h
+     Tools.cpp
+     Tools.h
++    ViewTools.cpp
++    ViewTools.h
++    ViewToolsPy.cpp
+     encodeFilename.h
+     OCCError.h
+     FT2FC.cpp
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+new file mode 100644
+index 000000000..40ca489bd
+--- /dev/null
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -0,0 +1,860 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <algorithm>
++#include <cmath>
++#include <cstdio>
++#include <limits>
++#include <map>
++#include <memory>
++#include <sstream>
++#include <unordered_map>
++
++#include <zlib.h>
++
++#include <BRep_Tool.hxx>
++#include <BRepAdaptor_Curve.hxx>
++#include <BRepAdaptor_Surface.hxx>
++#include <BRepBndLib.hxx>
++#include <BRepMesh_IncrementalMesh.hxx>
++#include <Bnd_Box.hxx>
++#include <GCPnts_TangentialDeflection.hxx>
++#include <Poly_Triangle.hxx>
++#include <TopExp.hxx>
++#include <TopExp_Explorer.hxx>
++#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
++#include <TopTools_IndexedMapOfShape.hxx>
++#include <TopTools_ListOfShape.hxx>
++#include <TopoDS.hxx>
++
++
++#include <Base/Exception.h>
++#include <Base/FileInfo.h>
++#include <Base/Stream.h>
++
++#include "Tools.h"
++#include "ViewTools.h"
++
++using namespace Part::ViewTools;
++
++namespace
++{
++
++// ------------------------------------------------------------------ scene
++
++struct SFace
++{
++    int item = 0;
++    int face = 0;
++    Color color {};
++    bool solid = false;  // belongs to a closed solid: faces turned away are never seen
++    bool planar = false;
++    int smooth = 0;  // faces with the same key meet without a visible edge (mesh patches)
++    std::vector<gp_Pnt> p;
++    std::vector<gp_Vec> n;  // smooth vertex normals (outward)
++    std::vector<std::array<int, 3>> t;
++};
++
++struct SEdge
++{
++    int item = 0;
++    int kind = 0;  // 0 sharp, 2 smooth
++    std::vector<gp_Pnt> p;
++};
++
++// Inner edge of a curved face or a mesh: becomes a silhouette when one side faces the
++// viewer and the other does not
++struct SoftEdge
++{
++    int item = 0;
++    gp_Pnt a, b;
++    gp_Vec na, nb;
++};
++
++struct Scene
++{
++    std::vector<SFace> faces;
++    std::vector<SEdge> edges;
++    std::vector<SoftEdge> soft;
++    Bnd_Box box;
++    double deflection = 0;
++    int smoothKeys = 0;
++};
++
++gp_Vec triNormal(const gp_Pnt& a, const gp_Pnt& b, const gp_Pnt& c)
++{
++    return gp_Vec(a, b).Crossed(gp_Vec(a, c));
++}
++
++double sceneDeflection(const std::vector<SceneItem>& items, double requested, Bnd_Box& box)
++{
++    for (const auto& item : items) {
++        if (!item.shape.IsNull()) {
++            BRepBndLib::Add(item.shape, box);
++        }
++        for (const auto& p : item.meshPoints) {
++            box.Add(p);
++        }
++    }
++    if (requested > 0) {
++        return requested;
++    }
++    if (box.IsVoid()) {
++        return 0.1;
++    }
++    double diag = std::sqrt(box.SquareExtent());
++    return std::max(diag * 0.0008, 1e-4);
++}
++
++void addShape(Scene& scene, int itemIndex, const SceneItem& item)
++{
++    const TopoDS_Shape& shape = item.shape;
++    BRepMesh_IncrementalMesh(shape, scene.deflection, Standard_False, 0.35, Standard_True);
++
++    // faces inside closed solids
++    TopTools_IndexedMapOfShape solidFaces;
++    for (TopExp_Explorer xs(shape, TopAbs_SOLID); xs.More(); xs.Next()) {
++        TopExp::MapShapes(xs.Current(), TopAbs_FACE, solidFaces);
++    }
++
++    TopTools_IndexedMapOfShape faceMap;
++    TopExp::MapShapes(shape, TopAbs_FACE, faceMap);
++    for (int i = 1; i <= faceMap.Extent(); ++i) {
++        const TopoDS_Face& face = TopoDS::Face(faceMap(i));
++        std::vector<gp_Pnt> points;
++        std::vector<Poly_Triangle> facets;
++        if (!Part::Tools::getTriangulation(face, points, facets) || facets.empty()) {
++            continue;
++        }
++        SFace sf;
++        sf.item = itemIndex;
++        sf.face = i - 1;
++        sf.color = item.color;
++        sf.solid = solidFaces.Contains(face);
++        sf.smooth = scene.smoothKeys++;
++        BRepAdaptor_Surface surf(face, Standard_False);
++        sf.planar = surf.GetType() == GeomAbs_Plane;
++        Part::Tools::getPointNormals(points, facets, sf.n);
++        sf.p = std::move(points);
++        sf.t.reserve(facets.size());
++        for (const auto& f : facets) {
++            int n1 {}, n2 {}, n3 {};
++            f.Get(n1, n2, n3);
++            sf.t.push_back({n1, n2, n3});
++        }
++        if (!sf.planar) {
++            // inner mesh edges for silhouettes
++            std::map<std::pair<int, int>, std::pair<int, int>> em;  // edge -> (tri, tri)
++            for (int k = 0; k < (int)sf.t.size(); ++k) {
++                for (int e = 0; e < 3; ++e) {
++                    int u = sf.t[k][e];
++                    int v = sf.t[k][(e + 1) % 3];
++                    auto key = std::make_pair(std::min(u, v), std::max(u, v));
++                    auto it = em.find(key);
++                    if (it == em.end()) {
++                        em.emplace(key, std::make_pair(k, -1));
++                    }
++                    else {
++                        it->second.second = k;
++                    }
++                }
++            }
++            for (const auto& [key, tris] : em) {
++                if (tris.second < 0) {
++                    continue;
++                }
++                const auto& t1 = sf.t[tris.first];
++                const auto& t2 = sf.t[tris.second];
++                gp_Vec n1 = triNormal(sf.p[t1[0]], sf.p[t1[1]], sf.p[t1[2]]);
++                gp_Vec n2 = triNormal(sf.p[t2[0]], sf.p[t2[1]], sf.p[t2[2]]);
++                if (n1.SquareMagnitude() < 1e-30 || n2.SquareMagnitude() < 1e-30) {
++                    continue;
++                }
++                scene.soft.push_back({itemIndex, sf.p[key.first], sf.p[key.second], n1, n2});
++            }
++        }
++        scene.faces.push_back(std::move(sf));
++    }
++
++    // edges
++    TopTools_IndexedDataMapOfShapeListOfShape edgeFaces;
++    TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
++    for (int i = 1; i <= edgeFaces.Extent(); ++i) {
++        const TopoDS_Edge& edge = TopoDS::Edge(edgeFaces.FindKey(i));
++        if (BRep_Tool::Degenerated(edge)) {
++            continue;
++        }
++        const TopTools_ListOfShape& faces = edgeFaces(i);
++        SEdge se;
++        se.item = itemIndex;
++        bool seam = false;
++        std::vector<TopoDS_Face> uniqueFaces;
++        for (const auto& f : faces) {
++            const TopoDS_Face& face = TopoDS::Face(f);
++            if (BRep_Tool::IsClosed(edge, face)) {
++                seam = true;
++            }
++            bool known = false;
++            for (const auto& u : uniqueFaces) {
++                known = known || u.IsSame(face);
++            }
++            if (!known) {
++                uniqueFaces.push_back(face);
++            }
++        }
++        if (seam && uniqueFaces.size() <= 1) {
++            continue;  // seam of a cylinder etc.
++        }
++        if (uniqueFaces.size() == 2) {
++            try {
++                if (BRep_Tool::Continuity(edge, uniqueFaces[0], uniqueFaces[1]) >= GeomAbs_G1) {
++                    se.kind = 2;
++                }
++            }
++            catch (const Standard_Failure&) {
++            }
++        }
++        bool ok = false;
++        if (!uniqueFaces.empty()) {
++            ok = Part::Tools::getPolygonOnTriangulation(edge, uniqueFaces.front(), se.p);
++        }
++        if (!ok || se.p.size() < 2) {
++            se.p.clear();
++            try {
++                BRepAdaptor_Curve curve(edge);
++                GCPnts_TangentialDeflection disc(
++                    curve,
++                    curve.FirstParameter(),
++                    curve.LastParameter(),
++                    0.35,
++                    scene.deflection
++                );
++                for (int k = 1; k <= disc.NbPoints(); ++k) {
++                    se.p.push_back(disc.Value(k));
++                }
++            }
++            catch (const Standard_Failure&) {
++                continue;
++            }
++        }
++        if (se.p.size() >= 2) {
++            scene.edges.push_back(std::move(se));
++        }
++    }
++}
++
++void addMesh(Scene& scene, int itemIndex, const SceneItem& item)
++{
++    // A mesh has no faces: smooth patches (neighbours within 30 degrees) play their part.
++    // A patch whose triangles are coplanar is planar, others are handled per triangle
++    // for hidden line removal and merged again for the output.
++    const auto& P = item.meshPoints;
++    std::vector<std::array<int, 3>> tris;
++    std::vector<gp_Vec> tn;  // unit normals
++    std::vector<gp_Vec> ta;  // area weighted normals
++    for (const auto& f : item.meshFacets) {
++        if (f[0] < 0 || f[1] < 0 || f[2] < 0 || f[0] >= (int)P.size() || f[1] >= (int)P.size()
++            || f[2] >= (int)P.size()) {
++            continue;
++        }
++        gp_Vec n = triNormal(P[f[0]], P[f[1]], P[f[2]]);
++        if (n.SquareMagnitude() < 1e-30) {
++            continue;
++        }
++        tris.push_back(f);
++        ta.push_back(n);
++        tn.push_back(n.Normalized());
++    }
++    std::map<std::pair<int, int>, std::vector<int>> em;
++    for (int k = 0; k < (int)tris.size(); ++k) {
++        for (int e = 0; e < 3; ++e) {
++            int u = tris[k][e];
++            int v = tris[k][(e + 1) % 3];
++            em[std::make_pair(std::min(u, v), std::max(u, v))].push_back(k);
++        }
++    }
++    bool closed = !em.empty();
++    for (const auto& [key, list] : em) {
++        if (list.size() != 2) {
++            closed = false;
++            break;
++        }
++    }
++    const double coplanar = std::cos(0.5 * M_PI / 180.0);
++    const double crease = std::cos(30.0 * M_PI / 180.0);
++    std::vector<std::vector<int>> neighbours(tris.size());
++    for (const auto& [key, list] : em) {
++        if (list.size() == 2 && tn[list[0]].Dot(tn[list[1]]) >= crease) {
++            neighbours[list[0]].push_back(list[1]);
++            neighbours[list[1]].push_back(list[0]);
++        }
++    }
++    // smooth components (no crease inside) ...
++    std::vector<int> component(tris.size(), -1);
++    int components = 0;
++    for (int k = 0; k < (int)tris.size(); ++k) {
++        if (component[k] >= 0) {
++            continue;
++        }
++        std::vector<int> stack {k};
++        component[k] = components;
++        while (!stack.empty()) {
++            int c = stack.back();
++            stack.pop_back();
++            for (int nb : neighbours[c]) {
++                if (component[nb] < 0) {
++                    component[nb] = components;
++                    stack.push_back(nb);
++                }
++            }
++        }
++        ++components;
++    }
++    // ... split into patches that stay within 15 degrees of their first triangle, so that
++    // the flat sides of a rounded box get their own tone
++    const double patchAngle = std::cos(15.0 * M_PI / 180.0);
++    std::vector<int> group(tris.size(), -1);
++    std::vector<int> groupComponent;
++    int groups = 0;
++    for (int k = 0; k < (int)tris.size(); ++k) {
++        if (group[k] >= 0) {
++            continue;
++        }
++        const gp_Vec seed = tn[k];
++        std::vector<int> stack {k};
++        group[k] = groups;
++        while (!stack.empty()) {
++            int c = stack.back();
++            stack.pop_back();
++            for (int nb : neighbours[c]) {
++                if (group[nb] < 0 && tn[nb].Dot(seed) >= patchAngle) {
++                    group[nb] = groups;
++                    stack.push_back(nb);
++                }
++            }
++        }
++        groupComponent.push_back(component[k]);
++        ++groups;
++    }
++    std::vector<SFace> faces(groups);
++    std::vector<std::unordered_map<int, int>> remap(groups);
++    std::vector<gp_Vec> firstNormal(groups);
++    std::vector<bool> planar(groups, true);
++    for (int k = 0; k < (int)tris.size(); ++k) {
++        const int g = group[k];
++        SFace& sf = faces[g];
++        if (sf.t.empty()) {
++            firstNormal[g] = tn[k];
++        }
++        else if (planar[g] && tn[k].Dot(firstNormal[g]) < coplanar) {
++            planar[g] = false;
++        }
++        std::array<int, 3> t {};
++        for (int e = 0; e < 3; ++e) {
++            int src = tris[k][e];
++            auto it = remap[g].find(src);
++            if (it == remap[g].end()) {
++                it = remap[g].emplace(src, (int)sf.p.size()).first;
++                sf.p.push_back(P[src]);
++                sf.n.emplace_back(0, 0, 0);
++            }
++            t[e] = it->second;
++            sf.n[t[e]] += ta[k];  // smooth vertex normals inside the patch
++        }
++        sf.t.push_back(t);
++    }
++    for (int g = 0; g < groups; ++g) {
++        for (auto& n : faces[g].n) {
++            if (n.SquareMagnitude() > 1e-30) {
++                n.Normalize();
++            }
++        }
++        faces[g].item = itemIndex;
++        faces[g].face = g;
++        faces[g].color = item.color;
++        faces[g].solid = closed;
++        faces[g].planar = planar[g];
++        faces[g].smooth = scene.smoothKeys + groupComponent[g];
++        scene.faces.push_back(std::move(faces[g]));
++    }
++    scene.smoothKeys += components;
++    for (const auto& [key, list] : em) {
++        if (list.size() == 2 && component[list[0]] == component[list[1]]) {
++            // no crease: may become a silhouette
++            if (group[list[0]] != group[list[1]] || !planar[group[list[0]]]) {
++                scene.soft.push_back({itemIndex, P[key.first], P[key.second], ta[list[0]], ta[list[1]]});
++            }
++            continue;
++        }
++        // open border, crease or non-manifold edge
++        scene.edges.push_back({itemIndex, 0, {P[key.first], P[key.second]}});
++    }
++}
++
++Scene buildScene(const std::vector<SceneItem>& items, double deflection)
++{
++    Scene scene;
++    scene.deflection = sceneDeflection(items, deflection, scene.box);
++    for (int i = 0; i < (int)items.size(); ++i) {
++        if (!items[i].shape.IsNull()) {
++            addShape(scene, i, items[i]);
++        }
++        else if (!items[i].meshFacets.empty()) {
++            addMesh(scene, i, items[i]);
++        }
++    }
++    return scene;
++}
++
++// Simple two light setup in camera space, n is a unit normal facing the viewer
++double shadeOf(const Camera& cam, const gp_Vec& n)
++{
++    double nx = n.XYZ().Dot(cam.right.XYZ());
++    double ny = n.XYZ().Dot(cam.up.XYZ());
++    double nz = -n.XYZ().Dot(cam.dir.XYZ());
++    if (nz < 0) {
++        nx = -nx;
++        ny = -ny;
++        nz = -nz;
++    }
++    // key light from upper left, fill from the eye
++    const double kx = -0.40, ky = 0.62, kz = 0.68;
++    double key = std::max(0.0, nx * kx + ny * ky + nz * kz);
++    double s = 0.30 + 0.52 * key + 0.22 * nz;
++    return std::min(1.0, s);
++}
++
++// ------------------------------------------------------------------ raster
++
++struct Raster
++{
++    int w = 0, h = 0;
++    std::vector<float> depth;
++    std::vector<int> id;
++    std::vector<float> shade;
++    std::vector<std::int8_t> nrm;  // 3 per pixel, for creases
++
++    void init(int width, int height)
++    {
++        w = width;
++        h = height;
++        depth.assign((size_t)w * h, std::numeric_limits<float>::infinity());
++        id.assign((size_t)w * h, -1);
++        shade.assign((size_t)w * h, 1.0F);
++        nrm.assign((size_t)w * h * 3, 0);
++    }
++};
++
++struct Fit
++{
++    double cx = 0, cy = 0, scale = 1;
++    double W = 0, H = 0;
++    void toScreen(double x, double y, double& sx, double& sy) const
++    {
++        sx = (x - cx) * scale + W * 0.5;
++        sy = H * 0.5 - (y - cy) * scale;
++    }
++};
++
++Fit fitView(const Scene& scene, const Camera& cam, int W, int H, double margin)
++{
++    double xmin = 1e300, xmax = -1e300, ymin = 1e300, ymax = -1e300;
++    auto add = [&](const gp_Pnt& p) {
++        double x {}, y {}, d {};
++        cam.project(p, x, y, d);
++        xmin = std::min(xmin, x);
++        xmax = std::max(xmax, x);
++        ymin = std::min(ymin, y);
++        ymax = std::max(ymax, y);
++    };
++    for (const auto& f : scene.faces) {
++        for (const auto& p : f.p) {
++            add(p);
++        }
++    }
++    for (const auto& e : scene.edges) {
++        for (const auto& p : e.p) {
++            add(p);
++        }
++    }
++    Fit fit;
++    fit.W = W;
++    fit.H = H;
++    if (xmin > xmax) {
++        return fit;
++    }
++    double bw = std::max(xmax - xmin, 1e-9);
++    double bh = std::max(ymax - ymin, 1e-9);
++    double avW = W * (1 - 2 * margin);
++    double avH = H * (1 - 2 * margin);
++    fit.scale = std::min(avW / bw, avH / bh);
++    fit.cx = (xmin + xmax) / 2;
++    fit.cy = (ymin + ymax) / 2;
++    return fit;
++}
++
++void rasterize(Raster& R, const Scene& scene, const Camera& cam, const Fit& fit)
++{
++    for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
++        const SFace& f = scene.faces[fi];
++        std::vector<double> sx(f.p.size()), sy(f.p.size()), sd(f.p.size());
++        for (size_t k = 0; k < f.p.size(); ++k) {
++            double x {}, y {}, d {};
++            cam.project(f.p[k], x, y, d);
++            fit.toScreen(x, y, sx[k], sy[k]);
++            sd[k] = d;
++        }
++        for (const auto& t : f.t) {
++            const int a = t[0], b = t[1], c = t[2];
++            double area = (sx[b] - sx[a]) * (sy[c] - sy[a]) - (sx[c] - sx[a]) * (sy[b] - sy[a]);
++            if (std::fabs(area) < 1e-12) {
++                continue;
++            }
++            int x0 = std::max(0, (int)std::floor(std::min({sx[a], sx[b], sx[c]})));
++            int x1 = std::min(R.w - 1, (int)std::ceil(std::max({sx[a], sx[b], sx[c]})));
++            int y0 = std::max(0, (int)std::floor(std::min({sy[a], sy[b], sy[c]})));
++            int y1 = std::min(R.h - 1, (int)std::ceil(std::max({sy[a], sy[b], sy[c]})));
++            if (x0 > x1 || y0 > y1) {
++                continue;
++            }
++            // triangle normal (geometric) and smooth normals
++            gp_Vec tnorm = triNormal(f.p[a], f.p[b], f.p[c]);
++            const gp_Vec& na = f.n.empty() ? tnorm : f.n[a];
++            const gp_Vec& nb = f.n.empty() ? tnorm : f.n[b];
++            const gp_Vec& nc = f.n.empty() ? tnorm : f.n[c];
++            const double inv = 1.0 / area;
++            for (int py = y0; py <= y1; ++py) {
++                const double cyp = py + 0.5;
++                for (int px = x0; px <= x1; ++px) {
++                    const double cxp = px + 0.5;
++                    double w0 = ((sx[b] - cxp) * (sy[c] - cyp) - (sx[c] - cxp) * (sy[b] - cyp)) * inv;
++                    double w1 = ((sx[c] - cxp) * (sy[a] - cyp) - (sx[a] - cxp) * (sy[c] - cyp)) * inv;
++                    double w2 = 1.0 - w0 - w1;
++                    if (w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9) {
++                        continue;
++                    }
++                    double d = w0 * sd[a] + w1 * sd[b] + w2 * sd[c];
++                    size_t idx = (size_t)py * R.w + px;
++                    if (d >= R.depth[idx]) {
++                        continue;
++                    }
++                    R.depth[idx] = (float)d;
++                    R.id[idx] = fi;
++                    gp_Vec n = na * w0 + nb * w1 + nc * w2;
++                    if (n.SquareMagnitude() < 1e-30) {
++                        n = tnorm;
++                    }
++                    n.Normalize();
++                    // face the viewer (two sided)
++                    if (n.Dot(gp_Vec(cam.dir)) > 0) {
++                        n.Reverse();
++                    }
++                    R.shade[idx] = (float)shadeOf(cam, n);
++                    R.nrm[idx * 3] = (std::int8_t)std::lround(n.X() * 127);
++                    R.nrm[idx * 3 + 1] = (std::int8_t)std::lround(n.Y() * 127);
++                    R.nrm[idx * 3 + 2] = (std::int8_t)std::lround(n.Z() * 127);
++                }
++            }
++        }
++    }
++}
++
++void dilate(std::vector<std::uint8_t>& mask, int w, int h, int radius)
++{
++    if (radius <= 0) {
++        return;
++    }
++    std::vector<std::uint8_t> out(mask.size(), 0);
++    for (int y = 0; y < h; ++y) {
++        for (int x = 0; x < w; ++x) {
++            if (!mask[(size_t)y * w + x]) {
++                continue;
++            }
++            for (int dy = -radius; dy <= radius; ++dy) {
++                for (int dx = -radius; dx <= radius; ++dx) {
++                    if (dx * dx + dy * dy > radius * radius + radius) {
++                        continue;
++                    }
++                    int xx = x + dx, yy = y + dy;
++                    if (xx >= 0 && yy >= 0 && xx < w && yy < h) {
++                        out[(size_t)yy * w + xx] = 1;
++                    }
++                }
++            }
++        }
++    }
++    mask.swap(out);
++}
++
++void drawSegment(std::vector<std::uint8_t>& mask, int w, int h, double x0, double y0, double x1, double y1)
++{
++    double len = std::hypot(x1 - x0, y1 - y0);
++    int steps = std::max(1, (int)std::ceil(len * 2));
++    for (int i = 0; i <= steps; ++i) {
++        double t = (double)i / steps;
++        int x = (int)std::floor(x0 + (x1 - x0) * t);
++        int y = (int)std::floor(y0 + (y1 - y0) * t);
++        if (x >= 0 && y >= 0 && x < w && y < h) {
++            mask[(size_t)y * w + x] = 1;
++        }
++    }
++}
++
++std::uint32_t crcOf(const std::string& type, const std::vector<std::uint8_t>& data)
++{
++    uLong crc = crc32(0L, Z_NULL, 0);
++    crc = crc32(crc, reinterpret_cast<const Bytef*>(type.data()), (uInt)type.size());
++    if (!data.empty()) {
++        crc = crc32(crc, data.data(), (uInt)data.size());
++    }
++    return (std::uint32_t)crc;
++}
++
++void putChunk(std::ostream& out, const std::string& type, const std::vector<std::uint8_t>& data)
++{
++    auto be32 = [&out](std::uint32_t v) {
++        char b[4] = {(char)(v >> 24), (char)(v >> 16), (char)(v >> 8), (char)v};
++        out.write(b, 4);
++    };
++    be32((std::uint32_t)data.size());
++    out.write(type.data(), 4);
++    if (!data.empty()) {
++        out.write(reinterpret_cast<const char*>(data.data()), (std::streamsize)data.size());
++    }
++    be32(crcOf(type, data));
++}
++
++}  // namespace
++
++// ------------------------------------------------------------------ camera
++
++Camera Camera::fromDirection(const gp_Vec& d)
++{
++    if (d.Magnitude() < 1e-12) {
++        throw Base::ValueError("View direction must not be zero");
++    }
++    Camera cam;
++    cam.dir = gp_Dir(d);
++    gp_Vec up(0, 0, 1);
++    if (std::fabs(gp_Vec(cam.dir).Dot(up)) > 0.999) {
++        up = gp_Vec(0, 1, 0);  // looking straight down or up: +Y is up on the screen
++    }
++    gp_Vec right = gp_Vec(cam.dir).Crossed(up);
++    cam.right = gp_Dir(right);
++    cam.up = gp_Dir(right.Crossed(gp_Vec(cam.dir)));
++    return cam;
++}
++
++Camera Camera::fromName(const std::string& name)
++{
++    // Directions from the eye into the scene, as FreeCAD's standard views
++    static const std::map<std::string, std::array<double, 3>> views = {
++        {"iso", {-1, 1, -1}},
++        {"isometric", {-1, 1, -1}},
++        {"front", {0, 1, 0}},
++        {"back", {0, -1, 0}},
++        {"rear", {0, -1, 0}},
++        {"right", {-1, 0, 0}},
++        {"left", {1, 0, 0}},
++        {"top", {0, 0, -1}},
++        {"bottom", {0, 0, 1}},
++        {"iso-back", {1, -1, -1}},
++        {"iso-low", {-1, 1, 0.6}},
++        {"dimetric", {-0.6, 1, -0.5}},
++        {"trimetric", {-0.5, 1, -0.7}},
++    };
++    auto it = views.find(name);
++    if (it != views.end()) {
++        return fromDirection(gp_Vec(it->second[0], it->second[1], it->second[2]));
++    }
++    double x {}, y {}, z {};
++    char c1 {}, c2 {};
++    std::istringstream str(name);
++    if (str >> x >> c1 >> y >> c2 >> z && c1 == ',' && c2 == ',') {
++        return fromDirection(gp_Vec(x, y, z));
++    }
++    throw Base::ValueError(
++        "Unknown view '" + name
++        + "' (iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric, "
++          "trimetric or dx,dy,dz)"
++    );
++}
++
++// ------------------------------------------------------------------ render
++
++Image Part::ViewTools::render(const std::vector<SceneItem>& items, const Camera& cam, const RenderOptions& opt)
++{
++    if (opt.width < 8 || opt.height < 8 || opt.width > 16384 || opt.height > 16384) {
++        throw Base::ValueError("Image size must be between 8 and 16384 pixels");
++    }
++    const std::string& style = opt.style;
++    const bool wire = style == "lines" || style == "wireframe";
++    const bool hiddenLines = style == "hidden-lines" || style == "hiddenlines";
++    const bool shadedOnly = style == "shaded-only" || style == "flat";
++    if (!wire && !hiddenLines && !shadedOnly && style != "shaded") {
++        throw Base::ValueError(
++            "Unknown style '" + style + "' (shaded, shaded-only, hidden-lines, lines)"
++        );
++    }
++    int s = std::clamp(opt.supersample, 1, 4);
++    while (s > 1 && (double)opt.width * opt.height * s * s > 40e6) {
++        --s;
++    }
++    const int W = opt.width * s;
++    const int H = opt.height * s;
++
++    Scene scene = buildScene(items, opt.deflection);
++    Fit fit = fitView(scene, cam, W, H, opt.margin);
++
++    Raster R;
++    R.init(W, H);
++    std::vector<std::uint8_t> edge((size_t)W * H, 0);
++    if (!wire) {
++        rasterize(R, scene, cam, fit);
++        if (!shadedOnly) {
++            // edges from changes of face, depth jumps and creases
++            const double pix = 1.0 / fit.scale;
++            const double crease = std::cos(35.0 * M_PI / 180.0) * 127 * 127;
++            for (int y = 0; y < H; ++y) {
++                for (int x = 0; x < W; ++x) {
++                    size_t i = (size_t)y * W + x;
++                    for (int k = 0; k < 2; ++k) {
++                        int xx = x + (k == 0 ? 1 : 0);
++                        int yy = y + (k == 1 ? 1 : 0);
++                        if (xx >= W || yy >= H) {
++                            continue;
++                        }
++                        size_t j = (size_t)yy * W + xx;
++                        bool isEdge = false;
++                        if (R.id[i] != R.id[j]
++                            && (R.id[i] < 0 || R.id[j] < 0
++                                || scene.faces[R.id[i]].smooth != scene.faces[R.id[j]].smooth)) {
++                            isEdge = true;
++                        }
++                        else if (R.id[i] >= 0) {
++                            double dz = std::fabs((double)R.depth[i] - R.depth[j]);
++                            if (dz > 8 * pix) {
++                                isEdge = true;
++                            }
++                            else {
++                                double dot = (double)R.nrm[i * 3] * R.nrm[j * 3]
++                                    + (double)R.nrm[i * 3 + 1] * R.nrm[j * 3 + 1]
++                                    + (double)R.nrm[i * 3 + 2] * R.nrm[j * 3 + 2];
++                                isEdge = dot < crease;
++                            }
++                        }
++                        if (isEdge) {
++                            // mark the nearer pixel so the line sits on the front object
++                            if (R.depth[i] <= R.depth[j]) {
++                                edge[i] = 1;
++                            }
++                            else {
++                                edge[j] = 1;
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++    else {
++        for (const auto& e : scene.edges) {
++            double px0 {}, py0 {};
++            for (size_t k = 0; k < e.p.size(); ++k) {
++                double x {}, y {}, d {}, sx {}, sy {};
++                cam.project(e.p[k], x, y, d);
++                fit.toScreen(x, y, sx, sy);
++                if (k > 0) {
++                    drawSegment(edge, W, H, px0, py0, sx, sy);
++                }
++                px0 = sx;
++                py0 = sy;
++            }
++        }
++    }
++    int radius = (int)std::lround((opt.lineWidth * s - 1.0) / 2.0);
++    dilate(edge, W, H, radius);
++
++    Image img;
++    img.width = opt.width;
++    img.height = opt.height;
++    img.rgb.assign((size_t)opt.width * opt.height * 3, 0);
++    for (int y = 0; y < opt.height; ++y) {
++        for (int x = 0; x < opt.width; ++x) {
++            double acc[3] = {0, 0, 0};
++            for (int sy = 0; sy < s; ++sy) {
++                for (int sx = 0; sx < s; ++sx) {
++                    size_t i = (size_t)(y * s + sy) * W + (x * s + sx);
++                    Color c = opt.background;
++                    if (edge[i]) {
++                        c = opt.edgeColor;
++                    }
++                    else if (R.id[i] >= 0) {
++                        if (hiddenLines) {
++                            c = {1.0F, 1.0F, 1.0F};
++                        }
++                        else {
++                            const Color& fc = scene.faces[R.id[i]].color;
++                            float sh = R.shade[i];
++                            c = {fc[0] * sh, fc[1] * sh, fc[2] * sh};
++                        }
++                    }
++                    acc[0] += c[0];
++                    acc[1] += c[1];
++                    acc[2] += c[2];
++                }
++            }
++            for (int k = 0; k < 3; ++k) {
++                double v = acc[k] / (s * s);
++                img.rgb[((size_t)y * opt.width + x) * 3 + k] = (std::uint8_t)std::clamp(
++                    (int)std::lround(v * 255.0),
++                    0,
++                    255
++                );
++            }
++        }
++    }
++    return img;
++}
++
++void Part::ViewTools::writePng(const Image& img, const std::string& path)
++{
++    std::vector<std::uint8_t> raw;
++    raw.reserve((size_t)(img.width * 3 + 1) * img.height);
++    for (int y = 0; y < img.height; ++y) {
++        raw.push_back(0);
++        const auto* row = img.rgb.data() + (size_t)y * img.width * 3;
++        raw.insert(raw.end(), row, row + (size_t)img.width * 3);
++    }
++    uLongf len = compressBound((uLong)raw.size());
++    std::vector<std::uint8_t> zdata(len);
++    if (compress2(zdata.data(), &len, raw.data(), (uLong)raw.size(), 6) != Z_OK) {
++        throw Base::RuntimeError("PNG compression failed");
++    }
++    zdata.resize(len);
++
++    Base::FileInfo fi(path);
++    Base::ofstream out(fi, std::ios::out | std::ios::binary);
++    if (!out) {
++        throw Base::FileException("Cannot write file", fi);
++    }
++    const char sig[8] = {(char)0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
++    out.write(sig, 8);
++    std::vector<std::uint8_t> ihdr(13, 0);
++    auto put32 = [](std::uint8_t* p, std::uint32_t v) {
++        p[0] = (std::uint8_t)(v >> 24);
++        p[1] = (std::uint8_t)(v >> 16);
++        p[2] = (std::uint8_t)(v >> 8);
++        p[3] = (std::uint8_t)v;
++    };
++    put32(ihdr.data(), (std::uint32_t)img.width);
++    put32(ihdr.data() + 4, (std::uint32_t)img.height);
++    ihdr[8] = 8;  // bit depth
++    ihdr[9] = 2;  // RGB
++    putChunk(out, "IHDR", ihdr);
++    putChunk(out, "IDAT", zdata);
++    putChunk(out, "IEND", {});
++    out.close();
++    if (!out) {
++        throw Base::FileException("Cannot write file", fi);
++    }
++}
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+new file mode 100644
+index 000000000..39b823bde
+--- /dev/null
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++/***************************************************************************
++ *   Headless views of shapes: a CPU renderer (PNG), hidden-line removed   *
++ *   2D projection (visible face polygons and visible edges) and a fast    *
++ *   pairwise interference check.  None of this needs OpenGL or a display. *
++ ***************************************************************************/
++
++#pragma once
++
++#include <Python.h>
++
++#include <array>
++#include <cstdint>
++#include <string>
++#include <vector>
++
++#include <gp_Dir.hxx>
++#include <gp_Pnt.hxx>
++#include <gp_Vec.hxx>
++#include <TopoDS_Shape.hxx>
++
++#include <Mod/Part/PartGlobal.h>
++
++namespace Part::ViewTools
++{
++
++using Color = std::array<float, 3>;
++using Point2d = std::array<double, 2>;
++
++/// One thing to draw: a shape, or a triangle mesh (e.g. from an STL file)
++struct SceneItem
++{
++    TopoDS_Shape shape;
++    std::vector<gp_Pnt> meshPoints;
++    std::vector<std::array<int, 3>> meshFacets;
++    Color color {0.80F, 0.82F, 0.86F};
++};
++
++/// Orthographic camera.  \a dir points from the eye into the scene.
++struct PartExport Camera
++{
++    gp_Dir dir {0, 0, -1};
++    gp_Dir right {1, 0, 0};
++    gp_Dir up {0, 1, 0};
++
++    /// Names: iso, front, back (rear), right, left, top, bottom, iso-back, iso-low,
++    /// or a direction "dx,dy,dz" (from the eye into the scene)
++    static Camera fromName(const std::string& name);
++    static Camera fromDirection(const gp_Vec& dir);
++
++    void project(const gp_Pnt& p, double& x, double& y, double& depth) const
++    {
++        const gp_XYZ& v = p.XYZ();
++        x = v.Dot(right.XYZ());
++        y = v.Dot(up.XYZ());
++        depth = v.Dot(dir.XYZ());
++    }
++};
++
++struct RenderOptions
++{
++    int width = 1200;
++    int height = 900;
++    /// shaded (faces with edges), shaded-only, hidden-lines, lines (wireframe)
++    std::string style = "shaded";
++    Color background {1.0F, 1.0F, 1.0F};
++    Color edgeColor {0.10F, 0.10F, 0.10F};
++    double lineWidth = 1.0;  // pixels
++    double deflection = 0.0;  // 0: from the size of the scene
++    int supersample = 3;
++    double margin = 0.04;  // fraction of the image left free at each side
++};
++
++struct Image
++{
++    int width = 0;
++    int height = 0;
++    std::vector<std::uint8_t> rgb;
++};
++
++PartExport Image render(const std::vector<SceneItem>& items, const Camera& cam, const RenderOptions& opt);
++PartExport void writePng(const Image& img, const std::string& path);
++
++/// Adds the Python functions of the headless views to the Part module
++void addPythonFunctions(PyObject* module);
++
++}  // namespace Part::ViewTools
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+new file mode 100644
+index 000000000..7ec662687
+--- /dev/null
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -0,0 +1,248 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++// Python functions of the Part module for headless views and interference checks:
++// see the method table at the end
++
++#include <Python.h>
++
++#include <array>
++#include <string>
++#include <vector>
++
++#include <CXX/Objects.hxx>
++
++#include <Base/Exception.h>
++#include <Base/Interpreter.h>
++#include <Base/VectorPy.h>
++
++#include "OCCError.h"
++#include "TopoShapePy.h"
++#include "ViewTools.h"
++
++using namespace Part::ViewTools;
++
++namespace
++{
++
++const std::array<Color, 10> palette = {{
++    {0.80F, 0.82F, 0.86F},
++    {0.55F, 0.70F, 0.90F},
++    {0.95F, 0.70F, 0.45F},
++    {0.60F, 0.82F, 0.60F},
++    {0.90F, 0.60F, 0.70F},
++    {0.75F, 0.65F, 0.90F},
++    {0.95F, 0.88F, 0.50F},
++    {0.55F, 0.80F, 0.80F},
++    {0.70F, 0.70F, 0.70F},
++    {0.85F, 0.55F, 0.45F},
++}};
++
++Color toColor(const Py::Object& obj)
++{
++    Py::Sequence seq(obj);
++    if (seq.size() < 3) {
++        throw Py::ValueError("A color needs three values (r, g, b) from 0 to 1 or 0 to 255");
++    }
++    Color c {(float)(double)Py::Float(seq[0]), (float)(double)Py::Float(seq[1]), (float)(double)Py::Float(seq[2])};
++    if (c[0] > 1 || c[1] > 1 || c[2] > 1) {
++        for (auto& v : c) {
++            v /= 255.0F;
++        }
++    }
++    return c;
++}
++
++gp_Pnt toPoint(const Py::Object& obj)
++{
++    if (PyObject_TypeCheck(obj.ptr(), &Base::VectorPy::Type)) {
++        Base::Vector3d v = static_cast<Base::VectorPy*>(obj.ptr())->value();
++        return {v.x, v.y, v.z};
++    }
++    Py::Sequence seq(obj);
++    return {(double)Py::Float(seq[0]), (double)Py::Float(seq[1]), (double)Py::Float(seq[2])};
++}
++
++void setMesh(SceneItem& item, const Py::Object& topo)
++{
++    Py::Sequence pair(topo);
++    if (pair.size() != 2) {
++        throw Py::TypeError("A mesh is a tuple (points, facets)");
++    }
++    Py::Sequence pts(pair[0]);
++    Py::Sequence fcs(pair[1]);
++    item.meshPoints.reserve(pts.size());
++    for (const auto& p : pts) {
++        item.meshPoints.push_back(toPoint(p));
++    }
++    item.meshFacets.reserve(fcs.size());
++    for (const auto& f : fcs) {
++        Py::Sequence t(f);
++        item.meshFacets.push_back({(int)(long)Py::Long(t[0]), (int)(long)Py::Long(t[1]), (int)(long)Py::Long(t[2])});
++    }
++}
++
++// Shape, (points, facets), Mesh.Mesh, document object with Shape or Mesh, or a dict
++// {"shape"/"mesh"/"object": ..., "color": (r, g, b)}
++SceneItem toItem(const Py::Object& obj, std::size_t index)
++{
++    SceneItem item;
++    item.color = palette[index % palette.size()];
++    Py::Object what = obj;
++    if (PyDict_Check(obj.ptr())) {
++        Py::Dict d(obj);
++        if (d.hasKey("color")) {
++            item.color = toColor(d["color"]);
++        }
++        if (d.hasKey("shape")) {
++            what = d["shape"];
++        }
++        else if (d.hasKey("mesh")) {
++            what = d["mesh"];
++        }
++        else if (d.hasKey("object")) {
++            what = d["object"];
++        }
++        else {
++            throw Py::ValueError("An item dict needs 'shape', 'mesh' or 'object'");
++        }
++    }
++    if (PyObject_TypeCheck(what.ptr(), &Part::TopoShapePy::Type)) {
++        item.shape = static_cast<Part::TopoShapePy*>(what.ptr())->getTopoShapePtr()->getShape();
++        return item;
++    }
++    if (PyTuple_Check(what.ptr()) || PyList_Check(what.ptr())) {
++        setMesh(item, what);
++        return item;
++    }
++    if (what.hasAttr("Topology") && !what.hasAttr("Shape")) {
++        setMesh(item, what.getAttr("Topology"));  // Mesh.Mesh
++        return item;
++    }
++    if (what.hasAttr("Shape")) {
++        Py::Object shp = what.getAttr("Shape");
++        if (PyObject_TypeCheck(shp.ptr(), &Part::TopoShapePy::Type)) {
++            item.shape = static_cast<Part::TopoShapePy*>(shp.ptr())->getTopoShapePtr()->getShape();
++            return item;
++        }
++    }
++    if (what.hasAttr("Mesh")) {
++        Py::Object mesh = what.getAttr("Mesh");
++        if (mesh.hasAttr("Topology")) {
++            setMesh(item, mesh.getAttr("Topology"));
++            return item;
++        }
++    }
++    throw Py::TypeError(
++        "Expected a Part.Shape, a mesh (points, facets), a Mesh.Mesh or an object with a Shape or Mesh"
++    );
++}
++
++std::vector<SceneItem> toItems(PyObject* objs)
++{
++    std::vector<SceneItem> items;
++    if (PyObject_TypeCheck(objs, &Part::TopoShapePy::Type) || PyDict_Check(objs)
++        || !PySequence_Check(objs)) {
++        items.push_back(toItem(Py::Object(objs), 0));
++        return items;
++    }
++    Py::Sequence seq(objs);
++    // a single mesh tuple (points, facets)
++    if (seq.size() == 2 && PySequence_Check(seq[0].ptr()) && PySequence_Check(seq[1].ptr())) {
++        Py::Sequence second(seq[1]);
++        if (second.size() > 0 && PySequence_Check(second[0].ptr())
++            && Py::Sequence(second[0]).size() == 3 && PyLong_Check(Py::Sequence(second[0])[0].ptr())) {
++            items.push_back(toItem(Py::Object(objs), 0));
++            return items;
++        }
++    }
++    for (Py::Sequence::size_type i = 0; i < seq.size(); ++i) {
++        items.push_back(toItem(seq[i], i));
++    }
++    return items;
++}
++
++Camera toCamera(PyObject* view)
++{
++    if (!view || view == Py_None) {
++        return Camera::fromName("iso");
++    }
++    if (PyUnicode_Check(view)) {
++        return Camera::fromName(PyUnicode_AsUTF8(view));
++    }
++    gp_Pnt p = toPoint(Py::Object(view));
++    return Camera::fromDirection(gp_Vec(p.XYZ()));
++}
++
++PyObject* renderImage(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    static const char* kwlist[] = {
++        "objects", "filename", "view", "width", "height", "style", "lineWidth",
++        "deflection", "background", "supersample", nullptr
++    };
++    PyObject* objs {};
++    const char* filename {};
++    PyObject* view = nullptr;
++    int width = 1200, height = 900, supersample = 3;
++    const char* style = "shaded";
++    double lineWidth = 1.0, deflection = 0.0;
++    PyObject* background = nullptr;
++    if (!PyArg_ParseTupleAndKeywords(
++            args, kwds, "Os|OiisddOi", const_cast<char**>(kwlist), &objs, &filename, &view,
++            &width, &height, &style, &lineWidth, &deflection, &background, &supersample
++        )) {
++        return nullptr;
++    }
++    try {
++        RenderOptions opt;
++        opt.width = width;
++        opt.height = height;
++        opt.style = style;
++        opt.lineWidth = lineWidth;
++        opt.deflection = deflection;
++        opt.supersample = supersample;
++        if (background && background != Py_None) {
++            opt.background = toColor(Py::Object(background));
++        }
++        std::vector<SceneItem> items = toItems(objs);
++        Camera cam = toCamera(view);
++        Image img = render(items, cam, opt);
++        writePng(img, filename);
++        Py_Return;
++    }
++    catch (const Py::Exception&) {
++        return nullptr;
++    }
++    catch (const Base::Exception& e) {
++        e.setPyException();
++        return nullptr;
++    }
++    catch (const Standard_Failure& e) {
++        PyErr_SetString(Part::PartExceptionOCCError, e.GetMessageString());
++        return nullptr;
++    }
++}
++
++PyMethodDef methods[] = {
++    {"renderImage",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(renderImage)),
++     METH_VARARGS | METH_KEYWORDS,
++     "renderImage(objects, filename, view='iso', width=1200, height=900, style='shaded',\n"
++     "            lineWidth=1.0, deflection=0, background=(1,1,1), supersample=3)\n"
++     "Write a PNG picture without OpenGL or a display (CPU renderer).\n"
++     "objects: a shape, a mesh (points, facets), a Mesh.Mesh, a document object, a dict\n"
++     "{'shape'|'mesh'|'object': ..., 'color': (r,g,b)} or a list of these.\n"
++     "view: iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric,\n"
++     "trimetric, 'dx,dy,dz' or a vector (direction from the eye into the scene).\n"
++     "style: shaded, shaded-only, hidden-lines, lines."},
++    {nullptr, nullptr, 0, nullptr},
++};
++
++}  // namespace
++
++namespace Part::ViewTools
++{
++void addPythonFunctions(PyObject* module)
++{
++    PyModule_AddFunctions(module, methods);
++}
++}  // namespace Part::ViewTools
+diff --git a/src/Mod/Part/CMakeLists.txt b/src/Mod/Part/CMakeLists.txt
+index 330d87ddc..39d997d8b 100644
+--- a/src/Mod/Part/CMakeLists.txt
++++ b/src/Mod/Part/CMakeLists.txt
+@@ -16,6 +16,7 @@ set(Part_Scripts
+     JoinFeatures.py
+     MakeBottle.py
+     PartEnums.py
++    PartViews.py
+     TestPartApp.py
+ )
+ 
+@@ -88,6 +89,7 @@ set(Part_tests
+     parttests/TestLinkArrayPath.py
+     parttests/TestLinkArrayPoint.py
+     parttests/TestPartMirror.py
++    parttests/TestPartViews.py
+     parttests/TestFaceMakerUnifiedPlanar.py
+     parttests/TestFaceMakerUnifiedNonPlanar.py
+ )
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+new file mode 100644
+index 000000000..a893583f1
+--- /dev/null
++++ b/src/Mod/Part/PartViews.py
+@@ -0,0 +1,214 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++"""Headless pictures.
++
++Works in FreeCADCmd without OpenGL or a display.  The heavy lifting is in C++
++(Part.renderImage); this module
++collects the objects of a document and writes the files.
++
++Command line (FreeCADCmd):
++
++    FreeCADCmd model.FCStd --render out.png [--view iso] [--size 1600x1200]
++                           [--render-style shaded|shaded-only|hidden-lines|lines]
++
++Python:
++
++    import PartViews
++    PartViews.render(objects_or_doc, "out.png", view="iso", size=(1600, 1200))
++"""
++
++import os
++
++import FreeCAD as App
++import Part
++
++__all__ = [
++    "scene_objects",
++    "render",
++    "cli_main",
++]
++
++VIEW_NAMES = (
++    "iso", "isometric", "front", "back", "rear", "right", "left", "top", "bottom",
++    "iso-back", "iso-low", "dimetric", "trimetric",
++)  # fmt: skip
++
++_SKIP_TYPES = (
++    "App::Part",
++    "App::DocumentObjectGroup",
++    "App::Origin",
++    "App::Line",
++    "App::Plane",
++    "App::Point",
++    "App::LocalCoordinateSystem",
++    "PartDesign::CoordinateSystem",
++    "PartDesign::Plane",
++    "PartDesign::Line",
++    "PartDesign::Point",
++    "Sketcher::SketchObject",
++    "Spreadsheet::Sheet",
++)
++
++
++def _parent_placement(obj):
++    pl = App.Placement()
++    parent = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
++    while parent is not None:
++        if hasattr(parent, "Placement"):
++            pl = parent.Placement.multiply(pl)
++        parent = parent.getParentGeoFeatureGroup()
++    return pl
++
++
++def _in_body(obj):
++    parent = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
++    return parent is not None and parent.isDerivedFrom("PartDesign::Body")
++
++
++def _visible(obj):
++    try:
++        return bool(obj.Visibility)
++    except Exception:
++        return True
++
++
++def scene_objects(source=None):
++    """[(document object or None, item)] for the visible solids/faces/meshes of a document.
++
++    source: None (active document), a document, an object, a shape or a list of them.
++    item is what Part.renderImage / Part.projectVisible take."""
++    if source is None:
++        source = App.ActiveDocument
++        if source is None:
++            raise RuntimeError("No document is open")
++    if isinstance(source, App.Document):
++        objs = [o for o in source.Objects if _visible(o)]
++        return _items(objs, from_document=True)
++    if isinstance(source, (list, tuple)):
++        return _items(list(source), from_document=False)
++    return _items([source], from_document=False)
++
++
++def _items(objs, from_document):
++    result = []
++    for obj in objs:
++        if isinstance(obj, Part.Shape):
++            if not obj.isNull():
++                result.append((None, obj))
++            continue
++        if isinstance(obj, dict):
++            result.append((None, obj))
++            continue
++        if hasattr(obj, "Topology") and not hasattr(obj, "TypeId"):
++            result.append((None, obj))  # Mesh.Mesh
++            continue
++        if not hasattr(obj, "TypeId"):
++            raise TypeError("Cannot draw %r" % (obj,))
++        if from_document:
++            if obj.TypeId in _SKIP_TYPES or _in_body(obj):
++                continue
++        if hasattr(obj, "Mesh") and hasattr(obj.Mesh, "Topology"):
++            mesh = obj.Mesh.copy()
++            pl = _parent_placement(obj)
++            if not pl.isIdentity():
++                mesh.transform(pl.toMatrix())
++            result.append((obj, mesh.Topology))
++            continue
++        try:
++            shape = Part.getShape(obj)
++        except Exception:
++            shape = getattr(obj, "Shape", None)
++        if shape is None or shape.isNull():
++            continue
++        if from_document and not shape.Faces and not shape.Edges:
++            continue
++        if from_document and not shape.Faces and obj.TypeId.startswith("Part::Part2DObject"):
++            continue
++        pl = _parent_placement(obj)
++        if not pl.isIdentity():
++            shape = shape.transformed(pl.toMatrix())
++        result.append((obj, shape))
++    return result
++
++
++def _with_colors(pairs, colors=None):
++    items = []
++    for i, (obj, item) in enumerate(pairs):
++        color = None
++        if colors:
++            key = obj.Name if obj is not None else i
++            color = colors.get(key) or (colors.get(obj.Label) if obj is not None else None)
++        if color is not None:
++            items.append({"object" if not isinstance(item, (Part.Shape, tuple, list)) else
++                          ("shape" if isinstance(item, Part.Shape) else "mesh"): item,
++                          "color": color})  # fmt: skip
++        else:
++            items.append(item)
++    return items
++
++
++def _parse_size(size):
++    if size is None:
++        return 1200, 900
++    if isinstance(size, (int, float)):
++        return int(size), int(round(size * 0.75))
++    if isinstance(size, str):
++        parts = size.lower().replace("*", "x").split("x")
++        if len(parts) == 1:
++            w = int(parts[0])
++            return w, int(round(w * 0.75))
++        return int(parts[0]), int(parts[1])
++    return int(size[0]), int(size[1])
++
++
++def _split_views(view):
++    """'iso,front' -> ['iso', 'front'];  '-1,1,-1' stays one view."""
++    if isinstance(view, (list, tuple)) and view and isinstance(view[0], str):
++        return list(view)
++    if isinstance(view, str) and "," in view:
++        names = [v.strip() for v in view.split(",")]
++        if all(n in VIEW_NAMES for n in names):
++            return names
++    return [view]
++
++
++def render(source=None, path="view.png", view="iso", size=None, style="shaded",
++           colors=None, line_width=1.0, deflection=0.0, background=(1, 1, 1)):  # fmt: skip
++    """Write PNG picture(s).  Several views ('iso,front' or a list) write path_<view>.png.
++    Returns the list of written files."""
++    pairs = scene_objects(source)
++    if not pairs:
++        raise RuntimeError("Nothing to draw")
++    items = _with_colors(pairs, colors)
++    w, h = _parse_size(size)
++    views = _split_views(view)
++    root, ext = os.path.splitext(path)
++    written = []
++    for v in views:
++        out = path if len(views) == 1 else "%s_%s%s" % (root, v if isinstance(v, str) else "view", ext)
++        Part.renderImage(items, out, view=v, width=w, height=h, style=style,
++                         lineWidth=line_width, deflection=deflection, background=background)  # fmt: skip
++        written.append(out)
++    return written
++
++
++def _config(key):
++    try:
++        return App.ConfigGet(key)
++    except Exception:
++        return ""
++
++
++def cli_main():
++    """Run the command line options of this module (see the module docstring)."""
++    doc = App.ActiveDocument
++    if doc is None:
++        raise RuntimeError("No document is open (give a .FCStd, .step, .stl ... file)")
++    doc.recompute()
++    view = _config("RenderView") or "iso"
++    size = _config("RenderSize") or None
++    style = _config("RenderStyle") or "shaded"
++    png = _config("RenderFile")
++    if png:
++        for out in render(doc, png, view=view, size=size, style=style):
++            print("Wrote %s" % out)
+diff --git a/src/Mod/Part/TestPartApp.py b/src/Mod/Part/TestPartApp.py
+index 26af727e3..51b5021d4 100644
+--- a/src/Mod/Part/TestPartApp.py
++++ b/src/Mod/Part/TestPartApp.py
+@@ -41,6 +41,7 @@ from parttests.TestLinkArrayLinear import TestLinkArrayLinear
+ from parttests.TestLinkArrayPath import TestLinkArrayPath
+ from parttests.TestLinkArrayPoint import TestLinkArrayPoint
+ from parttests.TestPartMirror import TestPartMirroringRegression
++from parttests.TestPartViews import TestPartViews
+ from parttests.TestFaceMakerUnifiedPlanar import *
+ from parttests.TestFaceMakerUnifiedNonPlanar import *
+ 
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+new file mode 100644
+index 000000000..80a0316c0
+--- /dev/null
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -0,0 +1,95 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++"""Tests of the headless views and checks of the Part module (PartViews)."""
++
++import os
++import struct
++import tempfile
++import unittest
++import zlib
++
++import FreeCAD as App
++import Part
++
++
++def read_png(path):
++    """(width, height, rows of (r, g, b)) of an 8 bit RGB PNG without filters (as written)."""
++    with open(path, "rb") as f:
++        data = f.read()
++    assert data[:8] == b"\x89PNG\r\n\x1a\n"
++    pos, idat, w, h = 8, b"", 0, 0
++    while pos < len(data):
++        (length,) = struct.unpack(">I", data[pos : pos + 4])
++        kind = data[pos + 4 : pos + 8]
++        body = data[pos + 8 : pos + 8 + length]
++        if kind == b"IHDR":
++            w, h = struct.unpack(">II", body[:8])
++        elif kind == b"IDAT":
++            idat += body
++        pos += 12 + length
++    raw = zlib.decompress(idat)
++    rows = []
++    stride = w * 3 + 1
++    for y in range(h):
++        line = raw[y * stride + 1 : (y + 1) * stride]
++        rows.append([tuple(line[i : i + 3]) for i in range(0, len(line), 3)])
++    return w, h, rows
++
++
++class TestPartViews(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.mkdtemp()
++
++    def tearDown(self):
++        for name in os.listdir(self.tmp):
++            os.remove(os.path.join(self.tmp, name))
++        os.rmdir(self.tmp)
++
++    def _render(self, shapes, **kw):
++        path = os.path.join(self.tmp, "out.png")
++        Part.renderImage(shapes, path, **kw)
++        return read_png(path)
++
++    def testRenderShaded(self):
++        box = Part.makeBox(30, 20, 10)
++        cyl = Part.makeCylinder(5, 20, App.Vector(40, 10, 0))
++        w, h, rows = self._render([box, cyl], width=200, height=150)
++        self.assertEqual((w, h), (200, 150))
++        pixels = [p for row in rows for p in row]
++        white = sum(1 for p in pixels if p == (255, 255, 255))
++        dark = sum(1 for p in pixels if max(p) < 80)
++        shaded = len(pixels) - white - dark
++        self.assertGreater(shaded, len(pixels) * 0.15)  # the parts fill the picture
++        self.assertGreater(dark, 100)  # edges are drawn
++        self.assertGreater(white, len(pixels) * 0.2)  # background stays
++        # different faces of the box get different shades
++        tones = {p for p in pixels if max(p) >= 80 and p != (255, 255, 255)}
++        self.assertGreater(len(tones), 3)
++
++    def testRenderStyles(self):
++        box = Part.makeBox(10, 10, 10)
++        for style in ("hidden-lines", "lines", "shaded-only"):
++            w, h, rows = self._render(box, width=120, height=90, style=style)
++            pixels = [p for row in rows for p in row]
++            dark = sum(1 for p in pixels if max(p) < 100)
++            if style == "shaded-only":
++                self.assertEqual(sum(1 for p in pixels if max(p) < 40), 0)  # no lines
++            else:
++                self.assertGreater(dark, 60, style)
++            colored = sum(1 for p in pixels if p[0] != p[1] or p[1] != p[2])
++            if style != "shaded-only":
++                self.assertEqual(colored, 0, style)  # black and white only
++        with self.assertRaises(ValueError):
++            self._render(box, style="nonsense")
++        with self.assertRaises(ValueError):
++            self._render(box, view="nonsense")
++
++    def testRenderMesh(self):
++        points, facets = Part.makeBox(10, 10, 10).tessellate(0.1)
++        w, h, rows = self._render((points, facets), width=100, height=100, view="1,1,-1")
++        dark = sum(1 for row in rows for p in row if max(p) < 80)
++        self.assertGreater(dark, 50)  # crease edges of the mesh
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

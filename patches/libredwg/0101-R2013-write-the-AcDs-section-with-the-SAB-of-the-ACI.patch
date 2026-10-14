@@ -1,0 +1,487 @@
+From b9740dadc7dde818419dd7c7e7ae66ef1e2f660c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 13:50:03 +0900
+Subject: [PATCH 101/116] R2013+: write the AcDs section with the SAB of the
+ ACIS entities
+
+Since R2013 the SAB of the REGIONs, 3DSOLIDs, BODYs and SURFACEs is not
+in the entity, but in a data record of the AcDb:AcDsPrototype_1b
+section, and the entity has has_ds_data. We wrote it only as read from
+R2013+ DWGs, so all the ACIS data of the R2004-R2010 drawings written as
+R2013+ was lost. Now write the section as AutoCAD's example_2018, with
+the SAB records by handle (in blob01 pages over 0x40000 bytes, as the
+ODA spec), the same schemas and the search index.
+
+* src/encode.c (acds_as_read, acds_entity_sab, acds_mark_entities)
+(acds_record_cmp, acds_segment_start, acds_segment_end, encode_acds):
+New.
+(acds_schidx, acds_schidx_names, acds_schdat, acds_schdat_names): The
+schema index and data of example_2018.
+(dwg_encode): Mark the entities with SAB data with has_ds_data, and
+write the AcDs since R2013, unless as read.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 425 ++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 422 insertions(+), 3 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index bced0ad..2339b02 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3777,6 +3777,417 @@ upconvert_owned_lists (Dwg_Data *restrict dwg)
+   free (count);
+ }
+ 
++/* The AcDb:AcDsPrototype_1b DataStorage section of R2013+, with the SAB of
++   the ACIS entities (REGION, 3DSOLID, BODY, SURFACEs), as in AutoCAD's
++   example_2018: the segments segidx, datidx, _data_, schidx, schdat and
++   search, and blob01 pages for SABs over 0x40000 bytes. */
++
++/* As read from an R2013+ DWG, written again as is. */
++static int
++acds_as_read (const Dwg_Data *dwg, const Bit_Chain *dat)
++{
++  return dwg->acds_raw && dwg->acds_raw_size && dat->version >= R_2013b
++         && dwg->header.from_version >= R_2013b && !(dwg->opts & DWG_OPTS_IN);
++}
++
++/* The SAB of an ACIS entity for the AcDs, or NULL. */
++static BITCODE_RC *
++acds_entity_sab (Dwg_Object *restrict obj, size_t *restrict size)
++{
++  void *_obj;
++  BITCODE_BS version = 0;
++  BITCODE_RC *acis_data = NULL;
++  BITCODE_BL sab_size = 0;
++
++  if (obj->supertype != DWG_SUPERTYPE_ENTITY || !dwg_obj_is_3dsolid (obj))
++    return NULL;
++  _obj = obj->tio.entity->tio.UNKNOWN_ENT;
++  if (!dwg_dynapi_entity_value (_obj, obj->name, "version", &version, NULL)
++      || !dwg_dynapi_entity_value (_obj, obj->name, "acis_data", &acis_data,
++                                   NULL)
++      || !dwg_dynapi_entity_value (_obj, obj->name, "sab_size", &sab_size,
++                                   NULL))
++    return NULL;
++  if (version == 2 && acis_data && sab_size > 15
++      && (!memcmp (acis_data, "ACIS BinaryFile", 15)
++          || !memcmp (acis_data, "ASM BinaryFile", 14)))
++    {
++      *size = sab_size;
++      return acis_data;
++    }
++  return NULL;
++}
++
++/* Since R2013 the SAB is not in the entity, but in the AcDs: mark the
++   entities with SAB data, before writing them. */
++static void
++acds_mark_entities (Dwg_Data *restrict dwg)
++{
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      size_t size;
++      if (obj->supertype == DWG_SUPERTYPE_ENTITY && dwg_obj_is_3dsolid (obj))
++        obj->tio.entity->has_ds_data = acds_entity_sab (obj, &size) ? 1 : 0;
++    }
++}
++
++typedef struct _acds_record
++{
++  BITCODE_RLL handle;
++  BITCODE_RC *data;
++  size_t size;
++} acds_record;
++
++static int
++acds_record_cmp (const void *a, const void *b)
++{
++  const BITCODE_RLL ha = ((const acds_record *)a)->handle;
++  const BITCODE_RLL hb = ((const acds_record *)b)->handle;
++  return ha < hb ? -1 : ha > hb ? 1 : 0;
++}
++
++#define ACDS_MAX_RECORD 0x40000
++#define ACDS_MAX_PAGE 0xfffb0
++
++/* The schema index and schema data of AutoCAD's example_2018, with the
++   schemas AcDb_Thumbnail_Schema 0, AcDb3DSolid_ASM_Data 1 and four
++   AcDbDs:: schemas, in the schema data segment 5. */
++// clang-format off
++static const BITCODE_RC acds_schidx[] = {
++  // 6 schemas: index, segment, offset
++  0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00,
++  0x03, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0xd2, 0x00, 0x00, 0x00,
++  0x04, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0xe4, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0xf6, 0x00, 0x00, 0x00,
++  // 0x0af10c, 8 properties: segment, offset, index
++  0x0c, 0xf1, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x38, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
++  // the 6 schema names, at 0xf0 (the system data alignment offset 0xf)
++  0x06, 0x00, 0x00, 0x00
++};
++static const char acds_schidx_names[]
++    = "AcDb_Thumbnail_Schema\0AcDb3DSolid_ASM_Data\0"
++      "AcDbDs::TreatedAsObjectDataSchema\0AcDbDs::LegacySchema\0"
++      "AcDbDs::IndexedPropertySchema\0AcDbDs::HandleAttributeSchema";
++static const BITCODE_RC acds_schdat[] = {
++  // 8 unknown properties: data size, flags
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  // 0x40 AcDb_Thumbnail_Schema: indices 4 5, AcDbDs::ID 6 7, Thumbnail_Data
++  0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
++  0x00, 0x00,
++  // 0x80 AcDb3DSolid_ASM_Data: indices 0 1, AcDbDs::ID 2 3, ASM_Data
++  0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00,
++  0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
++  0x00, 0x00,
++  // 0xc0 AcDbDs::TreatedAsObjectDataSchema
++  0x00, 0x00, 0x01, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x00, 0x00,
++  // 0xd2 AcDbDs::LegacySchema
++  0x00, 0x00, 0x01, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x00, 0x00,
++  // 0xe4 AcDbDs::IndexedPropertySchema
++  0x00, 0x00, 0x01, 0x00,
++  0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
++  0x00, 0x00,
++  // 0xf6 AcDbDs::HandleAttributeSchema
++  0x00, 0x00, 0x01, 0x00,
++  0x08, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
++  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
++  // aligned to 0x140 (the system data alignment offset 0x14)
++  's', 's', 's',
++  // the 8 property names
++  0x08, 0x00, 0x00, 0x00
++};
++// clang-format on
++static const char acds_schdat_names[]
++    = "AcDbDs::ID\0Thumbnail_Data\0AcDbDs::ID\0ASM_Data\0"
++      "AcDbDs::TreatedAsObjectData\0AcDbDs::Legacy\0AcDs:Indexable\0"
++      "AcDbDs::HandleAttribute";
++
++/* Start a file segment at dat->byte, as segment index idx. Its size,
++   alignment offsets are set by acds_segment_end. */
++static size_t
++acds_segment_start (Bit_Chain *dat, const char *name, BITCODE_RL idx,
++                    BITCODE_RL is_blob)
++{
++  const size_t start = dat->byte;
++  bit_write_RS (dat, 0xd5ac);
++  bit_write_TF (dat, (BITCODE_TF)name, 6);
++  bit_write_RL (dat, idx);
++  bit_write_RL (dat, is_blob);
++  bit_write_RL (dat, 0); // segsize
++  bit_write_RL (dat, 0);
++  bit_write_RL (dat, 1); // ds_version
++  bit_write_RL (dat, 0);
++  bit_write_RL (dat, 0); // data_algn_offset
++  bit_write_RL (dat, 0); // objdata_algn_offset
++  for (int i = 0; i < 8; i++)
++    bit_write_RC (dat, 0x55);
++  return start;
++}
++
++/* Pad the segment with 0x70 to a multiple of 0x80, as AutoCAD, and set its
++   size and the alignment offsets. */
++static size_t
++acds_segment_end (Bit_Chain *dat, size_t start, BITCODE_RL data_algn,
++                  BITCODE_RL objdata_algn, Dwg_AcDs_SegmentIndex *segidx)
++{
++  const size_t end = dat->byte;
++  while ((dat->byte - start) % 0x80)
++    bit_write_RC (dat, 0x70);
++  segidx->offset = start;
++  segidx->size = (BITCODE_RL)(dat->byte - start);
++  dat->byte = start + 0x10;
++  bit_write_RL (dat, segidx->size);
++  dat->byte = start + 0x20;
++  bit_write_RL (dat, data_algn);
++  bit_write_RL (dat, objdata_algn);
++  dat->byte = start + segidx->size;
++  return end;
++}
++
++static int
++encode_acds (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
++{
++  acds_record *recs;
++  BITCODE_BL num_recs = 0, num_pages = 0, num_segs, k;
++  Dwg_AcDs_SegmentIndex *segidx;
++  size_t seg, data_start, off;
++  BITCODE_RL page_seg;
++
++  recs = (acds_record *)calloc (dwg->num_objects + 1, sizeof (acds_record));
++  if (!recs)
++    return DWG_ERR_OUTOFMEM;
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      size_t size;
++      BITCODE_RC *data;
++      if (obj->supertype != DWG_SUPERTYPE_ENTITY
++          || !obj->tio.entity->has_ds_data
++          || !(data = acds_entity_sab (obj, &size)))
++        continue;
++      recs[num_recs].handle = obj->handle.value;
++      recs[num_recs].data = data;
++      recs[num_recs].size = size;
++      if (size > ACDS_MAX_RECORD)
++        num_pages += (BITCODE_BL)((size + ACDS_MAX_PAGE - 1) / ACDS_MAX_PAGE);
++      num_recs++;
++    }
++  if (!num_recs)
++    {
++      free (recs);
++      return 0;
++    }
++  qsort (recs, num_recs, sizeof (acds_record), acds_record_cmp);
++  // 0 empty, 1 segidx, 2 datidx, 3 _data_, 4 schidx, 5 schdat, 6 search,
++  // then the blob01 pages
++  num_segs = 7 + num_pages;
++  segidx = (Dwg_AcDs_SegmentIndex *)calloc (num_segs,
++                                            sizeof (Dwg_AcDs_SegmentIndex));
++  if (!segidx)
++    {
++      free (recs);
++      return DWG_ERR_OUTOFMEM;
++    }
++  bit_chain_alloc (dat);
++  // the file header, filled in at the end
++  for (k = 0; k < 0x80; k++)
++    bit_write_RC (dat, 0);
++
++  // segidx, filled in at the end
++  seg = acds_segment_start (dat, "segidx", 1, 0);
++  for (k = 0; k < num_segs; k++)
++    {
++      bit_write_RLL (dat, 0);
++      bit_write_RL (dat, 0);
++    }
++  acds_segment_end (dat, seg, 0, 0, &segidx[1]);
++
++  // datidx: the records of the data segment 3, with the schema 1
++  seg = acds_segment_start (dat, "datidx", 2, 0);
++  bit_write_RL (dat, num_recs);
++  bit_write_RL (dat, 0);
++  for (k = 0; k < num_recs; k++)
++    {
++      bit_write_RL (dat, 3);
++      bit_write_RL (dat, k * 20);
++      bit_write_RL (dat, 1);
++    }
++  acds_segment_end (dat, seg, 0, 0, &segidx[2]);
++
++  // _data_: the record headers, aligned with 'b', then the records
++  seg = acds_segment_start (dat, "_data_", 3, 0);
++  off = 0;
++  page_seg = 7;
++  for (k = 0; k < num_recs; k++)
++    {
++      bit_write_RL (dat, 20);
++      bit_write_RL (dat, 1);
++      bit_write_RLL (dat, recs[k].handle);
++      bit_write_RL (dat, (BITCODE_RL)off);
++      if (recs[k].size > ACDS_MAX_RECORD)
++        {
++          const BITCODE_RL n = (BITCODE_RL)((recs[k].size + ACDS_MAX_PAGE - 1)
++                                            / ACDS_MAX_PAGE);
++          off += 4 + 32 + (size_t)n * 8;
++        }
++      else
++        off += 4 + recs[k].size;
++    }
++  while ((dat->byte - seg) % 16)
++    bit_write_RC (dat, 0x62);
++  data_start = dat->byte;
++  for (k = 0; k < num_recs; k++)
++    {
++      if (recs[k].size > ACDS_MAX_RECORD)
++        {
++          // a data blob reference to its blob01 pages
++          const BITCODE_RL n = (BITCODE_RL)((recs[k].size + ACDS_MAX_PAGE - 1)
++                                            / ACDS_MAX_PAGE);
++          bit_write_RL (dat, 0xbb106bb1);
++          bit_write_RLL (dat, recs[k].size);
++          bit_write_RL (dat, n);
++          bit_write_RL (dat, 32 + n * 8);
++          bit_write_RL (dat, ACDS_MAX_PAGE);
++          bit_write_RL (dat, (BITCODE_RL)(recs[k].size
++                                          - (size_t)(n - 1) * ACDS_MAX_PAGE));
++          bit_write_RL (dat, 0);
++          bit_write_RL (dat, 0);
++          for (BITCODE_RL p = 0; p < n; p++)
++            {
++              bit_write_RL (dat, page_seg++);
++              bit_write_RL (
++                  dat, p + 1 < n ? ACDS_MAX_PAGE
++                                 : (BITCODE_RL)(recs[k].size
++                                                - (size_t)p * ACDS_MAX_PAGE));
++            }
++        }
++      else
++        {
++          bit_write_RL (dat, (BITCODE_RL)recs[k].size);
++          bit_write_TF (dat, recs[k].data, recs[k].size);
++        }
++    }
++  acds_segment_end (dat, seg, 0, (BITCODE_RL)((data_start - seg) >> 4),
++                    &segidx[3]);
++
++  // schidx and schdat
++  seg = acds_segment_start (dat, "schidx", 4, 0);
++  bit_write_TF (dat, (BITCODE_TF)acds_schidx, sizeof (acds_schidx));
++  bit_write_TF (dat, (BITCODE_TF)acds_schidx_names,
++                sizeof (acds_schidx_names));
++  acds_segment_end (dat, seg, 0xf, 0, &segidx[4]);
++  seg = acds_segment_start (dat, "schdat", 5, 0);
++  bit_write_TF (dat, (BITCODE_TF)acds_schdat, sizeof (acds_schdat));
++  bit_write_TF (dat, (BITCODE_TF)acds_schdat_names,
++                sizeof (acds_schdat_names));
++  acds_segment_end (dat, seg, 0x14, 0, &segidx[5]);
++
++  // search: the AcDb3DSolid_ASM_Data records by handle, with their index
++  seg = acds_segment_start (dat, "search", 6, 0);
++  bit_write_RL (dat, 1);
++  bit_write_RL (dat, 1); // schema name 1
++  bit_write_RLL (dat, num_recs);
++  for (k = 0; k < num_recs; k++)
++    bit_write_RLL (dat, k);
++  bit_write_RL (dat, 1);
++  bit_write_RL (dat, 0);
++  bit_write_RL (dat, num_recs);
++  for (k = 0; k < num_recs; k++)
++    {
++      bit_write_RLL (dat, recs[k].handle);
++      bit_write_RLL (dat, 1);
++      bit_write_RLL (dat, k);
++    }
++  acds_segment_end (dat, seg, 0, 0, &segidx[6]);
++
++  // blob01 pages
++  page_seg = 7;
++  for (k = 0; k < num_recs; k++)
++    {
++      BITCODE_RL n, p;
++      if (recs[k].size <= ACDS_MAX_RECORD)
++        continue;
++      n = (BITCODE_RL)((recs[k].size + ACDS_MAX_PAGE - 1) / ACDS_MAX_PAGE);
++      for (p = 0; p < n; p++)
++        {
++          const size_t start = (size_t)p * ACDS_MAX_PAGE;
++          const size_t len = p + 1 < n ? ACDS_MAX_PAGE : recs[k].size - start;
++          seg = acds_segment_start (dat, "blob01", page_seg, 1);
++          bit_write_RLL (dat, recs[k].size);
++          bit_write_RLL (dat, start);
++          bit_write_RL (dat, p);
++          bit_write_RL (dat, n);
++          bit_write_RLL (dat, len);
++          bit_write_TF (dat, &recs[k].data[start], len);
++          acds_segment_end (dat, seg, 0, 0, &segidx[page_seg]);
++          page_seg++;
++        }
++    }
++  off = dat->byte; // the file size
++
++  // the segment index
++  dat->byte = segidx[1].offset + 0x30;
++  for (k = 0; k < num_segs; k++)
++    {
++      bit_write_RLL (dat, segidx[k].offset);
++      bit_write_RL (dat, segidx[k].size);
++    }
++  // the file header
++  dat->byte = 0;
++  bit_write_RL (dat, 0x6472616a); // "jard"
++  bit_write_RL (dat, 0x80);
++  bit_write_RL (dat, 8);
++  bit_write_RL (dat, 2); // version
++  bit_write_RL (dat, 0);
++  bit_write_RL (dat, 1); // ds_version
++  bit_write_RL (dat, 0x80);
++  bit_write_RL (dat, 0);
++  bit_write_RL (dat, num_segs);
++  bit_write_RL (dat, 4); // schidx
++  bit_write_RL (dat, 2); // datidx
++  bit_write_RL (dat, 6); // search
++  bit_write_RL (dat, 0); // prvsav
++  bit_write_RL (dat, (BITCODE_RL)off);
++  dat->byte = off;
++  LOG_TRACE ("AcDs: %u SAB records, %u blob pages, size %" PRIuSIZE "\n",
++             (unsigned)num_recs, (unsigned)num_pages, off);
++  free (segidx);
++  free (recs);
++  return 0;
++}
++
+ EXPORT int
+ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+ {
+@@ -4658,6 +5069,9 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+     unsigned total_size = 0;
+     old_dat = dat;
+ 
++    // Since R2013 the SAB of the ACIS entities is in the AcDs
++    if (dat->version >= R_2013b && !acds_as_read (dwg, dat))
++      acds_mark_entities (dwg);
+     // write section data into sec_dat[type] chains
+     for (type = SECTION_HEADER; type < SECTION_SYSTEM_MAP; type++)
+       {
+@@ -4821,9 +5235,7 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+             break;
+           case SECTION_ACDS:
+             // as read from an R2013+ DWG, for the SAB of the 3DSOLIDs
+-            if (dwg->acds_raw && dwg->acds_raw_size && dat->version >= R_2013b
+-                && dwg->header.from_version >= R_2013b
+-                && !(dwg->opts & DWG_OPTS_IN))
++            if (acds_as_read (dwg, dat))
+               {
+                 bit_chain_init_dat (&sec_dat[type], dwg->acds_raw_size, dat);
+                 bit_write_TF (&sec_dat[type], dwg->acds_raw,
+@@ -4831,6 +5243,13 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                 LOG_TRACE ("AcDs as read: %" PRIuSIZE "\n",
+                            dwg->acds_raw_size);
+               }
++            else if (dat->version >= R_2013b)
++              {
++                bit_chain_set_version (&sec_dat[type], dat);
++                error |= encode_acds (dwg, &sec_dat[type]);
++                if (!sec_dat[type].byte)
++                  bit_chain_free (&sec_dat[type]);
++              }
+             {
+ #if 0
+               Dwg_AcDs *_obj = &dwg->acds;
+-- 
+2.43.0
+

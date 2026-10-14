@@ -1,0 +1,62 @@
+From 8b9f07ea1d29c717ad45b02530c33ade2106b6e1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 12:20:07 +0900
+Subject: [PATCH 096/116] 3DSOLID, REGION: no materials, the history handle
+ only of 3DSOLIDs
+
+AutoCAD's R2007-R2010 3DSOLIDs and REGIONs have only the unknown BL
+after the ACIS empty bit (ACadSharp): num_materials read that BL, and
+the unknown BL then 34 bits of the handle stream; writing both made the
+3DSOLID of example_2010 34 bits longer. The history handle is only in
+3DSOLIDs (ACadSharp; the REGIONs of AutoCAD's example_2010 and
+example_2013 have none), we wrote it also for REGIONs with SAB. Now the
+3DSOLIDs and REGIONs of example_2010, example_2013 and example_2018
+rewritten as the same version are AutoCAD's bytes.
+
+* src/dwg_spec_shared.h (COMMON_3DSOLID): The materials not in the
+DWG; the history_id of all R2007+ 3DSOLIDs only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg_spec_shared.h | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index 68a9692..821a6b2 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -535,7 +535,10 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+         }                                                                     \
+     }                                                                         \
+   FIELD_B (acis_empty_bit, 0); /* ?? */                                       \
+-  if (FIELD_VALUE (version) > 1)                                              \
++  /* Not in the DWG: AutoCAD's R2007-R2010 3DSOLIDs have only the unknown */ \
++  /* BL after the ACIS empty bit (ACadSharp). num_materials read it, and */  \
++  /* the unknown BL then 34 bits of the handle stream. */                    \
++  if (FIELD_VALUE (version) > 1 && !IF_IS_DECODER && !IF_IS_ENCODER)         \
+     {                                                                         \
+       SINCE (R_2007a)                                                         \
+       {                                                                       \
+@@ -586,14 +589,11 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+       SUBCLASS (AcDb3dSolid);                                                 \
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+     }                                                                         \
+-  } else if ((FIELD_VALUE (version) > 1                                       \
+-              /* all R2007+ 3DSOLIDs (ACadSharp), also R2013+ ones with the */\
+-              /* SAB in the AcDs (AutoCAD's R2018) */                         \
+-              || (dat->version >= R_2007a                                     \
+-                  && obj->fixedtype == DWG_TYPE__3DSOLID))                    \
+-             && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)                 \
+-             /* R2007+ (ACadSharp, AutoCAD's R2004 drawings have none) */     \
+-             && (!IF_IS_ENCODER || dat->version >= R_2007a)) {                \
++  } else if (/* all R2007+ 3DSOLIDs (ACadSharp), also with the SAB in the */\
++             /* AcDs (AutoCAD's R2018), not REGION (AutoCAD's R2010) */       \
++             dat->version >= R_2007a                                          \
++             && obj->fixedtype == DWG_TYPE__3DSOLID                           \
++             && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)) {              \
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+   }                                                                           \
+   FREE { FIELD_HANDLE (history_id, 4, 350); }
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 77927fe7417049788f973ac8fb5cd6e9dc22e64a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:04:15 +0900
-Subject: [PATCH 33/54] TABLECONTENT: kGeneral values before R2007, count
+Subject: [PATCH 033/116] TABLECONTENT: kGeneral values before R2007, count
  checks
 
 - 20.4.99 kGeneral (512) also occurs in the R14-R2004 TABLECONTENT

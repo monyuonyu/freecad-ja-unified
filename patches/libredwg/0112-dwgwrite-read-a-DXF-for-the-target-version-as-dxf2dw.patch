@@ -1,0 +1,35 @@
+From 8c6f46c226212f10b42b68e2b1b5df394c5355a2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 20:49:21 +0900
+Subject: [PATCH 112/116] dwgwrite: read a DXF for the target version, as
+ dxf2dwg
+
+dwgwrite read the DXF with an unknown header.version, so in_dxf made
+it differently than dxf2dwg: of AutoCAD's example_2018 as DXF, only 91
+of 222 entities were kept (as R2004 and R2018). Set the version to
+write, or R2000, before reading, as dxf2dwg.
+
+* programs/dwgwrite.c (main): Set dwg.header.version before reading.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ programs/dwgwrite.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/programs/dwgwrite.c b/programs/dwgwrite.c
+index 4f2bdfb..affb172 100644
+--- a/programs/dwgwrite.c
++++ b/programs/dwgwrite.c
+@@ -328,6 +328,9 @@ main (int argc, char *argv[])
+   memset (&dwg, 0, sizeof (Dwg_Data));
+   dat.opts = dwg.opts = opts;
+   dat.version = R_2000; // initial target for the importer
++  // the target for the importer, as dxf2dwg. Unknown, the DXF is read with
++  // its strings as TV, but a lot else differently.
++  dwg.header.version = dwg_version != R_INVALID ? dwg_version : R_2000;
+ 
+   if (infile)
+     {
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From 3a3094e994a994dbe3eaa829469b851fb9949fb5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:28:55 +0900
+Subject: [PATCH 064/116] bit_write_UMC: the shortest form
+
+Only the first 4 of the 8 groups were checked for leading zeros, so every
+value took at least 4 bytes: handle offset 1 in the object map was
+81 80 80 00, AutoCAD writes 01. Readers accept it, but the object map
+grew by a third (2004/Line.dwg: 1174 bytes, AutoCAD 674).
+
+* src/bits.c (bit_write_UMC): Drop all zero high groups, keep the extra
+byte for 0x40 as before (as AutoCAD: e8 00).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index bc506a2..7e7745a 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -1116,7 +1116,8 @@ bit_write_UMC (Bit_Chain *dat, BITCODE_UMC val)
+       byte[i] |= 0x80;
+       mask = mask << 7;
+     }
+-  for (i = 0; i < 4; i++)
++  // the shortest form, the high zero groups dropped
++  for (i = 0; i < MAX_BYTE_UMC - 1; i++)
+     if (byte[i] & 0x7f)
+       break;
+ 
+-- 
+2.43.0
+

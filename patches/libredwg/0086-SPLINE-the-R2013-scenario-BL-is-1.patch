@@ -1,0 +1,42 @@
+From 2bbdb5949ec708831b79d9c28d087ef865ebbef7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:22:47 +0900
+Subject: [PATCH 086/116] SPLINE: the R2013+ scenario BL is 1
+
+AutoCAD writes 1 in all 591 R2013+ splines of the corpus, also for fit
+point splines; the scenario follows from the spline flags and the knot
+parameter. We wrote the decoded scenario, 2 for fit point splines.
+
+* src/dwg.spec (SPLINE): Write 1 since R2013.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index b3a6150..5edcfbb 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -2628,7 +2628,17 @@ DWG_ENTITY (SPLINE)
+ 
+   //SUBCLASS (AcDbCurve)
+   SUBCLASS (AcDbSpline)
+-  FIELD_BL (scenario, 0);
++  ENCODER {
++    // R2013+: always 1 in AutoCAD's files, the scenario follows from the
++    // flags below
++    SINCE (R_2013b) {
++      VALUE_BL (1, 0);
++    } else {
++      FIELD_BL (scenario, 0);
++    }
++  } else {
++    FIELD_BL (scenario, 0);
++  }
+   LOG_SPLINE_SCENARIO
+   UNTIL (R_2013) {
+     if (FIELD_VALUE (scenario) != 1 && FIELD_VALUE (scenario) != 2)
+-- 
+2.43.0
+

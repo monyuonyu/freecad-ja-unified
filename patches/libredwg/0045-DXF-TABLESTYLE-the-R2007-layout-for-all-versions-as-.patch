@@ -1,7 +1,7 @@
 From 28b3ce1813d940684694f8a942b2bdd56c8fad71 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 13:18:09 +0900
-Subject: [PATCH 45/54] DXF TABLESTYLE: the R2007 layout for all versions, as
+Subject: [PATCH 045/116] DXF TABLESTYLE: the R2007 layout for all versions, as
  AutoCAD writes it
 
 AutoCAD writes TABLESTYLE in DXF with the three row styles (7 140 170 62 63

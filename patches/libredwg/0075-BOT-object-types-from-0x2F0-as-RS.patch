@@ -1,0 +1,41 @@
+From c499be034ad147e576d893c056cd05e6054eb2c2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:11:35 +0900
+Subject: [PATCH 075/116] BOT: object types from 0x2F0 as RS
+
+bit_write_BOT wrote every type >= 256 as RC + 0x1F0, so classes from
+number 0x2F0 (752) got a wrong type in R2010+, and with the 3rd branch
+code 1 with a RS. As AutoCAD and bit_read_BOT: code 1 for 0x1F0-0x2EF,
+code 2 with a RS for the others >= 256.
+
+* src/bits.c (bit_write_BOT): Fix the ranges and the code of the RS.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 41bd17a..6cdc62e 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -718,14 +718,14 @@ bit_write_BOT (Bit_Chain *dat, BITCODE_BS value)
+       bit_write_BB (dat, 0);
+       bit_write_RC (dat, value);
+     }
+-  else if (value < 0x7fff)
++  else if (value >= 0x1f0 && value - 0x1f0 < 256)
+     {
+       bit_write_BB (dat, 1);
+       bit_write_RC (dat, value - 0x1f0);
+     }
+   else
+     {
+-      bit_write_BB (dat, 1);
++      bit_write_BB (dat, 2);
+       bit_write_RS (dat, value);
+     }
+ }
+-- 
+2.43.0
+

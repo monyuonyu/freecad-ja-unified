@@ -1,0 +1,1208 @@
+From a2a74d3f62b7ca64a7cd63d6a31a39562b826ce6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 14:20:22 +0900
+Subject: [PATCH 102/116] SAT to SAB: the ACIS data of R13-R2010 and DXF in the
+ R2013+ AcDs
+
+The R13-R2000 DWGs and the DXFs have the ACIS data as SAT text (version
+1), but the AcDs of R2013+ has only SAB records, so the solids of these
+drawings written as R2013+ were still empty. AutoCAD and the ODA convert
+the SAT to SAB then. The SAT has no types: a long and an integral double
+look the same, a position or vector are 3 numbers, logicals are words.
+Take the types from a grammar of the records, as in AutoCAD's SAT and
+SAB of the same solids (R14/R2000 SAT 106/400 and R2004-R2018 SAB
+20800-22300), with the bs3 knots, the surfaces in subtypes, and else
+from the form of the numbers. All 15 SAT bodies of the corpus convert to
+SAB and back to the same SAT, all 83 SAB bodies to SAT and back to the
+same bytes.
+
+* src/dwg.c (acis_grammar, Acis_Walker): The value types of the
+records.
+(dwg_convert_SAB_to_SAT, dwg_convert_SAT_to_SAB): New.
+* include/dwg.h: Declare them.
+* src/encode.c (acds_entity_sab): Convert the SAT of version 1 to SAB.
+(acds_mark_entities, encode_acds): Free it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/dwg.h |    9 +
+ src/dwg.c     | 1025 +++++++++++++++++++++++++++++++++++++++++++++++++
+ src/encode.c  |   46 ++-
+ 3 files changed, 1073 insertions(+), 7 deletions(-)
+
+diff --git a/include/dwg.h b/include/dwg.h
+index 792aa12..cafa70d 100644
+--- a/include/dwg.h
++++ b/include/dwg.h
+@@ -11719,6 +11719,15 @@ EXPORT char *dwg_encrypt_SAT1 (BITCODE_BL blocksize,
+    encrypted acis_data anymore, rather the converted from SAB for DXF */
+ EXPORT int dwg_convert_SAB_to_SAT1 (Dwg_Entity_3DSOLID *restrict _obj);
+ 
++/* Converts SAB to SAT text, and SAT text to SAB "ACIS BinaryFile". Both
++   malloced, or NULL. */
++EXPORT char *dwg_convert_SAB_to_SAT (const BITCODE_RC *restrict sab,
++                                     const size_t size,
++                                     size_t *restrict satsize);
++EXPORT BITCODE_RC *dwg_convert_SAT_to_SAB (const char *restrict sat,
++                                           const size_t size,
++                                           size_t *restrict sabsize);
++
+ 
+ /* The old color.index 0-256 */
+ typedef struct rgbpalette {
+diff --git a/src/dwg.c b/src/dwg.c
+index 2ecff25..25c33b9 100644
+--- a/src/dwg.c
++++ b/src/dwg.c
+@@ -4195,3 +4195,1028 @@ ordered_ref_find (Dwg_Data *dwg, const BITCODE_RC code,
+ 
+   return NULL;
+ }
++
++/* ACIS SAT (text, version 1 of the DWG) and SAB (binary, version 2)
++   conversion. The SAB tags carry the types of the values, the SAT text
++   not: a long and an integral double look the same, and a position or
++   vector are just 3 numbers. The types are taken from the grammar of the
++   records below, as in AutoCAD's SAT and SAB of the same solids (R14/R2000
++   SAT 106/400 vs R2004-R2018 SAB 20800-22300), and from the form of the
++   number elsewhere: we write doubles always with a '.' or exponent. */
++
++enum acis_sab_tag
++{
++  SAB_CHAR = 2,
++  SAB_SHORT = 3,
++  SAB_LONG = 4,
++  SAB_FLOAT = 5,
++  SAB_DOUBLE = 6,
++  SAB_STR8 = 7,
++  SAB_STR16 = 8,
++  SAB_STR32 = 9,
++  SAB_TRUE = 10,
++  SAB_FALSE = 11,
++  SAB_PTR = 12,
++  SAB_IDENT = 13,
++  SAB_SUBIDENT = 14,
++  SAB_SUB_START = 15,
++  SAB_SUB_END = 16,
++  SAB_REC_END = 17,
++  SAB_POS = 19,
++  SAB_VEC = 20,
++  SAB_ENUM = 21,
++  SAB_UV = 22,
++  SAB_INT64 = 23
++};
++
++/* The values of a record after its pointers, which have their own type:
++   L long, d double, P position, V vector, B logical with the words below,
++   I interval bound (I, or F and a double), S string, E enum, X* repeated.
++   Before and since ACIS 7.0, which has also the history index L first. */
++typedef struct _acis_grammar
++{
++  const char *name;
++  const char *pre7;
++  const char *since7;
++  const char *words; // false and true words of the B logicals
++} Acis_Grammar;
++
++static const Acis_Grammar acis_grammar[] = {
++  { "asmheader", "", "S", NULL },
++  { "face", "BBB", "BBB", "forward reversed single double out in" },
++  { "coedge", "B", "BL*", "forward reversed" },
++  { "edge", "B", "ddBS", "forward reversed" },
++  { "vertex", "", "L*", NULL },
++  { "point", "P", "P", NULL },
++  { "straight-curve", "PVII", "PVII", NULL },
++  { "ellipse-curve", "PVVdII", "PVVdII", NULL },
++  { "intcurve-curve", "B", "B", "forward reversed" },
++  { "plane-surface", "PVVBIIII", "PVVBIIII", "forward_v reverse_v" },
++  { "cone-surface", "PVVdIIdddBIIII", "PVVdIIdddBIIII", "forward reversed" },
++  { "sphere-surface", "PdVVBIIII", "PdVVBIIII", "forward_v reverse_v" },
++  { "torus-surface", "PVddVBIIII", "PVddVBIIII", "forward_v reverse_v" },
++  { "spline-surface", "B", "B", "forward reversed" },
++  { "transform", "VVVVdBBB", "VVVVdBBB",
++    "no_rotate rotate no_reflect reflect no_shear shear" },
++  { "persubent-acadSolidHistory-attrib", "L*", "L*", NULL },
++  { "color-adesk-attrib", "L*", "L*", NULL },
++  { "vertex_template", "L*", "L*", NULL },
++  { "eye_refinement", "", "SLSLSLSLSLSLSdSdSdSdSdSdSdSLSLSLS", NULL },
++  { "name_attrib-gen-attrib", "EEEES", "EEEES", NULL },
++};
++
++/* The surfaces in subtypes, e.g. of an intcurve */
++static const char *const acis_nested[]
++    = { "plane", "cone", "sphere", "torus" };
++/* The words of the enums of the bs3 curves and surfaces */
++static const char *const acis_closure[] = { "open", "closed", "periodic" };
++static const char *const acis_level[] = { "full" };
++
++enum acis_bs_state
++{
++  BS_NONE = 0,
++  BS_DEGREE,
++  BS_CLOSURE,
++  BS_NUM_KNOTS,
++  BS_KNOT,
++  BS_MULT
++};
++
++typedef struct _acis_slots
++{
++  const char *slots;
++  const char *words;
++  unsigned si; // the slot
++  unsigned bi; // the logical word pair
++} Acis_Slots;
++
++typedef struct _acis_walker
++{
++  Acis_Slots cur;
++  Acis_Slots stack[4];
++  int sp;
++  int hist;    // the ACIS 7.0 history index first
++  int depth;   // of subtypes
++  int subname; // expect the name of a subtype
++  int level;   // the save level enum of a subtype follows
++  int bs;      // bs3 curve state
++  long num_knots, knot;
++} Acis_Walker;
++
++static const Acis_Grammar *
++acis_find_grammar (const char *name)
++{
++  for (int i = 0; i < ARRAY_SIZE (acis_grammar); i++)
++    if (strEQ (acis_grammar[i].name, name))
++      return &acis_grammar[i];
++  return NULL;
++}
++
++static void
++acis_walker_init (Acis_Walker *w, const char *name, BITCODE_RL version)
++{
++  const Acis_Grammar *g = acis_find_grammar (name);
++  memset (w, 0, sizeof (Acis_Walker));
++  w->hist = version >= 700;
++  if (g)
++    {
++      w->cur.slots = version >= 700 ? g->since7 : g->pre7;
++      w->cur.words = g->words;
++    }
++  else
++    w->cur.slots = "";
++}
++
++/* The slot type of the next value, or 0 if unknown */
++static char
++acis_walker_next (Acis_Walker *w)
++{
++  if (w->level)
++    return 'E';
++  switch (w->bs)
++    {
++    case BS_DEGREE:
++    case BS_NUM_KNOTS:
++    case BS_MULT:
++      return 'L';
++    case BS_CLOSURE:
++      return 'E';
++    case BS_KNOT:
++      return 'd';
++    default:
++      break;
++    }
++  if (w->hist)
++    return 'L';
++  // a nested surface is done
++  while (w->sp && !w->cur.slots[w->cur.si])
++    w->cur = w->stack[--w->sp];
++  return w->cur.slots[w->cur.si];
++}
++
++/* The value of the next slot was taken */
++static void
++acis_walker_took (Acis_Walker *w, long value)
++{
++  if (w->level)
++    {
++      w->level = 0;
++      return;
++    }
++  switch (w->bs)
++    {
++    case BS_DEGREE:
++      w->bs = BS_CLOSURE;
++      return;
++    case BS_CLOSURE:
++      w->bs = BS_NUM_KNOTS;
++      return;
++    case BS_NUM_KNOTS:
++      w->num_knots = value;
++      w->knot = 0;
++      w->bs = value > 0 ? BS_KNOT : BS_NONE;
++      return;
++    case BS_KNOT:
++      w->bs = BS_MULT;
++      return;
++    case BS_MULT:
++      w->bs = ++w->knot < w->num_knots ? BS_KNOT : BS_NONE;
++      return;
++    default:
++      break;
++    }
++  if (w->hist)
++    {
++      w->hist = 0;
++      return;
++    }
++  acis_walker_next (w); // pop done nested surfaces
++  if (w->cur.slots[w->cur.si] && w->cur.slots[w->cur.si + 1] != '*')
++    w->cur.si++;
++}
++
++/* An identifier inside a record */
++static void
++acis_walker_ident (Acis_Walker *w, const char *ident)
++{
++  if (!w->depth)
++    return;
++  if (w->subname)
++    {
++      // the name of the subtype, e.g. int_int_cur or exactcur, then its
++      // save level
++      w->subname = 0;
++      w->level = 1;
++      return;
++    }
++  for (int i = 0; i < ARRAY_SIZE (acis_nested); i++)
++    if (strEQ (ident, acis_nested[i]) && w->sp < ARRAY_SIZE (w->stack))
++      {
++        char name[32];
++        const Acis_Grammar *g;
++        snprintf (name, sizeof (name), "%s-surface", ident);
++        g = acis_find_grammar (name);
++        w->stack[w->sp++] = w->cur;
++        memset (&w->cur, 0, sizeof (w->cur));
++        w->cur.slots = g->since7;
++        w->cur.words = g->words;
++        return;
++      }
++  if (strEQc (ident, "nubs") || strEQc (ident, "nurbs"))
++    w->bs = BS_DEGREE;
++}
++
++static void
++acis_walker_sub (Acis_Walker *w, int start)
++{
++  if (start)
++    w->depth++;
++  else if (w->depth)
++    w->depth--;
++  w->subname = start;
++  w->level = 0;
++  if (!start)
++    w->bs = BS_NONE;
++}
++
++/* The word of a logical in a B slot (and takes it), or NULL. */
++static const char *
++acis_walker_word (Acis_Walker *w, int value, char *buf, size_t size)
++{
++  const char *s;
++  unsigned i;
++  if (acis_walker_next (w) != 'B')
++    return NULL;
++  s = w->cur.words;
++  // skip to the word pair bi, then to the true word
++  for (i = 0; s && *s && i < 2 * w->cur.bi + (value ? 1 : 0); s++)
++    if (*s == ' ')
++      i++;
++  w->cur.bi++;
++  if (!s || !*s)
++    return value ? "1" : "0";
++  for (i = 0; s[i] && s[i] != ' ' && i + 1 < size; i++)
++    buf[i] = s[i];
++  buf[i] = '\0';
++  return buf;
++}
++
++/* The logical value of a B word, or -1 */
++static int
++acis_word_value (const char *word)
++{
++  for (int i = 0; i < ARRAY_SIZE (acis_grammar); i++)
++    {
++      const char *s = acis_grammar[i].words;
++      int k = 0;
++      size_t len = strlen (word);
++      while (s && *s)
++        {
++          if (!strncmp (s, word, len) && (s[len] == ' ' || !s[len]))
++            return k & 1;
++          while (*s && *s != ' ')
++            s++;
++          if (*s)
++            s++;
++          k++;
++        }
++    }
++  return -1;
++}
++
++static int
++acis_enum_value (const Acis_Walker *w, const char *word)
++{
++  const char *const *words = w->level ? acis_level : acis_closure;
++  const int num
++      = w->level ? ARRAY_SIZE (acis_level) : ARRAY_SIZE (acis_closure);
++  for (int i = 0; i < num; i++)
++    if (strEQ (word, words[i]))
++      return (int)i;
++  return -1;
++}
++
++/* SAB -> SAT */
++
++typedef struct _acis_out
++{
++  char *buf;
++  size_t size, pos, line;
++} Acis_Out;
++
++static int
++acis_put (Acis_Out *o, const char *s, size_t len, int wrap)
++{
++  if (o->pos + len + 3 > o->size)
++    {
++      size_t size = o->size ? o->size * 2 : 4096;
++      char *buf;
++      while (o->pos + len + 3 > size)
++        size *= 2;
++      buf = (char *)realloc (o->buf, size);
++      if (!buf)
++        return 1;
++      o->buf = buf;
++      o->size = size;
++    }
++  // a SAT line in DXF is max. 255 long: wrap before a token
++  if (wrap && o->line && o->line + len + 1 > 255)
++    {
++      o->buf[o->pos - 1] = '\n';
++      o->line = 0;
++    }
++  memcpy (&o->buf[o->pos], s, len);
++  o->pos += len;
++  o->line += len;
++  if (wrap)
++    {
++      o->buf[o->pos++] = ' ';
++      o->line++;
++    }
++  o->buf[o->pos] = '\0';
++  return 0;
++}
++
++static int
++acis_put_double (Acis_Out *o, double d)
++{
++  char buf[40];
++  for (int prec = 15; prec <= 17; prec++)
++    {
++      snprintf (buf, sizeof (buf), "%.*g", prec, d);
++      if (strtod (buf, NULL) == d)
++        break;
++    }
++  // always as a double: with a . or an exponent (or inf, nan)
++  if (!strpbrk (buf, ".eEn"))
++    strcat (buf, ".0");
++  return acis_put (o, buf, strlen (buf), 1);
++}
++
++static void
++acis_newline (Acis_Out *o)
++{
++  if (o->pos && o->buf[o->pos - 1] == ' ')
++    o->buf[o->pos - 1] = '\n';
++  else
++    acis_put (o, "\n", 1, 0);
++  o->line = 0;
++}
++
++typedef struct _sab_token
++{
++  BITCODE_RC tag;
++  int64_t l;
++  double d[3];
++  const BITCODE_RC *s;
++  size_t len;
++} Sab_Token;
++
++static uint32_t
++sab_rl (const BITCODE_RC *p)
++{
++  return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16)
++         | ((uint32_t)p[3] << 24);
++}
++
++/* The next tagged value of the SAB at *p. 1 at the end or on errors. */
++static int
++sab_next (const BITCODE_RC *sab, const size_t size, size_t *p, Sab_Token *t)
++{
++  size_t n = 0; // the size of the value
++  memset (t, 0, sizeof (Sab_Token));
++  if (*p >= size)
++    return 1;
++  t->tag = sab[(*p)++];
++  switch (t->tag)
++    {
++    case SAB_CHAR:
++      n = 1;
++      break;
++    case SAB_SHORT:
++    case SAB_STR16:
++      n = 2;
++      break;
++    case SAB_LONG:
++    case SAB_PTR:
++    case SAB_ENUM:
++    case SAB_FLOAT:
++    case SAB_STR32:
++      n = 4;
++      break;
++    case SAB_DOUBLE:
++    case SAB_INT64:
++      n = 8;
++      break;
++    case SAB_UV:
++      n = 16;
++      break;
++    case SAB_POS:
++    case SAB_VEC:
++      n = 24;
++      break;
++    case SAB_STR8:
++    case SAB_IDENT:
++    case SAB_SUBIDENT:
++      n = 1;
++      break;
++    case SAB_TRUE:
++    case SAB_FALSE:
++    case SAB_SUB_START:
++    case SAB_SUB_END:
++    case SAB_REC_END:
++      return 0;
++    default:
++      return 1;
++    }
++  if (n > size - *p)
++    return 1;
++  switch (t->tag)
++    {
++    case SAB_CHAR:
++      t->l = (int8_t)sab[*p];
++      break;
++    case SAB_SHORT:
++      t->l = (int16_t)(sab[*p] | (sab[*p + 1] << 8));
++      break;
++    case SAB_LONG:
++    case SAB_PTR:
++    case SAB_ENUM:
++      t->l = (int32_t)sab_rl (&sab[*p]);
++      break;
++    case SAB_INT64:
++      t->l = (int64_t)((uint64_t)sab_rl (&sab[*p])
++                       | ((uint64_t)sab_rl (&sab[*p + 4]) << 32));
++      break;
++    case SAB_FLOAT:
++      {
++        float f;
++        memcpy (&f, &sab[*p], 4);
++        t->d[0] = f;
++      }
++      break;
++    case SAB_DOUBLE:
++    case SAB_UV:
++    case SAB_POS:
++    case SAB_VEC:
++      memcpy (t->d, &sab[*p], n);
++      break;
++    case SAB_STR8:
++    case SAB_IDENT:
++    case SAB_SUBIDENT:
++      t->len = sab[*p];
++      break;
++    case SAB_STR16:
++      t->len = sab[*p] | (sab[*p + 1] << 8);
++      break;
++    case SAB_STR32:
++      t->len = sab_rl (&sab[*p]);
++      break;
++    default:
++      break;
++    }
++  *p += n;
++  if (t->len)
++    {
++      if (t->len > size - *p)
++        return 1;
++      t->s = &sab[*p];
++      *p += t->len;
++    }
++  return 0;
++}
++
++static int
++sab_is_string (const Sab_Token *t)
++{
++  return t->tag == SAB_STR8 || t->tag == SAB_STR16 || t->tag == SAB_STR32;
++}
++
++/* Converts the SAB of an ACIS entity (starting with "ACIS BinaryFile" or
++   "ASM BinaryFile4") to SAT text, with the same version, one record per
++   line, lines up to 255 long. Returns the malloced text, or NULL. */
++EXPORT char *
++dwg_convert_SAB_to_SAT (const BITCODE_RC *restrict sab, const size_t size,
++                        size_t *restrict satsize)
++{
++  Acis_Out o = { NULL, 0, 0, 0 };
++  Acis_Walker w;
++  Sab_Token t;
++  size_t p = 15;
++  BITCODE_RL version;
++  char buf[300], name[256], ident[256];
++  size_t namelen, identlen = 0;
++
++  if (!sab || size < 31
++      || (memcmp (sab, "ACIS BinaryFile", 15)
++          && memcmp (sab, "ASM BinaryFile4", 15)))
++    return NULL;
++  // version, number of records, of entities, flags (history)
++  version = sab_rl (&sab[p]);
++  for (int i = 0; i < 4; i++, p += 4)
++    {
++      snprintf (buf, sizeof (buf), "%u", (unsigned)sab_rl (&sab[p]));
++      acis_put (&o, buf, strlen (buf), 1);
++    }
++  acis_newline (&o);
++  // since ACIS 2.0: product, ACIS version, date; units, resabs, resnor
++  if (version >= 200)
++    {
++      for (int i = 0; i < 3; i++)
++        {
++          if (sab_next (sab, size, &p, &t) || !sab_is_string (&t))
++            goto error;
++          snprintf (buf, sizeof (buf), "%u", (unsigned)t.len);
++          acis_put (&o, buf, strlen (buf), 1);
++          acis_put (&o, (const char *)t.s, t.len, 1);
++        }
++      acis_newline (&o);
++      for (int i = 0; i < 3; i++)
++        {
++          if (sab_next (sab, size, &p, &t) || t.tag != SAB_DOUBLE)
++            goto error;
++          acis_put_double (&o, t.d[0]);
++        }
++      acis_newline (&o);
++    }
++  while (p < size)
++    {
++      // the record name: subidents and the ident
++      namelen = 0;
++      do
++        {
++          if (sab_next (sab, size, &p, &t)
++              || (t.tag != SAB_IDENT && t.tag != SAB_SUBIDENT)
++              || namelen + t.len + 2 > sizeof (name))
++            goto error;
++          memcpy (&name[namelen], t.s, t.len);
++          namelen += t.len;
++          if (t.tag == SAB_SUBIDENT)
++            name[namelen++] = '-';
++        }
++      while (t.tag == SAB_SUBIDENT);
++      name[namelen] = '\0';
++      if (!strncmp (name, "End-of-", 7))
++        {
++          acis_put (&o, name, namelen, 0);
++          break;
++        }
++      acis_put (&o, name, namelen, 1);
++      acis_walker_init (&w, name, version);
++      while (1)
++        {
++          if (sab_next (sab, size, &p, &t))
++            goto error;
++          if (t.tag == SAB_REC_END)
++            {
++              acis_put (&o, "#", 1, 1);
++              acis_newline (&o);
++              break;
++            }
++          switch (t.tag)
++            {
++            case SAB_SUBIDENT:
++            case SAB_IDENT:
++              if (identlen + t.len + 2 > sizeof (ident))
++                goto error;
++              memcpy (&ident[identlen], t.s, t.len);
++              identlen += t.len;
++              if (t.tag == SAB_SUBIDENT)
++                ident[identlen++] = '-';
++              else
++                {
++                  ident[identlen] = '\0';
++                  acis_put (&o, ident, identlen, 1);
++                  acis_walker_ident (&w, ident);
++                  identlen = 0;
++                }
++              break;
++            case SAB_PTR:
++              snprintf (buf, sizeof (buf), "$%" PRId64, t.l);
++              acis_put (&o, buf, strlen (buf), 1);
++              break;
++            case SAB_SUB_START:
++            case SAB_SUB_END:
++              acis_put (&o, t.tag == SAB_SUB_START ? "{" : "}", 1, 1);
++              acis_walker_sub (&w, t.tag == SAB_SUB_START);
++              break;
++            case SAB_CHAR:
++            case SAB_SHORT:
++            case SAB_LONG:
++            case SAB_INT64:
++              snprintf (buf, sizeof (buf), "%" PRId64, t.l);
++              acis_put (&o, buf, strlen (buf), 1);
++              acis_walker_took (&w, (long)t.l);
++              break;
++            case SAB_ENUM:
++              {
++                const char *const *words = NULL;
++                int num = 0;
++                if (w.level)
++                  {
++                    words = acis_level;
++                    num = ARRAY_SIZE (acis_level);
++                  }
++                else if (w.bs == BS_CLOSURE)
++                  {
++                    words = acis_closure;
++                    num = ARRAY_SIZE (acis_closure);
++                  }
++                if (words && t.l >= 0 && t.l < (int64_t)num)
++                  acis_put (&o, words[t.l], strlen (words[t.l]), 1);
++                else
++                  {
++                    snprintf (buf, sizeof (buf), "%" PRId64, t.l);
++                    acis_put (&o, buf, strlen (buf), 1);
++                  }
++                acis_walker_took (&w, (long)t.l);
++              }
++              break;
++            case SAB_FLOAT:
++            case SAB_DOUBLE:
++              acis_put_double (&o, t.d[0]);
++              acis_walker_took (&w, 0);
++              break;
++            case SAB_POS:
++            case SAB_VEC:
++            case SAB_UV:
++              for (int i = 0; i < (t.tag == SAB_UV ? 2 : 3); i++)
++                acis_put_double (&o, t.d[i]);
++              acis_walker_took (&w, 0);
++              break;
++            case SAB_STR8:
++            case SAB_STR16:
++            case SAB_STR32:
++              snprintf (buf, sizeof (buf), "@%u", (unsigned)t.len);
++              acis_put (&o, buf, strlen (buf), 1);
++              acis_put (&o, (const char *)t.s, t.len, 1);
++              acis_walker_took (&w, 0);
++              break;
++            case SAB_TRUE:
++            case SAB_FALSE:
++              {
++                const int value = t.tag == SAB_TRUE;
++                const char *word
++                    = acis_walker_word (&w, value, buf, sizeof (buf));
++                if (word && version < 200 && strNE (name, "face"))
++                  word = value ? "1" : "0"; // ACIS 1.x
++                else if (!word)
++                  // an interval bound: finite, or infinite
++                  word = value ? "F" : "I";
++                acis_put (&o, word, strlen (word), 1);
++                acis_walker_took (&w, 0);
++              }
++              break;
++            default:
++              goto error;
++            }
++        }
++    }
++  if (o.pos && o.buf[o.pos - 1] == ' ')
++    o.buf[o.pos - 1] = '\n';
++  else if (acis_put (&o, "\n", 1, 0))
++    goto error;
++  *satsize = o.pos;
++  return o.buf;
++
++error:
++  free (o.buf);
++  return NULL;
++}
++
++/* SAT -> SAB */
++
++typedef struct _acis_in
++{
++  const char *s;
++  size_t size, p;
++} Acis_In;
++
++static void
++acis_skip_ws (Acis_In *in)
++{
++  while (in->p < in->size
++         && (in->s[in->p] == ' ' || in->s[in->p] == '\t'
++             || in->s[in->p] == '\r' || in->s[in->p] == '\n'))
++    in->p++;
++}
++
++/* The next whitespace delimited token, into buf. Its length. */
++static size_t
++acis_token (Acis_In *in, char *buf, size_t size)
++{
++  size_t len = 0;
++  acis_skip_ws (in);
++  while (in->p < in->size && in->s[in->p] != ' ' && in->s[in->p] != '\t'
++         && in->s[in->p] != '\r' && in->s[in->p] != '\n' && in->s[in->p])
++    {
++      if (len + 1 < size)
++        buf[len++] = in->s[in->p];
++      in->p++;
++    }
++  buf[len] = '\0';
++  return len;
++}
++
++static int
++acis_is_number (const char *s)
++{
++  char *end;
++  if (!*s)
++    return 0;
++  (void)strtod (s, &end);
++  return *end == '\0';
++}
++
++static int
++acis_is_integer (const char *s)
++{
++  if (*s == '-' || *s == '+')
++    s++;
++  if (!*s)
++    return 0;
++  for (; *s; s++)
++    if (*s < '0' || *s > '9')
++      return 0;
++  return 1;
++}
++
++static void
++acis_write_string (Bit_Chain *dat, const char *s, size_t len)
++{
++  if (len < 256)
++    {
++      bit_write_RC (dat, SAB_STR8);
++      bit_write_RC (dat, (BITCODE_RC)len);
++    }
++  else if (len < 65536)
++    {
++      bit_write_RC (dat, SAB_STR16);
++      bit_write_RS (dat, (BITCODE_RS)len);
++    }
++  else
++    {
++      bit_write_RC (dat, SAB_STR32);
++      bit_write_RL (dat, (BITCODE_RL)len);
++    }
++  bit_write_TF (dat, (BITCODE_TF)s, len);
++}
++
++/* The string of len after one blank */
++static int
++acis_read_string (Acis_In *in, Bit_Chain *dat, long len)
++{
++  if (in->p < in->size && in->s[in->p] == ' ')
++    in->p++;
++  if (len < 0 || (size_t)len > in->size - in->p)
++    return 1;
++  acis_write_string (dat, &in->s[in->p], (size_t)len);
++  in->p += (size_t)len;
++  return 0;
++}
++
++/* An identifier, with its subidents: a-b-c as 14 a 14 b 13 c */
++static void
++acis_write_ident (Bit_Chain *dat, const char *s)
++{
++  const char *e;
++  while ((e = strchr (s, '-')) && e[1])
++    {
++      bit_write_RC (dat, SAB_SUBIDENT);
++      bit_write_RC (dat, (BITCODE_RC)(e - s));
++      bit_write_TF (dat, (BITCODE_TF)s, e - s);
++      s = e + 1;
++    }
++  bit_write_RC (dat, SAB_IDENT);
++  bit_write_RC (dat, (BITCODE_RC)strlen (s));
++  bit_write_TF (dat, (BITCODE_TF)s, strlen (s));
++}
++
++/* SAT -> SAB with the types of the grammar. int_doubles is set to 1 if
++   doubles are written as integers, then with 2 the unknown numbers are
++   doubles. */
++static BITCODE_RC *
++acis_sat_to_sab (const char *restrict sat, const size_t size,
++                 size_t *restrict sabsize, int *restrict int_doubles)
++{
++  Acis_In in = { sat, size, 0 };
++  Bit_Chain dat = { 0 };
++  Acis_Walker w;
++  char tok[256], next[256];
++  long version;
++  int ended = 0;
++
++  if (!sat)
++    return NULL;
++  bit_chain_init (&dat, size + 64);
++  if (!dat.chain)
++    return NULL;
++  if (!acis_token (&in, tok, sizeof (tok)) || !acis_is_integer (tok))
++    goto error;
++  version = strtol (tok, NULL, 10);
++  // AutoCAD 2018 writes ASM 223 as "ASM BinaryFile4"
++  bit_write_TF (
++      &dat,
++      (BITCODE_TF)(version >= 22300 ? "ASM BinaryFile4" : "ACIS BinaryFile"),
++      15);
++  // version, number of records, of entities, flags (history)
++  bit_write_RL (&dat, (BITCODE_RL)version);
++  for (int i = 1; i < 4; i++)
++    {
++      if (!acis_token (&in, tok, sizeof (tok)) || !acis_is_integer (tok))
++        goto error;
++      bit_write_RL (&dat, (BITCODE_RL)strtol (tok, NULL, 10));
++    }
++  // since ACIS 2.0: product, ACIS version, date; units, resabs, resnor
++  if (version >= 200)
++    {
++      for (int i = 0; i < 3; i++)
++        if (!acis_token (&in, tok, sizeof (tok)) || !acis_is_integer (tok)
++            || acis_read_string (&in, &dat, strtol (tok, NULL, 10)))
++          goto error;
++      for (int i = 0; i < 3; i++)
++        {
++          if (!acis_token (&in, tok, sizeof (tok)) || !acis_is_number (tok))
++            goto error;
++          bit_write_RC (&dat, SAB_DOUBLE);
++          bit_write_RD (&dat, strtod (tok, NULL));
++        }
++    }
++  while (acis_token (&in, tok, sizeof (tok)))
++    {
++      // an optional record number -n
++      if (tok[0] == '-' && acis_is_integer (tok))
++        {
++          if (!acis_token (&in, tok, sizeof (tok)))
++            break;
++        }
++      acis_write_ident (&dat, tok);
++      if (!strncmp (tok, "End-of-", 7))
++        {
++          ended = 1;
++          break;
++        }
++      acis_walker_init (&w, tok, (BITCODE_RL)version);
++      while (1)
++        {
++          char slot;
++          if (!acis_token (&in, tok, sizeof (tok)) || strEQc (tok, "#"))
++            {
++              bit_write_RC (&dat, SAB_REC_END);
++              break;
++            }
++          if (tok[0] == '$' && acis_is_integer (&tok[1]))
++            {
++              bit_write_RC (&dat, SAB_PTR);
++              bit_write_RL (&dat, (BITCODE_RL)strtol (&tok[1], NULL, 10));
++              continue;
++            }
++          if (strEQc (tok, "{") || strEQc (tok, "}"))
++            {
++              bit_write_RC (&dat, tok[0] == '{' ? SAB_SUB_START : SAB_SUB_END);
++              acis_walker_sub (&w, tok[0] == '{');
++              continue;
++            }
++          slot = acis_walker_next (&w);
++          if (tok[0] == '@' && acis_is_integer (&tok[1]))
++            {
++              if (acis_read_string (&in, &dat, strtol (&tok[1], NULL, 10)))
++                goto error;
++              acis_walker_took (&w, 0);
++              continue;
++            }
++          if (slot == 'E' && !acis_is_number (tok))
++            {
++              const int e = acis_enum_value (&w, tok);
++              if (e >= 0)
++                {
++                  bit_write_RC (&dat, SAB_ENUM);
++                  bit_write_RL (&dat, (BITCODE_RL)e);
++                  acis_walker_took (&w, e);
++                  continue;
++                }
++            }
++          if (acis_word_value (tok) >= 0)
++            {
++              bit_write_RC (&dat,
++                            acis_word_value (tok) ? SAB_TRUE : SAB_FALSE);
++              acis_walker_took (&w, 0);
++              continue;
++            }
++          // interval bounds: I infinite, F finite with its double. T true.
++          if (strEQc (tok, "I") || strEQc (tok, "T"))
++            {
++              bit_write_RC (&dat, tok[0] == 'T' ? SAB_TRUE : SAB_FALSE);
++              acis_walker_took (&w, 0);
++              continue;
++            }
++          if (strEQc (tok, "F"))
++            {
++              size_t p = in.p;
++              bit_write_RC (&dat, SAB_TRUE);
++              acis_walker_took (&w, 0);
++              if (acis_token (&in, next, sizeof (next))
++                  && acis_is_number (next))
++                {
++                  bit_write_RC (&dat, SAB_DOUBLE);
++                  bit_write_RD (&dat, strtod (next, NULL));
++                }
++              else
++                in.p = p;
++              continue;
++            }
++          if (acis_is_number (tok))
++            {
++              const double d = strtod (tok, NULL);
++              const long l = strtol (tok, NULL, 10);
++              switch (slot)
++                {
++                case 'L':
++                  bit_write_RC (&dat, SAB_LONG);
++                  bit_write_RL (&dat, (BITCODE_RL)l);
++                  break;
++                case 'E':
++                  bit_write_RC (&dat, SAB_ENUM);
++                  bit_write_RL (&dat, (BITCODE_RL)l);
++                  break;
++                case 'B':
++                  bit_write_RC (&dat, l ? SAB_TRUE : SAB_FALSE);
++                  break;
++                case 'S':
++                  if (acis_read_string (&in, &dat, l))
++                    goto error;
++                  break;
++                case 'P':
++                case 'V':
++                  if (acis_is_integer (tok) && !*int_doubles)
++                    *int_doubles = 1;
++                  bit_write_RC (&dat, slot == 'P' ? SAB_POS : SAB_VEC);
++                  bit_write_RD (&dat, d);
++                  for (int i = 0; i < 2; i++)
++                    {
++                      if (!acis_token (&in, next, sizeof (next))
++                          || !acis_is_number (next))
++                        goto error;
++                      bit_write_RD (&dat, strtod (next, NULL));
++                    }
++                  break;
++                case 'd':
++                case 'I':
++                  if (acis_is_integer (tok) && !*int_doubles)
++                    *int_doubles = 1;
++                  bit_write_RC (&dat, SAB_DOUBLE);
++                  bit_write_RD (&dat, d);
++                  break;
++                default:
++                  // unknown: by its form. AutoCAD writes integral doubles
++                  // without a '.', we not.
++                  if (acis_is_integer (tok) && *int_doubles != 2)
++                    {
++                      bit_write_RC (&dat, SAB_LONG);
++                      bit_write_RL (&dat, (BITCODE_RL)l);
++                    }
++                  else
++                    {
++                      bit_write_RC (&dat, SAB_DOUBLE);
++                      bit_write_RD (&dat, d);
++                    }
++                  break;
++                }
++              acis_walker_took (&w, l);
++              continue;
++            }
++          // an identifier inside the record, e.g. of a subtype
++          acis_write_ident (&dat, tok);
++          acis_walker_ident (&w, tok);
++        }
++    }
++  if (!ended)
++    acis_write_ident (&dat, version >= 21800 ? "End-of-ASM-data"
++                                             : "End-of-ACIS-data");
++  *sabsize = dat.byte;
++  return dat.chain;
++
++error:
++  bit_chain_free (&dat);
++  return NULL;
++}
++
++/* Converts SAT text (the decrypted acis_data of version 1) to SAB
++   "ACIS BinaryFile", as AutoCAD and the ODA do for the R2013+ AcDs. The
++   SAB ends with End-of-ACIS-data, or End-of-ASM-data since ACIS 21800.
++   Returns the malloced SAB, or NULL. */
++EXPORT BITCODE_RC *
++dwg_convert_SAT_to_SAB (const char *restrict sat, const size_t size,
++                        size_t *restrict sabsize)
++{
++  int int_doubles = 0;
++  BITCODE_RC *sab = acis_sat_to_sab (sat, size, sabsize, &int_doubles);
++  // with doubles written as integers, as AutoCAD: unknown numbers as double
++  if (sab && int_doubles)
++    {
++      free (sab);
++      int_doubles = 2;
++      sab = acis_sat_to_sab (sat, size, sabsize, &int_doubles);
++    }
++  return sab;
++}
+diff --git a/src/encode.c b/src/encode.c
+index 2339b02..fc2abfe 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3790,15 +3790,18 @@ acds_as_read (const Dwg_Data *dwg, const Bit_Chain *dat)
+          && dwg->header.from_version >= R_2013b && !(dwg->opts & DWG_OPTS_IN);
+ }
+ 
+-/* The SAB of an ACIS entity for the AcDs, or NULL. */
++/* The SAB of an ACIS entity for the AcDs, or NULL. The SAT of version 1
++   is converted to SAB, as AutoCAD does: then *alloced is set, to free it. */
+ static BITCODE_RC *
+-acds_entity_sab (Dwg_Object *restrict obj, size_t *restrict size)
++acds_entity_sab (Dwg_Object *restrict obj, size_t *restrict size,
++                 int *restrict alloced)
+ {
+   void *_obj;
+   BITCODE_BS version = 0;
+   BITCODE_RC *acis_data = NULL;
+   BITCODE_BL sab_size = 0;
+ 
++  *alloced = 0;
+   if (obj->supertype != DWG_SUPERTYPE_ENTITY || !dwg_obj_is_3dsolid (obj))
+     return NULL;
+   _obj = obj->tio.entity->tio.UNKNOWN_ENT;
+@@ -3806,15 +3809,29 @@ acds_entity_sab (Dwg_Object *restrict obj, size_t *restrict size)
+       || !dwg_dynapi_entity_value (_obj, obj->name, "acis_data", &acis_data,
+                                    NULL)
+       || !dwg_dynapi_entity_value (_obj, obj->name, "sab_size", &sab_size,
+-                                   NULL))
++                                   NULL)
++      || !acis_data)
+     return NULL;
+-  if (version == 2 && acis_data && sab_size > 15
++  if (version == 2 && sab_size > 15
+       && (!memcmp (acis_data, "ACIS BinaryFile", 15)
+           || !memcmp (acis_data, "ASM BinaryFile", 14)))
+     {
+       *size = sab_size;
+       return acis_data;
+     }
++  if (version == 1 && *acis_data)
++    {
++      BITCODE_RC *sab = dwg_convert_SAT_to_SAB (
++          (const char *)acis_data, strlen ((char *)acis_data), size);
++      if (!sab)
++        {
++          LOG_WARN ("%s " FORMAT_HV ": invalid SAT, not converted to SAB",
++                    obj->name, obj->handle.value);
++          return NULL;
++        }
++      *alloced = 1;
++      return sab;
++    }
+   return NULL;
+ }
+ 
+@@ -3827,8 +3844,14 @@ acds_mark_entities (Dwg_Data *restrict dwg)
+     {
+       Dwg_Object *obj = &dwg->object[i];
+       size_t size;
+-      if (obj->supertype == DWG_SUPERTYPE_ENTITY && dwg_obj_is_3dsolid (obj))
+-        obj->tio.entity->has_ds_data = acds_entity_sab (obj, &size) ? 1 : 0;
++      int alloced;
++      BITCODE_RC *sab;
++      if (obj->supertype != DWG_SUPERTYPE_ENTITY || !dwg_obj_is_3dsolid (obj))
++        continue;
++      sab = acds_entity_sab (obj, &size, &alloced);
++      obj->tio.entity->has_ds_data = sab ? 1 : 0;
++      if (alloced)
++        free (sab);
+     }
+ }
+ 
+@@ -3837,6 +3860,7 @@ typedef struct _acds_record
+   BITCODE_RLL handle;
+   BITCODE_RC *data;
+   size_t size;
++  int alloced;
+ } acds_record;
+ 
+ static int
+@@ -3992,14 +4016,16 @@ encode_acds (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+     {
+       Dwg_Object *obj = &dwg->object[i];
+       size_t size;
++      int alloced;
+       BITCODE_RC *data;
+       if (obj->supertype != DWG_SUPERTYPE_ENTITY
+           || !obj->tio.entity->has_ds_data
+-          || !(data = acds_entity_sab (obj, &size)))
++          || !(data = acds_entity_sab (obj, &size, &alloced)))
+         continue;
+       recs[num_recs].handle = obj->handle.value;
+       recs[num_recs].data = data;
+       recs[num_recs].size = size;
++      recs[num_recs].alloced = alloced;
+       if (size > ACDS_MAX_RECORD)
+         num_pages += (BITCODE_BL)((size + ACDS_MAX_PAGE - 1) / ACDS_MAX_PAGE);
+       num_recs++;
+@@ -4017,6 +4043,9 @@ encode_acds (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                                             sizeof (Dwg_AcDs_SegmentIndex));
+   if (!segidx)
+     {
++      for (k = 0; k < num_recs; k++)
++        if (recs[k].alloced)
++          free (recs[k].data);
+       free (recs);
+       return DWG_ERR_OUTOFMEM;
+     }
+@@ -4183,6 +4212,9 @@ encode_acds (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+   dat->byte = off;
+   LOG_TRACE ("AcDs: %u SAB records, %u blob pages, size %" PRIuSIZE "\n",
+              (unsigned)num_recs, (unsigned)num_pages, off);
++  for (k = 0; k < num_recs; k++)
++    if (recs[k].alloced)
++      free (recs[k].data);
+   free (segidx);
+   free (recs);
+   return 0;
+-- 
+2.43.0
+

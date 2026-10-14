@@ -1,7 +1,7 @@
 From 78cbf84a8363ddc9bcc0b06b24dc44e3798f4a3d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 13:03:18 +0900
-Subject: [PATCH 44/54] TABLE: R2007 to R2000/R2004, the cell text from the
+Subject: [PATCH 044/116] TABLE: R2007 to R2000/R2004, the cell text from the
  value
 
 R2007 keeps the cell text in the value (UTF-16) and text_value empty;

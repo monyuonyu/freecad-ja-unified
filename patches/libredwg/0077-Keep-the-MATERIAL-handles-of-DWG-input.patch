@@ -1,0 +1,67 @@
+From 4a9131ef1a99e58f79ca8011e9b293cad7bdfbac Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:11:55 +0900
+Subject: [PATCH 077/116] Keep the MATERIAL handles of DWG input
+
+Writing R2007+, the material handles of the entities, of LAYER and the
+materials of 3DSOLID, REGION and BODY were dropped, as MATERIAL objects
+are written as placeholders. That is only so from DXF; from DWG they
+are written, and R2018 to R2018 lost the material of every layer.
+
+* src/common_entity_data.spec (material_flags): Disable only with
+DWG_OPTS_INDXF.
+* src/dwg.spec (LAYER): Likewise for material.
+* src/encode.c (disable_3DSOLID_materials): Likewise.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/common_entity_data.spec | 3 ++-
+ src/dwg.spec                | 3 ++-
+ src/encode.c                | 3 +++
+ 3 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/common_entity_data.spec b/src/common_entity_data.spec
+index cc21b51..93aa992 100644
+--- a/src/common_entity_data.spec
++++ b/src/common_entity_data.spec
+@@ -523,7 +523,8 @@
+     {
+ #ifndef DEBUG_CLASSES
+ #ifdef IS_ENCODER
+-      if (FIELD_VALUE (material_flags) == 3)
++      // MATERIAL objects from DXF are written as placeholders
++      if (FIELD_VALUE (material_flags) == 3 && dwg->opts & DWG_OPTS_INDXF)
+         {
+           LOG_WARN ("Disabling MATERIAL handle\n");
+             FIELD_VALUE (material_flags) = 0;
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 2e148ab..257028a 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -3507,7 +3507,8 @@ DWG_TABLE (LAYER)
+   SINCE (R_2007a) {
+     ENCODER {
+ #ifndef DEBUG_CLASSES
+-      if (_obj->material)
++      // MATERIAL objects from DXF are written as placeholders
++      if (_obj->material && dwg->opts & DWG_OPTS_INDXF)
+         {
+           _obj->material->absolute_ref = 0;
+           _obj->material->handleref.value = 0;
+diff --git a/src/encode.c b/src/encode.c
+index 481dcea..c5f10e1 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -5285,6 +5285,9 @@ disable_3DSOLID_materials (Dwg_Object *obj)
+   BITCODE_BL num_materials = 0;
+   // or some child of it
+   Dwg_Entity_BODY *_obj = obj->tio.entity->tio.BODY;
++  // MATERIAL objects from DXF are written as placeholders
++  if (!(obj->parent->opts & DWG_OPTS_INDXF))
++    return;
+   if (dwg_dynapi_entity_value (_obj, obj->name, "num_materials",
+                                &num_materials, NULL)
+       && num_materials)
+-- 
+2.43.0
+

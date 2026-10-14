@@ -1,0 +1,35 @@
+From 3cabca9aebb09f13c9557b797d8f945658379c52 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:22:47 +0900
+Subject: [PATCH 087/116] BLOCKSCALEACTION: its connection points after those
+ of the base point
+
+AcDbBlockScaleAction has 3 connection points after the 2 of
+AcDbBlockActionWithBasePt (conn_pts[5], in_dxf reads them to 2-4), but
+they were read into 0-2, overwriting UpdatedBaseX and UpdatedBaseY with
+Scale and XScale.
+
+* src/dwg2.spec (BLOCKSCALEACTION): The connection points 2-4.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 8f8e3a6..760fe0c 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -3713,7 +3713,8 @@ DWG_OBJECT_END
+ DWG_OBJECT (BLOCKSCALEACTION)
+   AcDbBlockActionWithBasePt_fields; // lgtm[cpp/use-after-free] codeql[cpp/use-after-free]
+   SUBCLASS (AcDbBlockScaleAction);
+-  BlockAction_ConnectionPts (conn_pts, 0, 3, 94, 303);
++  // after the 2 of AcDbBlockActionWithBasePt
++  BlockAction_ConnectionPts (conn_pts, 2, 3, 92, 301);
+   START_OBJECT_HANDLE_STREAM;
+ DWG_OBJECT_END
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,54 @@
+From 01decf931bcda019bab4dad5d6a702c965a5b169 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:22:47 +0900
+Subject: [PATCH 084/116] 3DSOLID: R2013+ without the ACIS empty bit, with the
+ history handle
+
+Since R2013 the SAB is in the AcDsPrototype_1b section and the entity
+starts with the wireframe data, as decode_3dsolid reads it. The encoder
+still wrote the ACIS empty bit before, so all of it was off by a bit:
+ACadSharp could not read the 3DSOLIDs and REGIONs of the R2013+
+drawings rewritten as R2013+ (5 3DSOLIDs and 4 REGIONs lost). The
+history handle (H 350) of R2013+ 3DSOLIDs was not read (26 bits left in
+the handle stream of AutoCAD's R2018 3DSOLIDs) and thus not written.
+
+* src/dwg_spec_shared.h (encode_3dsolid): Nothing since R2013.
+(COMMON_3DSOLID): The history_id also of R2013+ 3DSOLIDs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg_spec_shared.h | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index a68b245..bcf5a32 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -355,6 +355,12 @@ encode_3dsolid (Bit_Chain *dat, Bit_Chain *hdl_dat, Dwg_Object *restrict obj,
+   int acis_data_idx = 0;
+   int error = 0;
+ 
++  // R2013+: no ACIS empty bit, the SAB is in the AcDsPrototype_1b
++  // DataStorage section (as decode_3dsolid)
++  SINCE (R_2013b)
++    {
++      return error;
++    }
+   FIELD_B (acis_empty, 290);
+   if (!FIELD_VALUE (acis_empty))
+     {
+@@ -580,7 +586,10 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+       SUBCLASS (AcDb3dSolid);                                                 \
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+     }                                                                         \
+-  } else if (FIELD_VALUE (version) > 1                                        \
++  } else if ((FIELD_VALUE (version) > 1                                       \
++              /* R2013+ 3DSOLID: the SAB is in the AcDs (AutoCAD's R2018) */  \
++              || (dat->version >= R_2013b                                     \
++                  && obj->fixedtype == DWG_TYPE__3DSOLID))                    \
+              && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)                 \
+              /* R2007+ (ACadSharp, AutoCAD's R2004 drawings have none) */     \
+              && (!IF_IS_ENCODER || dat->version >= R_2007a)) {                \
+-- 
+2.43.0
+

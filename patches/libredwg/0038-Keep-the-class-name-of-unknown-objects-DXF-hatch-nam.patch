@@ -1,7 +1,7 @@
 From 814020f411f48401d122e41d2d03c17ce177a62f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 12:01:19 +0900
-Subject: [PATCH 38/54] Keep the class name of unknown objects; DXF: hatch
+Subject: [PATCH 038/116] Keep the class name of unknown objects; DXF: hatch
  names as in the DWG
 
 - Unknown (undecodable) entities and objects get their class name as

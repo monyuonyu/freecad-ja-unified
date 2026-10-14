@@ -1,0 +1,61 @@
+From 7f8a8abe8338efb7e884ca3be9da49b1d1c3cc59 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:25:19 +0900
+Subject: [PATCH 061/116] FileDepList: the feature names are T32 as the files,
+ without a NUL
+
+AutoCAD's R2004 FileDepList (2004/Line.dwg) has RL lengths and the chars
+of every string, without a terminating NUL: 02000000 09000000
+"Acad:Text" 0f000000 "Acad:PlotConfig" 01000000 ... The features were
+read as TV (bit-coded, all empty) and the rest shifted; written back they
+gave a broken section.
+
+* src/filedeplist.spec: Read and write the features with FIELD_T32 as
+the file strings; the other outputs keep the string vector.
+* src/bits.c (bit_write_T32): Without the NUL in the 8-bit form, as
+AutoCAD. Line.dwg written as R2004 now has AutoCAD's FileDepList byte for
+byte.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c           | 2 +-
+ src/filedeplist.spec | 9 +++++++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 7b42a26..bc506a2 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -2859,7 +2859,7 @@ bit_write_T32 (Bit_Chain *restrict dat, BITCODE_T32 restrict chain)
+   else
+     {
+       if (chain)
+-        length = strlen (chain) + 1;
++        length = strlen (chain); // without the NUL, as AutoCAD
+       else
+         length = 0;
+       if (length > UINT32_MAX)
+diff --git a/src/filedeplist.spec b/src/filedeplist.spec
+index 3650d17..5fb40a9 100644
+--- a/src/filedeplist.spec
++++ b/src/filedeplist.spec
+@@ -19,7 +19,16 @@
+   #include "spec.h"
+ 
+   FIELD_RL (num_features, 0);
++#if defined(IS_DECODER) || defined(IS_ENCODER)
++  // RL length and the chars, as all strings here (not TV in R2004)
++  REPEAT (num_features, features, BITCODE_TU32)
++  REPEAT_BLOCK
++    FIELD_T32 (features[rcount1], 0);
++  END_REPEAT_BLOCK
++  END_REPEAT (features)
++#else
+   FIELD_VECTOR_T (features, TU32, num_features, 0);
++#endif
+   FIELD_RL (num_files, 0);
+   REPEAT (num_files, files, Dwg_FileDepList_Files)
+   REPEAT_BLOCK
+-- 
+2.43.0
+

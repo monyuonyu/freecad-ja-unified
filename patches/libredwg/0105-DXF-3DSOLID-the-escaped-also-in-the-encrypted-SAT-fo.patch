@@ -1,0 +1,56 @@
+From 401ce4e45b840dac468fbe468973a526018af785 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 14:38:16 +0900
+Subject: [PATCH 105/116] DXF 3DSOLID: the escaped ^ also in the encrypted SAT
+ for the DWG
+
+The encrypted A is ^, which DXF has as "^ ". Reading a DXF, it was
+unescaped in the decrypted acis_data, but not in encr_sat_data, which is
+written to the DWG of R13-R2010, with the length of acis_data: the SAT
+of these DWGs had "A " for each A ("A utodesk A utoCA D") and lost its
+end.
+
+* src/in_dxf.c (add_3DSOLID_encr): Unescape "^ " also in encr_sat_data.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 19 ++++++++++---------
+ 1 file changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index ae98212..5248667 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -3086,19 +3086,20 @@ add_3DSOLID_encr (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+       o->acis_data = (BITCODE_RC *)xcalloc (1, total + 1);
+       if (!o->acis_data)
+         return NULL;
++      // "^ " is the escaped ^ in DXF, the encrypted A. Also in the
++      // encrypted data for the DWG.
+       for (i = 0; i < total; i++)
+         {
+-          if (o->encr_sat_data[0][i] == '^' && i <= total
+-              && o->encr_sat_data[0][i + 1] == ' ')
+-            {
+-              o->acis_data[idx++] = 'A';
+-              i++;
+-            }
+-          else if (o->encr_sat_data[0][i] <= 32)
+-            o->acis_data[idx++] = o->encr_sat_data[0][i];
++          const char c = o->encr_sat_data[0][i];
++          o->encr_sat_data[0][idx] = c;
++          if (c == '^' && i + 1 < total && o->encr_sat_data[0][i + 1] == ' ')
++            i++;
++          if ((BITCODE_RC)c <= 32)
++            o->acis_data[idx++] = (BITCODE_RC)c;
+           else
+-            o->acis_data[idx++] = 159 - o->encr_sat_data[0][i];
++            o->acis_data[idx++] = 159 - (BITCODE_RC)c;
+         }
++      o->encr_sat_data[0][idx] = '\0';
+       o->acis_data[idx] = '\0';
+       o->block_size[0] = idx;
+       LOG_TRACE ("%s.acis_data:\n%s\n", obj->name, o->acis_data);
+-- 
+2.43.0
+

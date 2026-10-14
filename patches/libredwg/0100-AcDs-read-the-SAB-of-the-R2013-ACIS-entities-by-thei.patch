@@ -1,0 +1,336 @@
+From 5ce60391b8192a053d86cd29b212136a2d2d56f0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 13:43:23 +0900
+Subject: [PATCH 100/116] AcDs: read the SAB of the R2013+ ACIS entities by
+ their handle
+
+The SAB data of the R2013+ REGIONs, 3DSOLIDs, BODYs and SURFACEs is in
+the data records of the AcDb:AcDsPrototype_1b section. It was searched
+for "ACIS BinaryFile" and given to the entities with has_ds_data in
+their order. AutoCAD's R2018 files have "ASM BinaryFile4" instead, so
+none of their ACIS data was read (example_2018, sample_AC1032), and the
+records are not in the order of the entities (example_2013), so the SAB
+could go to the wrong entity. Now take the data records of the data
+index with their handles, also from blob pages.
+The check of the segment index count used the size of the struct, 16,
+not the 12 bytes of an entry after the 48 byte segment header, so the
+AcDs of sample_base was rejected.
+
+* src/decode.c (acds_rl, acds_rll, acds_segment, acds_blob)
+(acds_asm_data): New.
+(read_2004_section_acds): Call acds_asm_data.
+* src/acds.spec: Remove the search for the SAB. The num_segidx check
+with 12 byte entries after the segment header.
+* src/common_entity_data.spec: No acis_sab_hdl anymore.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/acds.spec               |  91 +--------------------
+ src/common_entity_data.spec |   8 --
+ src/decode.c                | 158 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 160 insertions(+), 97 deletions(-)
+
+diff --git a/src/acds.spec b/src/acds.spec
+index 0c5f1e9..bc218b1 100644
+--- a/src/acds.spec
++++ b/src/acds.spec
+@@ -49,7 +49,8 @@
+       LOG_ERROR ("Invalid segidx_offset");
+       return DWG_ERR_VALUEOUTOFBOUNDS;
+     }
+-  if ((size_t)(_obj->num_segidx * sizeof (Dwg_AcDs_SegmentIndex)) >
++  // the segment header, then each RLL offset and RL size, 12 bytes
++  if ((size_t)_obj->num_segidx * 12 + 0x30 >
+       (size_t)(dat->size - dat->byte))
+     {
+       LOG_ERROR ("Invalid num_segidx");
+@@ -327,91 +328,3 @@
+ #ifdef IS_FREE
+   END_REPEAT (segidx)
+ #endif
+-
+-#ifdef IS_DECODER
+-  DECODER {
+-    char *s, *e;
+-    unsigned int i = 0;
+-    char *acis_sab_data;
+-    const BITCODE_B acis_empty = 0;
+-    const BITCODE_BS version = 2;
+-    BITCODE_BL num_acis_sab_data;
+-    const unsigned int wanted = dwg->num_acis_sab_hdl;
+-    // 414349532042696E61727946696C65 @10504/2 = 5252
+-    const char start[] = "ACIS BinaryFile";
+-    // 0E03456E640E026F660E0341534D0D0464617461 @13822/2 = 6911
+-    const char end[] = "\016\003End\016\002of\016\003ASM\r\004data";
+-    LOG_TRACE ("\nSearch for ACIS BinaryFile data:\n");
+-    num_acis_sab_data = 0;
+-    while ((s = (char *)memmem (&dat->chain[i], dat->size - i, start,
+-                                strlen (start))))
+-      {
+-        size_t j = s - (char*)&dat->chain[0]; // absolute_offset of found range
+-        if ((e = (char *)memmem (s, dat->size - j, end, strlen (end))))
+-          {
+-            BITCODE_H hdl;
+-            Dwg_Object *o;
+-            Dwg_Entity_3DSOLID *sol;
+-            size_t size = e - s;
+-            size += strlen (end);
+-            LOG_TRACE ("acis_sab_data[%d]: found %s at %" PRIuSIZE ", size %" PRIuSIZE "\n",
+-                       num_acis_sab_data, start, j, size);
+-            if (!dwg->num_acis_sab_hdl)
+-              {
+-                LOG_ERROR ("Not enough %u 3DSOLIDs for the %u-th AcDs SAB data",
+-                           wanted, num_acis_sab_data);
+-                return DWG_ERR_INVALIDHANDLE;
+-              }
+-            hdl = SHIFT_HV (dwg, num_acis_sab_hdl, acis_sab_hdl);
+-            o = dwg_resolve_handle (dwg, hdl->handleref.value);
+-            LOG_TRACE ("%s.acis_sab_hdl[%u] = " FORMAT_REF "\n", o->name,
+-                       dwg->num_acis_sab_hdl + 1, ARGS_REF (hdl));
+-            if (!o || !dwg_obj_is_3dsolid (o))
+-              {
+-                LOG_ERROR ("Matching object %s " FORMAT_REF " not a 3DSOLID",
+-                           o ? o->name : "", ARGS_REF (hdl));
+-                free (hdl);
+-                error |= DWG_ERR_INVALIDHANDLE;
+-                continue;
+-              }
+-            sol = o->tio.entity->tio._3DSOLID;
+-            // not NULL terminated
+-            acis_sab_data = (char*)malloc (size);
+-            memcpy (acis_sab_data, s, size);
+-            num_acis_sab_data++;
+-            dwg_dynapi_entity_set_value (sol, o->name, "acis_data", &acis_sab_data, 0);
+-            dwg_dynapi_entity_set_value (sol, o->name, "sab_size", &size, 0);
+-            dwg_dynapi_entity_set_value (sol, o->name, "version", &version, 0);
+-            // FIXME only until we can write acds:
+-            dwg_dynapi_entity_set_value (sol, o->name, "acis_empty", &acis_empty, 0);
+-            // o->tio.entity->has_ds_data = 0; // maybe there is more, like the
+-            // wires and silhuettes
+-            LOG_TRACE ("%s.acis_data = %" PRIuSIZE " " FORMAT_REF "\n", o->name, size,
+-                       ARGS_REF (hdl));
+-            free (hdl); // it is a non-global, free'able handleref. Created in
+-                        // common_entity_data.spec
+-            i = (j + size) & UINT_MAX; // next offset to try
+-          }
+-        else
+-          {
+-            LOG_WARN ("No End-of-ASM-data found from %" PRIuSIZE " - %" PRIuSIZE
+-                      " for %d-th SAB data",
+-                       j, dat->size, num_acis_sab_data);
+-            i = (j + 20) & UINT_MAX;
+-          }
+-      }
+-    if (wanted == num_acis_sab_data)
+-      {
+-        LOG_TRACE ("Matching number of %u 3DSOLID entities and AcDs SAB data\n",
+-                   wanted);
+-      }
+-    else
+-      {
+-        LOG_WARN ("Not matching number of %u 3DSOLID entities and %u AcDs SAB "
+-                  "data\n",
+-                  wanted, num_acis_sab_data);
+-        while (dwg->num_acis_sab_hdl > 0)
+-          free (SHIFT_HV (dwg, num_acis_sab_hdl, acis_sab_hdl));
+-      }
+-  }
+-#endif
+diff --git a/src/common_entity_data.spec b/src/common_entity_data.spec
+index 93aa992..0f15e8f 100644
+--- a/src/common_entity_data.spec
++++ b/src/common_entity_data.spec
+@@ -398,14 +398,6 @@
+   SINCE (R_2013)
+     {
+       FIELD_B (has_ds_data, 0);
+-#ifdef IS_DECODER
+-      if (_obj->has_ds_data && dwg_obj_is_3dsolid (obj))
+-        {
+-          // not global, needs to be freed individually. (SHIFT_HV)
+-          BITCODE_H ref = dwg_add_handleref_free (5, obj->handle.value);
+-          PUSH_HV (obj->parent, num_acis_sab_hdl, acis_sab_hdl, ref);
+-        }
+-#endif
+     }
+ 
+   // no ENC type as it's only used once, here, and we would need to write
+diff --git a/src/decode.c b/src/decode.c
+index a5eef21..3e33bbc 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -3351,6 +3351,163 @@ acds_private (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+   return error;
+ }
+ 
++/* Little-endian reads from the AcDs byte stream, bounds-checked by the
++   caller. */
++static BITCODE_RL
++acds_rl (const BITCODE_RC *p)
++{
++  return (BITCODE_RL)p[0] | ((BITCODE_RL)p[1] << 8) | ((BITCODE_RL)p[2] << 16)
++         | ((BITCODE_RL)p[3] << 24);
++}
++
++static BITCODE_RLL
++acds_rll (const BITCODE_RC *p)
++{
++  return (BITCODE_RLL)acds_rl (p) | ((BITCODE_RLL)acds_rl (&p[4]) << 32);
++}
++
++/* The stream offset of the AcDs file segment segidx, with its size, or 0. */
++static size_t
++acds_segment (const Bit_Chain *dat, const Dwg_AcDs *_obj, BITCODE_RL segidx,
++              size_t *size)
++{
++  size_t off;
++  if (!_obj->segidx || segidx >= _obj->num_segidx)
++    return 0;
++  off = (size_t)_obj->segidx[segidx].offset;
++  if (!off || off + 0x30 > dat->size
++      || (acds_rl (&dat->chain[off]) & 0xFFFF) != 0xD5AC)
++    return 0;
++  *size = acds_rl (&dat->chain[off + 0x10]); // segsize
++  if (*size < 0x30 || *size > dat->size - off)
++    return 0;
++  return off;
++}
++
++/* The data of a data blob reference record at p (after its dataSize), in
++   the blob01 pages. Returns malloced data of *size, or NULL. */
++static BITCODE_RC *
++acds_blob (const Bit_Chain *dat, const Dwg_AcDs *_obj, size_t p, size_t end,
++           size_t *size)
++{
++  BITCODE_RLL total;
++  BITCODE_RL num_pages, i;
++  BITCODE_RC *data;
++  if (p + 32 > end)
++    return NULL;
++  total = acds_rll (&dat->chain[p]);
++  num_pages = acds_rl (&dat->chain[p + 8]);
++  if (!total || total > dat->size * 16 || p + 32 + (size_t)num_pages * 8 > end)
++    return NULL;
++  data = (BITCODE_RC *)calloc ((size_t)total, 1);
++  if (!data)
++    return NULL;
++  p += 32;
++  for (i = 0; i < num_pages; i++, p += 8)
++    {
++      size_t segsize;
++      const size_t seg
++          = acds_segment (dat, _obj, acds_rl (&dat->chain[p]), &segsize);
++      BITCODE_RLL start, len;
++      if (!seg || segsize < 0x30 + 32)
++        {
++          free (data);
++          return NULL;
++        }
++      start = acds_rll (&dat->chain[seg + 0x38]);
++      len = acds_rll (&dat->chain[seg + 0x48]);
++      if (start > total || len > total - start || len > segsize - 0x30 - 32)
++        {
++          free (data);
++          return NULL;
++        }
++      memcpy (&data[start], &dat->chain[seg + 0x30 + 32], (size_t)len);
++    }
++  *size = (size_t)total;
++  return data;
++}
++
++/* The ACIS data of the REGIONs, 3DSOLIDs, BODYs and SURFACEs with
++   has_ds_data: the AcDs data records with the SAB, by their handle. */
++static void
++acds_asm_data (const Bit_Chain *dat, Dwg_Data *restrict dwg)
++{
++  const Dwg_AcDs *_obj = &dwg->acds;
++  BITCODE_BL k, found = 0;
++  for (k = 0; k < _obj->datidx.num_entries; k++)
++    {
++      const Dwg_AcDs_DataIndex_Entry *ent = &_obj->datidx.entries[k];
++      size_t segsize, rec, start, size = 0;
++      const size_t seg = acds_segment (dat, _obj, ent->segidx, &segsize);
++      const size_t end = seg + segsize;
++      BITCODE_RLL handle;
++      BITCODE_RL datasize;
++      BITCODE_RC *data;
++      Dwg_Object *o;
++      void *_o;
++      const BITCODE_BS version = 2;
++      const BITCODE_B acis_empty = 0;
++      BITCODE_BL sab_size;
++
++      if (!seg)
++        continue;
++      rec = seg + 0x30 + ent->offset;
++      start = seg + ((size_t)acds_rl (&dat->chain[seg + 0x24]) << 4);
++      if (ent->offset > segsize || rec + 20 > end || start > end)
++        continue;
++      handle = acds_rll (&dat->chain[rec + 8]);
++      start += acds_rl (&dat->chain[rec + 16]);
++      if (start + 4 > end || start < seg)
++        continue;
++      datasize = acds_rl (&dat->chain[start]);
++      if (datasize == 0xbb106bb1)
++        data = acds_blob (dat, _obj, start + 4, end, &size);
++      else if (datasize <= end - start - 4)
++        {
++          size = datasize;
++          data = (BITCODE_RC *)malloc (size ? size : 1);
++          if (data)
++            memcpy (data, &dat->chain[start + 4], size);
++        }
++      else
++        continue;
++      if (!data)
++        continue;
++      if (size < 15
++          || (memcmp (data, "ACIS BinaryFile", 15)
++              && memcmp (data, "ASM BinaryFile", 14)))
++        {
++          free (data); // e.g. a thumbnail PNG of a BLOCK_HEADER
++          continue;
++        }
++      o = dwg_resolve_handle (dwg, handle);
++      if (!o || !dwg_obj_is_3dsolid (o))
++        {
++          LOG_WARN ("AcDs SAB data of " FORMAT_RLL " without its entity",
++                    handle);
++          free (data);
++          continue;
++        }
++      _o = o->supertype == DWG_SUPERTYPE_ENTITY
++               ? (void *)o->tio.entity->tio.UNKNOWN_ENT
++               : (void *)o->tio.object->tio.UNKNOWN_OBJ;
++      sab_size = (BITCODE_BL)size;
++      // not NUL terminated
++      if (!dwg_dynapi_entity_set_value (_o, o->name, "acis_data", &data, 0))
++        {
++          free (data);
++          continue;
++        }
++      dwg_dynapi_entity_set_value (_o, o->name, "sab_size", &sab_size, 0);
++      dwg_dynapi_entity_set_value (_o, o->name, "version", &version, 0);
++      dwg_dynapi_entity_set_value (_o, o->name, "acis_empty", &acis_empty, 0);
++      LOG_TRACE ("%s.acis_data: AcDs SAB %" PRIuSIZE " of " FORMAT_RLL "\n",
++                 o->name, size, handle);
++      found++;
++    }
++  LOG_TRACE ("%u AcDs SAB data\n", (unsigned)found);
++}
++
+ /* datastorage section. Optional, since r2013
+    Contains the SAB binary ACIS data, version 2
+  */
+@@ -3395,6 +3552,7 @@ read_2004_section_acds (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+ 
+   error |= acds_private (dat, dwg);
+   error &= ~DWG_ERR_SECTIONNOTFOUND;
++  acds_asm_data (dat, dwg);
+ 
+   LOG_TRACE ("\n");
+   if (sec_dat.chain)
+-- 
+2.43.0
+

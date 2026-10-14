@@ -1,0 +1,58 @@
+From 640c2f84628746203ab3f0bef9478e71427ad494 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 12:59:37 +0900
+Subject: [PATCH 098/116] Free the R2010+ title cell style and the DUMMY EED
+ string
+
+Both leaked when writing R2007+ from an earlier version (LeakSanitizer
+on example_2000 as R2018): the ovr array of upconvert_TABLESTYLE, which
+the free spec of the source version does not know, and the UTF-16 name
+of add_DUMMY_eed.
+
+* src/free.c (dwg_free_object): Free the TABLESTYLE ovr of
+upconvert_TABLESTYLE.
+* src/encode.c (add_DUMMY_eed): Free the UTF-16 string.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 4 +++-
+ src/free.c   | 8 ++++++++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 6c97324..bced0ad 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -630,7 +630,9 @@ add_DUMMY_eed (Dwg_Object *obj)
+       BITCODE_TU wstr = bit_utf8_to_TU (name, 0);
+       data->u.eed_0_r2007.is_tu = 1;
+       data->u.eed_0_r2007.length = len & 0xFFFF; // RS
+-      memcpy (data->u.eed_0_r2007.string, wstr, len * 2);
++      if (wstr)
++        memcpy (data->u.eed_0_r2007.string, wstr, len * 2);
++      free (wstr);
+     }
+   else
+     {
+diff --git a/src/free.c b/src/free.c
+index 46c2557..95b7be2 100644
+--- a/src/free.c
++++ b/src/free.c
+@@ -1105,6 +1105,14 @@ dwg_free_object (Dwg_Object *obj)
+     {
+       free_TABLESTYLE_r2010 (dat, obj);
+     }
++  // the title cell style of upconvert_TABLESTYLE (its name is static)
++  else if (obj->fixedtype == DWG_TYPE_TABLESTYLE && obj->tio.object
++           && obj->tio.object->tio.TABLESTYLE && !(dwg->opts & DWG_OPTS_IN))
++    {
++      Dwg_Object_TABLESTYLE *_obj = obj->tio.object->tio.TABLESTYLE;
++      FREE_IF (_obj->ovr);
++      _obj->numoverrides = 0;
++    }
+   if (obj->fixedtype == DWG_TYPE_TABLE && dwg->header.from_version >= R_2010)
+     free_TABLE_r2010 (obj);
+   else if (obj->fixedtype == DWG_TYPE_TABLE)
+-- 
+2.43.0
+

@@ -1,0 +1,350 @@
+From b5ae2ca4c874ce57e7442237b68e45f149d26a90 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:42:38 +0900
+Subject: [PATCH 081/116] TABLE: the table content for R2010+ from earlier
+ versions
+
+Since R2010 the TABLE entity has the table content (20.4.97) instead of
+the cells of R2000-R2007 (20.4.96.1), which we did not convert: the 13
+tables of the R14-R2007 drawings had no rows, columns and cells as
+R2010+, and the horizontal direction was 0.
+
+* src/encode.c (upconvert_TABLE): New, the reverse of
+downconvert_TABLE: columns, rows, one content per cell (the text, the
+R2007 value, the FIELD or the block with its attribute values), the
+alignment, color and text height overrides, the merged ranges, the
+horizontal direction and one break row range.
+(table_strdup): New.
+* src/encode.h: Declare upconvert_TABLE.
+* src/dwg2.spec (TABLE): Call it for R2010+ from earlier versions.
+* src/free.c (free_TABLE_r2000): New, free its allocations.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec |   4 +
+ src/encode.c  | 212 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/encode.h  |   1 +
+ src/free.c    |  50 ++++++++++++
+ 4 files changed, 267 insertions(+)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index f803423..8f8e3a6 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -706,6 +706,10 @@ DWG_ENTITY (TABLE)
+ 
+   SINCE (R_2010b) //AC1024
+     {
++#ifdef IS_ENCODER
++      if (dwg->header.from_version < R_2010b)
++        upconvert_TABLE (obj);
++#endif
+       FIELD_RC (unknown_rc, 0);
+       FIELD_HANDLE (unknown_h, 5, 0);
+       FIELD_BL (unknown_bl, 0);
+diff --git a/src/encode.c b/src/encode.c
+index c5f10e1..a37288b 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -8769,6 +8769,218 @@ downconvert_TABLE (Dwg_Object *restrict obj)
+     }
+ }
+ 
++// a copy of a string of the source, TU since R2007, else TV
++static BITCODE_T
++table_strdup (const Dwg_Data *restrict dwg, const BITCODE_T s)
++{
++  if (!s)
++    return NULL;
++  if (IS_FROM_TU_DWG (dwg))
++    return (BITCODE_T)bit_wcs2dup ((BITCODE_TU)s);
++  return strdup (s);
++}
++
++/* The pre-R2010 TABLE (20.4.96.1) to the table content (20.4.97) for
++   writing R2010+, the reverse of downconvert_TABLE: columns and widths, rows
++   and heights, one content per cell (the text as string value, the R2007
++   value, the FIELD, or the block with its attribute values), the alignment,
++   color and text height overrides, the merged ranges and the horizontal
++   direction. Row, column and cell styles are not set (0). The new
++   allocations are freed by free_TABLE_r2000, handles and colors are shallow.
++   unknown_bs is 6 with 16 for table overrides, as in AutoCAD's R2010+ files
++   of the same tables (flag_for_table_value is always 22 there). */
++void
++upconvert_TABLE (Dwg_Object *restrict obj)
++{
++  Dwg_Data *dwg = obj ? obj->parent : NULL;
++  Dwg_Entity_TABLE *_obj;
++  BITCODE_BL nr, nc, nm = 0;
++  if (!obj || obj->fixedtype != DWG_TYPE_TABLE || !obj->tio.entity || !dwg)
++    return;
++  _obj = obj->tio.entity->tio.TABLE;
++  if (_obj->tdata.rows || _obj->tdata.cols)
++    return; // already converted, or both present
++  nr = _obj->num_rows;
++  nc = _obj->num_cols;
++  LOG_TRACE ("upconvert_TABLE %u x %u\n", (unsigned)nr, (unsigned)nc);
++  _obj->unknown_bs = (_obj->flag_for_table_value & ~0x10)
++                     | (_obj->has_table_overrides ? 0x10 : 0);
++  _obj->hor_dir = _obj->horiz_direction;
++  _obj->unknown_b = 1;
++  _obj->has_break_data = 0;
++  if (!nr || !nc || !_obj->cells || (unsigned long)nr * nc > _obj->num_cells)
++    return;
++  _obj->tdata.cols
++      = (Dwg_TableDataColumn *)calloc (nc, sizeof (Dwg_TableDataColumn));
++  _obj->tdata.rows = (Dwg_TableRow *)calloc (nr, sizeof (Dwg_TableRow));
++  _obj->break_rows
++      = (Dwg_TABLE_BreakRow *)calloc (1, sizeof (Dwg_TABLE_BreakRow));
++  if (!_obj->tdata.cols || !_obj->tdata.rows || !_obj->break_rows)
++    {
++      free (_obj->tdata.cols);
++      free (_obj->tdata.rows);
++      free (_obj->break_rows);
++      _obj->tdata.cols = NULL;
++      _obj->tdata.rows = NULL;
++      _obj->break_rows = NULL;
++      return;
++    }
++  _obj->tdata.num_cols = nc;
++  _obj->tdata.num_rows = nr;
++  // one range of all rows
++  _obj->num_break_rows = 1;
++  _obj->break_rows[0].parent = _obj;
++  _obj->break_rows[0].end = nr - 1;
++  for (BITCODE_BL j = 0; j < nc; j++)
++    {
++      Dwg_TableDataColumn *col = &_obj->tdata.cols[j];
++      col->parent = &_obj->tdata;
++      col->cellstyle.type = 3; // column
++      col->width = _obj->col_widths ? _obj->col_widths[j] : 0.0;
++    }
++  for (BITCODE_BL i = 0; i < nr; i++)
++    {
++      Dwg_TableRow *row = &_obj->tdata.rows[i];
++      row->parent = &_obj->tdata;
++      row->cellstyle.type = 2; // row
++      row->height = _obj->row_heights ? _obj->row_heights[i] : 0.0;
++      row->cells = (Dwg_TableCell *)calloc (nc, sizeof (Dwg_TableCell));
++      if (!row->cells)
++        continue;
++      row->num_cells = nc;
++      for (BITCODE_BL j = 0; j < nc; j++)
++        {
++          const Dwg_TABLE_Cell *src = &_obj->cells[(size_t)i * nc + j];
++          Dwg_TableCell *cell = &row->cells[j];
++          Dwg_TableCellContent *ct;
++          cell->row_parent = row;
++          cell->cellstyle.type = 1; // cell
++          if (src->merged_width_flag > 1 || src->merged_height_flag > 1)
++            nm++;
++          ct = (Dwg_TableCellContent *)calloc (1,
++                                               sizeof (Dwg_TableCellContent));
++          if (!ct)
++            continue;
++          cell->cell_contents = ct;
++          cell->num_cell_contents = 1;
++          ct->parent = cell;
++          if (src->type == 2) // block
++            {
++              ct->type = 4;
++              ct->handle = src->block_handle;
++              if (src->block_scale != 1.0 && src->block_scale != 0.0)
++                {
++                  ct->has_content_format_overrides = 1;
++                  ct->content_format.property_override_flags |= 0x8;
++                  ct->content_format.block_scale = src->block_scale;
++                }
++              if (src->has_attr_defs && src->num_attr_defs && src->attr_defs)
++                {
++                  ct->attrs = (Dwg_TableCellContent_Attr *)calloc (
++                      src->num_attr_defs, sizeof (Dwg_TableCellContent_Attr));
++                  if (ct->attrs)
++                    {
++                      ct->num_attrs = src->num_attr_defs;
++                      for (BITCODE_BL k = 0; k < ct->num_attrs; k++)
++                        {
++                          ct->attrs[k].parent = ct;
++                          ct->attrs[k].attdef = src->attr_defs[k].attdef;
++                          ct->attrs[k].value
++                              = table_strdup (dwg, src->attr_defs[k].text);
++                          ct->attrs[k].index = src->attr_defs[k].index;
++                        }
++                    }
++                }
++            }
++          else if (dwg->header.from_version >= R_2007a)
++            {
++              // R2007 has the text in the value
++              ct->type = 1;
++              ct->value = src->value;
++              ct->value.data_string
++                  = table_strdup (dwg, src->value.data_string);
++              ct->value.format_string
++                  = table_strdup (dwg, src->value.format_string);
++              ct->value.value_string
++                  = table_strdup (dwg, src->value.value_string);
++              ct->value.data_date = NULL;
++              if (src->value.data_type == 8 && src->value.data_date
++                  && src->value.data_size)
++                {
++                  ct->value.data_date
++                      = (BITCODE_TF)malloc (src->value.data_size);
++                  if (ct->value.data_date)
++                    memcpy (ct->value.data_date, src->value.data_date,
++                            src->value.data_size);
++                  else
++                    ct->value.data_size = 0;
++                }
++              if ((ct->value.data_type == 4 || ct->value.data_type == 512)
++                  && !ct->value.data_string)
++                ct->value.data_string = table_strdup (dwg, (BITCODE_T) "");
++            }
++          else if (src->text_style && src->text_style->absolute_ref
++                   && (!src->text_value || !*src->text_value))
++            {
++              ct->type = 2; // FIELD
++              ct->handle = src->text_style;
++            }
++          else
++            {
++              ct->type = 1;
++              ct->value.data_type = 4; // string
++              ct->value.data_string = strdup (
++                  src->text_value ? (const char *)src->text_value : "");
++            }
++          if (src->cell_flag_override & 0x01) // alignment
++            {
++              ct->has_content_format_overrides = 1;
++              ct->content_format.property_override_flags |= 0x10;
++              ct->content_format.cell_alignment = src->cell_alignment;
++            }
++          if (src->cell_flag_override & 0x08) // content color
++            {
++              ct->has_content_format_overrides = 1;
++              ct->content_format.property_override_flags |= 0x20;
++              ct->content_format.content_color = src->content_color;
++            }
++          if (src->cell_flag_override & 0x20) // text height
++            {
++              ct->has_content_format_overrides = 1;
++              ct->content_format.property_override_flags |= 0x80;
++              ct->content_format.text_height = src->text_height;
++            }
++          if (ct->has_content_format_overrides
++              && ct->content_format.block_scale == 0.0)
++            ct->content_format.block_scale = 1.0;
++        }
++    }
++  _obj->fdata.cellstyle.type = 4; // formatted table data
++  if (nm)
++    _obj->fdata.merged_cells = (Dwg_FormattedTableMerged *)calloc (
++        nm, sizeof (Dwg_FormattedTableMerged));
++  if (_obj->fdata.merged_cells)
++    {
++      for (BITCODE_BL i = 0; i < nr; i++)
++        for (BITCODE_BL j = 0; j < nc; j++)
++          {
++            const Dwg_TABLE_Cell *src = &_obj->cells[(size_t)i * nc + j];
++            Dwg_FormattedTableMerged *mg;
++            BITCODE_BL w = src->merged_width_flag ? src->merged_width_flag : 1;
++            BITCODE_BL h
++                = src->merged_height_flag ? src->merged_height_flag : 1;
++            if (w == 1 && h == 1)
++              continue;
++            mg = &_obj->fdata.merged_cells[_obj->fdata.num_merged_cells++];
++            mg->parent = &_obj->fdata;
++            mg->top_row = i;
++            mg->left_col = j;
++            mg->bottom_row = i + h - 1 < nr ? i + h - 1 : nr - 1;
++            mg->right_col = j + w - 1 < nc ? j + w - 1 : nc - 1;
++          }
++    }
++}
++
+ // a R2010+ table cell style color for the pre-R2010 row styles: no names
+ static void
+ tablestyle_copy_color (Dwg_Color *restrict dst, const Dwg_Color *restrict src)
+diff --git a/src/encode.h b/src/encode.h
+index 10531b3..49e0fa0 100644
+--- a/src/encode.h
++++ b/src/encode.h
+@@ -62,6 +62,7 @@ bool dwg_encode_unknown_bits (Bit_Chain *restrict dat,
+                               Dwg_Object *restrict obj);
+ void downconvert_TABLESTYLE (Dwg_Object *restrict obj);
+ void downconvert_TABLE (Dwg_Object *restrict obj);
++void upconvert_TABLE (Dwg_Object *restrict obj);
+ void upconvert_TABLESTYLE (Dwg_Object *restrict obj);
+ 
+ /* ACAD_PROXY_ENTITY/OBJECT data, see encode.c */
+diff --git a/src/free.c b/src/free.c
+index edb73ea..1bca425 100644
+--- a/src/free.c
++++ b/src/free.c
+@@ -652,6 +652,54 @@ free_TABLE_r2010 (Dwg_Object *restrict obj)
+   _obj->num_cells = 0;
+ }
+ 
++// after upconvert_TABLE(): the free spec follows from_version, so the
++// R2010+ table content is not freed there. Handles and colors are shallow.
++static void
++free_TABLE_r2000 (Dwg_Object *restrict obj)
++{
++  Dwg_Entity_TABLE *_obj = obj->tio.entity ? obj->tio.entity->tio.TABLE : NULL;
++  if (!_obj)
++    return;
++  if (_obj->tdata.rows)
++    {
++      for (BITCODE_BL i = 0; i < _obj->tdata.num_rows; i++)
++        {
++          Dwg_TableRow *row = &_obj->tdata.rows[i];
++          if (!row->cells)
++            continue;
++          for (BITCODE_BL j = 0; j < row->num_cells; j++)
++            {
++              Dwg_TableCell *cell = &row->cells[j];
++              if (!cell->cell_contents)
++                continue;
++              for (BITCODE_BL k = 0; k < cell->num_cell_contents; k++)
++                {
++                  Dwg_TableCellContent *ct = &cell->cell_contents[k];
++                  FREE_IF (ct->value.data_string);
++                  FREE_IF (ct->value.format_string);
++                  FREE_IF (ct->value.value_string);
++                  FREE_IF (ct->value.data_date);
++                  if (ct->attrs)
++                    {
++                      for (BITCODE_BL l = 0; l < ct->num_attrs; l++)
++                        FREE_IF (ct->attrs[l].value);
++                      FREE_IF (ct->attrs);
++                    }
++                }
++              FREE_IF (cell->cell_contents);
++            }
++          FREE_IF (row->cells);
++        }
++      FREE_IF (_obj->tdata.rows);
++    }
++  FREE_IF (_obj->tdata.cols);
++  FREE_IF (_obj->fdata.merged_cells);
++  FREE_IF (_obj->break_rows);
++  _obj->tdata.num_rows = _obj->tdata.num_cols = 0;
++  _obj->fdata.num_merged_cells = 0;
++  _obj->num_break_rows = 0;
++}
++
+ // a R2010+ cell style, all pointers NULL afterwards
+ static void
+ free_CellStyle_r2010 (Dwg_CellStyle *restrict cs)
+@@ -1059,6 +1107,8 @@ dwg_free_object (Dwg_Object *obj)
+     }
+   if (obj->fixedtype == DWG_TYPE_TABLE && dwg->header.from_version >= R_2010)
+     free_TABLE_r2010 (obj);
++  else if (obj->fixedtype == DWG_TYPE_TABLE)
++    free_TABLE_r2000 (obj);
+   switch (obj->type)
+     {
+     case DWG_TYPE_TEXT:
+-- 
+2.43.0
+

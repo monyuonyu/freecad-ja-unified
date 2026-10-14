@@ -1,0 +1,44 @@
+From 34e7799012bfb4229a51eb03cf3621aa87c7ae86 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 20:31:41 +0900
+Subject: [PATCH 108/116] DXF: the DIMSTYLE colors 176-178 as color index
+
+dxf_CMC wrote all colors with a DXF code >= 90 as the int32 RGB, meant
+for 90-99, so the DIMCLRD, DIMCLRE and DIMCLRT of R2004+ drawings were
+written as 176 -1037268965 and read back as other colors, and a true
+color as a 534 group. As AutoCAD: the color index.
+
+* src/out_dxf.c (dxf_CMC): The RGB only for 90-99, the 420 true color
+only for 62-67.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/out_dxf.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index 53cd890..625b9cd 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -1249,7 +1249,8 @@ dxf_CMC (Bit_Chain *restrict dat, Dwg_Color *restrict color, const int dxf,
+     {
+       if (dat->from_version < R_2004)
+         bit_upconvert_CMC (dat, color);
+-      if (dxf >= 90)
++      // 90-99 is the RGB, 176-178 of DIMSTYLE the color index only
++      if (dxf >= 90 && dxf < 100)
+         {
+           VALUE_RLd (color->rgb, dxf);
+           return;
+@@ -1276,7 +1277,7 @@ dxf_CMC (Bit_Chain *restrict dat, Dwg_Color *restrict color, const int dxf,
+         {
+           VALUE_RSd (color->index, dxf);
+         }
+-      if (color->method != 0xc2)
++      if (color->method != 0xc2 || dxf > 67)
+         return;
+       VALUE_RL (color->rgb, dxf + 420 - 62);
+       if (color->flag & 2 && color->book_name)
+-- 
+2.43.0
+

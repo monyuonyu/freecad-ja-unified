@@ -1,0 +1,1249 @@
+From fa9ccb7c5cc4e11c70000879201613ec7c34a3fe Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:31:26 +0900
+Subject: [PATCH 212/212] Part: 2D export with hidden lines removed (SVG,
+ polygons JSON, PPTX)
+
+  FreeCADCmd model.step --view iso --export-svg v.svg --export-polygons v.json
+             --export-pptx v.pptx
+
+Part.projectVisible(objects, view) projects orthographically and removes
+hidden parts exactly (no pixels involved), for redrawing a model as shapes:
+
+- faces: every visible region of each face as polygons with holes, in model
+  units (x right, y up), with depth, a simple light shade and colour, sorted
+  far to near.  Planar faces are handled as a whole, curved faces per
+  triangle and merged again; meshes by smooth patches.  The visible part of
+  a face is its projection minus the parts of other faces that are nearer
+  there (the depth of planar pieces is linear, so "nearer" is a half plane
+  clipped with Clipper2) - interpenetrating parts are cut correctly.
+- edges: sharp, smooth (tangent) and silhouette edges, clipped exactly
+  against the nearer faces; edges lying on the outline of a nearer face are
+  dropped, so no line is drawn twice.
+
+PartViews writes SVG (filled faces plus edges), JSON and, without
+python-pptx, a minimal PowerPoint file with one slide: each visible face
+region a freeform shape (editable, recolourable), edges as lines.  Checked
+by reading it back with python-pptx; not yet opened in PowerPoint itself.
+
+300 parts: projection 2.0 s, SVG 2.0 s.  Tests check exact visible areas
+and edge lengths (a box partly hidden behind another), iso box (3 faces,
+9 edges) and cylinder silhouettes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |  11 +-
+ src/Mod/Part/App/CMakeLists.txt         |   1 +
+ src/Mod/Part/App/ViewTools.cpp          | 564 ++++++++++++++++++++++++
+ src/Mod/Part/App/ViewTools.h            |  39 ++
+ src/Mod/Part/App/ViewToolsPy.cpp        |  86 ++++
+ src/Mod/Part/PartViews.py               | 307 ++++++++++++-
+ src/Mod/Part/parttests/TestPartViews.py |  47 ++
+ 7 files changed, 1052 insertions(+), 3 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 9da89760d..2fa5a3f25 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2482,9 +2482,12 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
+     ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
+     ("render", boost::program_options::value<std::string>(), "Write a PNG picture of the visible objects after processing the input files; needs no display or OpenGL (e.g. --render out.png)")
+-    ("view", boost::program_options::value<std::string>(), "View for --render: iso (default), front, back, right, left, top, bottom, iso-back, iso-low, dimetric, trimetric, dx,dy,dz; several names separated by commas write one picture each")
++    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-back, iso-low, dimetric, trimetric, dx,dy,dz; several names separated by commas write one picture each")
+     ("size", boost::program_options::value<std::string>(), "Picture size for --render, WxH or W (default 1200x900)")
+     ("render-style", boost::program_options::value<std::string>(), "Style for --render: shaded (default), shaded-only, hidden-lines, lines")
++    ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
++    ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
++    ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+     ("interference", "Report overlapping solids of the visible objects (bounding boxes, then boolean common on the candidate pairs)")
+     ("interference-report", boost::program_options::value<std::string>(), "Like --interference and also write the pairs as JSON to this file")
+     ;
+@@ -2718,6 +2721,9 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"view", "RenderView"},
+         {"size", "RenderSize"},
+         {"render-style", "RenderStyle"},
++        {"export-svg", "ExportSvg"},
++        {"export-polygons", "ExportPolygons"},
++        {"export-pptx", "ExportPptx"},
+         {"interference-report", "InterferenceReport"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+@@ -3385,6 +3391,9 @@ void Application::processCmdLineFiles()
+     static const char* viewKeys[] = {
+         "RenderFile",
+         "InterferenceReport",
++        "ExportSvg",
++        "ExportPolygons",
++        "ExportPptx",
+     };
+     if (std::any_of(std::begin(viewKeys), std::end(viewKeys), [&cfg](const char* key) {
+             return cfg.contains(key);
+diff --git a/src/Mod/Part/App/CMakeLists.txt b/src/Mod/Part/App/CMakeLists.txt
+index 61c1a55d9..e09a50b0e 100644
+--- a/src/Mod/Part/App/CMakeLists.txt
++++ b/src/Mod/Part/App/CMakeLists.txt
+@@ -23,6 +23,7 @@ set(Part_LIBS
+     ${OCC_DEBUG_LIBRARIES}
+     FreeCADApp
+     Materials
++    Clipper2::Clipper2Z
+     ${ZLIB_LIBRARIES}
+ )
+ 
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 6014b8e5e..659dd455f 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -34,6 +34,7 @@
+ #include <TopTools_ListOfShape.hxx>
+ #include <TopoDS.hxx>
+ 
++#include <clipper2/clipper.h>
+ 
+ #include <Base/Exception.h>
+ #include <Base/FileInfo.h>
+@@ -867,6 +868,569 @@ void Part::ViewTools::writePng(const Image& img, const std::string& path)
+     }
+ }
+ 
++// ------------------------------------------------------------------ hidden line removal
++
++namespace
++{
++
++using Clipper2Lib::Path64;
++using Clipper2Lib::Paths64;
++using Clipper2Lib::Point64;
++
++struct Group
++{
++    int face = 0;  // index in scene.faces
++    Paths64 region;
++    double a = 0, b = 0, c = 0;  // depth = a*X + b*Y + c in integer space
++    double dmin = 0, dmax = 0;
++    std::int64_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // bounding box
++};
++
++struct Space
++{
++    double ox = 0, oy = 0, S = 1;
++    std::int64_t X(double x) const
++    {
++        return std::llround((x - ox) * S);
++    }
++    std::int64_t Y(double y) const
++    {
++        return std::llround((y - oy) * S);
++    }
++    double x(double X) const
++    {
++        return X / S + ox;
++    }
++    double y(double Y) const
++    {
++        return Y / S + oy;
++    }
++};
++
++class Grid
++{
++public:
++    Grid(std::int64_t x0, std::int64_t y0, std::int64_t x1, std::int64_t y1, int n)
++        : x0(x0)
++        , y0(y0)
++        , n(n)
++    {
++        cw = std::max<double>(1.0, double(x1 - x0) / n);
++        ch = std::max<double>(1.0, double(y1 - y0) / n);
++        cells.resize((size_t)n * n);
++    }
++    void cellRange(std::int64_t a0, std::int64_t b0, std::int64_t a1, std::int64_t b1, int& i0, int& j0, int& i1, int& j1) const
++    {
++        i0 = std::clamp((int)((a0 - x0) / cw), 0, n - 1);
++        i1 = std::clamp((int)((a1 - x0) / cw), 0, n - 1);
++        j0 = std::clamp((int)((b0 - y0) / ch), 0, n - 1);
++        j1 = std::clamp((int)((b1 - y0) / ch), 0, n - 1);
++    }
++    void insert(int id, const Group& g)
++    {
++        int i0 {}, j0 {}, i1 {}, j1 {};
++        cellRange(g.x0, g.y0, g.x1, g.y1, i0, j0, i1, j1);
++        for (int j = j0; j <= j1; ++j) {
++            for (int i = i0; i <= i1; ++i) {
++                cells[(size_t)j * n + i].push_back(id);
++            }
++        }
++    }
++    template<typename F>
++    void query(std::int64_t a0, std::int64_t b0, std::int64_t a1, std::int64_t b1, std::vector<int>& stamp, int mark, F&& f) const
++    {
++        int i0 {}, j0 {}, i1 {}, j1 {};
++        cellRange(a0, b0, a1, b1, i0, j0, i1, j1);
++        for (int j = j0; j <= j1; ++j) {
++            for (int i = i0; i <= i1; ++i) {
++                for (int id : cells[(size_t)j * n + i]) {
++                    if (stamp[id] != mark) {
++                        stamp[id] = mark;
++                        f(id);
++                    }
++                }
++            }
++        }
++    }
++
++private:
++    std::int64_t x0, y0;
++    int n;
++    double cw, ch;
++    std::vector<std::vector<int>> cells;
++};
++
++// convex polygon of the rectangle part where A*X + B*Y + C < 0
++Path64 halfPlaneClip(double A, double B, double C, double x0, double y0, double x1, double y1)
++{
++    std::vector<std::array<double, 2>> poly = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
++    std::vector<std::array<double, 2>> out;
++    auto f = [&](const std::array<double, 2>& p) {
++        return A * p[0] + B * p[1] + C;
++    };
++    for (size_t i = 0; i < poly.size(); ++i) {
++        const auto& p = poly[i];
++        const auto& q = poly[(i + 1) % poly.size()];
++        double fp = f(p), fq = f(q);
++        if (fp < 0) {
++            out.push_back(p);
++        }
++        if ((fp < 0) != (fq < 0)) {
++            double t = fp / (fp - fq);
++            out.push_back({p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t});
++        }
++    }
++    Path64 path;
++    for (const auto& p : out) {
++        path.emplace_back(std::llround(p[0]), std::llround(p[1]));
++    }
++    return path;
++}
++
++// Point in the closed region (boundary included, within tol): an edge that lies exactly
++// on the outline of a nearer face is hidden, the nearer face's own edge is drawn there.
++bool insideRegion(const Paths64& region, double X, double Y, double tol)
++{
++    // even-odd over the paths: Clipper results have holes as separate paths
++    int count = 0;
++    for (const auto& path : region) {
++        bool in = false;
++        size_t n = path.size();
++        for (size_t i = 0, j = n - 1; i < n; j = i++) {
++            double xi = (double)path[i].x, yi = (double)path[i].y;
++            double xj = (double)path[j].x, yj = (double)path[j].y;
++            double ex = xi - xj, ey = yi - yj;
++            double len2 = ex * ex + ey * ey;
++            double t = len2 > 0 ? std::clamp(((X - xj) * ex + (Y - yj) * ey) / len2, 0.0, 1.0) : 0.0;
++            if (std::hypot(xj + ex * t - X, yj + ey * t - Y) <= tol) {
++                return true;
++            }
++            if (((yi > Y) != (yj > Y)) && (X < (xj - xi) * (Y - yi) / (yj - yi) + xi)) {
++                in = !in;
++            }
++        }
++        if (in) {
++            ++count;
++        }
++    }
++    return (count % 2) == 1;
++}
++
++void collectPolygons(const Clipper2Lib::PolyPath64& node, const Space& sp, std::vector<Polygon2d>& out)
++{
++    for (const auto& child : node) {
++        // child is an outer polygon, its children are holes
++        Polygon2d poly;
++        for (const auto& pt : child->Polygon()) {
++            poly.outer.push_back({sp.x((double)pt.x), sp.y((double)pt.y)});
++        }
++        if (Clipper2Lib::Area(child->Polygon()) < 0) {
++            std::reverse(poly.outer.begin(), poly.outer.end());
++        }
++        for (const auto& hole : *child) {
++            std::vector<Point2d> h;
++            for (const auto& pt : hole->Polygon()) {
++                h.push_back({sp.x((double)pt.x), sp.y((double)pt.y)});
++            }
++            if (Clipper2Lib::Area(hole->Polygon()) > 0) {
++                std::reverse(h.begin(), h.end());
++            }
++            poly.holes.push_back(std::move(h));
++            // islands inside holes
++            collectPolygons(*hole, sp, out);
++        }
++        out.push_back(std::move(poly));
++    }
++}
++
++}  // namespace
++
++Projection Part::ViewTools::projectVisible(
++    const std::vector<SceneItem>& items,
++    const Camera& cam,
++    double deflection
++)
++{
++    Scene scene = buildScene(items, deflection);
++    Projection result;
++
++    // 2D extent
++    double xmin = 1e300, xmax = -1e300, ymin = 1e300, ymax = -1e300, dmin = 1e300, dmax = -1e300;
++    for (const auto& f : scene.faces) {
++        for (const auto& p : f.p) {
++            double x {}, y {}, d {};
++            cam.project(p, x, y, d);
++            xmin = std::min(xmin, x);
++            xmax = std::max(xmax, x);
++            ymin = std::min(ymin, y);
++            ymax = std::max(ymax, y);
++            dmin = std::min(dmin, d);
++            dmax = std::max(dmax, d);
++        }
++    }
++    for (const auto& e : scene.edges) {
++        for (const auto& p : e.p) {
++            double x {}, y {}, d {};
++            cam.project(p, x, y, d);
++            xmin = std::min(xmin, x);
++            xmax = std::max(xmax, x);
++            ymin = std::min(ymin, y);
++            ymax = std::max(ymax, y);
++        }
++    }
++    if (xmin > xmax) {
++        return result;
++    }
++    result.xmin = xmin;
++    result.xmax = xmax;
++    result.ymin = ymin;
++    result.ymax = ymax;
++
++    Space sp;
++    sp.ox = xmin;
++    sp.oy = ymin;
++    double extent = std::max({xmax - xmin, ymax - ymin, 1e-9});
++    sp.S = 1e8 / extent;
++    const double diag = std::sqrt(scene.box.IsVoid() ? 1.0 : scene.box.SquareExtent());
++    const double eps = std::max(diag * 1e-7, scene.deflection * 0.25);
++
++    // groups: planar faces as a whole, curved faces per triangle
++    std::vector<Group> groups;
++    std::vector<std::vector<int>> groupsOfFace(scene.faces.size());
++    std::vector<double> faceShade(scene.faces.size(), 1.0);
++    for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
++        const SFace& f = scene.faces[fi];
++        std::vector<double> X(f.p.size()), Y(f.p.size()), D(f.p.size());
++        for (size_t k = 0; k < f.p.size(); ++k) {
++            double x {}, y {}, d {};
++            cam.project(f.p[k], x, y, d);
++            X[k] = (double)sp.X(x);
++            Y[k] = (double)sp.Y(y);
++            D[k] = d;
++        }
++        gp_Vec nsum(0, 0, 0);
++        auto addGroup = [&](const std::vector<std::array<int, 3>>& tris, const gp_Vec& normal) {
++            // depth plane through the triangles: fit with the normal and the first point
++            gp_Vec n = normal;
++            double nx = n.XYZ().Dot(cam.right.XYZ());
++            double ny = n.XYZ().Dot(cam.up.XYZ());
++            double nd = n.XYZ().Dot(cam.dir.XYZ());
++            if (std::fabs(nd) < 1e-9 * n.Magnitude()) {
++                return;  // seen edge-on
++            }
++            if (nd > 0 && f.solid) {
++                return;  // turned away inside a solid
++            }
++            Group g;
++            g.face = fi;
++            // d = d0 - (nx (x - x0) + ny (y - y0)) / nd, with x = X/S + ox
++            const int k0 = tris.front()[0];
++            const double d0 = D[k0];
++            g.a = -nx / nd / sp.S;
++            g.b = -ny / nd / sp.S;
++            // c so that a*X + b*Y + c = d0 at (X0, Y0)
++            g.c = d0 - g.a * X[k0] - g.b * Y[k0];
++            Paths64 tri;
++            g.dmin = 1e300;
++            g.dmax = -1e300;
++            for (const auto& t : tris) {
++                Path64 path;
++                for (int e = 0; e < 3; ++e) {
++                    path.emplace_back((std::int64_t)X[t[e]], (std::int64_t)Y[t[e]]);
++                    g.dmin = std::min(g.dmin, D[t[e]]);
++                    g.dmax = std::max(g.dmax, D[t[e]]);
++                }
++                if (Clipper2Lib::Area(path) < 0) {
++                    std::reverse(path.begin(), path.end());
++                }
++                if (Clipper2Lib::Area(path) != 0) {
++                    tri.push_back(std::move(path));
++                }
++            }
++            if (tri.empty()) {
++                return;
++            }
++            g.region = tris.size() == 1 ? tri : Clipper2Lib::Union(tri, Clipper2Lib::FillRule::NonZero);
++            if (g.region.empty()) {
++                return;
++            }
++            Clipper2Lib::Rect64 r = Clipper2Lib::GetBounds(g.region);
++            g.x0 = r.left;
++            g.y0 = r.top;
++            g.x1 = r.right;
++            g.y1 = r.bottom;
++            groupsOfFace[fi].push_back((int)groups.size());
++            groups.push_back(std::move(g));
++        };
++        if (f.planar) {
++            gp_Vec n(0, 0, 0);
++            for (const auto& t : f.t) {
++                n += triNormal(f.p[t[0]], f.p[t[1]], f.p[t[2]]);
++            }
++            if (n.SquareMagnitude() > 1e-30) {
++                addGroup(f.t, n);
++                nsum = n;
++            }
++        }
++        else {
++            for (const auto& t : f.t) {
++                gp_Vec n = triNormal(f.p[t[0]], f.p[t[1]], f.p[t[2]]);
++                if (n.SquareMagnitude() < 1e-30) {
++                    continue;
++                }
++                if (n.Dot(gp_Vec(cam.dir)) < 0) {
++                    nsum += n;
++                }
++                addGroup({t}, n);
++            }
++        }
++        if (nsum.SquareMagnitude() > 1e-30) {
++            faceShade[fi] = shadeOf(cam, nsum.Normalized());
++        }
++    }
++
++    // spatial index
++    Grid grid(0, 0, (std::int64_t)1e8, (std::int64_t)1e8, std::clamp((int)std::sqrt((double)groups.size()), 1, 128));
++    for (int gi = 0; gi < (int)groups.size(); ++gi) {
++        grid.insert(gi, groups[gi]);
++    }
++    std::vector<int> stamp(groups.size(), -1);
++    int mark = 0;
++
++    // visible region of each group
++    std::vector<Paths64> visible(groups.size());
++    for (int gi = 0; gi < (int)groups.size(); ++gi) {
++        const Group& F = groups[gi];
++        Paths64 occluders;
++        ++mark;
++        grid.query(F.x0, F.y0, F.x1, F.y1, stamp, mark, [&](int hi) {
++            if (hi == gi) {
++                return;
++            }
++            const Group& G = groups[hi];
++            if (G.x1 < F.x0 || G.x0 > F.x1 || G.y1 < F.y0 || G.y0 > F.y1) {
++                return;
++            }
++            if (G.dmin >= F.dmax - eps) {
++                return;  // behind
++            }
++            if (G.dmax < F.dmin - eps) {
++                occluders.insert(occluders.end(), G.region.begin(), G.region.end());
++                return;
++            }
++            // where is G nearer than F:  dG - dF + eps < 0
++            double A = G.a - F.a, B = G.b - F.b, C = G.c - F.c + eps;
++            double bx0 = (double)std::max(F.x0, G.x0) - 2, by0 = (double)std::max(F.y0, G.y0) - 2;
++            double bx1 = (double)std::min(F.x1, G.x1) + 2, by1 = (double)std::min(F.y1, G.y1) + 2;
++            if (std::fabs(A) * (bx1 - bx0) + std::fabs(B) * (by1 - by0) < 1e-12) {
++                if (C < 0) {
++                    occluders.insert(occluders.end(), G.region.begin(), G.region.end());
++                }
++                return;
++            }
++            Path64 hp = halfPlaneClip(A, B, C, bx0, by0, bx1, by1);
++            if (hp.size() < 3) {
++                return;
++            }
++            Paths64 part = Clipper2Lib::Intersect(G.region, Paths64 {hp}, Clipper2Lib::FillRule::NonZero);
++            occluders.insert(occluders.end(), part.begin(), part.end());
++        });
++        if (occluders.empty()) {
++            visible[gi] = F.region;
++        }
++        else {
++            visible[gi] = Clipper2Lib::Difference(F.region, occluders, Clipper2Lib::FillRule::NonZero);
++        }
++    }
++
++    // per face
++    for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
++        Paths64 all;
++        double depthSum = 0, areaSum = 0;
++        for (int gi : groupsOfFace[fi]) {
++            for (const auto& path : visible[gi]) {
++                double area = std::fabs(Clipper2Lib::Area(path));
++                // centroid depth approximately from the first point
++                double cxp = 0, cyp = 0;
++                for (const auto& pt : path) {
++                    cxp += (double)pt.x;
++                    cyp += (double)pt.y;
++                }
++                cxp /= (double)path.size();
++                cyp /= (double)path.size();
++                const Group& G = groups[gi];
++                depthSum += (G.a * cxp + G.b * cyp + G.c) * area;
++                areaSum += area;
++            }
++            all.insert(all.end(), visible[gi].begin(), visible[gi].end());
++        }
++        if (all.empty() || areaSum <= 0) {
++            continue;
++        }
++        Clipper2Lib::PolyTree64 tree;
++        Clipper2Lib::Clipper64 clipper;
++        clipper.AddSubject(all);
++        clipper.Execute(Clipper2Lib::ClipType::Union, Clipper2Lib::FillRule::NonZero, tree);
++        VisibleFace vf;
++        const SFace& f = scene.faces[fi];
++        vf.item = f.item;
++        vf.face = f.face;
++        vf.color = f.color;
++        vf.shade = faceShade[fi];
++        vf.depth = depthSum / areaSum;
++        collectPolygons(tree, sp, vf.polygons);
++        // drop slivers below a square of 0.5 % of a pixel on a 1000 px picture
++        const double minArea = std::pow(extent * 1e-4, 2);
++        vf.polygons.erase(
++            std::remove_if(
++                vf.polygons.begin(),
++                vf.polygons.end(),
++                [minArea](const Polygon2d& p) {
++                    double a = 0;
++                    for (size_t i = 0, j = p.outer.size() - 1; i < p.outer.size(); j = i++) {
++                        a += p.outer[j][0] * p.outer[i][1] - p.outer[i][0] * p.outer[j][1];
++                    }
++                    return std::fabs(a) / 2 < minArea;
++                }
++            ),
++            vf.polygons.end()
++        );
++        if (!vf.polygons.empty()) {
++            result.faces.push_back(std::move(vf));
++        }
++    }
++    std::stable_sort(result.faces.begin(), result.faces.end(), [](const VisibleFace& a, const VisibleFace& b) {
++        return a.depth > b.depth;
++    });
++
++    // visible edges
++    struct Seg
++    {
++        int item;
++        int kind;
++        gp_Pnt a, b;
++        int chain;  // consecutive segments of one polyline
++    };
++    std::vector<Seg> segs;
++    int chain = 0;
++    for (const auto& e : scene.edges) {
++        for (size_t k = 1; k < e.p.size(); ++k) {
++            segs.push_back({e.item, e.kind, e.p[k - 1], e.p[k], chain});
++        }
++        ++chain;
++    }
++    for (const auto& s : scene.soft) {
++        double da = s.na.Dot(gp_Vec(cam.dir));
++        double db = s.nb.Dot(gp_Vec(cam.dir));
++        if ((da < 0) != (db < 0)) {
++            segs.push_back({s.item, 1, s.a, s.b, chain++});
++        }
++    }
++
++    const double minLen = extent * 2e-4;
++    int lastChain = -1;
++    for (const auto& seg : segs) {
++        double xa {}, ya {}, da {}, xb {}, yb {}, db {};
++        cam.project(seg.a, xa, ya, da);
++        cam.project(seg.b, xb, yb, db);
++        double XA = (double)sp.X(xa), YA = (double)sp.Y(ya), XB = (double)sp.X(xb), YB = (double)sp.Y(yb);
++        std::vector<std::pair<double, double>> hidden;
++        ++mark;
++        auto sx0 = (std::int64_t)std::floor(std::min(XA, XB)), sy0 = (std::int64_t)std::floor(std::min(YA, YB));
++        auto sx1 = (std::int64_t)std::ceil(std::max(XA, XB)), sy1 = (std::int64_t)std::ceil(std::max(YA, YB));
++        grid.query(sx0, sy0, sx1, sy1, stamp, mark, [&](int gi) {
++            const Group& G = groups[gi];
++            if (G.x1 < sx0 || G.x0 > sx1 || G.y1 < sy0 || G.y0 > sy1) {
++                return;
++            }
++            if (G.dmin >= std::max(da, db) - eps) {
++                return;
++            }
++            // f(t) = dG(t) - dseg(t) + eps, hidden where f < 0
++            double f0 = G.a * XA + G.b * YA + G.c - da + eps;
++            double f1 = G.a * XB + G.b * YB + G.c - db + eps;
++            double t0 = 0, t1 = 1;
++            if (f0 >= 0 && f1 >= 0) {
++                return;
++            }
++            if (f0 < 0 && f1 >= 0) {
++                t1 = f0 / (f0 - f1);
++            }
++            else if (f0 >= 0 && f1 < 0) {
++                t0 = f0 / (f0 - f1);
++            }
++            // where is the segment inside G's region
++            std::vector<double> ts {t0, t1};
++            double dx = XB - XA, dy = YB - YA;
++            for (const auto& path : G.region) {
++                size_t n = path.size();
++                for (size_t i = 0, j = n - 1; i < n; j = i++) {
++                    double px = (double)path[j].x, py = (double)path[j].y;
++                    double qx = (double)path[i].x - px, qy = (double)path[i].y - py;
++                    double den = dx * qy - dy * qx;
++                    if (std::fabs(den) < 1e-12) {
++                        continue;
++                    }
++                    double t = ((px - XA) * qy - (py - YA) * qx) / den;
++                    double u = ((px - XA) * dy - (py - YA) * dx) / den;
++                    if (t > t0 && t < t1 && u >= 0 && u <= 1) {
++                        ts.push_back(t);
++                    }
++                }
++            }
++            std::sort(ts.begin(), ts.end());
++            for (size_t i = 1; i < ts.size(); ++i) {
++                if (ts[i] - ts[i - 1] < 1e-12) {
++                    continue;
++                }
++                double tm = (ts[i] + ts[i - 1]) / 2;
++                if (insideRegion(G.region, XA + dx * tm, YA + dy * tm, 4.0)) {
++                    hidden.emplace_back(ts[i - 1], ts[i]);
++                }
++            }
++        });
++        // visible = [0,1] minus hidden
++        std::sort(hidden.begin(), hidden.end());
++        std::vector<std::pair<double, double>> vis;
++        double cur = 0;
++        for (const auto& h : hidden) {
++            if (h.first > cur) {
++                vis.emplace_back(cur, h.first);
++            }
++            cur = std::max(cur, h.second);
++        }
++        if (cur < 1) {
++            vis.emplace_back(cur, 1.0);
++        }
++        double len = std::hypot(xb - xa, yb - ya);
++        for (const auto& v : vis) {
++            if ((v.second - v.first) * len < minLen) {
++                continue;
++            }
++            Point2d p0 {xa + (xb - xa) * v.first, ya + (yb - ya) * v.first};
++            Point2d p1 {xa + (xb - xa) * v.second, ya + (yb - ya) * v.second};
++            if (!result.edges.empty() && lastChain == seg.chain && v.first == 0.0) {
++                auto& last = result.edges.back().points.back();
++                if (std::hypot(last[0] - p0[0], last[1] - p0[1]) < minLen * 10) {
++                    result.edges.back().points.push_back(p1);
++                    lastChain = (v.second == 1.0) ? seg.chain : -1;
++                    continue;
++                }
++            }
++            VisibleEdge ve;
++            ve.item = seg.item;
++            ve.kind = seg.kind;
++            ve.points = {p0, p1};
++            result.edges.push_back(std::move(ve));
++            lastChain = (v.second == 1.0) ? seg.chain : -1;
++        }
++        if (vis.empty() || vis.back().second != 1.0) {
++            lastChain = -1;
++        }
++    }
++    return result;
++}
++
+ // ------------------------------------------------------------------ interference
+ 
+ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index c4039adeb..3030f0471 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -82,6 +82,45 @@ struct Image
+ PartExport Image render(const std::vector<SceneItem>& items, const Camera& cam, const RenderOptions& opt);
+ PartExport void writePng(const Image& img, const std::string& path);
+ 
++/// A visible region of one face: outer boundary (counter-clockwise) and holes (clockwise)
++struct Polygon2d
++{
++    std::vector<Point2d> outer;
++    std::vector<std::vector<Point2d>> holes;
++};
++
++struct VisibleFace
++{
++    int item = 0;
++    int face = 0;  // index in the item's face list (Shape.Faces), or a facet group of a mesh
++    double depth = 0;  // mean depth along the view direction, larger is farther
++    double shade = 1;  // 0..1, simple lighting
++    Color color {};
++    std::vector<Polygon2d> polygons;
++};
++
++struct VisibleEdge
++{
++    int item = 0;
++    int kind = 0;  // 0: sharp edge, 1: silhouette, 2: smooth (tangent) edge
++    std::vector<Point2d> points;
++};
++
++struct Projection
++{
++    std::vector<VisibleFace> faces;  // sorted far to near
++    std::vector<VisibleEdge> edges;
++    double xmin = 0, ymin = 0, xmax = 0, ymax = 0;
++};
++
++/// Project with hidden parts removed.  2D coordinates are model units: x to the right,
++/// y up on the screen.
++PartExport Projection projectVisible(
++    const std::vector<SceneItem>& items,
++    const Camera& cam,
++    double deflection = 0.0
++);
++
+ struct InterferencePair
+ {
+     int a = 0;
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index f0c151465..455bf1833 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -222,6 +222,83 @@ PyObject* renderImage(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+     }
+ }
+ 
++Py::List pointList(const std::vector<Point2d>& pts)
++{
++    Py::List list;
++    for (const auto& p : pts) {
++        list.append(Py::TupleN(Py::Float(p[0]), Py::Float(p[1])));
++    }
++    return list;
++}
++
++PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    static const char* kwlist[] = {"objects", "view", "deflection", nullptr};
++    PyObject* objs {};
++    PyObject* view = nullptr;
++    double deflection = 0.0;
++    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|Od", const_cast<char**>(kwlist), &objs, &view, &deflection)) {
++        return nullptr;
++    }
++    try {
++        std::vector<SceneItem> items = toItems(objs);
++        Camera cam = toCamera(view);
++        Projection proj = projectVisible(items, cam, deflection);
++        Py::Dict result;
++        Py::List faces;
++        for (const auto& f : proj.faces) {
++            Py::Dict d;
++            d["item"] = Py::Long(f.item);
++            d["face"] = Py::Long(f.face);
++            d["depth"] = Py::Float(f.depth);
++            d["shade"] = Py::Float(f.shade);
++            d["color"] = Py::TupleN(Py::Float(f.color[0]), Py::Float(f.color[1]), Py::Float(f.color[2]));
++            Py::List polys;
++            for (const auto& p : f.polygons) {
++                Py::Dict pd;
++                pd["outer"] = pointList(p.outer);
++                Py::List holes;
++                for (const auto& h : p.holes) {
++                    holes.append(pointList(h));
++                }
++                pd["holes"] = holes;
++                polys.append(pd);
++            }
++            d["polygons"] = polys;
++            faces.append(d);
++        }
++        Py::List edges;
++        static const char* kinds[] = {"edge", "silhouette", "smooth"};
++        for (const auto& e : proj.edges) {
++            Py::Dict d;
++            d["item"] = Py::Long(e.item);
++            d["kind"] = Py::String(kinds[std::clamp(e.kind, 0, 2)]);
++            d["points"] = pointList(e.points);
++            edges.append(d);
++        }
++        result["faces"] = faces;
++        result["edges"] = edges;
++        result["bounds"] = Py::TupleN(Py::Float(proj.xmin), Py::Float(proj.ymin), Py::Float(proj.xmax), Py::Float(proj.ymax));
++        Py::Dict camera;
++        camera["direction"] = Py::TupleN(Py::Float(cam.dir.X()), Py::Float(cam.dir.Y()), Py::Float(cam.dir.Z()));
++        camera["right"] = Py::TupleN(Py::Float(cam.right.X()), Py::Float(cam.right.Y()), Py::Float(cam.right.Z()));
++        camera["up"] = Py::TupleN(Py::Float(cam.up.X()), Py::Float(cam.up.Y()), Py::Float(cam.up.Z()));
++        result["camera"] = camera;
++        return Py::new_reference_to(result);
++    }
++    catch (const Py::Exception&) {
++        return nullptr;
++    }
++    catch (const Base::Exception& e) {
++        e.setPyException();
++        return nullptr;
++    }
++    catch (const Standard_Failure& e) {
++        PyErr_SetString(Part::PartExceptionOCCError, e.GetMessageString());
++        return nullptr;
++    }
++}
++
+ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ {
+     static const char* kwlist[] = {"shapes", "tolerance", "minVolume", "threads", "stats", nullptr};
+@@ -297,6 +374,15 @@ PyMethodDef methods[] = {
+      "view: iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric,\n"
+      "trimetric, 'dx,dy,dz' or a vector (direction from the eye into the scene).\n"
+      "style: shaded, shaded-only, hidden-lines, lines."},
++    {"projectVisible",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(projectVisible)),
++     METH_VARARGS | METH_KEYWORDS,
++     "projectVisible(objects, view='iso', deflection=0) -> dict\n"
++     "Orthographic projection with hidden parts removed.  Returns\n"
++     "{'faces': [{'item', 'face', 'depth', 'shade', 'color', 'polygons': [{'outer', 'holes'}]}],\n"
++     " 'edges': [{'item', 'kind': edge|silhouette|smooth, 'points'}], 'bounds', 'camera'}.\n"
++     "2D coordinates are model units, x to the right and y up; faces are sorted far to near\n"
++     "and their polygons are only the visible parts."},
+     {"findInterferences",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(findInterferencesPy)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 7ad7163d4..2f0085d57 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1,21 +1,25 @@
+ # SPDX-License-Identifier: LGPL-2.1-or-later
+ 
+-"""Headless pictures and interference checks.
++"""Headless pictures, hidden-line 2D export and interference checks.
+ 
+ Works in FreeCADCmd without OpenGL or a display.  The heavy lifting is in C++
+-(Part.renderImage, Part.findInterferences); this module
++(Part.renderImage, Part.projectVisible, Part.findInterferences); this module
+ collects the objects of a document and writes the files.
+ 
+ Command line (FreeCADCmd):
+ 
+     FreeCADCmd model.FCStd --render out.png [--view iso] [--size 1600x1200]
+                            [--render-style shaded|shaded-only|hidden-lines|lines]
++    FreeCADCmd model.step --export-svg out.svg --export-polygons out.json [--view front]
++    FreeCADCmd model.step --export-pptx out.pptx      # one slide, faces as freeform shapes
+     FreeCADCmd model.FCStd --interference [--interference-report report.json]
+ 
+ Python:
+ 
+     import PartViews
+     PartViews.render(objects_or_doc, "out.png", view="iso", size=(1600, 1200))
++    PartViews.export_svg(objects_or_doc, "out.svg", view="iso")
++    data = PartViews.project(objects_or_doc, view="iso")      # dict, see export_polygons
+     PartViews.interference(objects_or_doc)                     # [(obj_a, obj_b, volume)]
+ """
+ 
+@@ -28,6 +32,10 @@ import Part
+ __all__ = [
+     "scene_objects",
+     "render",
++    "project",
++    "export_svg",
++    "export_polygons",
++    "export_pptx",
+     "interference",
+     "cli_main",
+ ]
+@@ -196,6 +204,287 @@ def render(source=None, path="view.png", view="iso", size=None, style="shaded",
+     return written
+ 
+ 
++def _hex(color, shade=1.0):
++    return "#%02x%02x%02x" % tuple(max(0, min(255, int(round(c * shade * 255)))) for c in color)
++
++
++def project(source=None, view="iso", deflection=0.0, colors=None):
++    """Visible face polygons and visible edges (hidden parts removed) as a dict.
++
++    {"view", "units": "model", "bounds": [xmin, ymin, xmax, ymax], "camera",
++     "faces": [{"object", "label", "face", "depth", "shade", "color", "fill",
++                "polygons": [{"outer": [[x, y], ...], "holes": [[[x, y], ...]]}]}],
++     "edges": [{"object", "kind", "points": [[x, y], ...]}]}
++    x is to the right and y up on the screen; faces are sorted far to near."""
++    pairs = scene_objects(source)
++    items = _with_colors(pairs, colors)
++    data = Part.projectVisible(items, view=view, deflection=deflection)
++
++    def names(i):
++        obj = pairs[i][0]
++        return (obj.Name, obj.Label) if obj is not None else ("item%d" % i, "item%d" % i)
++
++    faces = []
++    for f in data["faces"]:
++        name, label = names(f["item"])
++        faces.append({
++            "object": name,
++            "label": label,
++            "face": f["face"],
++            "depth": f["depth"],
++            "shade": f["shade"],
++            "color": list(f["color"]),
++            "fill": _hex(f["color"], f["shade"]),
++            "polygons": [{"outer": [list(p) for p in poly["outer"]],
++                          "holes": [[list(p) for p in hole] for hole in poly["holes"]]}
++                         for poly in f["polygons"]],
++        })  # fmt: skip
++    edges = []
++    for e in data["edges"]:
++        edges.append({"object": names(e["item"])[0], "kind": e["kind"],
++                      "points": [list(p) for p in e["points"]]})  # fmt: skip
++    return {
++        "view": view if isinstance(view, str) else list(view),
++        "units": "model",
++        "bounds": list(data["bounds"]),
++        "camera": {k: list(v) for k, v in data["camera"].items()},
++        "faces": faces,
++        "edges": edges,
++    }
++
++
++def export_polygons(source=None, path="view.json", view="iso", deflection=0.0, colors=None, data=None):
++    """Write the result of project() as JSON.  Returns the dict."""
++    if data is None:
++        data = project(source, view=view, deflection=deflection, colors=colors)
++    with open(path, "w", encoding="utf-8") as f:
++        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
++    return data
++
++
++def svg_text(data, width_px=1000, line_width=1.0, edges=True, faces=True):
++    """SVG document of a project() result."""
++    xmin, ymin, xmax, ymax = data["bounds"]
++    w = max(xmax - xmin, 1e-9)
++    h = max(ymax - ymin, 1e-9)
++    margin = 0.03 * max(w, h)
++    vw, vh = w + 2 * margin, h + 2 * margin
++    px = vw / width_px  # model units per pixel
++    height_px = int(round(width_px * vh / vw))
++
++    def P(p):
++        return "%.6g,%.6g" % (p[0] - xmin + margin, ymax - p[1] + margin)
++
++    out = [
++        '<?xml version="1.0" encoding="UTF-8"?>',
++        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %.6g %.6g">'
++        % (width_px, height_px, vw, vh),
++        '<rect x="0" y="0" width="%.6g" height="%.6g" fill="#ffffff"/>' % (vw, vh),
++    ]
++    if faces:
++        out.append('<g id="faces" stroke-linejoin="round">')
++        for f in data["faces"]:
++            d = []
++            for poly in f["polygons"]:
++                for ring in [poly["outer"]] + poly["holes"]:
++                    d.append("M" + " L".join(P(p) for p in ring) + "Z")
++            # a hairline in the fill colour hides the seams between neighbouring faces
++            out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
++                       '<title>%s face %d</title></path>'
++                       % (" ".join(d), f["fill"], f["fill"], 0.6 * px, _xml(f["label"]), f["face"] + 1))  # fmt: skip
++        out.append("</g>")
++    if edges:
++        out.append('<g id="edges" fill="none" stroke="#1a1a1f" stroke-width="%.4g" '
++                   'stroke-linecap="round" stroke-linejoin="round">' % (line_width * px))  # fmt: skip
++        for e in data["edges"]:
++            out.append('<polyline points="%s"/>' % " ".join(P(p) for p in e["points"]))
++        out.append("</g>")
++    out.append("</svg>")
++    return "\n".join(out) + "\n"
++
++
++def _xml(s):
++    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
++
++
++def export_svg(source=None, path="view.svg", view="iso", deflection=0.0, colors=None,
++               width_px=1000, line_width=1.0, data=None):  # fmt: skip
++    """Write an SVG with filled visible faces and visible edges.  Returns the project() dict."""
++    if data is None:
++        data = project(source, view=view, deflection=deflection, colors=colors)
++    with open(path, "w", encoding="utf-8") as f:
++        f.write(svg_text(data, width_px=width_px, line_width=line_width))
++    return data
++
++
++_PPTX_SLIDE_W = 12192000  # 16:9, EMU
++_PPTX_SLIDE_H = 6858000
++
++_PPTX_STATIC = {
++    "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
++<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
++<Default Extension="xml" ContentType="application/xml"/>
++<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
++<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
++<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
++<Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
++<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
++</Types>""",
++    "_rels/.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
++<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
++</Relationships>""",
++    "ppt/presentation.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
++<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
++<p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
++<p:sldSz cx="%d" cy="%d"/>
++<p:notesSz cx="6858000" cy="9144000"/>
++</p:presentation>""" % (_PPTX_SLIDE_W, _PPTX_SLIDE_H),
++    "ppt/_rels/presentation.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
++<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
++<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
++<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
++</Relationships>""",
++    "ppt/slideMasters/slideMaster1.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
++<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
++<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
++<p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
++</p:sldMaster>""",
++    "ppt/slideMasters/_rels/slideMaster1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
++<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
++<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>
++</Relationships>""",
++    "ppt/slideLayouts/slideLayout1.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank">
++<p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>
++<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
++</p:sldLayout>""",
++    "ppt/slideLayouts/_rels/slideLayout1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
++<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>
++</Relationships>""",
++    "ppt/slides/_rels/slide1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
++<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
++</Relationships>""",
++}
++
++
++def _pptx_theme():
++    colors = "".join(
++        '<a:%s><a:srgbClr val="%s"/></a:%s>' % (n, v, n)
++        for n, v in (("dk1", "000000"), ("lt1", "FFFFFF"), ("dk2", "44546A"), ("lt2", "E7E6E6"),
++                     ("accent1", "4472C4"), ("accent2", "ED7D31"), ("accent3", "A5A5A5"),
++                     ("accent4", "FFC000"), ("accent5", "5B9BD5"), ("accent6", "70AD47"),
++                     ("hlink", "0563C1"), ("folHlink", "954F72"))
++    )  # fmt: skip
++    fill = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'
++    line = '<a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'
++    return (
++        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
++        '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office">'
++        '<a:themeElements><a:clrScheme name="Office">%s</a:clrScheme>'
++        '<a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri"/><a:ea typeface=""/>'
++        '<a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/>'
++        '<a:cs typeface=""/></a:minorFont></a:fontScheme>'
++        '<a:fmtScheme name="Office"><a:fillStyleLst>%s%s%s</a:fillStyleLst>'
++        '<a:lnStyleLst>%s%s%s</a:lnStyleLst>'
++        '<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/>'
++        '</a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>'
++        '<a:bgFillStyleLst>%s%s%s</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>'
++        % (colors, fill, fill, fill, line, line, line, fill, fill, fill)
++    )
++
++
++def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0, closed=True):
++    """Freeform shape; rings are lists of slide EMU points."""
++    xs = [p[0] for r in rings for p in r]
++    ys = [p[1] for r in rings for p in r]
++    left, top = min(xs), min(ys)
++    w = max(max(xs) - left, 1)
++    h = max(max(ys) - top, 1)
++    path = []
++    for r in rings:
++        pts = ["<a:pt x=\"%d\" y=\"%d\"/>" % (p[0] - left, p[1] - top) for p in r]
++        path.append("<a:moveTo>%s</a:moveTo>" % pts[0])
++        path.extend("<a:lnTo>%s</a:lnTo>" % p for p in pts[1:])
++        if closed:
++            path.append("<a:close/>")
++    fill_xml = ('<a:solidFill><a:srgbClr val="%s"/></a:solidFill>' % fill) if fill else "<a:noFill/>"
++    if line:
++        line_xml = '<a:ln w="%d" cap="rnd"><a:solidFill><a:srgbClr val="%s"/></a:solidFill><a:round/></a:ln>' % (line_w, line)
++    else:
++        line_xml = "<a:ln><a:noFill/></a:ln>"
++    return (
++        '<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
++        '<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>'
++        '<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/>'
++        '<a:pathLst><a:path w="%d" h="%d"%s>%s</a:path></a:pathLst></a:custGeom>%s%s</p:spPr></p:sp>'
++        % (sid, _xml(name), left, top, w, h, w, h, "" if closed else ' fill="none"', "".join(path), fill_xml, line_xml)
++    )  # fmt: skip
++
++
++def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, colors=None,
++                line_width=1.0, data=None):  # fmt: skip
++    """Write a PowerPoint file with one slide: every visible face region as a filled
++    freeform shape (far to near) and the visible edges as lines on top.  The shapes can be
++    recoloured or moved in PowerPoint.  Returns the project() dict."""
++    import zipfile
++
++    if data is None:
++        data = project(source, view=view, deflection=deflection, colors=colors)
++    xmin, ymin, xmax, ymax = data["bounds"]
++    w = max(xmax - xmin, 1e-9)
++    h = max(ymax - ymin, 1e-9)
++    margin = 0.05
++    scale = min(_PPTX_SLIDE_W * (1 - 2 * margin) / w, _PPTX_SLIDE_H * (1 - 2 * margin) / h)
++    ox = (_PPTX_SLIDE_W - w * scale) / 2
++    oy = (_PPTX_SLIDE_H - h * scale) / 2
++
++    def E(p):
++        return (int(round(ox + (p[0] - xmin) * scale)), int(round(oy + (ymax - p[1]) * scale)))
++
++    shapes = []
++    sid = 2
++    for f in data["faces"]:
++        for poly in f["polygons"]:
++            rings = [[E(p) for p in poly["outer"]]] + [[E(p) for p in hole] for hole in poly["holes"]]
++            fill = f["fill"].lstrip("#").upper()
++            # hairline in the fill colour hides seams between neighbouring faces
++            shapes.append(_pptx_shape(sid, "%s face %d" % (f["label"], f["face"] + 1), rings,
++                                      0, 0, 1, 1, fill=fill, line=fill, line_w=3175))  # fmt: skip
++            sid += 1
++    line_emu = int(round(12700 * line_width))  # 1 pt
++    for e in data["edges"]:
++        pts = [E(p) for p in e["points"]]
++        shapes.append(_pptx_shape(sid, "%s %s" % (e["object"], e["kind"]), [pts], 0, 0, 1, 1,
++                                  line="1A1A1F", line_w=line_emu, closed=False))  # fmt: skip
++        sid += 1
++    slide = (
++        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
++        '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
++        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
++        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
++        '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
++        '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/>'
++        '<a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>%s</p:spTree></p:cSld>'
++        '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>' % "".join(shapes)
++    )
++    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
++        z.writestr("[Content_Types].xml", _PPTX_STATIC["[Content_Types].xml"])
++        for name, text in _PPTX_STATIC.items():
++            if name != "[Content_Types].xml":
++                z.writestr(name, text)
++        z.writestr("ppt/theme/theme1.xml", _pptx_theme())
++        z.writestr("ppt/slides/slide1.xml", slide)
++    return data
++
++
+ def _solid_shape(obj, item):
+     if isinstance(item, Part.Shape):
+         return item
+@@ -238,6 +527,20 @@ def cli_main():
+     if png:
+         for out in render(doc, png, view=view, size=size, style=style):
+             print("Wrote %s" % out)
++    svg = _config("ExportSvg")
++    poly = _config("ExportPolygons")
++    pptx = _config("ExportPptx")
++    if svg or poly or pptx:
++        data = project(doc, view=_split_views(view)[0])
++        if svg:
++            export_svg(path=svg, data=data)
++            print("Wrote %s (%d faces, %d edges)" % (svg, len(data["faces"]), len(data["edges"])))
++        if poly:
++            export_polygons(path=poly, data=data)
++            print("Wrote %s (%d faces, %d edges)" % (poly, len(data["faces"]), len(data["edges"])))
++        if pptx:
++            export_pptx(path=pptx, data=data)
++            print("Wrote %s" % pptx)
+     report = _config("InterferenceReport")
+     if report:
+         found, st = interference(doc, stats=True)
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index f7a6f4506..938edd77e 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -36,6 +36,15 @@ def read_png(path):
+     return w, h, rows
+ 
+ 
++def polygon_area(poly):
++    def ring(r):
++        return 0.5 * sum(
++            r[i - 1][0] * r[i][1] - r[i][0] * r[i - 1][1] for i in range(len(r))
++        )
++
++    return ring(poly["outer"]) + sum(ring(h) for h in poly["holes"])
++
++
+ class TestPartViews(unittest.TestCase):
+     def setUp(self):
+         self.tmp = tempfile.mkdtemp()
+@@ -90,6 +99,44 @@ class TestPartViews(unittest.TestCase):
+         dark = sum(1 for row in rows for p in row if max(p) < 80)
+         self.assertGreater(dark, 50)  # crease edges of the mesh
+ 
++    def testProjectHidesBoxBehind(self):
++        back = Part.makeBox(10, 10, 10)  # front face at y = 0
++        front = Part.makeBox(4, 4, 4, App.Vector(3, -10, 3))  # in front of it
++        data = Part.projectVisible([back, front], view="front")
++        faces = data["faces"]
++        self.assertEqual(len(faces), 2)  # only the faces looking at the viewer
++        by_item = {f["item"]: f for f in faces}
++        area_back = sum(polygon_area(p) for p in by_item[0]["polygons"])
++        area_front = sum(polygon_area(p) for p in by_item[1]["polygons"])
++        self.assertAlmostEqual(area_back, 100 - 16, places=3)
++        self.assertAlmostEqual(area_front, 16, places=3)
++        self.assertEqual(len(by_item[0]["polygons"][0]["holes"]), 1)
++        # far to near
++        self.assertGreater(faces[0]["depth"], faces[1]["depth"])
++        # the visible edges: 4 of the big box and 4 of the small one, none behind
++        length = 0.0
++        for e in data["edges"]:
++            pts = e["points"]
++            length += sum(
++                ((pts[i][0] - pts[i - 1][0]) ** 2 + (pts[i][1] - pts[i - 1][1]) ** 2) ** 0.5
++                for i in range(1, len(pts))
++            )
++        self.assertAlmostEqual(length, 40 + 16, places=3)
++
++    def testProjectIsoBox(self):
++        data = Part.projectVisible(Part.makeBox(10, 20, 30), view="iso")
++        self.assertEqual(len(data["faces"]), 3)
++        self.assertEqual(len(data["edges"]), 9)
++        shades = sorted(f["shade"] for f in data["faces"])
++        self.assertLess(shades[0], shades[-1])
++
++    def testProjectCylinderSilhouette(self):
++        data = Part.projectVisible(Part.makeCylinder(5, 10), view="front")
++        kinds = {e["kind"] for e in data["edges"]}
++        self.assertIn("silhouette", kinds)
++        area = sum(polygon_area(p) for f in data["faces"] for p in f["polygons"])
++        self.assertAlmostEqual(area, 100, delta=1.0)
++
+     def testFindInterferences(self):
+         a = Part.makeBox(10, 10, 10)
+         b = Part.makeBox(10, 10, 10, App.Vector(5, 5, 5))  # overlaps a by 125
+-- 
+2.43.0
+

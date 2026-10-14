@@ -1,8 +1,8 @@
 From c723e2157e4ddb52c1bce9aca479fcb6144a78c6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 10:36:46 +0900
-Subject: [PATCH 19/54] LAYER: R13/R14 off is the bit or a negative color; R14
- to R2000 plots
+Subject: [PATCH 019/116] LAYER: R13/R14 off is the bit or a negative color;
+ R14 to R2000 plots
 
 The R13/R14 decoder overwrote the off bit with color < 0, but AutoCAD's
 R14 drawings keep the color positive and set the bit, so off layers were

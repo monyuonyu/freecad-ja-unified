@@ -1,8 +1,8 @@
 From 3fa17260e6f3d3ec5192108d930a5de2301931c4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 16:13:56 +0900
-Subject: [PATCH 52/54] Colors to R2000: keep AutoCAD's ACI fallback, ByBlock;
- the ACI palette of AutoCAD
+Subject: [PATCH 052/116] Colors to R2000: keep AutoCAD's ACI fallback,
+ ByBlock; the ACI palette of AutoCAD
 
 - bit_downconvert_CMC: entity colors of R2004+ (ENC) have no method, their
   index says ByBlock (0) or ByLayer (256); every ByBlock entity became

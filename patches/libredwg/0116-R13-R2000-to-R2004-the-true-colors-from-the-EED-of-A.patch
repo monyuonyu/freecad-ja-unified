@@ -1,0 +1,76 @@
+From 2869c506fe958e273ed4e73e973c9335ea47fde4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 22:24:20 +0900
+Subject: [PATCH 116/116] R13-R2000 to R2004+: the true colors from the EED of
+ AutoCAD
+
+AutoCAD keeps the true color of an entity saved as R2000 or older in
+its EED of the APPID ACAD: "RTTcAl", 70 flags and index, 71 the RGB,
+the color name, and restores it reading the drawing. We wrote these
+entities to R2004+ with the color index only: sample_AC1015 as R2004
+had 21 entities with other colors than AutoCAD's own sample_AC1018.
+
+* src/encode.c (upconvert_true_colors): New.
+(dwg_encode): Call it for R2004+ from before R2004.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/src/encode.c b/src/encode.c
+index abb962b..5fba85b 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3777,6 +3777,39 @@ upconvert_owned_lists (Dwg_Data *restrict dwg)
+   free (count);
+ }
+ 
++/* AutoCAD keeps the true color of an entity saved as R2000 or older in
++   its EED of the APPID ACAD: "RTTcAl", 70 flags << 8 | index, 71 the RGB,
++   then the color name. Restore it for R2004+, as AutoCAD reading it. */
++static void
++upconvert_true_colors (Dwg_Data *restrict dwg)
++{
++  for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++    {
++      Dwg_Object *obj = &dwg->object[i];
++      Dwg_Object_Entity *ent;
++      if (obj->supertype != DWG_SUPERTYPE_ENTITY || !obj->tio.entity)
++        continue;
++      ent = obj->tio.entity;
++      for (BITCODE_BL j = 0; j + 2 < ent->num_eed; j++)
++        {
++          const Dwg_Eed_Data *d = ent->eed[j].data;
++          const Dwg_Eed_Data *d1 = ent->eed[j + 1].data;
++          const Dwg_Eed_Data *d2 = ent->eed[j + 2].data;
++          if (!d || !d1 || !d2 || d->code != 0 || d->u.eed_0.is_tu
++              || d->u.eed_0.length != 6
++              || memcmp (d->u.eed_0.string, "RTTcAl", 6) || d1->code != 70
++              || d2->code != 71 || (d2->u.eed_71.rl >> 24) != 0xc2)
++            continue;
++          ent->color.rgb = d2->u.eed_71.rl;
++          ent->color.method = 0xc2;
++          ent->color.flag |= 0x80;
++          LOG_TRACE ("%s " FORMAT_HV ": true color 0x%x from the EED\n",
++                     obj->name, obj->handle.value, (unsigned)ent->color.rgb);
++          break;
++        }
++    }
++}
++
+ /* The AcDb:AcDsPrototype_1b DataStorage section of R2013+, with the SAB of
+    the ACIS entities (REGION, 3DSOLID, BODY, SURFACEs), as in AutoCAD's
+    example_2018: the segments segidx, datidx, _data_, schidx, schdat and
+@@ -5101,6 +5134,8 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+     unsigned total_size = 0;
+     old_dat = dat;
+ 
++    if (dwg->header.from_version < R_2004a)
++      upconvert_true_colors (dwg);
+     // Since R2013 the SAB of the ACIS entities is in the AcDs
+     if (dat->version >= R_2013b && !acds_as_read (dwg, dat))
+       acds_mark_entities (dwg);
+-- 
+2.43.0
+

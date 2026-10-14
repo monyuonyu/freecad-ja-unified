@@ -1,0 +1,39 @@
+From 1a9f7580784993321350399304f4cc2147815de2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:11:55 +0900
+Subject: [PATCH 078/116] SPATIAL_INDEX: an invalid bindata_size
+
+The format is not understood yet; aec_objects has a bindata_size of
+50396167, which the decoder rejected, but the encoder wrote that many
+zero bytes, a 51 MB object section.
+
+* src/dwg2.spec (SPATIAL_INDEX): Set an invalid bindata_size to 0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 6ac87ec..f803423 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -216,6 +216,15 @@ DWG_OBJECT (SPATIAL_INDEX)
+   // probably in main dat, not hdl_dat
+   HANDLE_VECTOR (hdls, num_hdls, 5, 330);
+   FIELD_BL (bindata_size, 90);
++  // not understood yet: the sizes may be wrong, keep it writable
++  DECODER {
++    if ((int64_t)_obj->bindata_size * 8 > AVAIL_BITS (dat))
++      {
++        LOG_ERROR ("Invalid bindata_size " FORMAT_BL ", set to 0",
++                   _obj->bindata_size);
++        _obj->bindata_size = 0;
++      }
++  }
+   FIELD_BINARY (bindata, FIELD_VALUE (bindata_size), 310);
+   DXF { VALUE_TFF ("END ACDBSPATIALINDEX BINARY DATA", 1); }
+ 
+-- 
+2.43.0
+

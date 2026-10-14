@@ -1,7 +1,7 @@
 From 3a8175dc377946ce946c95a8acbe68a4b947a1b2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 12:49:50 +0900
-Subject: [PATCH 43/54] TABLE: binary DXF export of ACAD_TABLE
+Subject: [PATCH 043/116] TABLE: binary DXF export of ACAD_TABLE
 
 The ACAD_TABLE writer moves to out_dxf_table.inc, included by out_dxf.c
 and out_dxfb.c with their own VALUE_* macros and dxf_/dxfb_ helpers

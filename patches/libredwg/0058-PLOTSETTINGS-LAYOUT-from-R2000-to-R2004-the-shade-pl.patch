@@ -1,0 +1,56 @@
+From 7904ebe98a0f1a20db49cd1a27f171d553754a59 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:14:16 +0900
+Subject: [PATCH 058/116] PLOTSETTINGS, LAYOUT: from R2000 to R2004+ the shade
+ plot defaults of AutoCAD
+
+R2000 has no shade plot fields, R2004+ got a custom DPI of 0, which
+ACadSharp rejects ("The valid shade plot DPI values range from 100 to
+23767"), so every LAYOUT was lost.
+
+* src/dwg.spec (PLOTSETTINGS, LAYOUT): When encoding from an earlier
+version without a DPI, write the resolution level 2 and 300 DPI, the
+values of AutoCAD's R2004 drawings (sample_AC1018).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index ba07397..2e148ab 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -5406,6 +5406,14 @@ DWG_OBJECT (PLOTSETTINGS)
+   FIELD_2BD_1 (paper_image_origin, 148);
+   SINCE (R_2004a)
+     {
++      // R2000 has none: AutoCAD's defaults, a DPI of 0 is invalid
++      IF_ENCODE_FROM_EARLIER {
++        if (!FIELD_VALUE (shadeplot_customdpi))
++          {
++            FIELD_VALUE (shadeplot_reslevel) = 2;
++            FIELD_VALUE (shadeplot_customdpi) = 300;
++          }
++      }
+       FIELD_BS (shadeplot_type, 76);
+       FIELD_BS (shadeplot_reslevel, 77);
+       FIELD_BS (shadeplot_customdpi, 78);
+@@ -5497,6 +5505,14 @@ DWG_OBJECT (LAYOUT)
+   FIELD_2BD_1 (plotsettings.paper_image_origin, 148);
+   SINCE (R_2004a)
+     {
++      // R2000 has none: AutoCAD's defaults, a DPI of 0 is invalid
++      IF_ENCODE_FROM_EARLIER {
++        if (!FIELD_VALUE (plotsettings.shadeplot_customdpi))
++          {
++            FIELD_VALUE (plotsettings.shadeplot_reslevel) = 2;
++            FIELD_VALUE (plotsettings.shadeplot_customdpi) = 300;
++          }
++      }
+       FIELD_BS (plotsettings.shadeplot_type, 76);
+       FIELD_BS (plotsettings.shadeplot_reslevel, 77);
+       FIELD_BS (plotsettings.shadeplot_customdpi, 78);
+-- 
+2.43.0
+

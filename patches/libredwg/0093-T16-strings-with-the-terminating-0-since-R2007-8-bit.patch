@@ -1,0 +1,100 @@
+From 2ce53c15ff33aa4f10326903e176e684b2929986 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:58:43 +0900
+Subject: [PATCH 093/116] T16 strings: with the terminating 0 since R2007,
+ 8-bit until R2004
+
+As AutoCAD's SummaryInfo: since R2007 the RS length counts the
+terminating 0 and an empty string is RS 1 with the 0. From earlier
+versions we wrote the length without the 0, and empty strings as RS 0.
+From R2007+ sources FIELD_T16 wrote UTF-16 also into R2000/R2004 files.
+
+* src/bits.c (bit_write_T16): Since R2007 with the terminating 0, also
+the empty string.
+(bit_write_TU16): The empty string as RS 1 with the 0.
+* src/enc_macros.h (FIELD_T16): UTF-16 only since R2007.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c       | 27 ++++++++++++++++-----------
+ src/enc_macros.h |  2 +-
+ 2 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 7979406..bbe2eee 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -2753,10 +2753,13 @@ bit_write_TU16 (Bit_Chain *restrict dat, BITCODE_TU restrict chain)
+ {
+   size_t i, length;
+ 
+-  if (chain)
+-    length = bit_wcs2len (chain) + 1;
+-  else
+-    length = 0;
++  if (!chain || !*chain)
++    { // the NUL only, as AutoCAD
++      bit_write_RS (dat, 1);
++      bit_write_RS (dat, 0);
++      return;
++    }
++  length = bit_wcs2len (chain) + 1;
+   if (length > UINT16_MAX)
+     {
+       loglevel = dat->opts & DWG_OPTS_LOGLEVEL;
+@@ -2795,30 +2798,32 @@ bit_write_T16 (Bit_Chain *restrict dat, BITCODE_T16 restrict chain)
+     }
+   else if (length == 0)
+     {
+-      // 8-bit: the NUL only, as AutoCAD (01 00 00)
++      // the NUL only, as AutoCAD (01 00 00, since R2007 01 00 00 00)
++      bit_write_RS (dat, 1);
+       if (dat->version < R_2007)
+-        {
+-          bit_write_RS (dat, 1);
+-          bit_write_RC (dat, 0);
+-        }
++        bit_write_RC (dat, 0);
+       else
+         bit_write_RS (dat, 0);
+     }
+   else if (dat->version >= R_2007)
+     {
++      // with the terminating 0, as AutoCAD
+       if (!IS_FROM_TU (dat))
+         { // convert to unicode, expand \\U+
+           BITCODE_TU wstr = bit_utf8_to_TU (chain, 0);
+-          bit_write_RS (dat, (BITCODE_RS)length);
++          length = wstr ? bit_wcs2len (wstr) : 0;
++          bit_write_RS (dat, (BITCODE_RS)(length + 1));
+           for (size_t i = 0; i < length; i++)
+             bit_write_RS (dat, wstr[i]);
++          bit_write_RS (dat, 0);
+           free (wstr);
+         }
+       else
+         {
+-          bit_write_RS (dat, (BITCODE_RS)length);
++          bit_write_RS (dat, (BITCODE_RS)(length + 1));
+           for (size_t i = 0; i < length; i++)
+             bit_write_RS (dat, chain[i]);
++          bit_write_RS (dat, 0);
+         }
+     }
+   else
+diff --git a/src/enc_macros.h b/src/enc_macros.h
+index fc0fa46..d249619 100644
+--- a/src/enc_macros.h
++++ b/src/enc_macros.h
+@@ -218,7 +218,7 @@
+   }
+ #define FIELD_T16(nam, dxf)                                                   \
+   {                                                                           \
+-    if (!IS_FROM_TU (dat))                                                    \
++    if (!IS_FROM_TU (dat) || dat->version < R_2007) /* 8-bit until R2004 */   \
+       {                                                                       \
+         bit_write_T16 (str_dat, _obj->nam);                                   \
+         LOG_TRACE (#nam ": \"%s\" [T16 %d]\n", _obj->nam, dxf);               \
+-- 
+2.43.0
+

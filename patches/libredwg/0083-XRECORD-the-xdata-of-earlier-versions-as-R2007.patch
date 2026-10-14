@@ -1,0 +1,36 @@
+From e77baeb2e81e673e96227a04e63bab73ed381e29 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:52:37 +0900
+Subject: [PATCH 083/116] XRECORD: the xdata of earlier versions as R2007+
+
+The xdata strings are UTF-16 since R2007, but the writes were bounded
+by the xdata_size of the source: from R2000 the values after the first
+strings were cut off, ACadSharp failed on these xrecords ("Arithmetic
+operation resulted in an overflow", 8 in sample_AC1015 as R2010).
+
+* src/encode.c (dwg_encode_xdata): Across versions allow up to twice
+the size; the size is recalculated afterwards.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/encode.c b/src/encode.c
+index ca6f8f3..ae8e654 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -7968,6 +7968,10 @@ dwg_encode_xdata (Bit_Chain *restrict dat, Dwg_Object_XRECORD *restrict _obj,
+   if (dat->opts
+       & DWG_OPTS_IN) // loosen the overflow checks on dxf/json imports
+     end += xdata_size;
++  // the strings are UTF-16 since R2007: up to twice the size, plus the
++  // codepage bytes
++  else if (dat->version != dat->from_version)
++    end += xdata_size + 2 * (size_t)_obj->num_xdata;
+ 
+   while (rbuf)
+     {
+-- 
+2.43.0
+

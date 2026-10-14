@@ -1,0 +1,49 @@
+From cf98c4655a7810cd0c5159f96f84b5497914c8ed Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:29:40 +0900
+Subject: [PATCH 114/116] upconvert_TABLE: the size of point values, a date
+ without data as text
+
+The values of R2007 TABLE cells from DXF have no data_size: 0 for a
+3D point, which ACadSharp rejects ("Could not read ACAD_TABLE", the
+table of sample_AC1021 as DXF written as R2010+ was lost), and a date
+without its binary data. Set the size of 2D and 3D points, and write a
+date without data as its text.
+
+* src/encode.c (upconvert_TABLE): Likewise.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/encode.c b/src/encode.c
+index fc2abfe..abb962b 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -9468,6 +9468,22 @@ upconvert_TABLE (Dwg_Object *restrict obj)
+                   else
+                     ct->value.data_size = 0;
+                 }
++              // the size of a point (from DXF 0)
++              if (ct->value.data_type == 16 && !ct->value.data_size)
++                ct->value.data_size = 16;
++              else if (ct->value.data_type == 32 && !ct->value.data_size)
++                ct->value.data_size = 24;
++              // a date without its data (from DXF) as its text
++              if (ct->value.data_type == 8 && !ct->value.data_date)
++                {
++                  free (ct->value.data_string);
++                  ct->value.data_string = NULL;
++                  if (src->text_value)
++                    ct->value.data_string
++                        = table_strdup (dwg, src->text_value);
++                  ct->value.data_type = 4;
++                  ct->value.data_size = 0;
++                }
+               if ((ct->value.data_type == 4 || ct->value.data_type == 512)
+                   && !ct->value.data_string)
+                 ct->value.data_string = table_strdup (dwg, (BITCODE_T) "");
+-- 
+2.43.0
+

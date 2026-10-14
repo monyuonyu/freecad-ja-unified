@@ -1,7 +1,7 @@
 From 3bc6ff8b67ccb50a8f6edbd0135da62a7e59639c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 16:25:42 +0900
-Subject: [PATCH 53/54] R13/R14 entities: own linetype is ltype_flags 3; to
+Subject: [PATCH 053/116] R13/R14 entities: own linetype is ltype_flags 3; to
  R2000 lineweight ByLayer
 
 - The decoder set ltype_flags only for ByLayer; entities with their own

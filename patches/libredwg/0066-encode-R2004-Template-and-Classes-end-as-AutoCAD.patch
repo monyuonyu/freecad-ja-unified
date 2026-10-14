@@ -1,0 +1,59 @@
+From 80cf3f5e46fe710849eb996867511c7feeba4f45 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:31:34 +0900
+Subject: [PATCH 066/116] encode: R2004+ Template and Classes end as AutoCAD
+
+* src/encode.c (encode_template): An empty description stays RS 0, 4
+bytes in all, as the AcDb:Template of AutoCAD (not changed by the NUL of
+bit_write_T16).
+(encode_classes): R2004+ end with 8 zero bytes after the sentinel,
+counted in the section size, as in AutoCAD's R2004 and R2018 drawings;
+the RL 0x0dca stays for R13-R2000.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 8e42188..9dbff92 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -2547,8 +2547,11 @@ encode_template (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+   dwg->header.section[sec_id].number = 4;
+   dwg->header.section[sec_id].address = dat->byte;
+   dwg->header.section[sec_id].size = 4; // always empty description
+-  // Template description
+-  bit_write_T16 (dat, _obj->description);
++  // Template description, empty as RS 0 (4 bytes in all, as AutoCAD)
++  if (_obj->description && *_obj->description)
++    bit_write_T16 (dat, _obj->description);
++  else
++    bit_write_RS (dat, 0);
+   LOG_TRACE ("_obj->description: %s [T16]\n", _obj->description);
+   // 0 - English, 1- Metric
+   bit_write_RS (dat, dwg->header_vars.MEASUREMENT);
+@@ -3036,9 +3039,17 @@ encode_classes (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+   dwg->header.section[sec_id].size
+       = (dat->byte - dwg->header.section[sec_id].address) & 0xFFFFFFFF;
+   LOG_TRACE ("       Classes (end): %4zu\n", dat->byte);
+-  // FIXME: for all versions?
+-  bit_write_RL (dat, 0x0DCA);
+-  LOG_TRACE ("unknown: %04X [RL]\n", 0x0DCA);
++  // R2004+: 8 zero bytes as AutoCAD (counted in the section size)
++  SINCE (R_2004a)
++  {
++    bit_write_RLL (dat, 0);
++  }
++  else
++  {
++    // FIXME: for all versions?
++    bit_write_RL (dat, 0x0DCA);
++    LOG_TRACE ("unknown: %04X [RL]\n", 0x0DCA);
++  }
+   return error;
+ }
+ 
+-- 
+2.43.0
+

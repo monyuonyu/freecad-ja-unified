@@ -1,0 +1,35 @@
+From 9df3c9b0b6a78df4dc5de31565d3441beb07f05a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:29:40 +0900
+Subject: [PATCH 113/116] TABLE: the table content for R2010+ also from DXF
+
+in_dxf reads the cells of a TABLE as before R2010, also from the
+R2010+ DXFs, but upconvert_TABLE was only called for DWGs from before
+R2010: the TABLEs of R2010+ DXFs written as R2010+ were empty (11 of
+the corpus, without columns and rows).
+
+* src/dwg2.spec (TABLE): upconvert_TABLE also for DWG_OPTS_INDXF.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 96137ed..f7e65f3 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -707,7 +707,9 @@ DWG_ENTITY (TABLE)
+   SINCE (R_2010b) //AC1024
+     {
+ #ifdef IS_ENCODER
+-      if (dwg->header.from_version < R_2010b)
++      // DXF has the cells as before R2010
++      if (dwg->header.from_version < R_2010b
++          || (dwg->opts & DWG_OPTS_INDXF))
+         upconvert_TABLE (obj);
+ #endif
+       FIELD_RC (unknown_rc, 0);
+-- 
+2.43.0
+

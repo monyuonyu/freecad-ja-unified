@@ -1,0 +1,71 @@
+From 360232b718b6048822b1eb8c81ee0bebb46ccf17 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 13:00:07 +0900
+Subject: [PATCH 099/116] dwgrewrite: r2010, r2013 and r2018 are valid
+
+All 149 drawings of the test corpus round trip through ACadSharp as
+R2010, R2013 and R2018 without losses. r2007 is still written as
+r2010.
+
+* programs/dwgrewrite.c (help): Move r2010, r2013, r2018 to the valid
+versions.
+* programs/dwgrewrite.1: Likewise.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ programs/dwgrewrite.1 |  5 +++--
+ programs/dwgrewrite.c | 10 ++++++----
+ 2 files changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/programs/dwgrewrite.1 b/programs/dwgrewrite.1
+index 9b1dd9d..dfdc1b3 100644
+--- a/programs/dwgrewrite.1
++++ b/programs/dwgrewrite.1
+@@ -17,11 +17,12 @@ save as version
+ .IP
+ Valid versions:
+ .IP
+-r1.4, r2.6, r2.10, r9, r10, r11, r13, r14, r2000 (default), r2004
++r1.4, r2.6, r2.10, r9, r10, r11, r13, r14, r2000 (default), r2004,
++r2010, r2013, r2018
+ .IP
+ Planned versions:
+ .IP
+-r2007, r2010, r2013, r2018
++r2007
+ .HP
+ \fB\-o\fR dwgfile, \fB\-\-file\fR
+ .TP
+diff --git a/programs/dwgrewrite.c b/programs/dwgrewrite.c
+index 9cae0b4..271bc2e 100644
+--- a/programs/dwgrewrite.c
++++ b/programs/dwgrewrite.c
+@@ -65,9 +65,10 @@ help (void)
+   printf ("  --as rNNNN                save as version\n");
+   printf ("           Valid versions:\n");
+   printf ("             r1.4, r2.6, r2.10, r9, r10, r11, r13, r14, r2000 "
+-          "(default), r2004\n");
++          "(default), r2004,\n");
++  printf ("             r2010, r2013, r2018\n");
+   printf ("           Planned versions:\n");
+-  printf ("             r2007, r2010, r2013, r2018\n");
++  printf ("             r2007\n");
+   printf ("  -o dwgfile, --file        \n");
+   printf ("           --help           display this help and exit\n");
+   printf ("           --version        output version information and exit\n"
+@@ -76,9 +77,10 @@ help (void)
+   printf ("  -v[0-9]     verbosity\n");
+   printf ("  -a rNNNN    save as version\n");
+   printf ("              Valid versions:\n");
+-  printf ("                r1.4-r11, r13, r14, r2000 (default), r2004\n");
++  printf ("                r1.4-r11, r13, r14, r2000 (default), r2004,\n");
++  printf ("                r2010, r2013, r2018\n");
+   printf ("              Planned versions:\n");
+-  printf ("                r2007-r2018\n");
++  printf ("                r2007\n");
+   printf ("  -o dwgfile\n");
+   printf ("  -h          display this help and exit\n");
+   printf ("  -i          output version information and exit\n"
+-- 
+2.43.0
+

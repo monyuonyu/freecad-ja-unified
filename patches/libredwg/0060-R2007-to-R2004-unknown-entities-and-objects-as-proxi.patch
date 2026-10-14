@@ -1,0 +1,44 @@
+From 4784846f08ec6ccdd67721c8bf1b335994b2ac30 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:16:46 +0900
+Subject: [PATCH 060/116] R2007+ to R2004: unknown entities and objects as
+ proxies, as to R2000
+
+* src/encode.c (encode_unknown_as_proxy): Also for an R2004 target from
+an R2007+ DWG (any source newer than the target). An AEC_WALL of
+aec_objects__AecObjects (R2018) became a POINT in R2004, now it is an
+ACAD_PROXY_ENTITY with its data, as in R2000.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index c601119..2b7fd1b 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -1169,7 +1169,7 @@ dwg_dxf_class_number (const Dwg_Data *restrict dwg, Dwg_Version_Type version,
+ #ifdef ENCODE_UNKNOWN_AS_DUMMY
+ /** Write an unknown entity/object of a newer DWG as ACAD_PROXY_ENTITY or
+  * ACAD_PROXY_OBJECT, see dwg_proxy_from_unknown.
+- * Only for an R2000 target from an R2004+ DWG.
++ * Only for an R2000 target from an R2004+ DWG, or R2004 from R2007+.
+  * Returns 1 if converted, 0 to fall back to the POINT/PLACEHOLDER.
+  */
+ static int
+@@ -1182,8 +1182,9 @@ encode_unknown_as_proxy (Dwg_Data *restrict dwg, Dwg_Object *restrict obj)
+   BITCODE_BL numbits, num_objids, version;
+   BITCODE_H *objids;
+ 
+-  if (dwg->header.version < R_2000b || dwg->header.version > R_2002
+-      || dwg->header.from_version < R_2004a)
++  if (dwg->header.version < R_2000b || dwg->header.version > R_2004
++      || dwg->header.from_version < R_2004a
++      || dwg->header.from_version <= dwg->header.version)
+     return 0;
+   if (!dwg_proxy_from_unknown (dwg, obj, &data, &numbits, &objids,
+                                &num_objids, &version))
+-- 
+2.43.0
+

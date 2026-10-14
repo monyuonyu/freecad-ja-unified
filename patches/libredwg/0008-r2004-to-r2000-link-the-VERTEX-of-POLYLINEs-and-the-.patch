@@ -1,7 +1,7 @@
 From 0d0cb7d6ee87634e5f90df43451a8b2027bcbc35 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:51:31 +0900
-Subject: [PATCH 08/54] r2004+ to r2000: link the VERTEX of POLYLINEs and the
+Subject: [PATCH 008/116] r2004+ to r2000: link the VERTEX of POLYLINEs and the
  ATTRIB of INSERTs
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

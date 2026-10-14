@@ -1,0 +1,36 @@
+From 0c98446e71d5b4dd80b9acda382bb0e8c267cab2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:32:36 +0900
+Subject: [PATCH 067/116] bit_write_DD: write any difference from the default
+
+Values within 1e-12 of the default were written as the default: a LINE
+end 1 ulp off its start (example_2004, -276.8548009664509 and ...508)
+came back as the start. AutoCAD writes the low bytes then.
+
+* src/bits.c (bit_write_DD): Only the bitwise same value is the default.
+Now LINE, LWPOLYLINE and 3DFACE of example_2004 and sample_AC1018 written
+as R2004 are AutoCAD's objects bit for bit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 8cb3293..82cbd34 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -1294,7 +1294,9 @@ bit_write_DD (Bit_Chain *dat, double value, double default_value)
+ {
+   BITCODE_BB bits = 0;
+ 
+-  if (fabs (value - default_value) < 1e-12)
++  // only the very same value: a difference in the last bits is real
++  // (AutoCAD's LINE end 1 ulp off the start was written as the start)
++  if (!memcmp (&value, &default_value, sizeof (double)))
+     bit_write_BB (dat, 0);
+   else
+     {
+-- 
+2.43.0
+

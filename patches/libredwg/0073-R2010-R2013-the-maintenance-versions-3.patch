@@ -1,0 +1,45 @@
+From c3d3a7c326831128414931fb68ae1d81f6594ada Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:11:25 +0900
+Subject: [PATCH 073/116] R2010, R2013: the maintenance versions > 3
+
+The header and classes sections of R2010 and R2013 have a 4 byte hsize
+after their size only with a maintenance version > 3. ACadSharp takes
+it from the byte at 0x0B (maint_rel_version), we from the one at 0x12
+(maint_version), and we write it with maint_version > 3. An R2018
+source has 0 at 0x12 and got 0x6d at 0x0B, so ACadSharp expected the
+hsize and could not read the header (EndOfStreamException, e.g.
+sample_base__empty as R2010). AutoCAD's files have both > 3.
+
+* src/encode.c (dwg_encode): For R2010 and R2013 raise both to > 3.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/encode.c b/src/encode.c
+index 3bf698d..481dcea 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3929,6 +3929,17 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+       }
+     if (_verp && !_obj->maint_rel_version)
+       _obj->maint_rel_version = _verp->maint_rel_version;
++    /* R2010 and R2013 have the 4 byte hsize after the size of the header
++       and classes sections only if the maintenance version is > 3, which
++       ACadSharp takes from the byte at 0x0B and we from the one at 0x12.
++       AutoCAD has both > 3 (and we always write hsize), keep them so. */
++    if (dwg->header.version >= R_2010b && dwg->header.version < R_2018b)
++      {
++        if (_verp && _obj->maint_rel_version <= 3)
++          _obj->maint_rel_version = _verp->maint_rel_version;
++        if (_obj->maint_version <= 3)
++          _obj->maint_version = _obj->maint_rel_version;
++      }
+     if (!_obj->app_dwg_version)
+       _obj->app_dwg_version = _obj->dwg_version;
+     if (!_obj->app_maint_version)
+-- 
+2.43.0
+

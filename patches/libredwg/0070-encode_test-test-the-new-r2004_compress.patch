@@ -1,0 +1,99 @@
+From 6b22d76f9ca2dccde39d78cfbb07185016b15068 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:53:13 +0900
+Subject: [PATCH 070/116] encode_test: test the new r2004_compress
+
+* test/unit-testing/encode_test.c (compress_R2004_section_tests): The
+round trip through decompress_R2004_section with r2004_compress, which
+replaced compress_R2004_section.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ test/unit-testing/encode_test.c | 30 ++++++++++++++++--------------
+ 1 file changed, 16 insertions(+), 14 deletions(-)
+
+diff --git a/test/unit-testing/encode_test.c b/test/unit-testing/encode_test.c
+index 1d13dc9..496f2d6 100644
+--- a/test/unit-testing/encode_test.c
++++ b/test/unit-testing/encode_test.c
+@@ -188,7 +188,7 @@ test_section_move_before (const Dwg_Data *dwg)
+ }
+ 
+ static void
+-compress_R2004_section_tests (void)
++r2004_compress_tests (void)
+ {
+   int result;
+   uint32_t comp_data_size;
+@@ -215,14 +215,15 @@ compress_R2004_section_tests (void)
+           0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 };
+ 
+   /* Test 1: compress auxh, decompress, compare */
+-  bit_chain_alloc_size (&comp, sizeof decomp_auxh_bin * 2);
++  bit_chain_alloc_size (&comp, r2004_compress_bound (sizeof decomp_auxh_bin));
+   comp.byte = 0;
+   comp.bit = 0;
+-  result = compress_R2004_section (&comp, decomp_auxh_bin,
+-                                   sizeof decomp_auxh_bin, &comp_data_size);
++  comp_data_size = r2004_compress (decomp_auxh_bin, sizeof decomp_auxh_bin,
++                                   comp.chain);
++  result = comp_data_size ? 0 : 1;
+   if (result)
+     {
+-      fail ("compress_R2004_section auxh returned %d", result);
++      fail ("r2004_compress auxh returned %d", result);
+       goto test2;
+     }
+   /* decompress and verify roundtrip */
+@@ -238,20 +239,21 @@ compress_R2004_section_tests (void)
+       && memcmp (dec.chain, decomp_auxh_bin, sizeof decomp_auxh_bin) == 0)
+     pass ();
+   else
+-    fail ("compress_R2004_section auxh roundtrip %d %lu", result,
++    fail ("r2004_compress auxh roundtrip %d %lu", result,
+           (unsigned long)dec.size);
+ 
+ test2:
+   /* Test 2: compress ofs, decompress, compare */
+   comp.byte = 0;
+   comp.bit = 0;
+-  if (comp.size < sizeof decomp_ofs_bin * 2)
+-    bit_chain_alloc_size (&comp, sizeof decomp_ofs_bin * 2);
+-  result = compress_R2004_section (&comp, decomp_ofs_bin,
+-                                   sizeof decomp_ofs_bin, &comp_data_size);
++  if (comp.size < r2004_compress_bound (sizeof decomp_ofs_bin))
++    bit_chain_alloc_size (&comp, r2004_compress_bound (sizeof decomp_ofs_bin));
++  comp_data_size = r2004_compress (decomp_ofs_bin, sizeof decomp_ofs_bin,
++                                   comp.chain);
++  result = comp_data_size ? 0 : 1;
+   if (result)
+     {
+-      fail ("compress_R2004_section ofs returned %d", result);
++      fail ("r2004_compress ofs returned %d", result);
+       goto cleanup;
+     }
+   comp.byte = 0;
+@@ -263,9 +265,9 @@ test2:
+   result = decompress_R2004_section (&comp, &dec);
+   if (result == 0
+       && memcmp (dec.chain, decomp_ofs_bin, sizeof decomp_ofs_bin) == 0)
+-    ok ("compress_R2004_section");
++    ok ("r2004_compress");
+   else
+-    fail ("compress_R2004_section ofs roundtrip %d %lu", result,
++    fail ("r2004_compress ofs roundtrip %d %lu", result,
+           (unsigned long)dec.size);
+ 
+ cleanup:
+@@ -339,7 +341,7 @@ main (int argc, char const *argv[])
+   test_section_remove (&dwg);
+   test_section_move_before (&dwg);
+ 
+-  compress_R2004_section_tests ();
++  r2004_compress_tests ();
+   common_entity_handle_data_double_free_test ();
+   remove_NOD_item_null_itemhandles_test ();
+   return failed;
+-- 
+2.43.0
+

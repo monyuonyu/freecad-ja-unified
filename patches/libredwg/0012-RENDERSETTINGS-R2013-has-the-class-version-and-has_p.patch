@@ -1,7 +1,7 @@
 From 79aa7a3ebda0d5efa972309c32932b6086de5c7b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:39:28 +0900
-Subject: [PATCH 12/54] RENDERSETTINGS: R2013 has the class version and
+Subject: [PATCH 012/116] RENDERSETTINGS: R2013 has the class version and
  has_predefined at the end
 
 The R2013 special case skipped class_version and read has_predefined after

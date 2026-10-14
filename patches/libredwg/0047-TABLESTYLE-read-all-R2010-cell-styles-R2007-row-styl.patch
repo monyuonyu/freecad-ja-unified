@@ -1,7 +1,7 @@
 From b15bf89460a7f7fe464be9a7d24786788ffc2f38 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 14:32:10 +0900
-Subject: [PATCH 47/54] TABLESTYLE: read all R2010+ cell styles, R2007 row
+Subject: [PATCH 047/116] TABLESTYLE: read all R2010+ cell styles, R2007 row
  style values
 
 - R2010+: the cell styles after the table cell style are an array

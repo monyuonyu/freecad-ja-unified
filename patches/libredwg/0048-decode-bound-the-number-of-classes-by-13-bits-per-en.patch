@@ -1,7 +1,7 @@
 From 56cfb1b224c321ae3ac75acfe6c01450910cbdc1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 15:05:43 +0900
-Subject: [PATCH 48/54] decode: bound the number of classes by 13 bits per
+Subject: [PATCH 048/116] decode: bound the number of classes by 13 bits per
  entry
 
 The CWE-400 bound of 100 + size / sizeof(Dwg_Class) classes cut valid

@@ -1,0 +1,37 @@
+From 8f4bfa4c2013d8fe563349f72b949a4331158c3c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:29:17 +0900
+Subject: [PATCH 089/116] 3DSOLID: the history handle of all R2007+ 3DSOLIDs
+
+ACadSharp reads the history handle (H 350) of every R2007+ 3DSOLID; we
+wrote it only with SAB (version 2) data, so the SAT 3DSOLIDs of the
+R14-R2004 drawings as R2010 lacked it, ACadSharp read past the handles
+and lost them ("Index was outside the bounds of the array").
+
+* src/dwg_spec_shared.h (COMMON_3DSOLID): The history_id of all R2007+
+3DSOLIDs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg_spec_shared.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/dwg_spec_shared.h b/src/dwg_spec_shared.h
+index bcf5a32..68a9692 100644
+--- a/src/dwg_spec_shared.h
++++ b/src/dwg_spec_shared.h
+@@ -587,8 +587,9 @@ free_3dsolid (Dwg_Object *restrict obj, Dwg_Entity_3DSOLID *restrict _obj)
+       FIELD_HANDLE (history_id, 4, 350);                                      \
+     }                                                                         \
+   } else if ((FIELD_VALUE (version) > 1                                       \
+-              /* R2013+ 3DSOLID: the SAB is in the AcDs (AutoCAD's R2018) */  \
+-              || (dat->version >= R_2013b                                     \
++              /* all R2007+ 3DSOLIDs (ACadSharp), also R2013+ ones with the */\
++              /* SAB in the AcDs (AutoCAD's R2018) */                         \
++              || (dat->version >= R_2007a                                     \
+                   && obj->fixedtype == DWG_TYPE__3DSOLID))                    \
+              && (!IF_IS_DECODER || AVAIL_BITS (hdl_dat) >= 8)                 \
+              /* R2007+ (ACadSharp, AutoCAD's R2004 drawings have none) */     \
+-- 
+2.43.0
+

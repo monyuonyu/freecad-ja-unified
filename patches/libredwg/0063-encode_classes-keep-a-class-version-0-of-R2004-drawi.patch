@@ -1,0 +1,50 @@
+From 2bf8ae50d1261e55baf7dc4a48f4da416fa6d115 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:28:13 +0900
+Subject: [PATCH 063/116] encode_classes: keep a class version 0 of R2004+
+ drawings
+
+AutoCAD writes the class version 0 for many classes (2004/Line.dwg:
+EXACXREFPANELOBJECT, SOLID_BACKGROUND); it became the drawing's version
+31.8. Only from R2000 and older, which have no class versions, or from
+DXF/JSON use the drawing's.
+
+* src/encode.c (encode_classes): Default dwg_version and maint_version
+only when from before R2004 or imported.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 156a0c2..8e42188 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -2918,7 +2918,10 @@ encode_classes (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                    klass->item_class_id);
+         SINCE (R_2004a)
+         {
+-          if (!klass->dwg_version)
++          // 0 is valid in R2004+ (AutoCAD has it for many classes)
++          if (!klass->dwg_version
++              && (dwg->header.from_version < R_2004
++                  || (dwg->opts & DWG_OPTS_IN)))
+             {
+               klass->dwg_version = (BITCODE_BL)dwg->header.dwg_version;
+               klass->maint_version = (BITCODE_BL)dwg->header.maint_version;
+@@ -2980,7 +2983,10 @@ encode_classes (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                    klass->item_class_id);
+         SINCE (R_2004a)
+         {
+-          if (!klass->dwg_version)
++          // 0 is valid in R2004+ (AutoCAD has it for many classes)
++          if (!klass->dwg_version
++              && (dwg->header.from_version < R_2004
++                  || (dwg->opts & DWG_OPTS_IN)))
+             {
+               klass->dwg_version = (BITCODE_BL)dwg->header.dwg_version;
+               klass->maint_version = (BITCODE_BL)dwg->header.maint_version;
+-- 
+2.43.0
+

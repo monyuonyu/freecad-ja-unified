@@ -1,7 +1,7 @@
 From ad3a707192ea414f56c125a0fb8b4348b2aca487 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 15:11:14 +0900
-Subject: [PATCH 205/208] Unified: fixes for the AI chat and the design check
+Subject: [PATCH 205/212] Unified: fixes for the AI chat and the design check
  found by the AI's own testing, and optional auto-approve
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

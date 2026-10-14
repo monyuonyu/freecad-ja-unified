@@ -1,0 +1,168 @@
+From 054755493ec2f53391c13da990c93017944309c3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:13:09 +0900
+Subject: [PATCH 209/212] Mesh: addFacets((points, facets)) keeps facets on
+ non-manifold edges
+
+Field report: 52 long thin boxes in a compound,
+Mesh.Mesh().addFacets(shape.tessellate(0.5)) gave 260 instead of 624
+triangles and the rendered mesh had holes; MeshPart.meshFromShape was right.
+
+Shape.tessellate() is correct (it returns all 624 facets).  It merges
+coincident points, so where solids touch, an edge is shared by four
+facets.  The tuple form of Mesh.addFacets (and Mesh.Mesh(tuple)) ran a
+manifold check by default that silently drops every new facet on such an
+edge; for a grid of touching boxes only 12 of 624 facets survived.
+
+The check is now off by default (check=False); it is still available
+with check=True and then warns how many facets were skipped.  Regression
+tests in MeshTestsApp and Part's TopoShapeTest (touching boxes and
+translated copies sharing one TShape).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Mesh/App/Mesh.pyi               | 11 ++++++++--
+ src/Mod/Mesh/App/MeshPyImp.cpp          | 18 +++++++++++++++-
+ src/Mod/Mesh/App/MeshTestsApp.py        | 28 +++++++++++++++++++++++++
+ src/Mod/Part/parttests/TopoShapeTest.py | 22 +++++++++++++++++++
+ 4 files changed, 76 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Mesh/App/Mesh.pyi b/src/Mod/Mesh/App/Mesh.pyi
+index c6e473b78..d844649ff 100644
+--- a/src/Mod/Mesh/App/Mesh.pyi
++++ b/src/Mod/Mesh/App/Mesh.pyi
+@@ -186,9 +186,16 @@ class Mesh(ComplexGeoData):
+     @overload
+     def addFacets(self, facets: list, /) -> None: ...
+     @overload
+-    def addFacets(self, mesh: tuple[list, list], check: bool = True, /) -> None: ...
++    def addFacets(self, mesh: tuple[list, list], check: bool = False, /) -> None: ...
+     def addFacets(self, *args) -> None:
+-        """Add a list of facets to the mesh"""
++        """Add a list of facets to the mesh
++
++        addFacets([Vector, ...]) -- every three vectors make a facet
++        addFacets((points, facets), check=False) -- points and index triples, e.g. the
++        result of Shape.tessellate().  All facets are added, also those on non-manifold
++        edges (touching solids).  With check=True facets that would create a
++        non-manifold edge are skipped and a warning tells how many.
++        """
+         ...
+ 
+     def removeFacets(self, facets: list[int], /) -> None:
+diff --git a/src/Mod/Mesh/App/MeshPyImp.cpp b/src/Mod/Mesh/App/MeshPyImp.cpp
+index f4fbab215..03de89028 100644
+--- a/src/Mod/Mesh/App/MeshPyImp.cpp
++++ b/src/Mod/Mesh/App/MeshPyImp.cpp
+@@ -23,6 +23,7 @@
+  ***************************************************************************/
+ 
+ 
++#include <Base/Console.h>
+ #include <Base/Converter.h>
+ #include <Base/GeometryPyCXX.h>
+ #include <Base/MatrixPy.h>
+@@ -790,7 +791,12 @@ PyObject* MeshPy::addFacets(PyObject* args)
+     }
+ 
+     PyErr_Clear();
+-    PyObject* check = Py_True;
++    // The manifold check drops every new facet that would share an edge with more than one
++    // other facet.  That is useful for interactive editing (filling a hole) but silently
++    // destroys data when a complete mesh is passed in, e.g. Shape.tessellate() of a compound
++    // of touching solids (the merged points make edges shared by four facets).  So it is off
++    // by default; when requested, report how many facets were skipped.
++    PyObject* check = Py_False;
+     if (PyArg_ParseTuple(args, "O!|O!", &PyTuple_Type, &list, &PyBool_Type, &check)) {
+         Py::Tuple tuple(list);
+         Py::List list_v(tuple.getItem(0));
+@@ -814,7 +820,17 @@ PyObject* MeshPy::addFacets(PyObject* args)
+             faces.push_back(face);
+         }
+ 
++        const unsigned long before = getMeshObjectPtr()->countFacets();
+         getMeshObjectPtr()->addFacets(faces, vertices, Base::asBoolean(check));
++        const unsigned long added = getMeshObjectPtr()->countFacets() - before;
++        if (added < faces.size()) {
++            Base::Console().warning(
++                "Mesh.addFacets: %lu of %lu facets were not added because they would create "
++                "non-manifold edges (pass check=False to keep all)\n",
++                static_cast<unsigned long>(faces.size() - added),
++                static_cast<unsigned long>(faces.size())
++            );
++        }
+ 
+         Py_Return;
+     }
+diff --git a/src/Mod/Mesh/App/MeshTestsApp.py b/src/Mod/Mesh/App/MeshTestsApp.py
+index 02c7e8c0f..b8f18a140 100644
+--- a/src/Mod/Mesh/App/MeshTestsApp.py
++++ b/src/Mod/Mesh/App/MeshTestsApp.py
+@@ -648,6 +648,34 @@ class MeshSubElement(unittest.TestCase):
+         pass
+ 
+ 
++class MeshAddFacetsTupleCases(unittest.TestCase):
++    """Mesh.addFacets((points, facets)) must keep facets on non-manifold edges."""
++
++    def _touchingBoxes(self):
++        import Part
++
++        boxes = []
++        for i in range(4):
++            for j in range(13):
++                boxes.append(Part.makeBox(1100, 110, 20, FreeCAD.Vector(i * 1100, j * 110, 0)))
++        return Part.makeCompound(boxes)
++
++    def testTessellateOfTouchingSolids(self):
++        comp = self._touchingBoxes()
++        points, facets = comp.tessellate(0.5)
++        self.assertEqual(len(facets), 52 * 12)
++        mesh = Mesh.Mesh()
++        mesh.addFacets((points, facets))
++        self.assertEqual(mesh.CountFacets, 52 * 12)
++        self.assertEqual(Mesh.Mesh(comp.tessellate(0.5)).CountFacets, 52 * 12)
++
++    def testExplicitManifoldCheck(self):
++        comp = self._touchingBoxes()
++        mesh = Mesh.Mesh()
++        mesh.addFacets(comp.tessellate(0.5), True)
++        self.assertLess(mesh.CountFacets, 52 * 12)
++
++
+ class MeshProperty(unittest.TestCase):
+     def setUp(self):
+         self.doc = FreeCAD.newDocument("MeshTest")
+diff --git a/src/Mod/Part/parttests/TopoShapeTest.py b/src/Mod/Part/parttests/TopoShapeTest.py
+index c430fb9ff..2fc1c61b1 100644
+--- a/src/Mod/Part/parttests/TopoShapeTest.py
++++ b/src/Mod/Part/parttests/TopoShapeTest.py
+@@ -1058,3 +1058,25 @@ class TopoShapeTest(unittest.TestCase, TopoShapeAssertions):
+     def testTopoShapeVertexRepr(self):
+         self.assertEqual(repr(Part.Vertex(1, 2, 3)), "<Part.Vertex (1, 2, 3)>")
+         self.assertEqual(repr(Part.Vertex()), "<Part.Vertex()>")
++
++    def testTessellateCompoundOfTouchingBoxes(self):
++        # Field report: 52 long thin boxes in a compound, Mesh.Mesh().addFacets(
++        # shape.tessellate(0.5)) gave 260 instead of 624 triangles.  tessellate() itself
++        # returns every facet; the loss was Mesh's manifold check, now off by default.
++        boxes = []
++        for i in range(4):
++            for j in range(13):
++                box = Part.makeBox(1100, 110, 20)
++                box.translate(App.Vector(i * 1100, j * 110, 0))
++                boxes.append(box)
++        shared = Part.makeBox(1100, 110, 20)
++        for k in range(10):  # translated copies sharing one TShape
++            boxes.append(shared.translated(App.Vector(0, 0, 100 + k * 20)))
++        comp = Part.makeCompound(boxes)
++        points, facets = comp.tessellate(0.5)
++        self.assertEqual(len(facets), len(boxes) * 12)
++        top = [f for f in facets if all(abs(points[i].z - 20) < 1e-9 for i in f)]
++        self.assertEqual(len(top), 52 * 2)
++        import Mesh
++
++        self.assertEqual(Mesh.Mesh(comp.tessellate(0.5)).CountFacets, len(boxes) * 12)
+-- 
+2.43.0
+

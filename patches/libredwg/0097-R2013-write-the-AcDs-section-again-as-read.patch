@@ -1,0 +1,142 @@
+From 332e72b50aae8f08d3d3925d40ccb277497c54e3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 12:41:33 +0900
+Subject: [PATCH 097/116] R2013+: write the AcDs section again as read
+
+The AcDb:AcDsPrototype_1b section has the SAB of the R2013+ 3DSOLIDs,
+REGIONs and BODYs with has_ds_data. We cannot encode it yet (acds.spec
+was disabled), so R2013+ drawings rewritten as R2013+ lost all their
+ACIS data. Keep the decompressed section and write it as is to R2013+
+from R2013+; the handles of the entities stay the same.
+
+* include/dwg.h (Dwg_Data): acds_raw, acds_raw_size.
+* src/decode.c (read_2004_section_acds): Keep a copy.
+* src/free.c (dwg_free): Free it.
+* src/encode.c (dwg_encode): Write it as the AcDs section.
+(r2004_map_order, r2004_stream_order): The AcDs with the highest id,
+its pages after the AppInfoHistory, as in AutoCAD's example_2018.
+(r2004_section_compressed): Compressed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/dwg.h |  6 ++++++
+ src/decode.c  |  8 ++++++++
+ src/encode.c  | 37 ++++++++++++++++++++++++++-----------
+ src/free.c    |  2 ++
+ 4 files changed, 42 insertions(+), 11 deletions(-)
+
+diff --git a/include/dwg.h b/include/dwg.h
+index 7d17c81..792aa12 100644
+--- a/include/dwg.h
++++ b/include/dwg.h
+@@ -11461,6 +11461,12 @@ typedef struct _dwg_struct
+   // for speedup dwg_add_handleref
+   Dwg_Object_Ref **object_ordered_ref; /*! list of all ordered objects refs */
+   BITCODE_BL num_object_ordered_refs;  /*! number of ordered objects refs */
++
++  /* The decompressed AcDb:AcDsPrototype_1b section of an R2013+ DWG, as
++     read. Written again as is to R2013+, as long as we cannot encode the
++     acds. It has the SAB of the 3DSOLIDs with has_ds_data. */
++  BITCODE_TF acds_raw;
++  size_t acds_raw_size;
+ } Dwg_Data;
+ 
+ #define DWG_OPTS_LOGLEVEL 0xf
+diff --git a/src/decode.c b/src/decode.c
+index 23b0e87..a5eef21 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -3381,6 +3381,14 @@ read_2004_section_acds (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+ 
+   LOG_TRACE ("AcDs datastorage (%" PRIuSIZE ")\n-------------------\n",
+              sec_dat.size);
++  // keep it to write it again as is
++  FREE_IF (dwg->acds_raw);
++  dwg->acds_raw_size = 0;
++  if (sec_dat.size && (dwg->acds_raw = (BITCODE_TF)malloc (sec_dat.size)))
++    {
++      memcpy (dwg->acds_raw, sec_dat.chain, sec_dat.size);
++      dwg->acds_raw_size = sec_dat.size;
++    }
+   old_dat = *dat;
+   dat = &sec_dat; // restrict in size
+   bit_chain_set_version (&old_dat, dat);
+diff --git a/src/encode.c b/src/encode.c
+index c2e94f2..6c97324 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -1664,18 +1664,21 @@ r2004_compress (const BITCODE_RC *src, const uint32_t size, BITCODE_RC *dst)
+ /* The sections in the order of the section map. The ids count down from the
+    last one to 1, the empty section first is 0. */
+ static const Dwg_Section_Type r2004_map_order[]
+-    = { SECTION_SECURITY,       SECTION_FILEDEPLIST, SECTION_VBAPROJECT,
+-        SECTION_APPINFOHISTORY, SECTION_APPINFO,     SECTION_PREVIEW,
+-        SECTION_SUMMARYINFO,    SECTION_REVHISTORY,  SECTION_OBJECTS,
+-        SECTION_OBJFREESPACE,   SECTION_TEMPLATE,    SECTION_HANDLES,
+-        SECTION_CLASSES,        SECTION_AUXHEADER,   SECTION_HEADER };
+-/* and the order of their pages in the file */
++    = { SECTION_ACDS,       SECTION_SECURITY,       SECTION_FILEDEPLIST,
++        SECTION_VBAPROJECT, SECTION_APPINFOHISTORY, SECTION_APPINFO,
++        SECTION_PREVIEW,    SECTION_SUMMARYINFO,    SECTION_REVHISTORY,
++        SECTION_OBJECTS,    SECTION_OBJFREESPACE,   SECTION_TEMPLATE,
++        SECTION_HANDLES,    SECTION_CLASSES,        SECTION_AUXHEADER,
++        SECTION_HEADER };
++/* and the order of their pages in the file (the AcDs of AutoCAD's
++   example_2018 after the AppInfoHistory, with the highest id) */
+ static const Dwg_Section_Type r2004_stream_order[]
+-    = { SECTION_SUMMARYINFO,  SECTION_PREVIEW,        SECTION_VBAPROJECT,
+-        SECTION_APPINFO,      SECTION_APPINFOHISTORY, SECTION_FILEDEPLIST,
+-        SECTION_REVHISTORY,   SECTION_SECURITY,       SECTION_OBJECTS,
+-        SECTION_OBJFREESPACE, SECTION_TEMPLATE,       SECTION_HANDLES,
+-        SECTION_CLASSES,      SECTION_AUXHEADER,      SECTION_HEADER };
++    = { SECTION_SUMMARYINFO, SECTION_PREVIEW,        SECTION_VBAPROJECT,
++        SECTION_APPINFO,     SECTION_APPINFOHISTORY, SECTION_ACDS,
++        SECTION_FILEDEPLIST, SECTION_REVHISTORY,     SECTION_SECURITY,
++        SECTION_OBJECTS,     SECTION_OBJFREESPACE,   SECTION_TEMPLATE,
++        SECTION_HANDLES,     SECTION_CLASSES,        SECTION_AUXHEADER,
++        SECTION_HEADER };
+ 
+ typedef struct _r2004_page
+ {
+@@ -1709,6 +1712,7 @@ r2004_section_compressed (const Dwg_Section_Type type)
+     case SECTION_OBJFREESPACE:
+     case SECTION_OBJECTS:
+     case SECTION_REVHISTORY:
++    case SECTION_ACDS:
+       return 2;
+     default:
+       return 1;
+@@ -4814,6 +4818,17 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+             }
+             break;
+           case SECTION_ACDS:
++            // as read from an R2013+ DWG, for the SAB of the 3DSOLIDs
++            if (dwg->acds_raw && dwg->acds_raw_size && dat->version >= R_2013b
++                && dwg->header.from_version >= R_2013b
++                && !(dwg->opts & DWG_OPTS_IN))
++              {
++                bit_chain_init_dat (&sec_dat[type], dwg->acds_raw_size, dat);
++                bit_write_TF (&sec_dat[type], dwg->acds_raw,
++                              dwg->acds_raw_size);
++                LOG_TRACE ("AcDs as read: %" PRIuSIZE "\n",
++                           dwg->acds_raw_size);
++              }
+             {
+ #if 0
+               Dwg_AcDs *_obj = &dwg->acds;
+diff --git a/src/free.c b/src/free.c
+index 1bca425..46c2557 100644
+--- a/src/free.c
++++ b/src/free.c
+@@ -1850,6 +1850,8 @@ dwg_free (Dwg_Data *dwg)
+           FREE_IF (dwg->acis_sab_hdl[i]);
+         }
+       FREE_IF (dwg->acis_sab_hdl);
++      FREE_IF (dwg->acds_raw);
++      dwg->acds_raw_size = 0;
+       FREE_IF (dwg->object);
+       if (dwg->object_map)
+         {
+-- 
+2.43.0
+

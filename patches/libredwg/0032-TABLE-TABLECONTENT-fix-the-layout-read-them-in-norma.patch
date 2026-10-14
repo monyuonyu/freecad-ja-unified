@@ -1,8 +1,8 @@
 From 3bd40fb4dc4d9aab1056bd8c25e25bc784a22dca Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 06:33:08 +0900
-Subject: [PATCH 32/54] TABLE/TABLECONTENT: fix the layout, read them in normal
- builds
+Subject: [PATCH 032/116] TABLE/TABLECONTENT: fix the layout, read them in
+ normal builds
 
 Checked with the data end of every table in the corpus (R14 to R2018:
 sample_AC1014..AC1032, sample_base, example_r14..example_2018,

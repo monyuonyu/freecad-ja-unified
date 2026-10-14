@@ -1,0 +1,53 @@
+From d3a15780cb8ca4c8db98e4bfe1b53c6ae293797a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:31:26 +0900
+Subject: [PATCH 080/116] SPLINE: R2013+ spline flags and knot parameter from
+ earlier versions
+
+From an earlier version splineflags was 8 or 9 (as decoded from the
+scenario) and knotparam 0. ACadSharp takes the scenario from these: a
+control point spline with knotparam 0 and flag 8 (use knot parameter)
+is a fit point spline for it, it failed to read the rest ("Failed to
+read ReadBitDouble"), and the spline was lost. As AutoCAD: control
+points with splineflags 0 (4 if closed) and knotparam 15 (custom), fit
+points with splineflags 9 and knotparam 0 (chord).
+
+* src/dwg.spec (SPLINE): Set them when encoding from before R2013.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index d782cb7..54c6185 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -2641,6 +2641,24 @@ DWG_ENTITY (SPLINE)
+     }
+   }
+   SINCE (R_2013b) {
++    ENCODER {
++      // as AutoCAD: control points with a custom knot parameter, fit
++      // points with method fit points and use knot parameter (chord).
++      // ACadSharp takes the scenario from these.
++      if (dat->from_version < R_2013b && !(dwg->opts & DWG_OPTS_IN))
++        {
++          if (FIELD_VALUE (scenario) == 2)
++            {
++              FIELD_VALUE (splineflags) = 9;
++              FIELD_VALUE (knotparam) = 0;
++            }
++          else
++            {
++              FIELD_VALUE (splineflags) = FIELD_VALUE (closed_b) ? 4 : 0;
++              FIELD_VALUE (knotparam) = 15;
++            }
++        }
++    }
+     FIELD_BL (splineflags, 0);
+     LOG_SPLINE_SPLINEFLAGS
+     FIELD_BL (knotparam, 0);
+-- 
+2.43.0
+

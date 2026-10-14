@@ -1,0 +1,37 @@
+From a13b8b009efdde96af40661c34a0d9299b13b5bf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 20:45:13 +0900
+Subject: [PATCH 110/116] SPLINE: the R2013+ spline flags and knot parameter
+ also from DXF
+
+DXF has no splineflags and knotparam, so they were 0 from DXF, and
+ACadSharp read the control point SPLINEs of DXFs written as R2013+ as
+fit point splines and lost them (32 of the corpus). Set them as from
+earlier DWGs, unless set otherwise.
+
+* src/dwg.spec (SPLINE): Also from DXF with knotparam 0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 178046f..9dd06bc 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -2655,7 +2655,10 @@ DWG_ENTITY (SPLINE)
+       // as AutoCAD: control points with a custom knot parameter, fit
+       // points with method fit points and use knot parameter (chord).
+       // ACadSharp takes the scenario from these.
+-      if (dat->from_version < R_2013b && !(dwg->opts & DWG_OPTS_IN))
++      // DXF has them not: from DXF, unless set otherwise
++      if ((dat->from_version < R_2013b && !(dwg->opts & DWG_OPTS_IN))
++          || ((dwg->opts & DWG_OPTS_INDXF) && !FIELD_VALUE (knotparam)
++              && !(FIELD_VALUE (splineflags) & ~9)))
+         {
+           if (FIELD_VALUE (scenario) == 2)
+             {
+-- 
+2.43.0
+

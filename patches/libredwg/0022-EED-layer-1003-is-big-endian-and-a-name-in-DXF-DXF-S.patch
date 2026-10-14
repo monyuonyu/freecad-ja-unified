@@ -1,7 +1,7 @@
 From 7fa308fc1a308ebb61ed3b2759bcd129f4fbd81e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 06:47:24 +0900
-Subject: [PATCH 22/54] EED layer (1003) is big-endian and a name in DXF; DXF
+Subject: [PATCH 022/116] EED layer (1003) is big-endian and a name in DXF; DXF
  SPATIAL_FILTER; JSON NaN in vectors
 
 - EED code 3 is the LAYER handle big-endian, as the entity handle 5:

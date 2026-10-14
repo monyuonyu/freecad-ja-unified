@@ -1,7 +1,7 @@
 From 4dde40b4efe8abc4e62fcde41874172660959418 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 12:33:52 +0900
-Subject: [PATCH 42/54] TABLE: DXF import and export of ACAD_TABLE
+Subject: [PATCH 042/116] TABLE: DXF import and export of ACAD_TABLE
 
 AutoCAD writes ACAD_TABLE to every DXF version in the pre-R2010 form
 (example_2000.dxf .. example_2018.dxf, 2000/TS1.dxf): the INSERT part,

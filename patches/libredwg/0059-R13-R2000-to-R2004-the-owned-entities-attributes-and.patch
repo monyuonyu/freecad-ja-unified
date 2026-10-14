@@ -1,0 +1,172 @@
+From 3c3333e24be0eeb1983afc65a38a2272b3e04685 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:14:16 +0900
+Subject: [PATCH 059/116] R13-R2000 to R2004+: the owned entities, attributes
+ and vertices as lists
+
+R2004+ have no first_entity/last_entity links in the BLOCK_HEADER, no
+first/last attrib in INSERT/MINSERT and no first/last vertex in POLYLINE,
+but num_owned and a list of handles. They were empty: sample_AC1015 written
+as R2004 lost all its 355 entities.
+
+* src/encode.c (upconvert_owned_lists): New. Collect the entities by
+their owner (model space, paper space or the owner handle) in object
+order, without BLOCK, ENDBLK and SEQEND; ATTRIBs to their INSERT, VERTEXes
+to their POLYLINE.
+(dwg_encode): Call it from R13-R2000 to R2004+.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 129 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 129 insertions(+)
+
+diff --git a/src/encode.c b/src/encode.c
+index 5f3e4e6..c601119 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -3541,6 +3541,132 @@ upconvert_r14_names (Dwg_Data *restrict dwg)
+     }
+ }
+ 
++/* R13-R2000 to R2004+: the owned entities are lists, not the links
++   first_entity..last_entity (BLOCK_HEADER), first_attrib..last_attrib
++   (INSERT, MINSERT) and first_vertex..last_vertex (POLYLINE). Without them
++   AutoCAD and ACadSharp see empty blocks: every entity of sample_AC1015
++   written as R2004 was lost. Collect them by their owner, in the object
++   order. */
++static void
++upconvert_owned_lists (Dwg_Data *restrict dwg)
++{
++  BITCODE_BL *count
++      = (BITCODE_BL *)calloc (dwg->num_objects + 1, sizeof (BITCODE_BL));
++  Dwg_Object_Ref ***lists = NULL;
++  BITCODE_RLL mspace = dwg->header_vars.BLOCK_RECORD_MSPACE
++                           ? dwg->header_vars.BLOCK_RECORD_MSPACE->absolute_ref
++                           : 0;
++  BITCODE_RLL pspace = dwg->header_vars.BLOCK_RECORD_PSPACE
++                           ? dwg->header_vars.BLOCK_RECORD_PSPACE->absolute_ref
++                           : 0;
++  if (!count)
++    return;
++  for (int pass = 0; pass < 2; pass++)
++    {
++      for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++        {
++          Dwg_Object *obj = &dwg->object[i];
++          Dwg_Object_Entity *ent;
++          Dwg_Object *owner;
++          BITCODE_RLL ownerref;
++          int is_sub, owner_ok;
++          if (obj->supertype != DWG_SUPERTYPE_ENTITY || !obj->tio.entity)
++            continue;
++          ent = obj->tio.entity;
++          ownerref = ent->entmode == 2   ? mspace
++                     : ent->entmode == 1 ? pspace
++                     : ent->ownerhandle  ? ent->ownerhandle->absolute_ref
++                                         : 0;
++          owner = ownerref ? dwg_resolve_handle (dwg, ownerref) : NULL;
++          if (!owner)
++            continue;
++          is_sub = obj->fixedtype == DWG_TYPE_ATTRIB
++                   || obj->fixedtype == DWG_TYPE_VERTEX_2D
++                   || obj->fixedtype == DWG_TYPE_VERTEX_3D
++                   || obj->fixedtype == DWG_TYPE_VERTEX_MESH
++                   || obj->fixedtype == DWG_TYPE_VERTEX_PFACE
++                   || obj->fixedtype == DWG_TYPE_VERTEX_PFACE_FACE;
++          if (obj->fixedtype == DWG_TYPE_SEQEND
++              || obj->fixedtype == DWG_TYPE_BLOCK
++              || obj->fixedtype == DWG_TYPE_ENDBLK)
++            continue;
++          if (is_sub)
++            owner_ok = obj->fixedtype == DWG_TYPE_ATTRIB
++                           ? (owner->fixedtype == DWG_TYPE_INSERT
++                              || owner->fixedtype == DWG_TYPE_MINSERT)
++                           : (owner->fixedtype == DWG_TYPE_POLYLINE_2D
++                              || owner->fixedtype == DWG_TYPE_POLYLINE_3D
++                              || owner->fixedtype == DWG_TYPE_POLYLINE_MESH
++                              || owner->fixedtype == DWG_TYPE_POLYLINE_PFACE);
++          else
++            owner_ok = owner->fixedtype == DWG_TYPE_BLOCK_HEADER;
++          if (!owner_ok || owner->index >= dwg->num_objects)
++            continue;
++          if (pass == 0)
++            count[owner->index]++;
++          else if (lists[owner->index])
++            lists[owner->index][count[owner->index]++]
++                = dwg_add_handleref (dwg, 4, obj->handle.value, NULL);
++        }
++      if (pass == 1)
++        break;
++      // allocate the lists of the owners without one
++      lists = (Dwg_Object_Ref ***)calloc (dwg->num_objects,
++                                          sizeof (Dwg_Object_Ref **));
++      if (!lists)
++        {
++          free (count);
++          return;
++        }
++      for (BITCODE_BL i = 0; i < dwg->num_objects; i++)
++        {
++          Dwg_Object *obj = &dwg->object[i];
++          Dwg_Object_Ref ***listp = NULL;
++          BITCODE_BL *nump = NULL;
++          if (!count[i] || !obj->tio.object)
++            continue;
++          if (obj->fixedtype == DWG_TYPE_BLOCK_HEADER)
++            {
++              Dwg_Object_BLOCK_HEADER *_obj
++                  = obj->tio.object->tio.BLOCK_HEADER;
++              listp = &_obj->entities;
++              nump = &_obj->num_owned;
++            }
++          else if (obj->fixedtype == DWG_TYPE_INSERT)
++            {
++              Dwg_Entity_INSERT *_obj = obj->tio.entity->tio.INSERT;
++              listp = &_obj->attribs;
++              nump = &_obj->num_owned;
++            }
++          else if (obj->fixedtype == DWG_TYPE_MINSERT)
++            {
++              Dwg_Entity_MINSERT *_obj = obj->tio.entity->tio.MINSERT;
++              listp = &_obj->attribs;
++              nump = &_obj->num_owned;
++            }
++          else // the POLYLINEs share the fields
++            {
++              Dwg_Entity_POLYLINE_2D *_obj = obj->tio.entity->tio.POLYLINE_2D;
++              listp = &_obj->vertex;
++              nump = &_obj->num_owned;
++            }
++          if (*listp || *nump)
++            continue;
++          *listp = (Dwg_Object_Ref **)calloc (count[i],
++                                              sizeof (Dwg_Object_Ref *));
++          if (!*listp)
++            continue;
++          LOG_TRACE ("%s " FORMAT_HV ": %u owned\n", obj->name,
++                     obj->handle.value, (unsigned)count[i]);
++          *nump = count[i];
++          lists[i] = *listp;
++        }
++      memset (count, 0, (dwg->num_objects + 1) * sizeof (BITCODE_BL));
++    }
++  free (lists);
++  free (count);
++}
++
+ EXPORT int
+ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+ {
+@@ -3583,6 +3709,9 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+     upconvert_r14_names (dwg);
+   if (dwg->header.from_version >= R_2004 && dwg->header.version < R_2004)
+     downconvert_for_r2000 (dwg);
++  if (dwg->header.from_version >= R_13b1 && dwg->header.from_version < R_2004
++      && dwg->header.version >= R_2004)
++    upconvert_owned_lists (dwg);
+   dwg_fixup_mtext_linebreaks (dwg);
+ 
+ #ifdef ENCODE_UNKNOWN_AS_DUMMY
+-- 
+2.43.0
+

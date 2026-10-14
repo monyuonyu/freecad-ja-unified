@@ -1,0 +1,38 @@
+From fc5d4719af9a329c119134f7a863ee6cb2853cbb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 20:19:15 +0900
+Subject: [PATCH 107/116] DXF: the owned vertices and attributes as absolute
+ handles
+
+dxf_postprocess_SEQEND made the vertex[] of POLYLINE_PFACE/MESH and
+the attribs[] of INSERT/MINSERT relative soft pointers to their owner,
+written to R2004+ as relative codes 6 and 10. ACadSharp reads these as
+other handles and lost the vertices and attributes of DXFs written as
+R2004+ (160 entities of the corpus). Absolute, as AutoCAD and as the
+lists made for R13-R2000 DWGs.
+
+* src/in_dxf.c (dxf_postprocess_SEQEND): The owned handles absolute.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 5248667..422a3fc 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -10746,7 +10746,9 @@ dxf_postprocess_SEQEND (Dwg_Object *restrict obj)
+                                    ? 3
+                                    : 4;
+           owned = (BITCODE_H *)realloc (owned, num_owned * sizeof (BITCODE_H));
+-          owned[j] = dwg_add_handleref (dwg, hdlcode, _o->handle.value, owner);
++          // absolute, as AutoCAD. ACadSharp reads a relative 6 or 10 here
++          // as another handle and loses the vertices and attributes.
++          owned[j] = dwg_add_handleref (dwg, hdlcode, _o->handle.value, NULL);
+           LOG_TRACE ("%s.%s[%d] = " FORMAT_REF " [H* 0]\n", owner->name,
+                      owhdls, j, ARGS_REF (owned[j]));
+         }
+-- 
+2.43.0
+

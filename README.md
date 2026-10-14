@@ -188,6 +188,10 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 | `--hidden` で旧版の設定がある | 設定移行のダイアログが見えない画面に出て**永久に止まる** | ダイアログを出さない |
 | `--hidden` の実行 | 最近使ったファイル・ウィンドウ配置を書き換える | 書き換えない |
 | Python の `saveImage()` | ナビゲーションキューブが写り込む | 写らない（「画像を保存」メニューと同じ） |
+| 画像を出す | 画面（xvfb）と GUI が要る | `FreeCADCmd a.FCStd --render a.png --view iso`（画面も OpenGL も不要。`--render-style shaded\|hidden-lines\|lines`、`--size 1600x1200`、Python は `Part.renderImage`） |
+| 干渉チェック | 部品の組を総当たり（300 部品で 106 秒） | `FreeCADCmd a.FCStd --interference`／`Part.findInterferences`（外形で絞って並列、1.2 秒） |
+| 隠れ線を消した 2D 図 | TechDraw のページが要る | `--export-svg`、`--export-polygons`（面ごとの多角形 JSON）、`--export-pptx`（編集できる図形の PowerPoint）／`Part.projectVisible` |
+| `Mesh.addFacets(shape.tessellate(d))` | 接した箱どうしの面を**黙って捨てる**（52 個の箱で 624 → 12 面） | 全部入れる（`check=True` のときだけ捨て、数を警告） |
 
 ## 本家から取り込んだ修正（PR 一覧）
 
@@ -258,6 +262,18 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.5.0 の変更
+
+- DWG: **R2004・R2010・R2013・R2018 の DWG を書けるようにした**（これまでは R2000 まで）。
+  試験用の 149 図面を各版に書いて ACadSharp で読み直し、読めない図面 0・消えた図形 0・種類が変わった図形 0（DXF 経由でも同じ）。
+  AutoCAD が同じ版で保存したものとも図形ごとに突き合わせた
+  - 3D ソリッド（ACIS）: R2013 以降の置き場所（AcDs）を読み書きし、古い図面や DXF から R2013 以降に書いても形が消えない
+  - DXF → DWG（dxf2dwg）で R2010 以降に書くと図形の 2 割近くが消えていたのを直した
+  - FreeCAD の DWG 書き出しは従来どおり R2000（どの AutoCAD でも開ける）。新しい版は同梱の `dxf2dwg --as r2018` で
+- コマンドライン: 画像を 1 行で出す（`--render`、画面も OpenGL も不要）、速い干渉チェック（`--interference`）、
+  隠れ線を消した 2D 図の書き出し（SVG・面ごとの多角形・PowerPoint）。「コマンドライン・スクリプト」の表を参照
+- Mesh: `addFacets` が接した部品の面を黙って捨て、STL に穴が開いていたのを直した
 
 ## 0.4.1 の変更
 

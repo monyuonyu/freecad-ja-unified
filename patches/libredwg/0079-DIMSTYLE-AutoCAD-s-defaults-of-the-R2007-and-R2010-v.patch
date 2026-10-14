@@ -1,0 +1,98 @@
+From ea8f2eb61e1b2dff00806027a08b531839575bc1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:31:26 +0900
+Subject: [PATCH 079/116] DIMSTYLE: AutoCAD's defaults of the R2007+ and R2010+
+ variables
+
+From an earlier version DIMJOGANG, DIMFXL, DIMALTMZF and DIMMZF were 0
+and DIMTFILLCLR had no color method. ACadSharp rejects DIMJOGANG 0
+("JoggedRadiusDimensionTransverseSegmentAngle must be in range of 5 to
+90 degrees"), so it dropped such dimension styles, and the dimensions
+got Standard (63 in the round trips to R2010+).
+
+* src/dwg.spec (DIMSTYLE): Set AutoCAD's defaults: DIMFXL 1, DIMJOGANG
+45 degrees, DIMTFILLCLR ByBlock, DIMALTMZF and DIMMZF 100.
+* src/header_variables.spec: Likewise for the header variables.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec              | 22 ++++++++++++++++++++++
+ src/header_variables.spec | 15 +++++++++++++++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 257028a..d782cb7 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -4426,6 +4426,19 @@ DWG_TABLE (DIMSTYLE)
+ 
+   SINCE (R_2007a)
+     {
++      ENCODER {
++        // AutoCAD's defaults. ACadSharp rejects DIMJOGANG 0.
++        if (dat->from_version < R_2007a)
++          {
++            if (FIELD_VALUE (DIMFXL) == 0.0)
++              FIELD_VALUE (DIMFXL) = 1.0;
++            if (FIELD_VALUE (DIMJOGANG) == 0.0)
++              FIELD_VALUE (DIMJOGANG) = M_PI_2 / 2.0;
++            if (!FIELD_VALUE (DIMTFILLCLR.index)
++                && !FIELD_VALUE (DIMTFILLCLR.rgb))
++              FIELD_VALUE (DIMTFILLCLR.rgb) = 0xc1000000; // ByBlock
++          }
++      }
+       FIELD_BD0 (DIMFXL, 49);
+       FIELD_BD0 (DIMJOGANG, 50);
+       FIELD_BS0 (DIMTFILL, 69);
+@@ -4505,6 +4518,15 @@ DWG_TABLE (DIMSTYLE)
+ 
+   IF_FREE_OR_SINCE (R_2010b)
+     {
++      ENCODER {
++        if (dat->from_version < R_2010b)
++          {
++            if (FIELD_VALUE (DIMALTMZF) == 0.0)
++              FIELD_VALUE (DIMALTMZF) = 100.0;
++            if (FIELD_VALUE (DIMMZF) == 0.0)
++              FIELD_VALUE (DIMMZF) = 100.0;
++          }
++      }
+       FIELD_B (DIMTXTDIRECTION, 294); // ODA documented as 295. Undocumented in ACAD
+       FIELD_BD (DIMALTMZF, 0); // undocumented
+       FIELD_T (DIMALTMZS, 0); // undocumented
+diff --git a/src/header_variables.spec b/src/header_variables.spec
+index cfe9bea..54b0d07 100644
+--- a/src/header_variables.spec
++++ b/src/header_variables.spec
+@@ -415,6 +415,15 @@
+ 
+   SINCE (R_2007a)
+     {
++      IF_ENCODE_FROM_EARLIER {
++        // AutoCAD's defaults
++        if (FIELD_VALUE (DIMFXL) == 0.0)
++          FIELD_VALUE (DIMFXL) = 1.0;
++        if (FIELD_VALUE (DIMJOGANG) == 0.0)
++          FIELD_VALUE (DIMJOGANG) = M_PI_2 / 2.0;
++        if (!FIELD_VALUE (DIMTFILLCLR.index) && !FIELD_VALUE (DIMTFILLCLR.rgb))
++          FIELD_VALUE (DIMTFILLCLR.rgb) = 0xc1000000; // ByBlock
++      }
+       FIELD_BD (DIMFXL, 40);
+       FIELD_BD (DIMJOGANG, 40);
+       FIELD_BS (DIMTFILL, 70);
+@@ -502,6 +511,12 @@
+ 
+   SINCE (R_2010b)
+     {
++      IF_ENCODE_FROM_EARLIER {
++        if (FIELD_VALUE (DIMALTMZF) == 0.0)
++          FIELD_VALUE (DIMALTMZF) = 100.0;
++        if (FIELD_VALUE (DIMMZF) == 0.0)
++          FIELD_VALUE (DIMMZF) = 100.0;
++      }
+       FIELD_B (DIMTXTDIRECTION, 70);
+       FIELD_BD (DIMALTMZF, 40);
+       FIELD_BD (DIMMZF, 40);
+-- 
+2.43.0
+

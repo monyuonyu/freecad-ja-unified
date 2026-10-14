@@ -1,7 +1,7 @@
 From a5f95c028d78e0807d935241e2a6de8c05d8de09 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:39:28 +0900
-Subject: [PATCH 11/54] out_json: write NaN and infinite doubles as 0.0, JSON
+Subject: [PATCH 011/116] out_json: write NaN and infinite doubles as 0.0, JSON
  has no NaN
 
 dwgread -O json printed "-nan" for a misread RAPIDRTRENDERSETTINGS

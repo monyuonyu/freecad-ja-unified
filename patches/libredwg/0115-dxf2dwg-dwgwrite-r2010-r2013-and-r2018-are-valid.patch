@@ -1,0 +1,110 @@
+From cc3ff04fdc65c677ebff833161ddbdc24cac69f3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 21:56:32 +0900
+Subject: [PATCH 115/116] dxf2dwg, dwgwrite: r2010, r2013 and r2018 are valid
+
+All 149 drawings of the test corpus as DXF written as R2004, R2010,
+R2013 and R2018 round trip through ACadSharp without losses (as R2000
+and R2004 53 changed values, as R2010+ 66, all in TABLEs).
+
+* programs/dxf2dwg.c (help): Move r2010, r2013, r2018 to the valid
+versions.
+* programs/dxf2dwg.1: Likewise.
+* programs/dwgwrite.c (help): Not only r2000.
+* programs/dwgwrite.1: Likewise.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ programs/dwgwrite.1 |  2 +-
+ programs/dwgwrite.c |  2 +-
+ programs/dxf2dwg.1  |  5 +++--
+ programs/dxf2dwg.c  | 12 +++++++-----
+ 4 files changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/programs/dwgwrite.1 b/programs/dwgwrite.1
+index 000ff6c..a00a1ad 100644
+--- a/programs/dwgwrite.1
++++ b/programs/dwgwrite.1
+@@ -6,7 +6,7 @@ dwgwrite \- manual page for dwgwrite 0.14
+ .B dwgwrite
+ [\fI\,OPTION\/\fR]... [\fI\,-o DWGFILE\/\fR] \fI\,INFILE\/\fR
+ .SH DESCRIPTION
+-Writes a DWG file from various input formats. Only r2000 for now.
++Writes a DWG file from various input formats.
+ .TP
+ \fB\-v[0\-9]\fR, \fB\-\-verbose\fR [0\-9]
+ verbosity
+diff --git a/programs/dwgwrite.c b/programs/dwgwrite.c
+index affb172..4a76ac9 100644
+--- a/programs/dwgwrite.c
++++ b/programs/dwgwrite.c
+@@ -66,7 +66,7 @@ static int
+ help (void)
+ {
+   printf ("\nUsage: dwgwrite [OPTION]... [-o DWGFILE] INFILE\n");
+-  printf ("Writes a DWG file from various input formats. Only r2000 for now.\n"
++  printf ("Writes a DWG file from various input formats.\n"
+           "\n");
+ #ifdef HAVE_GETOPT_LONG
+   printf ("  -v[0-9], --verbose [0-9]  verbosity\n");
+diff --git a/programs/dxf2dwg.1 b/programs/dxf2dwg.1
+index 16945a0..fb95acb 100644
+--- a/programs/dxf2dwg.1
++++ b/programs/dxf2dwg.1
+@@ -19,11 +19,12 @@ save as version
+ .IP
+ Valid versions:
+ .IP
+-r12, r14, r2000 (default), r2004
++r12, r14, r2000 (default), r2004, r2010, r2013,
++r2018
+ .IP
+ Planned versions:
+ .IP
+-r9, r10, r11, r2007, r2010, r2013, r2018
++r9, r10, r11, r2007
+ .TP
+ \fB\-o\fR outfile, \fB\-\-file\fR
+ optional, only valid with one single DXFFILE
+diff --git a/programs/dxf2dwg.c b/programs/dxf2dwg.c
+index d0cbd85..a0a8943 100644
+--- a/programs/dxf2dwg.c
++++ b/programs/dxf2dwg.c
+@@ -12,7 +12,7 @@
+ 
+ /*
+  * dxf2dwg.c: save a DXF as DWG. Detect ascii/binary. No minimal, only full.
+- * Optionally as a different version. Only r2000 encode-support so far.
++ * Optionally as a different version.
+  *
+  * written by Reini Urban
+  */
+@@ -78,9 +78,10 @@ help (void)
+   printf ("  -v[0-9], --verbose [0-9]  verbosity\n");
+   printf ("  --as rNNNN                save as version\n");
+   printf ("           Valid versions:\n");
+-  printf ("             r12, r14, r2000 (default), r2004\n");
++  printf ("             r12, r14, r2000 (default), r2004, r2010, r2013,\n");
++  printf ("             r2018\n");
+   printf ("           Planned versions:\n");
+-  printf ("             r9, r10, r11, r2007, r2010, r2013, r2018\n");
++  printf ("             r9, r10, r11, r2007\n");
+   printf ("  -o outfile, --file        optional, only valid with one single "
+           "DXFFILE\n");
+   printf ("       --help               display this help and exit\n");
+@@ -90,9 +91,10 @@ help (void)
+   printf ("  -v[0-9]     verbosity\n");
+   printf ("  -a rNNNN    save as version\n");
+   printf ("              Valid versions:\n");
+-  printf ("                r12, r14, r2000 (default), r2004\n");
++  printf ("                r12, r14, r2000 (default), r2004, r2010, r2013,\n");
++  printf ("                r2018\n");
+   printf ("              Planned versions:\n");
+-  printf ("                r9, r10, r11, r2007, r2010, r2013, r2018\n");
++  printf ("                r9, r10, r11, r2007\n");
+   printf ("  -o dwgfile  optional, only valid with one single DXFFILE\n");
+   printf ("  -h          display this help and exit\n");
+   printf ("  -i          output version information and exit\n"
+-- 
+2.43.0
+

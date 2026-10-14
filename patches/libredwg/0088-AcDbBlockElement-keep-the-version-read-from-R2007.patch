@@ -1,0 +1,36 @@
+From ddcf55c49817bdf0ae88c8fb773fa6cb0657d80b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:22:47 +0900
+Subject: [PATCH 088/116] AcDbBlockElement: keep the version read from R2007+
+
+be_major and be_minor were written as 33 and 29 for R2007+, but
+AutoCAD's R2018 drawings have 33 and 329.
+
+* src/dwg2.spec (AcDbBlockElement_fields): Write them as read from an
+R2007+ DWG.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg2.spec | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/dwg2.spec b/src/dwg2.spec
+index 760fe0c..96137ed 100644
+--- a/src/dwg2.spec
++++ b/src/dwg2.spec
+@@ -3412,6 +3412,12 @@ DWG_OBJECT_END
+   DECODER {                                     \
+     FIELD_BL (be_major, 98);                    \
+     FIELD_BL (be_minor, 99);                    \
++  } else if (dat->version >= R_2007a            \
++             && dat->from_version >= R_2007a    \
++             && _obj->be_major) {               \
++    /* as read: 33/329 in AutoCAD's R2018 */    \
++    FIELD_BL (be_major, 98);                    \
++    FIELD_BL (be_minor, 99);                    \
+   } else {                                      \
+     PRE (R_2007a) {                             \
+       VALUE_BL (25, 98);                        \
+-- 
+2.43.0
+

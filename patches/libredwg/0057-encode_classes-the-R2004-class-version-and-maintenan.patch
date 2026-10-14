@@ -1,0 +1,47 @@
+From 9e367197c3da9e41f627b50846edbb4dcb21308c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:05:08 +0900
+Subject: [PATCH 057/116] encode_classes: the R2004+ class version and
+ maintenance version are BL
+
+As decode.c (fixed before, the spec has BS) and ACadSharp read them. With
+BS every R2004 class after the first was shifted, objects of custom
+classes got invalid types ("Invalid class 523") when read back.
+
+* src/encode.c (encode_classes): Write dwg_version and maint_version as
+BL.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index baeab98..5f3e4e6 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -2923,8 +2923,8 @@ encode_classes (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+               klass->maint_version = (BITCODE_BL)dwg->header.maint_version;
+             }
+           bit_write_BL (dat, klass->num_instances);
+-          bit_write_BS (dat, klass->dwg_version);
+-          bit_write_BS (dat, klass->maint_version);
++          bit_write_BL (dat, klass->dwg_version);
++          bit_write_BL (dat, klass->maint_version);
+           bit_write_BL (dat, klass->unknown_1);
+           bit_write_BL (dat, klass->unknown_2);
+           LOG_TRACE (" %d %d\n", (int)klass->num_instances,
+@@ -2985,8 +2985,8 @@ encode_classes (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+               klass->maint_version = (BITCODE_BL)dwg->header.maint_version;
+             }
+           bit_write_BL (dat, klass->num_instances);
+-          bit_write_BS (dat, klass->dwg_version);
+-          bit_write_BS (dat, klass->maint_version);
++          bit_write_BL (dat, klass->dwg_version);
++          bit_write_BL (dat, klass->maint_version);
+           bit_write_BL (dat, klass->unknown_1);
+           bit_write_BL (dat, klass->unknown_2);
+           LOG_TRACE (" %d %d\n", (int)klass->num_instances,
+-- 
+2.43.0
+

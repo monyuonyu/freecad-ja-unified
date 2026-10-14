@@ -1,0 +1,49 @@
+From 23712e2f495e7546dbd81d75b61a2f80f08b3749 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:22:47 +0900
+Subject: [PATCH 085/116] LEADER: the R2010+ layout
+
+As ACadSharp reads it, and AutoCAD's R2018 LEADER of sample_AC1032 ends
+exactly so: the annotation offset (endptproj) is also in R2010+, the box
+height and width only until R2007. We read 2 BD for the 3BD and
+overshot the data by 6 bits, and the LEADER of TS1 (R2000) written as
+R2013 and R2018 was lost.
+
+* src/dwg.spec (LEADER): endptproj since R13c3, box_height and
+box_width until R2007.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/dwg.spec | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/dwg.spec b/src/dwg.spec
+index 8d48cca..b3a6150 100644
+--- a/src/dwg.spec
++++ b/src/dwg.spec
+@@ -3091,15 +3091,19 @@ DWG_ENTITY (LEADER)
+   FIELD_3DPOINT (extrusion, 210);
+   FIELD_3DPOINT (x_direction, 211);
+   FIELD_3DPOINT (inspt_offset, 212);
+-  VERSIONS (R_13c3, R_2007) {
++  // R2010+ too, but no box height and width (ACadSharp, AutoCAD's R2018
++  // LEADER of sample_AC1032 ends exactly so)
++  SINCE (R_13c3) {
+     FIELD_3DPOINT (endptproj, 213);
+   }
+ 
+   VERSIONS (R_13b1, R_14) {
+     FIELD_BD (dimgap, 0);
+   }
+-  FIELD_BD (box_height, 0);
+-  FIELD_BD (box_width, 0);
++  UNTIL (R_2007) {
++    FIELD_BD (box_height, 0);
++    FIELD_BD (box_width, 0);
++  }
+   FIELD_B (hookline_dir, 0); // if hook line is on x direction
+   FIELD_B (arrowhead_on, 0);
+   ENCODER {
+-- 
+2.43.0
+

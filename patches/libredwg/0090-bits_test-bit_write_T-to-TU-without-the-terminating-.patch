@@ -1,0 +1,42 @@
+From 78cf971426f07b0092dbd5e389d2919ee6276530 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 11:47:29 +0900
+Subject: [PATCH 090/116] bits_test: bit_write_T to TU without the terminating
+ 0
+
+* test/unit-testing/bits_test.c (main): The TU string ends 2 bytes
+earlier since bit_write_TU writes no terminating 0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ test/unit-testing/bits_test.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/test/unit-testing/bits_test.c b/test/unit-testing/bits_test.c
+index 7918efc..8ea3447 100644
+--- a/test/unit-testing/bits_test.c
++++ b/test/unit-testing/bits_test.c
+@@ -1919,9 +1919,9 @@ main (int argc, char const *argv[])
+     bitchain.version = R_2007; // @65.6
+     // wlen = 8
+     bit_write_T (&bitchain, (char *)"Teigha\\U+2122"); // convert to unicode
+-    // containing the ending 0L
++    // without the ending 0, as AutoCAD
+     // printf ("TU @%" PRIuSIZE ".%u\n", bitchain.byte, bitchain.bit);
+-    if (bitchain.byte == 83 && bitchain.bit == 0 && bitchain.chain[79] == 0x22
++    if (bitchain.byte == 81 && bitchain.bit == 0 && bitchain.chain[79] == 0x22
+         && bitchain.chain[80] == 0x21)
+       pass ();
+     else
+@@ -1938,7 +1938,7 @@ main (int argc, char const *argv[])
+     ws = (BITCODE_TU)wstr;
+ #endif
+     // printf ("@%" PRIuSIZE ".%u\n", bitchain.byte, bitchain.bit);
+-    if (bitchain.byte == 83 && bitchain.bit == 0 &&
++    if (bitchain.byte == 81 && bitchain.bit == 0 &&
+ #ifndef WORDS_BIGENDIAN
+         wstr && !memcmp (wstr, exp, sizeof (exp))
+ #else
+-- 
+2.43.0
+

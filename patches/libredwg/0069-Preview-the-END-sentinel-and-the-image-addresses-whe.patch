@@ -1,0 +1,117 @@
+From dd1abaa8dc3a4867e5e4f36c229d4009bd76c912 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:41:31 +0900
+Subject: [PATCH 069/116] Preview: the END sentinel and the image addresses
+ when moved
+
+- R13-R2000 to R2004+: the decoded R2000 preview lacks the END sentinel,
+  which was only written to R13-R2000 output, so R2004 output had a
+  Preview without it ("Preview overflow 13208 + 119 > 13311" reading it
+  back). Write it whenever the content lacks it.
+- The header and image start addresses in the preview are file
+  addresses; they were copied from the source. Rebase them to the new
+  place: in R13-R2000 at the thumbnail, in R2004+ at the Preview page
+  (encode_r2004_container).
+
+* src/encode.c (thumbnail_rebase): New.
+(encode_r13_thumbnail, encode_r2004_container): Use it; the END sentinel
+by the content.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 56 ++++++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 46 insertions(+), 10 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 9dbff92..eaa73c4 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -1351,6 +1351,29 @@ security_is_empty (const Dwg_Security *obj)
+          && (!obj->encr_buffer || !obj->encr_buffer[0]);
+ }
+ 
++/* Add delta to the start addresses of the images in the preview at chain
++   (after its BEGIN sentinel): they are file addresses. */
++static void
++thumbnail_rebase (BITCODE_RC *chain, size_t size, int64_t delta)
++{
++  size_t p = 5;
++  BITCODE_RC num;
++  if (size < 5 || !delta)
++    return;
++  num = chain[4];
++  for (BITCODE_RC i = 0; i < num && p + 9 <= size; i++, p += 9)
++    {
++      const uint32_t addr
++          = (uint32_t)chain[p + 1] | ((uint32_t)chain[p + 2] << 8)
++            | ((uint32_t)chain[p + 3] << 16) | ((uint32_t)chain[p + 4] << 24);
++      const uint32_t v = (uint32_t)((int64_t)addr + delta);
++      chain[p + 1] = (BITCODE_RC)(v & 0xff);
++      chain[p + 2] = (BITCODE_RC)((v >> 8) & 0xff);
++      chain[p + 3] = (BITCODE_RC)((v >> 16) & 0xff);
++      chain[p + 4] = (BITCODE_RC)((v >> 24) & 0xff);
++    }
++}
++
+ /* R2004 file container (ODA 4.1-4.7), as AutoCAD writes it. */
+ 
+ #define R2004_PAGE_SIZE 0x7400
+@@ -1816,6 +1839,10 @@ encode_r2004_container (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+           const BITCODE_RC *payload;
+           BITCODE_RC hdr[32];
+           uint32_t data_checksum, mask;
++          // the image addresses of the preview, file addresses
++          if (type == SECTION_PREVIEW && k == 0 && sec->size > 16)
++            thumbnail_rebase (&sec_dat[type].chain[16], sec->size - 16,
++                              (int64_t)dat->byte + 0x20);
+           if (sec->compressed == 2)
+             {
+               memcpy (page, &sec_dat[type].chain[offset], len);
+@@ -2630,6 +2657,8 @@ encode_r13_thumbnail (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+                       const size_t header_crc_address)
+ {
+   int error = 0;
++  // the image addresses are relative to it
++  const BITCODE_RL old_address = dwg->header.thumbnail_address;
+   // When adding Thumbnail after MEASUREMENT, patchup the address later.
+   VERSIONS (R_13b1, R_2000)
+   {
+@@ -2675,18 +2704,25 @@ encode_r13_thumbnail (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+         // (chain points past the BEGIN sentinel) and 16 for r2004+ (chain is
+         // the section base, kept as the freeable pointer). We emit our own
+         // BEGIN sentinel above, so write only the size bytes of content.
++        const size_t start = dat->byte;
++        const BITCODE_RC *end = dwg_sentinel (DWG_SENTINEL_THUMBNAIL_END);
+         bit_write_TF (dat, dwg->thumbnail.chain + dwg->thumbnail.byte,
+                       dwg->thumbnail.size);
+-        // For r2004+ the decoder keeps the trailing END sentinel inside
+-        // thumbnail.size (decode.c: size = sec_dat.size - 16, byte = 16; the
+-        // JSON writer likewise retains it), so it was just emitted as part of
+-        // the content above. Adding a second one would grow the Preview
+-        // section by 16 bytes on every round-trip. For r13-r2000 the END
+-        // sentinel is separate from thumbnail.size, so it must be written.
+-        PRE (R_2004a)
+-        {
+-          write_sentinel (dat, DWG_SENTINEL_THUMBNAIL_END);
+-        }
++        // The decoder keeps the trailing END sentinel inside thumbnail.size
++        // for r2004+ (decode.c: size = sec_dat.size - 16, byte = 16; the
++        // JSON writer likewise retains it), not for r13-r2000. Write it if
++        // the content lacks it, to any version.
++        if (dwg->thumbnail.size < 16
++            || memcmp (&dat->chain[dat->byte - 16], end, 16))
++          {
++            write_sentinel (dat, DWG_SENTINEL_THUMBNAIL_END);
++          }
++        // The image addresses: file addresses at the BEGIN sentinel, for
++        // r2004+ the container adds the address of the Preview page.
++        if (old_address)
++          thumbnail_rebase (&dat->chain[start], dat->byte - start,
++                            (dat->version >= R_2004 ? 0 : (int64_t)start - 16)
++                                - (int64_t)old_address);
+       }
+     {
+       BITCODE_RL bmpsize;
+-- 
+2.43.0
+

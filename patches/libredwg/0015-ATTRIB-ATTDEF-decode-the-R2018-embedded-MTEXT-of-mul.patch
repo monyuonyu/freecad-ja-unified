@@ -1,7 +1,7 @@
 From 71f42b3a41294b0676a5dbaf04a013e1b1ee2348 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:31:32 +0900
-Subject: [PATCH 15/54] ATTRIB/ATTDEF: decode the R2018 embedded MTEXT of
+Subject: [PATCH 015/116] ATTRIB/ATTDEF: decode the R2018 embedded MTEXT of
  multi-line attributes
 
 ODA 20.4.4: for mtext_type 2 or 4 "all fields of an embedded MTEXT

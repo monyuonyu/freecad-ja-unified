@@ -1,0 +1,44 @@
+From efb1d5343e7175202aa0aa703708037c962e1373 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 14 Oct 2026 20:46:12 +0900
+Subject: [PATCH 111/116] DXF: the HATCH color names and MLEADER text not TU
+ for R2007+
+
+Since dxf_read_file reads with the version of R2004, the strings of a
+DXF stay UTF-8, as the encoder expects them. The color names of HATCH
+gradients and the MULTILEADER default text were still converted to TU
+by dat->version, written again as UTF-8: cut to their first char.
+
+* src/in_dxf.c (add_HATCH, add_MULTILEADER): TU by the version of the
+DWG, not of dat.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 422a3fc..00336f2 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -4265,7 +4265,7 @@ add_HATCH (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+             }
+           assert (j >= 0);
+           assert (j < (int)o->num_colors);
+-          if (dat->version >= R_2007)
++          if (obj->parent->header.version >= R_2007)
+             o->colors[j].color.name
+                 = (BITCODE_T)bit_utf8_to_TU (pair->value.s.ptr, 0);
+           else
+@@ -4814,7 +4814,7 @@ add_MULTILEADER (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+                 {
+                   if (ctx->has_content_blk)
+                     goto unknown_mleader;
+-                  if (dat->version >= R_2007)
++                  if (obj->parent->header.version >= R_2007)
+                     ctx->content.txt.default_text
+                         = (char *)bit_utf8_to_TU (pair->value.s.ptr, 0);
+                   else
+-- 
+2.43.0
+

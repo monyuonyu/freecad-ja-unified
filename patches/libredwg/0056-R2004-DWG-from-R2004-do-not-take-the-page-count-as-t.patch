@@ -1,0 +1,37 @@
+From c4c79173efbab3acfe6427ea92ef4b9c39c880c5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 08:05:07 +0900
+Subject: [PATCH 056/116] R2004 DWG from R2004+: do not take the page count as
+ the section count
+
+* src/encode.c (dwg_encode): header.sections of a decoded R2004+ DWG is
+its number of pages (56 in sample_AC1018), so dwg_sections_init failed
+with "Too many sections" and nothing was written. For R2004+ output reset
+it to 6 as num_sections.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index e382292..baeab98 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -4139,7 +4139,12 @@ dwg_encode (Dwg_Data *restrict dwg, Bit_Chain *restrict dat)
+                         : 5;
+           }
+         else
+-          dwg->header.num_sections = 6;
++          {
++            dwg->header.num_sections = 6;
++            // not the R2004+ pages of the input
++            if (dwg->header.version >= R_2004)
++              dwg->header.sections = 6;
++          }
+         // minimal DXF:
+         // if (dwg->opts & (DWG_OPTS_INDXF | DWG_OPTS_MINIMAL)
+         //    && (!dwg->header_vars.HANDSEED ||
+-- 
+2.43.0
+

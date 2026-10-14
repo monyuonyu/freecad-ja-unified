@@ -1,0 +1,34 @@
+From 9e5013a1aaf4f7dec9561d89057d7c1509a9fd75 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 10:11:35 +0900
+Subject: [PATCH 076/116] UMC: no extra byte for 0x40 in the last byte
+
+bit_write_UMC added a 0 byte when the last byte had 0x40 set, as for
+the signed MC. UMC is unsigned: AutoCAD writes the shortest form (the
+object map of sample_AC1032 has such values), and in R2010+ the
+handle stream size before each object grew by a byte.
+
+* src/bits.c (bit_write_UMC): Drop the extra byte.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bits.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/bits.c b/src/bits.c
+index 6cdc62e..7979406 100644
+--- a/src/bits.c
++++ b/src/bits.c
+@@ -1137,8 +1137,7 @@ bit_write_UMC (Bit_Chain *dat, BITCODE_UMC val)
+     if (byte[i] & 0x7f)
+       break;
+ 
+-  if (byte[i] & 0x40 && i > 0)
+-    i--;
++  // unsigned: no extra byte for 0x40 in the last one (unlike MC)
+   byte[i] &= 0x7f;
+   for (j = MAX_BYTE_UMC - 1; j >= i; j--)
+     bit_write_RC (dat, byte[j]);
+-- 
+2.43.0
+

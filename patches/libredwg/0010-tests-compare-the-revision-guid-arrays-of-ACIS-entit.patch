@@ -1,7 +1,7 @@
 From f424367b09fbd9d6ed2a97f3b3ce61eac902c994 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:14:19 +0900
-Subject: [PATCH 10/54] tests: compare the revision guid arrays of ACIS
+Subject: [PATCH 010/116] tests: compare the revision guid arrays of ACIS
  entities by contents
 
 revision_guid and revision_bytes are RC arrays; CHK_ENTITY_TYPE compared

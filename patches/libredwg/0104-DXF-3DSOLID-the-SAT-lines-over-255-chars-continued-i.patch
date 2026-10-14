@@ -1,0 +1,186 @@
+From f5cc52cde33199298d854577594baa593586b35c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 13 Oct 2026 14:31:41 +0900
+Subject: [PATCH 104/116] DXF 3DSOLID: the SAT lines over 255 chars continued
+ in 3
+
+The SAT of the ACIS entities is written to DXF in 1 lines, and a line
+over 255 chars continues in 3 lines. We wrote the encrypted blocks of
+the DWG line by line, but these blocks of 4096 split the lines anywhere:
+a line at the end of a block was written as two 1 lines, and the char
+after it was dropped, so the numbers there broke (-0.8944579735636958 to
+-0.89 and 44579735636958 in example_2000), lines over 255 were written
+in one. And reading the DXF, the newline of a 1 line was put before its
+3 continuation lines.
+
+* src/out_dxf.c (dxf_sat_lines): New, the lines of all blocks, over 255
+in 3, with "^ " for ^.
+(dxf_3dsolid): Use it.
+* src/in_dxf.c (add_3DSOLID_encr): The newline before a 1 line, not
+after it, and at the end.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c  |  16 +++++---
+ src/out_dxf.c | 104 +++++++++++++++++++++++++++-----------------------
+ 2 files changed, 67 insertions(+), 53 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 53c7c9a..ae98212 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -3059,18 +3059,24 @@ add_3DSOLID_encr (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+               LOG_ERROR ("Out of memory");
+               return NULL;
+             }
++          // a 1 starts a new line, a 3 continues the line
++          if (pair->code == 1)
++            strcat ((char *)o->encr_sat_data[0], "\n");
+           strcat ((char *)o->encr_sat_data[0], pair->value.s.ptr);
+         }
+       if (pair->code == 1)
+-        {
+-          strcat ((char *)o->encr_sat_data[0], "\n");
+-          // For the replacement of "^ " with "^" see below
+-          i++;
+-        }
++        // For the replacement of "^ " with "^" see below
++        i++;
+ 
+       dxf_free_pair (pair);
+       pair = dxf_read_pair (dat);
+     }
++  // the end of the last line
++  if (total && o->encr_sat_data[0])
++    {
++      strcat ((char *)o->encr_sat_data[0], "\n");
++      total = strlen (o->encr_sat_data[0]);
++    }
+   LOG_TRACE ("%s.block_size[0]: %" PRIuSIZE "\n", obj->name, total);
+ 
+   if (o->version == 1)
+diff --git a/src/out_dxf.c b/src/out_dxf.c
+index ad57cc8..53cd890 100644
+--- a/src/out_dxf.c
++++ b/src/out_dxf.c
+@@ -2135,6 +2135,61 @@ dxf_check_history_id (Bit_Chain *restrict dat, const Dwg_Object *restrict obj,
+     }
+ }
+ 
++/* The encrypted SAT of the blocks, which may split a line anywhere, as
++   DXF 1 lines, continued in 3 lines after 255 chars, with ^ as "^ ". */
++static int
++dxf_sat_lines (Bit_Chain *restrict dat, Dwg_Entity_3DSOLID *restrict _obj)
++{
++  size_t total = 0, pos = 0;
++  char *all;
++  BITCODE_BL i;
++
++  for (i = 0; i < _obj->num_blocks; i++)
++    if (_obj->encr_sat_data[i])
++      total += _obj->block_size[i];
++  all = (char *)malloc (total + 1);
++  if (!all)
++    return DWG_ERR_OUTOFMEM;
++  total = 0;
++  for (i = 0; i < _obj->num_blocks; i++)
++    if (_obj->encr_sat_data[i])
++      {
++        memcpy (&all[total], _obj->encr_sat_data[i], _obj->block_size[i]);
++        total += _obj->block_size[i];
++      }
++  while (pos < total)
++    {
++      size_t end = pos, lend;
++      int code = 1;
++      while (end < total && all[end] != '\n')
++        end++;
++      lend = end;
++      if (lend > pos && all[lend - 1] == '\r')
++        lend--;
++      while (pos < lend)
++        {
++          // max. 255 chars, with the escaped ^
++          size_t l = 0, w = 0;
++          while (pos + l < lend && w + (all[pos + l] == '^' ? 2 : 1) <= 255)
++            w += all[pos + l++] == '^' ? 2 : 1;
++          GROUP (code);
++          for (size_t k = 0; k < l; k++)
++            {
++              if (all[pos + k] == '^')
++                fprintf (dat->fh, "^ ");
++              else
++                fputc (all[pos + k], dat->fh);
++            }
++          fprintf (dat->fh, "\r\n");
++          pos += l;
++          code = 3;
++        }
++      pos = end + 1;
++    }
++  free (all);
++  return 0;
++}
++
+ static int
+ dxf_3dsolid (Bit_Chain *restrict dat, const Dwg_Object *restrict obj,
+              Dwg_Entity_3DSOLID *restrict _obj)
+@@ -2174,54 +2229,7 @@ dxf_3dsolid (Bit_Chain *restrict dat, const Dwg_Object *restrict obj,
+           _obj->version = 1; // conversion complete
+         }
+       FIELD_BS (version, 70); // always 1
+-      for (i = 0; i < FIELD_VALUE (num_blocks); i++)
+-        {
+-          char *s = FIELD_VALUE (encr_sat_data[i]);
+-          // FIXME
+-          // only DXF 1, always keep len <255
+-          // int len = _obj->_dxf_sab_converted ? FIELD_VALUE (block_size[i]) :
+-          // strlen (s);
+-          int len = FIELD_VALUE (block_size[i]);
+-          while (len > 0)
+-            {
+-              char *n = strchr (s, '\n');
+-              int l = len > 255 ? 255 : len;
+-              char *caret = strchr (s, '^');
+-              if (n && (n - s < len))
+-                {
+-                  l = n - s;
+-                }
+-              if (l)
+-                {
+-                  GROUP (1);
+-                  // replace "^" by "^ "
+-                  while (caret && caret < n)
+-                    {
+-                      int lc = caret - s;
+-                      fprintf (dat->fh, "%.*s^ ", lc, s);
+-                      lc++;
+-                      l -= lc;
+-                      len -= lc;
+-                      s += lc;
+-                      caret = l > 1 ? strchr (s, '^') : NULL;
+-                    }
+-                  if (l > 255)
+-                    LOG_ERROR ("Overlong SAT line \"%s\" len=%d", s, l);
+-                  if (s[l - 1] == '\r')
+-                    fprintf (dat->fh, "%.*s\n", l, s);
+-                  else
+-                    fprintf (dat->fh, "%.*s\r\n", l, s);
+-                  l++;
+-                  len -= l;
+-                  s += l;
+-                }
+-              else
+-                {
+-                  len--;
+-                  s++;
+-                }
+-            }
+-        }
++      error |= dxf_sat_lines (dat, _obj);
+     }
+   dxf_check_history_id (dat, obj, _obj);
+   // the rest is done in COMMON_3DSOLID in the spec.
+-- 
+2.43.0
+
