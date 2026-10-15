@@ -1,7 +1,7 @@
 From e77baeb2e81e673e96227a04e63bab73ed381e29 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:52:37 +0900
-Subject: [PATCH 083/116] XRECORD: the xdata of earlier versions as R2007+
+Subject: [PATCH 083/122] XRECORD: the xdata of earlier versions as R2007+
 
 The xdata strings are UTF-16 since R2007, but the writes were bounded
 by the xdata_size of the source: from R2000 the values after the first

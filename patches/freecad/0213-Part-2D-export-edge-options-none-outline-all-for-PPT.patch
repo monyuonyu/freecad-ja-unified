@@ -1,0 +1,449 @@
+From e137764cf1cdb5e47133c8b8be05d1a23747b91b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 09:46:34 +0900
+Subject: [PATCH 213/216] Part: 2D export edge options (none, outline, all) for
+ PPTX, SVG and JSON
+
+  FreeCADCmd model.FCStd --export-pptx v.pptx --export-edges none|outline|all
+  PartViews.export_pptx(objs, path, edges="outline")
+
+Thin parts drowned in separate black edge lines and the edge lines doubled
+the number of shapes in PowerPoint (28,011 shapes for 2,113 parts).
+
+- outline: the outline of each visible face region is the line of the
+  face's own freeform shape (SVG: the stroke of the face path) - no extra
+  shapes.  Default for PPTX, now with 0.5 pt lines.
+- all: visible edges as separate lines (as before; default for SVG/JSON).
+- none: fills only (hairline in the fill colour hides the seams).
+
+JSON leaves the edge list empty unless "all" and tells "edgeMode".
+Part.projectVisible(..., edges=False) skips the edge computation.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |   2 +
+ src/Mod/Part/App/ViewTools.cpp          |   6 +-
+ src/Mod/Part/App/ViewTools.h            |   5 +-
+ src/Mod/Part/App/ViewToolsPy.cpp        |  11 ++-
+ src/Mod/Part/PartViews.py               | 120 +++++++++++++++++-------
+ src/Mod/Part/parttests/TestPartViews.py |  71 ++++++++++++++
+ 6 files changed, 174 insertions(+), 41 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 2fa5a3f25..6c8a295eb 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2488,6 +2488,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
++    ("export-edges", boost::program_options::value<std::string>(), "Edges for --export-svg/--export-polygons/--export-pptx: none, outline (each face region's outline as its own line; PPTX default), all (separate lines; SVG and JSON default)")
+     ("interference", "Report overlapping solids of the visible objects (bounding boxes, then boolean common on the candidate pairs)")
+     ("interference-report", boost::program_options::value<std::string>(), "Like --interference and also write the pairs as JSON to this file")
+     ;
+@@ -2724,6 +2725,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-svg", "ExportSvg"},
+         {"export-polygons", "ExportPolygons"},
+         {"export-pptx", "ExportPptx"},
++        {"export-edges", "ExportEdges"},
+         {"interference-report", "InterferenceReport"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 659dd455f..45a6c0214 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -1048,7 +1048,8 @@ void collectPolygons(const Clipper2Lib::PolyPath64& node, const Space& sp, std::
+ Projection Part::ViewTools::projectVisible(
+     const std::vector<SceneItem>& items,
+     const Camera& cam,
+-    double deflection
++    double deflection,
++    bool withEdges
+ )
+ {
+     Scene scene = buildScene(items, deflection);
+@@ -1302,6 +1303,9 @@ Projection Part::ViewTools::projectVisible(
+     std::stable_sort(result.faces.begin(), result.faces.end(), [](const VisibleFace& a, const VisibleFace& b) {
+         return a.depth > b.depth;
+     });
++    if (!withEdges) {
++        return result;
++    }
+ 
+     // visible edges
+     struct Seg
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index 3030f0471..5a7669dce 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -114,11 +114,12 @@ struct Projection
+ };
+ 
+ /// Project with hidden parts removed.  2D coordinates are model units: x to the right,
+-/// y up on the screen.
++/// y up on the screen.  Without \a withEdges only the face polygons are computed.
+ PartExport Projection projectVisible(
+     const std::vector<SceneItem>& items,
+     const Camera& cam,
+-    double deflection = 0.0
++    double deflection = 0.0,
++    bool withEdges = true
+ );
+ 
+ struct InterferencePair
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index 455bf1833..0e32e30a3 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -233,17 +233,18 @@ Py::List pointList(const std::vector<Point2d>& pts)
+ 
+ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ {
+-    static const char* kwlist[] = {"objects", "view", "deflection", nullptr};
++    static const char* kwlist[] = {"objects", "view", "deflection", "edges", nullptr};
+     PyObject* objs {};
+     PyObject* view = nullptr;
+     double deflection = 0.0;
+-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|Od", const_cast<char**>(kwlist), &objs, &view, &deflection)) {
++    PyObject* withEdges = Py_True;
++    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OdO", const_cast<char**>(kwlist), &objs, &view, &deflection, &withEdges)) {
+         return nullptr;
+     }
+     try {
+         std::vector<SceneItem> items = toItems(objs);
+         Camera cam = toCamera(view);
+-        Projection proj = projectVisible(items, cam, deflection);
++        Projection proj = projectVisible(items, cam, deflection, PyObject_IsTrue(withEdges) == 1);
+         Py::Dict result;
+         Py::List faces;
+         for (const auto& f : proj.faces) {
+@@ -377,12 +378,12 @@ PyMethodDef methods[] = {
+     {"projectVisible",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(projectVisible)),
+      METH_VARARGS | METH_KEYWORDS,
+-     "projectVisible(objects, view='iso', deflection=0) -> dict\n"
++     "projectVisible(objects, view='iso', deflection=0, edges=True) -> dict\n"
+      "Orthographic projection with hidden parts removed.  Returns\n"
+      "{'faces': [{'item', 'face', 'depth', 'shade', 'color', 'polygons': [{'outer', 'holes'}]}],\n"
+      " 'edges': [{'item', 'kind': edge|silhouette|smooth, 'points'}], 'bounds', 'camera'}.\n"
+      "2D coordinates are model units, x to the right and y up; faces are sorted far to near\n"
+-     "and their polygons are only the visible parts."},
++     "and their polygons are only the visible parts.  edges=False skips the edges (faster)."},
+     {"findInterferences",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(findInterferencesPy)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 2f0085d57..f33e37b8d 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -12,6 +12,12 @@ Command line (FreeCADCmd):
+                            [--render-style shaded|shaded-only|hidden-lines|lines]
+     FreeCADCmd model.step --export-svg out.svg --export-polygons out.json [--view front]
+     FreeCADCmd model.step --export-pptx out.pptx      # one slide, faces as freeform shapes
++                          [--export-edges none|outline|all]
++
++Edges (--export-edges, edges=): "all" draws the visible edges as separate lines, "outline"
++draws the outline of every visible face region as the line of its own shape (no extra
++shapes; the default for PPTX), "none" only fills.  Defaults: PPTX "outline", SVG and
++JSON "all".
+     FreeCADCmd model.FCStd --interference [--interference-report report.json]
+ 
+ Python:
+@@ -208,17 +214,36 @@ def _hex(color, shade=1.0):
+     return "#%02x%02x%02x" % tuple(max(0, min(255, int(round(c * shade * 255)))) for c in color)
+ 
+ 
+-def project(source=None, view="iso", deflection=0.0, colors=None):
++EDGE_MODES = ("none", "outline", "all")
++
++
++def _edge_mode(edges, default="all"):
++    """'none' | 'outline' | 'all' from a name or a bool (True: all, False: none)."""
++    if edges is None:
++        return default
++    if edges is True:
++        return "all"
++    if edges is False:
++        return "none"
++    mode = str(edges).strip().lower()
++    if mode not in EDGE_MODES:
++        raise ValueError("edges must be one of %s, not %r" % (", ".join(EDGE_MODES), edges))
++    return mode
++
++
++def project(source=None, view="iso", deflection=0.0, colors=None, edges=True):
+     """Visible face polygons and visible edges (hidden parts removed) as a dict.
+ 
+     {"view", "units": "model", "bounds": [xmin, ymin, xmax, ymax], "camera",
+      "faces": [{"object", "label", "face", "depth", "shade", "color", "fill",
+                 "polygons": [{"outer": [[x, y], ...], "holes": [[[x, y], ...]]}]}],
+      "edges": [{"object", "kind", "points": [[x, y], ...]}]}
+-    x is to the right and y up on the screen; faces are sorted far to near."""
++    x is to the right and y up on the screen; faces are sorted far to near.
++    edges=False (or "none"/"outline") leaves the edge list empty and is faster."""
+     pairs = scene_objects(source)
+     items = _with_colors(pairs, colors)
+-    data = Part.projectVisible(items, view=view, deflection=deflection)
++    with_edges = _edge_mode(edges) == "all"
++    data = Part.projectVisible(items, view=view, deflection=deflection, edges=with_edges)
+ 
+     def names(i):
+         obj = pairs[i][0]
+@@ -253,17 +278,25 @@ def project(source=None, view="iso", deflection=0.0, colors=None):
+     }
+ 
+ 
+-def export_polygons(source=None, path="view.json", view="iso", deflection=0.0, colors=None, data=None):
+-    """Write the result of project() as JSON.  Returns the dict."""
++def export_polygons(source=None, path="view.json", view="iso", deflection=0.0, colors=None,
++                    data=None, edges="all"):  # fmt: skip
++    """Write the result of project() as JSON.  With edges "none" or "outline" the edge list
++    is left out (empty) and "edgeMode" tells how to draw.  Returns the dict."""
++    mode = _edge_mode(edges, "all")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode)
++    out = dict(data)
++    out["edgeMode"] = mode
++    if mode != "all":
++        out["edges"] = []
+     with open(path, "w", encoding="utf-8") as f:
+-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
++        json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+     return data
+ 
+ 
+-def svg_text(data, width_px=1000, line_width=1.0, edges=True, faces=True):
+-    """SVG document of a project() result."""
++def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_color="#1a1a1f"):
++    """SVG document of a project() result.  edges: "all", "outline" or "none"."""
++    mode = _edge_mode(edges, "all")
+     xmin, ymin, xmax, ymax = data["bounds"]
+     w = max(xmax - xmin, 1e-9)
+     h = max(ymax - ymin, 1e-9)
+@@ -288,14 +321,18 @@ def svg_text(data, width_px=1000, line_width=1.0, edges=True, faces=True):
+             for poly in f["polygons"]:
+                 for ring in [poly["outer"]] + poly["holes"]:
+                     d.append("M" + " L".join(P(p) for p in ring) + "Z")
+-            # a hairline in the fill colour hides the seams between neighbouring faces
++            if mode == "outline":
++                stroke, stroke_w = edge_color, line_width * px
++            else:
++                # a hairline in the fill colour hides the seams between neighbouring faces
++                stroke, stroke_w = f["fill"], 0.6 * px
+             out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
+                        '<title>%s face %d</title></path>'
+-                       % (" ".join(d), f["fill"], f["fill"], 0.6 * px, _xml(f["label"]), f["face"] + 1))  # fmt: skip
++                       % (" ".join(d), f["fill"], stroke, stroke_w, _xml(f["label"]), f["face"] + 1))  # fmt: skip
+         out.append("</g>")
+-    if edges:
+-        out.append('<g id="edges" fill="none" stroke="#1a1a1f" stroke-width="%.4g" '
+-                   'stroke-linecap="round" stroke-linejoin="round">' % (line_width * px))  # fmt: skip
++    if mode == "all":
++        out.append('<g id="edges" fill="none" stroke="%s" stroke-width="%.4g" '
++                   'stroke-linecap="round" stroke-linejoin="round">' % (edge_color, line_width * px))  # fmt: skip
+         for e in data["edges"]:
+             out.append('<polyline points="%s"/>' % " ".join(P(p) for p in e["points"]))
+         out.append("</g>")
+@@ -308,12 +345,14 @@ def _xml(s):
+ 
+ 
+ def export_svg(source=None, path="view.svg", view="iso", deflection=0.0, colors=None,
+-               width_px=1000, line_width=1.0, data=None):  # fmt: skip
+-    """Write an SVG with filled visible faces and visible edges.  Returns the project() dict."""
++               width_px=1000, line_width=1.0, data=None, edges="all"):  # fmt: skip
++    """Write an SVG with filled visible faces and visible edges (edges: "all", "outline" or
++    "none", see the module docstring).  Returns the project() dict."""
++    mode = _edge_mode(edges, "all")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode)
+     with open(path, "w", encoding="utf-8") as f:
+-        f.write(svg_text(data, width_px=width_px, line_width=line_width))
++        f.write(svg_text(data, width_px=width_px, line_width=line_width, edges=mode))
+     return data
+ 
+ 
+@@ -430,14 +469,17 @@ def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0
+ 
+ 
+ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, colors=None,
+-                line_width=1.0, data=None):  # fmt: skip
++                line_width=0.5, data=None, edges="outline"):  # fmt: skip
+     """Write a PowerPoint file with one slide: every visible face region as a filled
+-    freeform shape (far to near) and the visible edges as lines on top.  The shapes can be
+-    recoloured or moved in PowerPoint.  Returns the project() dict."""
++    freeform shape (far to near).  The shapes can be recoloured or moved in PowerPoint.
++    edges: "outline" (default) draws each region's outline as the line of its own shape,
++    "all" adds the visible edges as separate lines, "none" only fills.  line_width in
++    points.  Returns the project() dict."""
+     import zipfile
+ 
++    mode = _edge_mode(edges, "outline")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode)
+     xmin, ymin, xmax, ymax = data["bounds"]
+     w = max(xmax - xmin, 1e-9)
+     h = max(ymax - ymin, 1e-9)
+@@ -451,16 +493,20 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+ 
+     shapes = []
+     sid = 2
++    line_emu = int(round(12700 * line_width))  # points
+     for f in data["faces"]:
+         for poly in f["polygons"]:
+             rings = [[E(p) for p in poly["outer"]]] + [[E(p) for p in hole] for hole in poly["holes"]]
+             fill = f["fill"].lstrip("#").upper()
+-            # hairline in the fill colour hides seams between neighbouring faces
++            if mode == "outline":
++                line, line_w = "1A1A1F", line_emu
++            else:
++                # hairline in the fill colour hides seams between neighbouring faces
++                line, line_w = fill, 3175
+             shapes.append(_pptx_shape(sid, "%s face %d" % (f["label"], f["face"] + 1), rings,
+-                                      0, 0, 1, 1, fill=fill, line=fill, line_w=3175))  # fmt: skip
++                                      0, 0, 1, 1, fill=fill, line=line, line_w=line_w))  # fmt: skip
+             sid += 1
+-    line_emu = int(round(12700 * line_width))  # 1 pt
+-    for e in data["edges"]:
++    for e in data["edges"] if mode == "all" else ():
+         pts = [E(p) for p in e["points"]]
+         shapes.append(_pptx_shape(sid, "%s %s" % (e["object"], e["kind"]), [pts], 0, 0, 1, 1,
+                                   line="1A1A1F", line_w=line_emu, closed=False))  # fmt: skip
+@@ -531,16 +577,24 @@ def cli_main():
+     poly = _config("ExportPolygons")
+     pptx = _config("ExportPptx")
+     if svg or poly or pptx:
+-        data = project(doc, view=_split_views(view)[0])
++        edges = _config("ExportEdges") or None
++        modes = {"svg": _edge_mode(edges, "all"), "poly": _edge_mode(edges, "all"),
++                 "pptx": _edge_mode(edges, "outline")}  # fmt: skip
++        need_edges = any(modes[k] == "all" for k, out in (("svg", svg), ("poly", poly), ("pptx", pptx)) if out)
++        data = project(doc, view=_split_views(view)[0], edges=need_edges)
++
++        def counts(mode):
++            return "%d faces, %d edges" % (len(data["faces"]), len(data["edges"]) if mode == "all" else 0)
++
+         if svg:
+-            export_svg(path=svg, data=data)
+-            print("Wrote %s (%d faces, %d edges)" % (svg, len(data["faces"]), len(data["edges"])))
++            export_svg(path=svg, data=data, edges=modes["svg"])
++            print("Wrote %s (%s)" % (svg, counts(modes["svg"])))
+         if poly:
+-            export_polygons(path=poly, data=data)
+-            print("Wrote %s (%d faces, %d edges)" % (poly, len(data["faces"]), len(data["edges"])))
++            export_polygons(path=poly, data=data, edges=modes["poly"])
++            print("Wrote %s (%s)" % (poly, counts(modes["poly"])))
+         if pptx:
+-            export_pptx(path=pptx, data=data)
+-            print("Wrote %s" % pptx)
++            export_pptx(path=pptx, data=data, edges=modes["pptx"])
++            print("Wrote %s (edges: %s)" % (pptx, modes["pptx"]))
+     report = _config("InterferenceReport")
+     if report:
+         found, st = interference(doc, stats=True)
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 938edd77e..48a871421 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -2,10 +2,13 @@
+ 
+ """Tests of the headless views and checks of the Part module (PartViews)."""
+ 
++import json
+ import os
+ import struct
+ import tempfile
+ import unittest
++import xml.etree.ElementTree as ET
++import zipfile
+ import zlib
+ 
+ import FreeCAD as App
+@@ -45,6 +48,32 @@ def polygon_area(poly):
+     return ring(poly["outer"]) + sum(ring(h) for h in poly["holes"])
+ 
+ 
++NS = {
++    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
++    "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
++    "svg": "http://www.w3.org/2000/svg",
++}
++
++
++def read_slide(path):
++    """The spTree element of the only slide of a PPTX file."""
++    with zipfile.ZipFile(path) as z:
++        root = ET.fromstring(z.read("ppt/slides/slide1.xml"))
++    return root.find("p:cSld/p:spTree", NS)
++
++
++def shape_line(sp):
++    """Line colour of a shape ('RRGGBB') or None without a line."""
++    ln = sp.find("p:spPr/a:ln", NS)
++    clr = ln.find("a:solidFill/a:srgbClr", NS) if ln is not None else None
++    return clr.get("val") if clr is not None else None
++
++
++def shape_fill(sp):
++    clr = sp.find("p:spPr/a:solidFill/a:srgbClr", NS)
++    return clr.get("val") if clr is not None else None
++
++
+ class TestPartViews(unittest.TestCase):
+     def setUp(self):
+         self.tmp = tempfile.mkdtemp()
+@@ -137,6 +166,48 @@ class TestPartViews(unittest.TestCase):
+         area = sum(polygon_area(p) for f in data["faces"] for p in f["polygons"])
+         self.assertAlmostEqual(area, 100, delta=1.0)
+ 
++    def testEdgeOptions(self):
++        import PartViews
++
++        box = Part.makeBox(10, 20, 30)
++        pptx = os.path.join(self.tmp, "v.pptx")
++        svg = os.path.join(self.tmp, "v.svg")
++        js = os.path.join(self.tmp, "v.json")
++        # outline (the PPTX default): one shape per face region, outlined in the edge colour
++        PartViews.export_pptx([box], pptx, view="iso")
++        sps = read_slide(pptx).findall(".//p:sp", NS)
++        self.assertEqual(len(sps), 3)
++        self.assertTrue(all(shape_line(sp) == "1A1A1F" for sp in sps))
++        # none: fills with a hairline in their own colour
++        PartViews.export_pptx([box], pptx, view="iso", edges="none")
++        sps = read_slide(pptx).findall(".//p:sp", NS)
++        self.assertEqual(len(sps), 3)
++        self.assertTrue(all(shape_line(sp) == shape_fill(sp) for sp in sps))
++        # all: the 9 visible edges as separate lines
++        PartViews.export_pptx([box], pptx, view="iso", edges="all")
++        sps = read_slide(pptx).findall(".//p:sp", NS)
++        self.assertEqual(len(sps), 3 + 9)
++        lines = [sp for sp in sps if sp.find("p:spPr/a:noFill", NS) is not None]
++        self.assertEqual(len(lines), 9)
++        # SVG: polylines only with "all", outline strokes the face paths
++        for mode, polylines in (("all", 9), ("outline", 0), ("none", 0)):
++            PartViews.export_svg([box], svg, view="iso", edges=mode)
++            root = ET.parse(svg).getroot()
++            self.assertEqual(len(root.findall(".//svg:polyline", NS)), polylines, mode)
++            strokes = {p.get("stroke") for p in root.findall(".//svg:path", NS)}
++            if mode == "outline":
++                self.assertEqual(strokes, {"#1a1a1f"})
++            else:
++                self.assertNotIn("#1a1a1f", strokes)
++        # JSON: edges only with "all"
++        PartViews.export_polygons([box], js, view="iso", edges="outline")
++        with open(js, encoding="utf-8") as f:
++            data = json.load(f)
++        self.assertEqual((len(data["faces"]), data["edges"], data["edgeMode"]), (3, [], "outline"))
++        self.assertEqual(len(PartViews.project([box], view="iso", edges=False)["edges"]), 0)
++        with self.assertRaises(ValueError):
++            PartViews.export_svg([box], svg, edges="some")
++
+     def testFindInterferences(self):
+         a = Part.makeBox(10, 10, 10)
+         b = Part.makeBox(10, 10, 10, App.Vector(5, 5, 5))  # overlaps a by 125
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 2869c506fe958e273ed4e73e973c9335ea47fde4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 22:24:20 +0900
-Subject: [PATCH 116/116] R13-R2000 to R2004+: the true colors from the EED of
+Subject: [PATCH 116/122] R13-R2000 to R2004+: the true colors from the EED of
  AutoCAD
 
 AutoCAD keeps the true color of an entity saved as R2000 or older in

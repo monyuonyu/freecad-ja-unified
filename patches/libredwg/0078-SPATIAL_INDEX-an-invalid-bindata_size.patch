@@ -1,7 +1,7 @@
 From 1a9f7580784993321350399304f4cc2147815de2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:55 +0900
-Subject: [PATCH 078/116] SPATIAL_INDEX: an invalid bindata_size
+Subject: [PATCH 078/122] SPATIAL_INDEX: an invalid bindata_size
 
 The format is not understood yet; aec_objects has a bindata_size of
 50396167, which the decoder rejected, but the encoder wrote that many

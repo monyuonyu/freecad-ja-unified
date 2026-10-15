@@ -1,7 +1,7 @@
 From 9df3c9b0b6a78df4dc5de31565d3441beb07f05a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 21:29:40 +0900
-Subject: [PATCH 113/116] TABLE: the table content for R2010+ also from DXF
+Subject: [PATCH 113/122] TABLE: the table content for R2010+ also from DXF
 
 in_dxf reads the cells of a TABLE as before R2010, also from the
 R2010+ DXFs, but upconvert_TABLE was only called for DWGs from before

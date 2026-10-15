@@ -1,7 +1,7 @@
 From 918e5e21caa86a1f4a0d334c88ff5e6cac33cdf9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 15:12:19 +0900
-Subject: [PATCH 050/116] out_dxf: TABLESTYLE in R13/R14 DXF when the drawing
+Subject: [PATCH 050/122] out_dxf: TABLESTYLE in R13/R14 DXF when the drawing
  has it
 
 sample_AC1014 has tables and their TABLESTYLE; the R14 DXF dropped it and

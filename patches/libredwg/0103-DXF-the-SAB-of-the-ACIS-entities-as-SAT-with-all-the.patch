@@ -1,7 +1,7 @@
 From 86c934cdefbf2b3176834e5342371ec0b2e8c7e2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 14:30:50 +0900
-Subject: [PATCH 103/116] DXF: the SAB of the ACIS entities as SAT with all the
+Subject: [PATCH 103/122] DXF: the SAB of the ACIS entities as SAT with all the
  precision
 
 dwg_convert_SAB_to_SAT1 wrote the SAB of R2004+ drawings to DXF as SAT,

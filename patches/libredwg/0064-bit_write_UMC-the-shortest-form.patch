@@ -1,7 +1,7 @@
 From 3a3094e994a994dbe3eaa829469b851fb9949fb5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:28:55 +0900
-Subject: [PATCH 064/116] bit_write_UMC: the shortest form
+Subject: [PATCH 064/122] bit_write_UMC: the shortest form
 
 Only the first 4 of the 8 groups were checked for leading zeros, so every
 value took at least 4 bytes: handle offset 1 in the object map was

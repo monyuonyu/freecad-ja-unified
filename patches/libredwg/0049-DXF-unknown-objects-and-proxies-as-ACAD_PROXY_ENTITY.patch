@@ -1,7 +1,7 @@
 From 4ac6c1a8435dd2d08421d00177bb79a153b9a875 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 15:05:43 +0900
-Subject: [PATCH 049/116] DXF: unknown objects and proxies as
+Subject: [PATCH 049/122] DXF: unknown objects and proxies as
  ACAD_PROXY_ENTITY/OBJECT, as AutoCAD
 
 dwg2dxf skipped unknown entities and objects (AEC_*, TCH_*, ...), so the

@@ -1,0 +1,120 @@
+From eb8cfec5a11a0635fea22effd68ffde7202820cb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 10:14:08 +0900
+Subject: [PATCH 122/122] header: the R13-R2004 strings also from R2007+ as T
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The header strings of R13-R2004 were written with FIELD_TV, which
+writes the string as it is: from a R2007+ drawing, with UTF-16 strings,
+only their first char. A R2018 drawing as R2000 had the
+$FINGERPRINTGUID "{", $HYPERLINKBASE "C:\図面\リンク\" as "C" and the
+$STYLESHEET "モノクロ.stb" empty. Write them as T, which converts them
+(decoding is the same for these versions), and empty from earlier
+versions as before (the SummaryInfo of R2004 copies HYPERLINKBASE).
+
+* src/header_variables.spec (FIELD_TH): New.
+(MENU, DIMPOST, DIMAPOST, DIMBLK_T, DIMBLK1_T, DIMBLK2_T)
+(HYPERLINKBASE, STYLESHEET, FINGERPRINTGUID, VERSIONGUID, PROJECTNAME):
+FIELD_TH, not FIELD_TV, before R2007.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/header_variables.spec | 38 +++++++++++++++++++++++++-------------
+ 1 file changed, 25 insertions(+), 13 deletions(-)
+
+diff --git a/src/header_variables.spec b/src/header_variables.spec
+index fa55e9f..9f45dbe 100644
+--- a/src/header_variables.spec
++++ b/src/header_variables.spec
+@@ -19,6 +19,18 @@
+  * modified by Michal Josef Špaček
+  */
+ 
++// A string of R13-R2004, as T: converted from the UTF-16 of R2007+.
++// From earlier versions empty, not NULL, as FIELD_TV
++#define FIELD_TH(nam, dxf)                                                    \
++  {                                                                           \
++    IF_ENCODE_FROM_EARLIER                                                    \
++    {                                                                         \
++      if (!_obj->nam)                                                         \
++        _obj->nam = strdup ("");                                              \
++    }                                                                         \
++    FIELD_T (nam, dxf);                                                       \
++  }
++
+ //TODO: (here unknwon_* or in dwg.spec)
+ //  GEOLATLONGFORMAT [B] default 0
+ //  GEOMARKERVISIBILITY [B] default 1
+@@ -264,7 +276,7 @@
+   FIELD_BD (CMLSCALE, 40);
+   FIELD_BD (CELTSCALE, 40);
+   PRE (R_2007a) {
+-    FIELD_TV (MENU, 1);
++    FIELD_TH (MENU, 1);
+   }
+   FIELD_TIMEBLL (TDUCREATE, 40);
+   FIELD_TIMEBLL (TDUUPDATE, 40);
+@@ -364,8 +376,8 @@
+       FIELD_3BD (UCSORGFRONT, 10);
+       FIELD_3BD (UCSORGBACK, 10);
+       PRE (R_2007a) {
+-        FIELD_TV (DIMPOST, 1);
+-        FIELD_TV (DIMAPOST, 1);
++        FIELD_TH (DIMPOST, 1);
++        FIELD_TH (DIMAPOST, 1);
+       }
+     }
+ 
+@@ -459,11 +471,11 @@
+ 
+   IF_FREE_OR_VERSIONS (R_13b1, R_14)
+     {
+-      FIELD_TV (DIMPOST, 1);
+-      FIELD_TV (DIMAPOST, 1);
+-      FIELD_TV (DIMBLK_T, 1);
+-      FIELD_TV (DIMBLK1_T, 1);
+-      FIELD_TV (DIMBLK2_T, 1);
++      FIELD_TH (DIMPOST, 1);
++      FIELD_TH (DIMAPOST, 1);
++      FIELD_TH (DIMBLK_T, 1);
++      FIELD_TH (DIMBLK1_T, 1);
++      FIELD_TH (DIMBLK2_T, 1);
+     }
+ 
+   SINCE (R_2000b)
+@@ -570,8 +582,8 @@
+       FIELD_BS (TSTACKALIGN, 70);
+       FIELD_BS (TSTACKSIZE, 70);
+       PRE (R_2007a) {
+-        FIELD_TV (HYPERLINKBASE, 1);
+-        FIELD_TV (STYLESHEET, 1);
++        FIELD_TH (HYPERLINKBASE, 1);
++        FIELD_TH (STYLESHEET, 1);
+       }
+       FIELD_HANDLE (DICTIONARY_LAYOUT, 5, 0);
+       FIELD_HANDLE (DICTIONARY_PLOTSETTINGS, 5, 0);
+@@ -627,8 +639,8 @@
+           FIELD_HANDLE (CPSNID, 5, 0);
+         }
+       PRE (R_2007a) {
+-        FIELD_TV (FINGERPRINTGUID, 2);
+-        FIELD_TV (VERSIONGUID, 2);
++        FIELD_TH (FINGERPRINTGUID, 2);
++        FIELD_TH (VERSIONGUID, 2);
+       }
+     }
+ 
+@@ -645,7 +657,7 @@
+       FIELD_RC (OBSLTYPE, 280);
+       FIELD_RC (INTERSECTIONDISPLAY, 290);
+       PRE (R_2007a) {
+-        FIELD_TV (PROJECTNAME, 1);
++        FIELD_TH (PROJECTNAME, 1);
+       }
+     }
+ 
+-- 
+2.43.0
+

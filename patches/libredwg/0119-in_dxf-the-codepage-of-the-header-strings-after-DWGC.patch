@@ -1,0 +1,51 @@
+From 93b8f7fd6a791aae087b89168b6bd52d28076dd5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 10:10:53 +0900
+Subject: [PATCH 119/122] in_dxf: the codepage of the header strings after
+ $DWGCODEPAGE
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+dxf_read_pair converts the UTF-8 strings of a R2007+ DXF to the
+codepage of a target before R2007, but the codepage was set only after
+the HEADER section, in dxf_fixup_header. The header strings were
+converted with codepage 0: a R2018 DXF of an ANSI_932 drawing as R2000
+had $HYPERLINKBASE "C:\図面\リンク\" as "C:\", $STYLESHEET
+"モノクロ.stb" as "簧ｯ", $DIMPOST "<>ミリ" as "<>ﾟ".
+
+* src/in_dxf.c (dxf_header_read): Set the codepage at $DWGCODEPAGE.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 00336f2..d966833 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -1430,6 +1430,8 @@ dxf_read_CMC (const Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+   return error;
+ }
+ 
++static void dxf_set_DWGCODEPAGE (Bit_Chain *dat, Dwg_Data *dwg);
++
+ static int
+ dxf_header_read (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+ {
+@@ -1665,6 +1667,11 @@ dxf_header_read (Bit_Chain *restrict dat, Dwg_Data *restrict dwg)
+                          pair->code);
+               // TODO need to free old string values
+               dwg_dynapi_header_set_value (dwg, &field[1], &pair->value, 1);
++              // dxf_read_pair converts the UTF-8 strings of a R2007+ DXF
++              // to the codepage for a target before R2007: also the next
++              // header strings, as $HYPERLINKBASE or $STYLESHEET.
++              if (strEQc (field, "$DWGCODEPAGE"))
++                dxf_set_DWGCODEPAGE (dat, dwg);
+             }
+           else
+             {
+-- 
+2.43.0
+

@@ -1,0 +1,109 @@
+From 45ef55013693d3fb8d447586cd806ddd93b41493 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 09:58:16 +0900
+Subject: [PATCH 216/216] Part: tests and notes on holes in the visible face
+ regions
+
+Field report: projectVisible gave holes=0 in three real scenes.  Checked:
+holes are emitted (Clipper2 PolyTree: outer counter-clockwise, holes
+clockwise) for faces with holes and for faces whose visible region
+encloses a nearer part, from shapes and from meshes, in top and iso views.
+In dense scenes (racks, loads; iso views) the nearer parts almost always
+reach the outline of the farther face, so its visible region is split into
+several polygons rather than holed - that is the visible shape, not a
+fallback.  A test scene of 1,800 rack parts gives 0 holes for that reason.
+Documented in projectVisible and PartViews.project.
+
+PPTX already writes a region with holes as one freeform whose path has a
+subpath per ring; the hole runs the other way, so it stays open under any
+fill rule (SVG: fill-rule evenodd).  Tests now check: plate with a bore,
+box standing inside a floor (1 hole), bar across the floor (split in 2,
+no hole), and the PPTX/SVG subpaths and their directions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewToolsPy.cpp        |  5 ++-
+ src/Mod/Part/parttests/TestPartViews.py | 51 +++++++++++++++++++++++++
+ 2 files changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index 2843de566..dca886c7e 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -457,7 +457,10 @@ PyMethodDef methods[] = {
+      "{'faces': [{'item', 'face', 'depth', 'shade', 'color', 'polygons': [{'outer', 'holes'}]}],\n"
+      " 'edges': [{'item', 'kind': edge|silhouette|smooth, 'points'}], 'bounds', 'camera'}.\n"
+      "2D coordinates are model units, x to the right and y up; faces are sorted far to near\n"
+-     "and their polygons are only the visible parts.  edges=False skips the edges (faster)."},
++     "and their polygons are only the visible parts.  A visible region gets holes where it\n"
++     "encloses nearer parts (or the face has holes); where nearer parts reach its outline it\n"
++     "is split into several polygons instead, so dense scenes have few holes.\n"
++     "edges=False skips the edges (faster)."},
+     {"exportPptx",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(exportPptx)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 23005e0f9..392258792 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -494,6 +494,57 @@ class TestPartViews(unittest.TestCase):
+         r, g, b = rows[20][20]
+         self.assertTrue(r > 150 and g < 60 and b < 60, rows[20][20])
+ 
++    def testHoles(self):
++        import PartViews
++
++        def holes(data):
++            return [len(p["holes"]) for f in data["faces"] for p in f["polygons"]]
++
++        # a face with a hole in the model
++        plate = Part.makeBox(100, 100, 5).cut(Part.makeCylinder(10, 5, App.Vector(50, 50, 0)))
++        data = Part.projectVisible(plate, view="top")
++        self.assertEqual(holes(data), [1])
++        poly = data["faces"][0]["polygons"][0]
++        self.assertAlmostEqual(polygon_area(poly), 100 * 100 - 3.14159 * 100, delta=5)
++        # a nearer part inside the outline of a face: a hole in its visible region
++        floor = Part.makeBox(100, 100, 5)
++        box = Part.makeBox(10, 10, 10, App.Vector(40, 40, 5))
++        data = Part.projectVisible([floor, box], view="iso", edges=False)
++        self.assertEqual(sum(holes(data)), 1)
++        # ... but where nearer parts reach the outline, the region is split instead
++        bar = Part.makeBox(10, 100, 10, App.Vector(40, 0, 5))
++        data = Part.projectVisible([floor, bar], view="top", edges=False)
++        top = [f for f in data["faces"] if f["item"] == 0]
++        self.assertEqual((len(top[0]["polygons"]), sum(holes(data))), (2, 0))
++
++        # PPTX: one freeform per region, the hole a second subpath turning the other way
++        pptx = os.path.join(self.tmp, "h.pptx")
++        PartViews.export_pptx([floor, box], pptx, view="iso")
++        holed = []
++        for sp in read_slide(pptx).iter("{%s}sp" % NS["p"]):
++            paths = sp.findall("p:spPr/a:custGeom/a:pathLst/a:path", NS)
++            self.assertEqual(len(paths), 1)
++            rings, ring = [], None
++            for el in paths[0]:
++                tag = el.tag.split("}")[1]
++                if tag == "moveTo":
++                    ring = []
++                    rings.append(ring)
++                if tag in ("moveTo", "lnTo"):
++                    pt = el.find("a:pt", NS)
++                    ring.append((int(pt.get("x")), int(pt.get("y"))))
++            if len(rings) > 1:
++                holed.append([polygon_area({"outer": r, "holes": []}) for r in rings])
++        self.assertEqual(len(holed), 1)
++        outer, hole = holed[0]
++        self.assertLess(outer * hole, 0)  # opposite directions: a hole for any fill rule
++        self.assertGreater(abs(outer), abs(hole))
++        # SVG: the same, with fill-rule evenodd
++        svg = os.path.join(self.tmp, "h.svg")
++        PartViews.export_svg([floor, box], svg, view="iso")
++        subpaths = [p.get("d").count("M") for p in ET.parse(svg).getroot().iter("{%s}path" % NS["svg"])]
++        self.assertEqual(sorted(subpaths)[-1], 2)
++
+     def testFindInterferences(self):
+         a = Part.makeBox(10, 10, 10)
+         b = Part.makeBox(10, 10, 10, App.Vector(5, 5, 5))  # overlaps a by 125
+-- 
+2.43.0
+

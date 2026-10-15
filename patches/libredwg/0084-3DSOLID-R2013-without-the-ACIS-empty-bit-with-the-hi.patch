@@ -1,7 +1,7 @@
 From 01decf931bcda019bab4dad5d6a702c965a5b169 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:22:47 +0900
-Subject: [PATCH 084/116] 3DSOLID: R2013+ without the ACIS empty bit, with the
+Subject: [PATCH 084/122] 3DSOLID: R2013+ without the ACIS empty bit, with the
  history handle
 
 Since R2013 the SAB is in the AcDsPrototype_1b section and the entity

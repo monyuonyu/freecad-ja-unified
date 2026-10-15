@@ -1,7 +1,7 @@
 From 3c3333e24be0eeb1983afc65a38a2272b3e04685 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:14:16 +0900
-Subject: [PATCH 059/116] R13-R2000 to R2004+: the owned entities, attributes
+Subject: [PATCH 059/122] R13-R2000 to R2004+: the owned entities, attributes
  and vertices as lists
 
 R2004+ have no first_entity/last_entity links in the BLOCK_HEADER, no

@@ -1,7 +1,7 @@
 From 09cbd289fbd945df6003d2d5d9b2bf10d2f1a6b9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 10:00:56 +0900
-Subject: [PATCH 017/116] AuxHeader: R2018 maintenance versions are RL, not 3
+Subject: [PATCH 017/122] AuxHeader: R2018 maintenance versions are RL, not 3
  RS at the end
 
 AutoCAD's R2013 and R2018 saves of the same drawing have 123 and 129 byte

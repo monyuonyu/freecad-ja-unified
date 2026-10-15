@@ -1,7 +1,7 @@
 From 8c6f46c226212f10b42b68e2b1b5df394c5355a2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 20:49:21 +0900
-Subject: [PATCH 112/116] dwgwrite: read a DXF for the target version, as
+Subject: [PATCH 112/122] dwgwrite: read a DXF for the target version, as
  dxf2dwg
 
 dwgwrite read the DXF with an unknown header.version, so in_dxf made

@@ -1,7 +1,7 @@
 From ea8f2eb61e1b2dff00806027a08b531839575bc1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:31:26 +0900
-Subject: [PATCH 079/116] DIMSTYLE: AutoCAD's defaults of the R2007+ and R2010+
+Subject: [PATCH 079/122] DIMSTYLE: AutoCAD's defaults of the R2007+ and R2010+
  variables
 
 From an earlier version DIMJOGANG, DIMFXL, DIMALTMZF and DIMMZF were 0

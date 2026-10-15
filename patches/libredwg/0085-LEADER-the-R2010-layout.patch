@@ -1,7 +1,7 @@
 From 23712e2f495e7546dbd81d75b61a2f80f08b3749 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:22:47 +0900
-Subject: [PATCH 085/116] LEADER: the R2010+ layout
+Subject: [PATCH 085/122] LEADER: the R2010+ layout
 
 As ACadSharp reads it, and AutoCAD's R2018 LEADER of sample_AC1032 ends
 exactly so: the annotation offset (endptproj) is also in R2010+, the box

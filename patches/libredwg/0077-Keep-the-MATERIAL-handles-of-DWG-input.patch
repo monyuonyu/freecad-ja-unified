@@ -1,7 +1,7 @@
 From 4a9131ef1a99e58f79ca8011e9b293cad7bdfbac Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:55 +0900
-Subject: [PATCH 077/116] Keep the MATERIAL handles of DWG input
+Subject: [PATCH 077/122] Keep the MATERIAL handles of DWG input
 
 Writing R2007+, the material handles of the entities, of LAYER and the
 materials of 3DSOLID, REGION and BODY were dropped, as MATERIAL objects

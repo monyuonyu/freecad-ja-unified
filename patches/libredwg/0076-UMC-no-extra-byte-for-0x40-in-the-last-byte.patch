@@ -1,7 +1,7 @@
 From 9e5013a1aaf4f7dec9561d89057d7c1509a9fd75 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:35 +0900
-Subject: [PATCH 076/116] UMC: no extra byte for 0x40 in the last byte
+Subject: [PATCH 076/122] UMC: no extra byte for 0x40 in the last byte
 
 bit_write_UMC added a 0 byte when the last byte had 0x40 set, as for
 the signed MC. UMC is unsigned: AutoCAD writes the shortest form (the

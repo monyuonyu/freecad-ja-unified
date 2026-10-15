@@ -1,7 +1,7 @@
 From 7bd10fe8d6e46d31d6dcf75ae98d452b3f799aa0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:19:06 +0900
-Subject: [PATCH 026/116] in_dxf: HATCH seed at (0,0) is no elevation; 3DSOLID
+Subject: [PATCH 026/122] in_dxf: HATCH seed at (0,0) is no elevation; 3DSOLID
  revision_guid field names
 
 After the paths, 10/20 of 0.0 are seed points, not the elevation: a seed

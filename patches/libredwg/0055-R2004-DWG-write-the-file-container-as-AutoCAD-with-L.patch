@@ -1,7 +1,7 @@
 From 8262ab7a32f9943b85b543ae5b8748c1b33f8405 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:00:45 +0900
-Subject: [PATCH 055/116] R2004 DWG: write the file container as AutoCAD, with
+Subject: [PATCH 055/122] R2004 DWG: write the file container as AutoCAD, with
  LZ77 compression
 
 The R2004 container (also the frame of R2010+) was written so that no

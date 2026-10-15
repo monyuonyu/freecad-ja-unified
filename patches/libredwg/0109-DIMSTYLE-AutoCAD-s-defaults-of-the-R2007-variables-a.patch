@@ -1,7 +1,7 @@
 From aead2f0243ae578e3a8265379a9cfd4d86fe4936 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 20:31:41 +0900
-Subject: [PATCH 109/116] DIMSTYLE: AutoCAD's defaults of the R2007+ variables
+Subject: [PATCH 109/122] DIMSTYLE: AutoCAD's defaults of the R2007+ variables
  also from DXF
 
 The encoder sets DIMFXL 1, DIMJOGANG 45 degrees, DIMTFILLCLR ByBlock,

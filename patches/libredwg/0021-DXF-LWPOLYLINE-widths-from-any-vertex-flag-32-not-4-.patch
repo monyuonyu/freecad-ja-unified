@@ -1,7 +1,7 @@
 From dca8590dd567a4447462684d32587e6214989935 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 06:32:43 +0900
-Subject: [PATCH 021/116] DXF LWPOLYLINE: widths from any vertex, flag 32 not
+Subject: [PATCH 021/122] DXF LWPOLYLINE: widths from any vertex, flag 32 not
  4; off layers positive in DWG
 
 in_dxf allocated the widths only when the first vertex had 40/41, so

@@ -1,7 +1,7 @@
 From 7444624a3b6323a181cd138e6dd9442df971b1ec Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 08:32:46 +0900
-Subject: [PATCH 037/116] in_dxf: SHAPE name (2) is not the shape number
+Subject: [PATCH 037/122] in_dxf: SHAPE name (2) is not the shape number
 
 dynapi has style_id as DXF 2, and the generic importer stored the string
 pointer as the number: random on every run and platform (Linux and Windows

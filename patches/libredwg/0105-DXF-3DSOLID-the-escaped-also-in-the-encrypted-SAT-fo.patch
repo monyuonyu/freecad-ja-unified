@@ -1,7 +1,7 @@
 From 401ce4e45b840dac468fbe468973a526018af785 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 14:38:16 +0900
-Subject: [PATCH 105/116] DXF 3DSOLID: the escaped ^ also in the encrypted SAT
+Subject: [PATCH 105/122] DXF 3DSOLID: the escaped ^ also in the encrypted SAT
  for the DWG
 
 The encrypted A is ^, which DXF has as "^ ". Reading a DXF, it was

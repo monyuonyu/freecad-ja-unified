@@ -1,0 +1,656 @@
+From 9c53bf5d163b2e8e812481c7e99e462c7966c1bc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 09:57:18 +0900
+Subject: [PATCH 215/216] Part: Part.exportPptx / Part.exportSvg, colours from
+ dicts and from the FCStd file
+
+  Part.exportPptx(objects, "out.pptx", view="iso", edges="outline", group=True,
+                  lineWidth=0.5, deflection=0, colors=None)
+      -> {"faces", "edges", "shapes", "groups"}
+  Part.exportSvg(objects, "out.svg", view="iso", edges="all", group=True,
+                 lineWidth=1.0, width=1000, deflection=0, colors=None)
+
+objects as for Part.renderImage: shapes, meshes, document objects, a whole
+document, and dicts {"shape"|"mesh"|"object": ..., "color": (r, g, b),
+"faceColors": [...], "group": "a/b/c", "label": name}, so headless scripts
+can set colours and groups.
+
+Colours (renderImage, projectVisible, SVG, JSON and PPTX alike): a dict's
+"color"/"faceColors" first, then colors={Name|Label|index: rgb}, then the
+object's view colours, then the palette (colors="palette" forces it).
+Headless there is no ViewObject, so PartViews.object_colors reads them from
+the GuiDocument.xml in the FCStd file: ShapeAppearance (one material, or
+one per face), ShapeColor/DiffuseColor of files before 1.0, and links
+(OverrideMaterial, else the linked object's colours).  Per-face colours are
+new in the C++ scene (SceneItem::faceColors, dict key "faceColors"), and
+renderImage given document objects asks PartViews for their colours.
+
+Tests: a file saved headless and given the GuiDocument.xml the GUI writes
+(1.x materials, 0.21 ShapeColor + DiffuseColor, links with and without
+override); the same values come out in the GUI (checked under xvfb with
+a file saved by the GUI).  Dict colours and per-face colours in PPTX fills
+and in renderImage pixels.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp          |   2 +-
+ src/Mod/Part/App/ViewTools.h            |   3 +
+ src/Mod/Part/App/ViewToolsPy.cpp        | 101 ++++++++++-
+ src/Mod/Part/PartViews.py               | 212 ++++++++++++++++++++++--
+ src/Mod/Part/parttests/TestPartViews.py | 126 ++++++++++++++
+ 5 files changed, 429 insertions(+), 15 deletions(-)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 45a6c0214..31da19a43 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -137,7 +137,7 @@ void addShape(Scene& scene, int itemIndex, const SceneItem& item)
+         SFace sf;
+         sf.item = itemIndex;
+         sf.face = i - 1;
+-        sf.color = item.color;
++        sf.color = (size_t)(i - 1) < item.faceColors.size() ? item.faceColors[i - 1] : item.color;
+         sf.solid = solidFaces.Contains(face);
+         sf.smooth = scene.smoothKeys++;
+         BRepAdaptor_Surface surf(face, Standard_False);
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index 5a7669dce..d0fa03df3 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -35,6 +35,9 @@ struct SceneItem
+     std::vector<gp_Pnt> meshPoints;
+     std::vector<std::array<int, 3>> meshFacets;
+     Color color {0.80F, 0.82F, 0.86F};
++    /// Colours of the faces of a shape (in the order of Shape.Faces); faces past the end
++    /// get \a color
++    std::vector<Color> faceColors;
+ };
+ 
+ /// Orthographic camera.  \a dir points from the eye into the scene.
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index 0e32e30a3..2843de566 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -81,17 +81,59 @@ void setMesh(SceneItem& item, const Py::Object& topo)
+     }
+ }
+ 
++// Colours stored for a document object (its view provider, or the GuiDocument.xml of
++// its FCStd file when there is no GUI), by PartViews.object_colors; false if none
++bool storedColors(const Py::Object& obj, SceneItem& item)
++{
++    try {
++        PyObject* module = PyImport_ImportModule("PartViews");
++        if (!module) {
++            PyErr_Clear();
++            return false;
++        }
++        Py::Module mod(module, true);
++        Py::Callable fn(mod.getAttr("object_colors"));
++        Py::Object res = fn.apply(Py::TupleN(obj));
++        if (res.isNone()) {
++            return false;
++        }
++        Py::Sequence list(res);
++        if (list.size() == 0) {
++            return false;
++        }
++        item.color = toColor(list[0]);
++        if (list.size() > 1) {
++            for (const auto& c : list) {
++                item.faceColors.push_back(toColor(c));
++            }
++        }
++        return true;
++    }
++    catch (const Py::Exception&) {
++        PyErr_Clear();  // keep the palette colour
++        return false;
++    }
++}
++
+ // Shape, (points, facets), Mesh.Mesh, document object with Shape or Mesh, or a dict
+-// {"shape"/"mesh"/"object": ..., "color": (r, g, b)}
++// {"shape"/"mesh"/"object": ..., "color": (r, g, b), "faceColors": [(r, g, b), ...]}
+ SceneItem toItem(const Py::Object& obj, std::size_t index)
+ {
+     SceneItem item;
+     item.color = palette[index % palette.size()];
+     Py::Object what = obj;
++    bool colored = false;
+     if (PyDict_Check(obj.ptr())) {
+         Py::Dict d(obj);
+         if (d.hasKey("color")) {
+             item.color = toColor(d["color"]);
++            colored = true;
++        }
++        if (d.hasKey("faceColors")) {
++            for (const auto& c : Py::Sequence(d["faceColors"])) {
++                item.faceColors.push_back(toColor(c));
++            }
++            colored = true;
+         }
+         if (d.hasKey("shape")) {
+             what = d["shape"];
+@@ -110,6 +152,9 @@ SceneItem toItem(const Py::Object& obj, std::size_t index)
+         item.shape = static_cast<Part::TopoShapePy*>(what.ptr())->getTopoShapePtr()->getShape();
+         return item;
+     }
++    if (!colored && what.hasAttr("TypeId") && what.hasAttr("Document")) {
++        storedColors(what, item);
++    }
+     if (PyTuple_Check(what.ptr()) || PyList_Check(what.ptr())) {
+         setMesh(item, what);
+         return item;
+@@ -363,6 +408,33 @@ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds
+     }
+ }
+ 
++// Part.exportPptx / Part.exportSvg: the writers are Python (PartViews)
++PyObject* callPartViews(const char* name, PyObject* args, PyObject* kwds)
++{
++    PyObject* module = PyImport_ImportModule("PartViews");
++    if (!module) {
++        return nullptr;
++    }
++    PyObject* fn = PyObject_GetAttrString(module, name);
++    Py_DECREF(module);
++    if (!fn) {
++        return nullptr;
++    }
++    PyObject* result = PyObject_Call(fn, args, kwds);
++    Py_DECREF(fn);
++    return result;
++}
++
++PyObject* exportPptx(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    return callPartViews("part_export_pptx", args, kwds);
++}
++
++PyObject* exportSvg(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    return callPartViews("part_export_svg", args, kwds);
++}
++
+ PyMethodDef methods[] = {
+     {"renderImage",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(renderImage)),
+@@ -371,7 +443,9 @@ PyMethodDef methods[] = {
+      "            lineWidth=1.0, deflection=0, background=(1,1,1), supersample=3)\n"
+      "Write a PNG picture without OpenGL or a display (CPU renderer).\n"
+      "objects: a shape, a mesh (points, facets), a Mesh.Mesh, a document object, a dict\n"
+-     "{'shape'|'mesh'|'object': ..., 'color': (r,g,b)} or a list of these.\n"
++     "{'shape'|'mesh'|'object': ..., 'color': (r,g,b), 'faceColors': [(r,g,b), ...]} or a list\n"
++     "of these.  Document objects without a colour get their view colours (headless: as\n"
++     "stored in the FCStd file), others a palette.\n"
+      "view: iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric,\n"
+      "trimetric, 'dx,dy,dz' or a vector (direction from the eye into the scene).\n"
+      "style: shaded, shaded-only, hidden-lines, lines."},
+@@ -384,6 +458,29 @@ PyMethodDef methods[] = {
+      " 'edges': [{'item', 'kind': edge|silhouette|smooth, 'points'}], 'bounds', 'camera'}.\n"
+      "2D coordinates are model units, x to the right and y up; faces are sorted far to near\n"
+      "and their polygons are only the visible parts.  edges=False skips the edges (faster)."},
++    {"exportPptx",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(exportPptx)),
++     METH_VARARGS | METH_KEYWORDS,
++     "exportPptx(objects, filename, view='iso', edges='outline', group=True, lineWidth=0.5,\n"
++     "           deflection=0, colors=None) -> dict\n"
++     "Write a PowerPoint file with one slide: the visible faces as editable freeform shapes\n"
++     "(hidden parts removed), in nested groups for the groups of the model.\n"
++     "objects: as for renderImage (shapes, meshes, document objects, a document) and dicts\n"
++     "{'shape'|'mesh'|'object': ..., 'color': (r,g,b), 'faceColors': [...], 'group': 'a/b/c',\n"
++     "'label': name}.  Without a colour, document objects get their view colours (also\n"
++     "headless: read from the FCStd file), others a palette; colors='palette' forces it.\n"
++     "edges: 'outline' (each face's own line), 'all' (separate lines) or 'none'.\n"
++     "group: True (dict 'group', a 'Group' string property, the document tree), False\n"
++     "(flat), a function obj -> 'a/b/c' or a dict {Name|Label|index: 'a/b/c'}.\n"
++     "Returns {'faces', 'edges', 'shapes', 'groups'}."},
++    {"exportSvg",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(exportSvg)),
++     METH_VARARGS | METH_KEYWORDS,
++     "exportSvg(objects, filename, view='iso', edges='all', group=True, lineWidth=1.0,\n"
++     "          width=1000, deflection=0, colors=None) -> dict\n"
++     "Write an SVG with the visible faces filled and hidden parts removed; groups become\n"
++     "nested <g> with inkscape:label.  Arguments as for exportPptx; lineWidth in pixels of\n"
++     "the width.  Returns {'faces', 'edges', 'groups'}."},
+     {"findInterferences",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(findInterferencesPy)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 2e76f8bdb..e53a34968 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -32,6 +32,13 @@ Python:
+     PartViews.export_svg(objects_or_doc, "out.svg", view="iso")
+     data = PartViews.project(objects_or_doc, view="iso")      # dict, see export_polygons
+     PartViews.interference(objects_or_doc)                     # [(obj_a, obj_b, volume)]
++
++    Part.exportPptx([{"shape": s, "color": (1, 0, 0), "group": "row/ladder1"}, obj, ...],
++                    "out.pptx", view="iso", edges="outline")
++    Part.exportSvg(objects, "out.svg", view="front", edges="all")
++
++Colours: dict items' "color", else the object's view colours - headless they are read
++from the GuiDocument.xml in the FCStd file - else a palette (colors="palette" forces it).
+ """
+ 
+ import json
+@@ -48,6 +55,8 @@ __all__ = [
+     "export_polygons",
+     "export_pptx",
+     "interference",
++    "object_colors",
++    "scene_entries",
+     "cli_main",
+ ]
+ 
+@@ -98,9 +107,10 @@ class SceneEntry:
+     (shape, mesh tuple or Mesh.Mesh), its name and label, the group path (list of
+     (id, label) from the outermost group) and an optional colour."""
+ 
+-    __slots__ = ("obj", "item", "name", "label", "group", "color", "face_colors")
++    __slots__ = ("obj", "item", "name", "label", "group", "color", "face_colors", "view_colors")
+ 
+     def __init__(self, obj, item, name, label, group=(), color=None, face_colors=None):
++        self.view_colors = None  # from the view provider or the file: [(r, g, b)] or per face
+         self.obj = obj
+         self.item = item
+         self.name = name
+@@ -225,9 +235,10 @@ def _walk(root, out, from_document, path=None):
+     if path is None:
+         path = _tree_path(root)
+ 
+-    def visit(obj, sub, key, label, path):
++    def visit(obj, sub, key, label, path, inherited=None):
+         if _is_container(obj):
+             node = path + [(key, label)]
++            inherited = _link_override(obj) or inherited
+             for s in obj.getSubObjects():
+                 name = s.rstrip(".")
+                 try:
+@@ -244,7 +255,7 @@ def _walk(root, out, from_document, path=None):
+                 child_label = child.Label
+                 if name.isdigit() and not child.isDerivedFrom("App::LinkElement"):
+                     child_label = "%s[%s]" % (child.Label, name)
+-                visit(child, sub + s, key + "." + name, child_label, node)
++                visit(child, sub + s, key + "." + name, child_label, node, inherited)
+             return
+         if from_document and (obj.TypeId in _SKIP_TYPES or (not sub and _in_body(obj))):
+             return
+@@ -252,7 +263,9 @@ def _walk(root, out, from_document, path=None):
+         if item is None:
+             return
+         own = _group_property(obj)
+-        out.append(SceneEntry(obj, item, obj.Name, label, _named_path(own) if own else path))
++        entry = SceneEntry(obj, item, obj.Name, label, _named_path(own) if own else path)
++        entry.view_colors = inherited or object_colors(obj)
++        out.append(entry)
+ 
+     visit(root, "", root.Document.Name + "#" + root.Name, root.Label, path)
+ 
+@@ -271,6 +284,140 @@ def _roots(doc):
+     return roots
+ 
+ 
++# ------------------------------------------------------------------ colours of objects
++
++_STORED = {}  # FCStd path -> (mtime, {object name: {"colors": [...], "override": bool|None}})
++
++
++def _unpack_rgb(value):
++    return ((value >> 24) & 255) / 255.0, ((value >> 16) & 255) / 255.0, ((value >> 8) & 255) / 255.0
++
++
++def _read_material_list(blob, version):
++    """Diffuse colours of a PropertyMaterialList file (little endian, see PropertyStandard.cpp)."""
++    import struct
++
++    pos = 0
++    (count,) = struct.unpack_from("<i", blob, pos)
++    pos += 4
++    if version not in ("2", "3") and count < 0:  # an early versioned format
++        (count,) = struct.unpack_from("<I", blob, pos)
++        pos += 4
++    colors = []
++    for _ in range(max(count, 0)):
++        _ambient, diffuse = struct.unpack_from("<II", blob, pos)
++        colors.append(_unpack_rgb(diffuse))
++        pos += 24  # four colours, shininess, transparency
++    return colors
++
++
++def _read_color_list(blob):
++    import struct
++
++    (count,) = struct.unpack_from("<I", blob, 0)
++    return [_unpack_rgb(v) for v in struct.unpack_from("<%dI" % count, blob, 4)]
++
++
++def _stored_colors(doc):
++    """{object name: {"colors", "override"}} from the GuiDocument.xml of the document's file:
++    the colours the GUI showed when it was saved, for headless runs."""
++    import xml.etree.ElementTree as ET
++    import zipfile
++
++    path = getattr(doc, "FileName", "")
++    if not path or not os.path.isfile(path):
++        return {}
++    mtime = os.path.getmtime(path)
++    cached = _STORED.get(path)
++    if cached and cached[0] == mtime:
++        return cached[1]
++    result = {}
++    try:
++        with zipfile.ZipFile(path) as z:
++            names = set(z.namelist())
++            if "GuiDocument.xml" not in names:
++                _STORED[path] = (mtime, result)
++                return result
++            root = ET.fromstring(z.read("GuiDocument.xml"))
++            for vp in root.iter("ViewProvider"):
++                props = {p.get("name"): p for p in vp.iter("Property")}
++                colors = None
++                try:
++                    prop = props.get("ShapeAppearance")
++                    ml = prop.find("MaterialList") if prop is not None else None
++                    if ml is not None and ml.get("file") in names:
++                        colors = _read_material_list(z.read(ml.get("file")), ml.get("version"))
++                    elif prop is None and "ShapeColor" in props:  # before FreeCAD 1.0
++                        pc = props["ShapeColor"].find("PropertyColor")
++                        colors = [_unpack_rgb(int(pc.get("value")))]
++                        cl = props["DiffuseColor"].find("ColorList") if "DiffuseColor" in props else None
++                        if cl is not None and cl.get("file") in names:
++                            per_face = _read_color_list(z.read(cl.get("file")))
++                            if len(per_face) > 1:
++                                colors = per_face
++                except Exception:
++                    colors = None
++                override = None
++                if "OverrideMaterial" in props:
++                    b = props["OverrideMaterial"].find("Bool")
++                    override = b is not None and b.get("value") == "true"
++                result[vp.get("name")] = {"colors": colors or None, "override": override}
++    except Exception:
++        result = {}
++    _STORED[path] = (mtime, result)
++    return result
++
++
++def _view_colors(obj):
++    """{"colors", "override"} of the object's view provider (GUI) or as stored in its file."""
++    vo = getattr(obj, "ViewObject", None) if App.GuiUp else None
++    if vo is None:
++        return _stored_colors(obj.Document).get(obj.Name)
++    override = bool(vo.OverrideMaterial) if hasattr(vo, "OverrideMaterial") else None
++    colors = None
++    try:
++        if hasattr(vo, "ShapeAppearance"):
++            mats = vo.ShapeAppearance
++            mats = mats if isinstance(mats, (list, tuple)) else [mats]
++            colors = [tuple(m.DiffuseColor[:3]) for m in mats]
++        elif hasattr(vo, "ShapeColor"):
++            colors = [tuple(vo.ShapeColor[:3])]
++    except Exception:
++        colors = None
++    return {"colors": colors or None, "override": override}
++
++
++def object_colors(obj, _depth=0):
++    """Colours of a document object as shown in the GUI: [(r, g, b)] or one per face (in the
++    order of Shape.Faces), or None.  Headless, the colours stored in the FCStd file
++    (GuiDocument.xml) are used.  Links show their own colour only with OverrideMaterial."""
++    try:
++        info = _view_colors(obj)
++    except Exception:
++        info = None
++    if info and info["override"] is not None:  # a link
++        if info["override"] and info["colors"]:
++            return info["colors"][:1]
++        linked = obj.getLinkedObject(True) if hasattr(obj, "getLinkedObject") else None
++        if linked is not None and linked is not obj and _depth < 16:
++            return object_colors(linked, _depth + 1)
++        return None
++    return info["colors"] if info else None
++
++
++def _link_override(obj):
++    """The colour a link puts on everything below it (OverrideMaterial), or None."""
++    if not (obj.isDerivedFrom("App::Link") or obj.isDerivedFrom("App::LinkElement")):
++        return None
++    try:
++        info = _view_colors(obj)
++    except Exception:
++        return None
++    if info and info["override"] and info["colors"]:
++        return info["colors"][:1]
++    return None
++
++
+ def _is_mesh_tuple(obj):
+     if not isinstance(obj, (tuple, list)) or len(obj) != 2:
+         return False
+@@ -294,7 +441,11 @@ def scene_entries(source=None, group=True, colors=None):
+     property named "Group" of the object, the document tree (App::Part, groups, links,
+     a hidden Part::Compound) and finally nothing (top level).  Groups are told apart by
+     the objects (and link paths), never by labels, so renamed duplicates (間口001) stay
+-    apart.  group=False: no groups."""
++    apart.  group=False: no groups.
++
++    Colours: a dict's "color"/"faceColors", then colors={Name|Label|index: (r, g, b)},
++    then the object's view colours (object_colors; also headless from the FCStd file),
++    then a palette.  colors="palette" uses the palette for everything not given."""
+     if source is None:
+         source = App.ActiveDocument
+         if source is None:
+@@ -352,6 +503,21 @@ def _add_entries(obj, out):
+ 
+ 
+ def _apply_options(entries, group, colors):
++    if isinstance(colors, dict):
++        for i, e in enumerate(entries):
++            if e.color is not None or e.face_colors:
++                continue  # a dict item's own colour wins
++            keys = ((e.obj.Name, e.obj.Label) if e.obj is not None else ()) + (e.name, e.label, i)
++            for key in keys:
++                if key in colors:
++                    e.color = colors[key]
++                    break
++    if colors != "palette":
++        for e in entries:
++            if e.color is None and not e.face_colors and e.view_colors:
++                e.color = e.view_colors[0]
++                if len(e.view_colors) > 1:
++                    e.face_colors = e.view_colors
+     if group is False or group is None or group == "none":
+         for e in entries:
+             e.group = []
+@@ -368,13 +534,6 @@ def _apply_options(entries, group, colors):
+             path = _split_path(path)
+             if path is not None:
+                 e.group = _named_path(path)
+-    if colors:
+-        for i, e in enumerate(entries):
+-            keys = ((e.obj.Name, e.obj.Label) if e.obj is not None else ()) + (e.name, e.label, i)
+-            for key in keys:
+-                if key in colors:
+-                    e.color = colors[key]
+-                    break
+ 
+ 
+ def scene_objects(source=None):
+@@ -900,6 +1059,35 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+     return data
+ 
+ 
++def part_export_pptx(objects, filename, view="iso", edges="outline", group=True, lineWidth=0.5,
++                     deflection=0.0, colors=None):  # fmt: skip
++    """Part.exportPptx: see its doc string."""
++    stats = {}
++    data = export_pptx(objects, filename, view=view, deflection=deflection, colors=colors,
++                       line_width=lineWidth, edges=edges, group=group, stats=stats)  # fmt: skip
++    mode = _edge_mode(edges, "outline")
++    return {"faces": len(data["faces"]), "edges": len(data["edges"]) if mode == "all" else 0,
++            "shapes": stats["shapes"], "groups": stats["groups"]}  # fmt: skip
++
++
++def part_export_svg(objects, filename, view="iso", edges="all", group=True, lineWidth=1.0, width=1000,
++                    deflection=0.0, colors=None):  # fmt: skip
++    """Part.exportSvg: see its doc string."""
++    data = export_svg(objects, filename, view=view, deflection=deflection, colors=colors,
++                      width_px=width, line_width=lineWidth, edges=edges, group=group)  # fmt: skip
++    tree = _group_tree(data, group)
++    groups = 0
++    if tree is not None:
++        stack = list(tree.children.values())
++        while stack:
++            node = stack.pop()
++            groups += 1
++            stack.extend(node.children.values())
++    mode = _edge_mode(edges, "all")
++    return {"faces": len(data["faces"]), "edges": len(data["edges"]) if mode == "all" else 0,
++            "groups": groups}  # fmt: skip
++
++
+ def interference(source=None, tolerance=0.0, min_volume=1e-6, threads=0, stats=False):
+     """[(name_a, name_b, volume)] of overlapping solids.  With stats=True: (pairs, stats)."""
+     shapes, names = [], []
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 0b53978db..23005e0f9 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -368,6 +368,132 @@ class TestPartViews(unittest.TestCase):
+         data = PartViews.project(items[3:], view="iso", group={0: "z"})
+         self.assertEqual(data["items"][0]["group"], ["z"])
+ 
++    def testExportApiColorsFromDicts(self):
++        pptx = os.path.join(self.tmp, "api.pptx")
++        items = [
++            {"shape": Part.makeBox(10, 10, 10), "color": (255, 0, 0), "group": "row/a"},
++            {"shape": Part.makeBox(10, 10, 10, App.Vector(20, 0, 0)), "color": (0, 0, 1), "group": "row/b"},
++            {"shape": Part.makeBox(10, 10, 10, App.Vector(40, 0, 0)),
++             "faceColors": [(0, 1, 0)] * 5 + [(1, 1, 0)]},  # top face (Face6) yellow
++        ]  # fmt: skip
++        result = Part.exportPptx(items, pptx, view="iso", edges="none")
++        # groups: row, a, b and one per object
++        self.assertEqual(result, {"faces": 9, "edges": 0, "shapes": 9, "groups": 6})
++        tree = group_tree(read_slide(pptx))
++        self.assertEqual(set(tree), {"row", "item2"})
++        fills = {}
++        for g in read_slide(pptx).iter("{%s}grpSp" % NS["p"]):
++            name = g.find("p:nvGrpSpPr/p:cNvPr", NS).get("name")
++            fills[name] = {shape_fill(sp) for sp in g.findall("p:sp", NS)}
++
++        def hue(rgb):
++            r, g, b = int(rgb[:2], 16), int(rgb[2:4], 16), int(rgb[4:], 16)
++            return tuple(int(c > 0.5 * max(r, g, b)) for c in (r, g, b))
++
++        self.assertEqual({hue(f) for f in fills["item0"]}, {(1, 0, 0)})
++        self.assertEqual({hue(f) for f in fills["item1"]}, {(0, 0, 1)})
++        self.assertEqual({hue(f) for f in fills["item2"]}, {(0, 1, 0), (1, 1, 0)})
++        svg = os.path.join(self.tmp, "api.svg")
++        result = Part.exportSvg(items, svg, view="iso", edges="all")
++        self.assertEqual((result["faces"], result["edges"], result["groups"]), (9, 27, 6))
++        with self.assertRaises(ValueError):
++            Part.exportPptx(items, pptx, edges="thin")
++        # renderImage takes the same per-face colours: the top face is yellow
++        png = os.path.join(self.tmp, "faces.png")
++        Part.renderImage(items[2], png, view="top", width=60, height=60, style="shaded-only")
++        w, h, rows = read_png(png)
++        r, g, b = rows[30][30]
++        self.assertTrue(r > 150 and g > 150 and b < 80, rows[30][30])
++
++    def _file_with_colors(self):
++        """A document saved headless, then given the GuiDocument.xml the GUI would write:
++        Red (ShapeAppearance), Faces (one material per face), Old (ShapeColor and
++        DiffuseColor of FreeCAD 0.21), a link with OverrideMaterial and a plain link."""
++        doc = App.newDocument("PartViewsColors")
++        doc.addObject("Part::Box", "Red")
++        doc.addObject("Part::Box", "Faces").Placement.Base = App.Vector(20, 0, 0)
++        doc.addObject("Part::Box", "Old").Placement.Base = App.Vector(40, 0, 0)
++        for name, x in (("LinkOver", 60), ("LinkPlain", 80)):
++            link = doc.addObject("App::Link", name)
++            link.LinkedObject = doc.Red
++            link.Placement.Base = App.Vector(x, 0, 0)
++        doc.recompute()
++        path = os.path.join(self.tmp, "colors.FCStd")
++        doc.saveAs(path)
++        App.closeDocument(doc.Name)
++
++        def packed(rgb):
++            r, g, b = (int(round(c * 255)) for c in rgb)
++            return (r << 24) | (g << 16) | (b << 8)
++
++        def materials(colors):
++            blob = struct.pack("<I", len(colors))
++            for c in colors:
++                blob += struct.pack("<IIIIff", 0, packed(c), 0, 0, 0.2, 0.0)
++            return blob + struct.pack("<III", 0, 0, 0) * len(colors)
++
++        def appearance(name, file, extra=""):
++            return ('<ViewProvider name="%s" expanded="0"><Properties Count="2">%s'
++                    '<Property name="ShapeAppearance" type="App::PropertyMaterialList">'
++                    '<MaterialList file="%s" version="3"/></Property></Properties></ViewProvider>'
++                    % (name, extra, file))  # fmt: skip
++
++        override = ('<Property name="OverrideMaterial" type="App::PropertyBool">'
++                    '<Bool value="%s"/></Property>')  # fmt: skip
++        gui = (
++            '<?xml version="1.0" encoding="utf-8"?><Document SchemaVersion="1"><ViewProviderData Count="5">'
++            + appearance("Red", "SA1")
++            + appearance("Faces", "SA2")
++            + '<ViewProvider name="Old"><Properties Count="2">'
++            '<Property name="DiffuseColor" type="App::PropertyColorList"><ColorList file="DC"/></Property>'
++            '<Property name="ShapeColor" type="App::PropertyColor"><PropertyColor value="%d"/></Property>'
++            "</Properties></ViewProvider>" % packed((0, 0, 1))
++            + appearance("LinkOver", "SA3", override % "true")
++            + appearance("LinkPlain", "SA4", override % "false")
++            + "</ViewProviderData></Document>"
++        )
++        old = [(0, 0, 1)] * 5 + [(1, 0, 1)]  # magenta top face
++        with zipfile.ZipFile(path, "a") as z:
++            z.writestr("GuiDocument.xml", gui)
++            z.writestr("SA1", materials([(1, 0, 0)]))
++            z.writestr("SA2", materials([(0, 1, 0)] * 5 + [(1, 1, 0)]))
++            z.writestr("DC", struct.pack("<I", 6) + b"".join(struct.pack("<I", packed(c)) for c in old))
++            z.writestr("SA3", materials([(0, 1, 1)]))
++            z.writestr("SA4", materials([(0.5, 0.5, 0.5)]))
++        return path
++
++    def testStoredColorsHeadless(self):
++        import PartViews
++
++        doc = App.openDocument(self._file_with_colors())
++        self.addCleanup(App.closeDocument, doc.Name)
++        expect = {
++            "Red": [(1, 0, 0)],
++            "Faces": [(0, 1, 0)] * 5 + [(1, 1, 0)],
++            "Old": [(0, 0, 1)] * 5 + [(1, 0, 1)],
++            "LinkOver": [(0, 1, 1)],
++            "LinkPlain": [(1, 0, 0)],  # no override: the linked object's colour
++        }
++        for name, colors in expect.items():
++            got = PartViews.object_colors(doc.getObject(name))
++            self.assertEqual(len(got), len(colors), name)
++            for a, b in zip(got, colors):
++                self.assertTrue(all(abs(x - y) < 0.01 for x, y in zip(a, b)), (name, got))
++        # the exports use them; top view shows the top faces (Face6)
++        data = PartViews.project(doc, view="top", edges=False)
++        tops = {f["object"]: tuple(round(c, 2) for c in f["color"]) for f in data["faces"]}
++        self.assertEqual(tops, {"Red": (1, 0, 0), "Faces": (1, 1, 0), "Old": (1, 0, 1),
++                                "LinkOver": (0, 1, 1), "LinkPlain": (1, 0, 0)})  # fmt: skip
++        # the palette when asked for
++        data = PartViews.project(doc, view="top", edges=False, colors="palette")
++        self.assertNotIn((1, 0, 0), {tuple(round(c, 2) for c in f["color"]) for f in data["faces"]})
++        # and renderImage given the document objects directly (C++ asks PartViews)
++        png = os.path.join(self.tmp, "stored.png")
++        Part.renderImage([doc.Red], png, view="top", width=40, height=40, style="shaded-only")
++        w, h, rows = read_png(png)
++        r, g, b = rows[20][20]
++        self.assertTrue(r > 150 and g < 60 and b < 60, rows[20][20])
++
+     def testFindInterferences(self):
+         a = Part.makeBox(10, 10, 10)
+         b = Part.makeBox(10, 10, 10, App.Vector(5, 5, 5))  # overlaps a by 125
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From c4c79173efbab3acfe6427ea92ef4b9c39c880c5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:05:07 +0900
-Subject: [PATCH 056/116] R2004 DWG from R2004+: do not take the page count as
+Subject: [PATCH 056/122] R2004 DWG from R2004+: do not take the page count as
  the section count
 
 * src/encode.c (dwg_encode): header.sections of a decoded R2004+ DWG is

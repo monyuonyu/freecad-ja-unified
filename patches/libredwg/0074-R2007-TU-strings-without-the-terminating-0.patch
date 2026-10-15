@@ -1,7 +1,7 @@
 From 7d39a919dcf75198b141658a64fe5e252a40b058 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:35 +0900
-Subject: [PATCH 074/116] R2007+ TU strings without the terminating 0
+Subject: [PATCH 074/122] R2007+ TU strings without the terminating 0
 
 AutoCAD writes the length and the UTF-16 chars of a TU string without
 a terminating 0 (the NOD of aec_objects: 69 names, 69 * 16 bits less

@@ -1,7 +1,7 @@
 From 6b22d76f9ca2dccde39d78cfbb07185016b15068 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:53:13 +0900
-Subject: [PATCH 070/116] encode_test: test the new r2004_compress
+Subject: [PATCH 070/122] encode_test: test the new r2004_compress
 
 * test/unit-testing/encode_test.c (compress_R2004_section_tests): The
 round trip through decompress_R2004_section with r2004_compress, which

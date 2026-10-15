@@ -1,7 +1,7 @@
 From cf98c4655a7810cd0c5159f96f84b5497914c8ed Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 21:29:40 +0900
-Subject: [PATCH 114/116] upconvert_TABLE: the size of point values, a date
+Subject: [PATCH 114/122] upconvert_TABLE: the size of point values, a date
  without data as text
 
 The values of R2007 TABLE cells from DXF have no data_size: 0 for a

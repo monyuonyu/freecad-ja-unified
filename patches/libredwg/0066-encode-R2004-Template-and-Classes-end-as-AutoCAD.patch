@@ -1,7 +1,7 @@
 From 80cf3f5e46fe710849eb996867511c7feeba4f45 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:31:34 +0900
-Subject: [PATCH 066/116] encode: R2004+ Template and Classes end as AutoCAD
+Subject: [PATCH 066/122] encode: R2004+ Template and Classes end as AutoCAD
 
 * src/encode.c (encode_template): An empty description stays RS 0, 4
 bytes in all, as the AcDb:Template of AutoCAD (not changed by the NUL of

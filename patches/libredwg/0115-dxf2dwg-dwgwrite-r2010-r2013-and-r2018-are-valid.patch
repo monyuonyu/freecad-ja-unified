@@ -1,7 +1,7 @@
 From cc3ff04fdc65c677ebff833161ddbdc24cac69f3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 21:56:32 +0900
-Subject: [PATCH 115/116] dxf2dwg, dwgwrite: r2010, r2013 and r2018 are valid
+Subject: [PATCH 115/122] dxf2dwg, dwgwrite: r2010, r2013 and r2018 are valid
 
 All 149 drawings of the test corpus as DXF written as R2004, R2010,
 R2013 and R2018 round trip through ACadSharp without losses (as R2000

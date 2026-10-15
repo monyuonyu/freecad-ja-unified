@@ -1,7 +1,7 @@
 From baa09095ae87155daed8266a94cdca5415c26551 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:58:43 +0900
-Subject: [PATCH 092/116] Header: no unknown_54 - unknown_57 since R2007
+Subject: [PATCH 092/122] Header: no unknown_54 - unknown_57 since R2007
 
 In all R2007+ drawings of AutoCAD (example_2007 - example_2018,
 sample_AC1021 - sample_AC1032) the string stream starts right after

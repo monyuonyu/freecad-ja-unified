@@ -1,7 +1,7 @@
 From bf863dae311cf7d16952eff143d7f1de2f97727d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:20 +0900
-Subject: [PATCH 072/116] R2007+ string streams: sizes over 0x7FFF bits
+Subject: [PATCH 072/122] R2007+ string streams: sizes over 0x7FFF bits
 
 The size of the string stream before its has_strings bit was cast to a
 RS, so with more than 32767 bits of strings (the classes of

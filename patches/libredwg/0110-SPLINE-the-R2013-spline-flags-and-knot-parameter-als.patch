@@ -1,7 +1,7 @@
 From a13b8b009efdde96af40661c34a0d9299b13b5bf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 20:45:13 +0900
-Subject: [PATCH 110/116] SPLINE: the R2013+ spline flags and knot parameter
+Subject: [PATCH 110/122] SPLINE: the R2013+ spline flags and knot parameter
  also from DXF
 
 DXF has no splineflags and knotparam, so they were 0 from DXF, and

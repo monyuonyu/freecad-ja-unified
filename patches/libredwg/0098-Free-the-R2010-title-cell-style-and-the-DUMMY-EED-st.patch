@@ -1,7 +1,7 @@
 From 640c2f84628746203ab3f0bef9478e71427ad494 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 12:59:37 +0900
-Subject: [PATCH 098/116] Free the R2010+ title cell style and the DUMMY EED
+Subject: [PATCH 098/122] Free the R2010+ title cell style and the DUMMY EED
  string
 
 Both leaked when writing R2007+ from an earlier version (LeakSanitizer

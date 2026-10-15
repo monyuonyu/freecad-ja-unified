@@ -1,7 +1,7 @@
 From 7904ebe98a0f1a20db49cd1a27f171d553754a59 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:14:16 +0900
-Subject: [PATCH 058/116] PLOTSETTINGS, LAYOUT: from R2000 to R2004+ the shade
+Subject: [PATCH 058/122] PLOTSETTINGS, LAYOUT: from R2000 to R2004+ the shade
  plot defaults of AutoCAD
 
 R2000 has no shade plot fields, R2004+ got a custom DPI of 0, which

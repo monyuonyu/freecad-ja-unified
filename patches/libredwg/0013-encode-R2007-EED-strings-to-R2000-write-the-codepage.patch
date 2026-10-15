@@ -1,7 +1,7 @@
 From 17d2a82a13cee2703b9f64838cf54c9dbc6358ee Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 09:42:19 +0900
-Subject: [PATCH 013/116] encode: R2007+ EED strings to R2000, write the
+Subject: [PATCH 013/122] encode: R2007+ EED strings to R2000, write the
  codepage big-endian, the converted length
 
 The R13-R2007 branch for UTF-16 EED strings wrote the codepage with

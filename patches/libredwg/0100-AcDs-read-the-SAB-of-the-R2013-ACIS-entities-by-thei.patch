@@ -1,7 +1,7 @@
 From 5ce60391b8192a053d86cd29b212136a2d2d56f0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 13:43:23 +0900
-Subject: [PATCH 100/116] AcDs: read the SAB of the R2013+ ACIS entities by
+Subject: [PATCH 100/122] AcDs: read the SAB of the R2013+ ACIS entities by
  their handle
 
 The SAB data of the R2013+ REGIONs, 3DSOLIDs, BODYs and SURFACEs is in

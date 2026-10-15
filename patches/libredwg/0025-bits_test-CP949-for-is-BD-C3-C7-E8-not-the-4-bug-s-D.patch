@@ -1,7 +1,7 @@
 From 04c25fd30af7c795c629777072551041b79a9013 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:06:42 +0900
-Subject: [PATCH 025/116] =?UTF-8?q?bits=5Ftest:=20CP949=20for=20=EC=8B=9C?=
+Subject: [PATCH 025/122] =?UTF-8?q?bits=5Ftest:=20CP949=20for=20=EC=8B=9C?=
  =?UTF-8?q?=ED=97=98=20is=20BD=20C3=20C7=20E8,=20not=20the=20>>=204=20bug'?=
  =?UTF-8?q?s=20DC=20C3=207E=20E8?=
 MIME-Version: 1.0

@@ -1,7 +1,7 @@
 From 912ed9cceac19e1b3cda3995ab1a5abf0200d1a3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 13:47:50 +0900
-Subject: [PATCH 046/116] encode: write unknown objects of newer DWGs as
+Subject: [PATCH 046/122] encode: write unknown objects of newer DWGs as
  ACAD_PROXY_ENTITY/OBJECT
 
 When writing R2000 from an R2004+ DWG, unknown entities and objects

@@ -1,7 +1,7 @@
 From d3a15780cb8ca4c8db98e4bfe1b53c6ae293797a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:31:26 +0900
-Subject: [PATCH 080/116] SPLINE: R2013+ spline flags and knot parameter from
+Subject: [PATCH 080/122] SPLINE: R2013+ spline flags and knot parameter from
  earlier versions
 
 From an earlier version splineflags was 8 or 9 (as decoded from the

@@ -1,7 +1,7 @@
 From 7f6ff68df74467b72512cbee77ace58e0329f99c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 10:20:33 +0900
-Subject: [PATCH 018/116] MTEXT: R13/R14 to R2000+, default line spacing 1 and
+Subject: [PATCH 018/122] MTEXT: R13/R14 to R2000+, default line spacing 1 and
  1.0, not 0
 
 R13/R14 MTEXT has no line spacing fields; writing them as 0 collapsed the

@@ -1,0 +1,169 @@
+From 37433d441f86687f6e8f759603074a7a7288ccb3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 10:10:53 +0900
+Subject: [PATCH 121/122] in_dxf: the strings as they are, not again from UTF-8
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+dwg_add_u8_input converts UTF-8 to the codepage. But the strings of
+the DXF are already as the encoder takes them: dxf_read_pair converted
+the UTF-8 of a R2007+ DXF to the codepage of a target before R2007, an
+older DXF is in its codepage, and for R2007+ the encoder takes UTF-8.
+A layout "配置図１" of an ANSI_932 R2018 DXF was in the layout
+dictionary "zu}P" as R2000 and R2004, and garbled as R2018.
+
+* src/in_dxf.c (dxf_add_u8): New.
+(add_LTYPE_dashes, add_TABLESTYLE, add_DIMASSOC, add_LAYER_entry)
+(add_EVALVARIANT, add_VALUEPARAMs, add_ACAD_TABLE)
+(add_dictionary_itemhandles, new_object): Use it, not
+dwg_add_u8_input.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 45 +++++++++++++++++++++++++++++++++------------
+ 1 file changed, 33 insertions(+), 12 deletions(-)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index c59d7e5..805a280 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -1430,6 +1430,27 @@ dxf_read_CMC (const Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+   return error;
+ }
+ 
++/* A string of the DXF for a string field. dxf_read_pair converted the UTF-8
++   of a R2007+ DXF to the codepage already for a target before R2007, an
++   older DXF is in the codepage, and for R2007+ the encoder takes them as
++   UTF-8. dwg_add_u8_input converted them again from UTF-8 to the codepage:
++   CP932 names of DICTIONARY entries, as the layouts, were garbled ("utf-8:
++   BAD_CONTINUATION_BYTE"). */
++static BITCODE_T
++dxf_add_u8 (Dwg_Data *restrict dwg, const char *restrict s)
++{
++  if (dwg->header.version <= R_12)
++    {
++      // the old names are usually 32 bytes, as dwg_add_u8_input
++      const size_t len = strlen (s);
++      char *str = (char *)calloc (MAX (len, 32) + 1, 1);
++      if (str)
++        memcpy (str, s, len);
++      return str;
++    }
++  return strdup (s);
++}
++
+ static void dxf_set_DWGCODEPAGE (Bit_Chain *dat, Dwg_Data *dwg);
+ 
+ static int
+@@ -2553,7 +2574,7 @@ add_LTYPE_dashes (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+           is_tu = obj->parent->header.version >= R_2007;
+           CHK_dashes (j, dashes);
+           o->dashes[j].text
+-              = dwg_add_u8_input (obj->parent, pair->value.s.ptr);
++              = dxf_add_u8 (obj->parent, pair->value.s.ptr);
+           LOG_TRACE ("LTYPE.dashes[%d].text = %s [T 9]\n", j,
+                      pair->value.s.ptr);
+           // write into strings_area
+@@ -5839,7 +5860,7 @@ add_TABLESTYLE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+         case 1:
+           CHK_rowstyles;
+           o->rowstyles[i].format_string
+-              = dwg_add_u8_input (dwg, pair->value.s.ptr);
++              = dxf_add_u8 (dwg, pair->value.s.ptr);
+           LOG_TRACE ("%s.rowstyles[%d].format_string = %s [T %d]\n",
+                      obj->name, i, pair->value.s.ptr, pair->code);
+           break;
+@@ -6188,7 +6209,7 @@ add_DIMASSOC (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+                 i = 3;
+               assert (i >= 0 && i <= 3);
+             }
+-          o->ref[i].classname = dwg_add_u8_input (dwg, pair->value.s.ptr);
++          o->ref[i].classname = dxf_add_u8 (dwg, pair->value.s.ptr);
+           LOG_TRACE ("%s.ref[%d].classname = %s [T %d]\n", obj->name, i,
+                      pair->value.s.ptr, pair->code);
+           have_rotated_type = 0;
+@@ -6326,7 +6347,7 @@ add_LAYER_entry (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+         case 0:
+           break;
+         case 8:
+-          o->entries[i].name = dwg_add_u8_input (dwg, pair->value.s.ptr);
++          o->entries[i].name = dxf_add_u8 (dwg, pair->value.s.ptr);
+           LOG_TRACE ("%s.entries[%d].name = %s [T %d]\n", obj->name, i,
+                      pair->value.s.ptr, pair->code);
+           break;
+@@ -6407,7 +6428,7 @@ add_EVALVARIANT (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+                  pair->code);
+       break;
+     case DWG_VT_STRING:
+-      value->u.text = dwg_add_u8_input (dwg, pair->value.s.ptr);
++      value->u.text = dxf_add_u8 (dwg, pair->value.s.ptr);
+       LOG_TRACE ("%s.%s = %s [T %d]\n", "EvalVariant", "value",
+                  pair->value.s.ptr, pair->code);
+       break;
+@@ -6453,7 +6474,7 @@ add_VALUEPARAMs (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+                  "VALUEPARAM", pair ? pair->code : -1, 1, "name");
+       return 0;
+     }
+-  value->name = dwg_add_u8_input (dwg, pair->value.s.ptr);
++  value->name = dxf_add_u8 (dwg, pair->value.s.ptr);
+   LOG_TRACE ("%s.%s = %s [BL %d]\n", "VALUEPARAM", "name", pair->value.s.ptr,
+              pair->code);
+   dxf_free_pair (pair);
+@@ -7940,7 +7961,7 @@ add_ACAD_TABLE (Dwg_Object *restrict obj, Bit_Chain *restrict dat,
+       {                                                                       \
+         if (dst)                                                              \
+           free (dst);                                                         \
+-        dst = dwg_add_u8_input (dwg, u8);                                     \
++        dst = dxf_add_u8 (dwg, u8);                                     \
+       }                                                                       \
+     while (0)
+   // the cell text of the previous value: as the R2010+ conversion, the
+@@ -8804,7 +8825,7 @@ add_dictionary_itemhandles (Dwg_Object *restrict obj, Dxf_Pair *restrict pair,
+       return;
+     }
+   _obj->itemhandles[num] = hdl;
+-  _obj->texts[num] = dwg_add_u8_input (dwg, text);
++  _obj->texts[num] = dxf_add_u8 (dwg, text);
+   LOG_TRACE ("%s.texts[%d] = %s [T* 3]\n", obj->name, num, text);
+   _obj->numitems = num + 1;
+ }
+@@ -13460,7 +13481,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                   if (tbl_sty && pair && pair->code == 300)
+                     {
+                       tbl_sty->name
+-                          = dwg_add_u8_input (dwg, pair->value.s.ptr);
++                          = dxf_add_u8 (dwg, pair->value.s.ptr);
+                       LOG_TRACE ("%s.%s.name = \"%s\" [BL %d]\n", obj->name,
+                                  key, pair->value.s.ptr, pair->code);
+                       dxf_free_pair (pair);
+@@ -13785,7 +13806,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+               if (!o->names || j < 0 || j >= (int)o->num_names)
+                 goto invalid_dxf;
+               assert (j >= 0 && j < (int)o->num_names && o->names);
+-              o->names[j] = dwg_add_u8_input (dwg, pair->value.s.ptr);
++              o->names[j] = dxf_add_u8 (dwg, pair->value.s.ptr);
+               LOG_TRACE ("%s.%s[%d] = %s [%s %d]\n", name, "names", j,
+                          pair->value.s.ptr, "T", pair->code);
+               j++;
+@@ -14283,7 +14304,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                             {
+                               color.flag |= 0x10;
+                               color.name
+-                                  = dwg_add_u8_input (dwg, pair->value.s.ptr);
++                                  = dxf_add_u8 (dwg, pair->value.s.ptr);
+                               LOG_TRACE ("%s.%s.name = %s [%s %d]\n", name,
+                                          f->name, pair->value.s.ptr, "CMC",
+                                          pair->code);
+@@ -14617,7 +14638,7 @@ static __nonnull ((1, 2, 3, 4)) Dxf_Pair *new_object (
+                         {
+                           color.flag |= 0x10;
+                           color.name
+-                              = dwg_add_u8_input (dwg, pair->value.s.ptr);
++                              = dxf_add_u8 (dwg, pair->value.s.ptr);
+                           // TODO: book_name or name?
+                           LOG_TRACE ("COMMON.%s.name = %s [%s %d]\n", f->name,
+                                      pair->value.s.ptr, "CMC", pair->code);
+-- 
+2.43.0
+

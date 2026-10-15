@@ -1,0 +1,84 @@
+From 58fab1fe22b5c615a35f4e0e4f275d78dcf9b034 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 09:52:39 +0900
+Subject: [PATCH 117/122] read_2004_compressed_section: sections with omitted
+ zero pages
+
+AutoCAD does not write the pages of a section with only zeroes (ODA
+spec 4.4: a page with a start offset beyond the sum of the previous
+pages is preceded by zero pages, and zero pages are added at the end
+up to the section size). A large AcDsPrototype_1b of an AutoCAD R2018
+drawing had a size of 488320 with 10 pages of 0x7400: we rejected the
+section ("Invalid section AcDb:AcDsPrototype_1b size 488320 > 10 *
+29696"), and its 3DSOLIDs lost their ACIS data. Allocate the logical
+size of the section in whole pages then, still bounded by 790MB; the
+pages are already copied to their start offset into the zeroed buffer.
+
+* src/decode.c (read_2004_compressed_section): Allow a section size
+beyond the count of pages times the page size, for omitted zero pages.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/decode.c | 36 ++++++++++++++++++++++++++----------
+ 1 file changed, 26 insertions(+), 10 deletions(-)
+
+diff --git a/src/decode.c b/src/decode.c
+index 3e33bbc..02d143e 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -2062,26 +2062,42 @@ read_2004_compressed_section (Bit_Chain *dat, Dwg_Data *restrict dwg,
+   // overflows the uint32_t max_decomp_size and wraps to a small value, letting
+   // the guard below pass while info->size (checked as int64 at :2059) stays
+   // large -> under-allocation and a later OOB sentinel scan. GH security.
++  if (info->size < 0)
++    {
++      LOG_ERROR ("Invalid section %s size %" PRId64, info->name, info->size);
++      return DWG_ERR_VALUEOUTOFBOUNDS;
++    }
+   {
+     uint64_t max_decomp_size64
+         = (uint64_t)info->num_sections * (uint64_t)info->max_decomp_size;
++    /* Pages with only zeroes are not written to the file, so the page count
++       may be smaller than the section size needs (ODA spec 4.4: zero pages
++       are inserted before a page with a higher start offset, and at the end
++       until the section size is reached). AutoCAD does that e.g. with a
++       large AcDsPrototype_1b. Allocate the whole logical section then,
++       in full pages. */
++    if (info->max_decomp_size
++        && (uint64_t)info->size > max_decomp_size64)
++      {
++        uint64_t npages = ((uint64_t)info->size + info->max_decomp_size - 1)
++                          / info->max_decomp_size;
++        LOG_TRACE ("Section %s size %" PRId64 " > %u * " FORMAT_RL
++                   ": with omitted zero pages\n",
++                   info->name, info->size, info->num_sections,
++                   info->max_decomp_size);
++        max_decomp_size64 = npages * (uint64_t)info->max_decomp_size;
++      }
+     if (max_decomp_size64 == 0 || max_decomp_size64 > 0x2f000000) // 790Mb
+       {
+         LOG_ERROR ("Invalid section %s count or max decompression size. "
+-                   "Sections: " FORMAT_RL ", Max size: " FORMAT_RL,
+-                   info->name, info->num_sections, info->max_decomp_size);
++                   "Sections: " FORMAT_RL ", Max size: " FORMAT_RL
++                   ", Size: %" PRId64,
++                   info->name, info->num_sections, info->max_decomp_size,
++                   info->size);
+         return DWG_ERR_VALUEOUTOFBOUNDS;
+       }
+     max_decomp_size = (uint32_t)max_decomp_size64;
+   }
+-  if (info->size > (int64_t)info->num_sections * (int64_t)info->max_decomp_size
+-      || info->size < 0)
+-    {
+-      LOG_ERROR ("Invalid section %s size %" PRId64 " > %u * " FORMAT_RL,
+-                 info->name, info->size, info->num_sections,
+-                 info->max_decomp_size);
+-      return DWG_ERR_VALUEOUTOFBOUNDS;
+-    }
+   LOG_HANDLE ("Alloc section %s size %" PRIu32 "\n", info->name,
+               max_decomp_size);
+   dec.opts = dwg->opts & DWG_OPTS_LOGLEVEL;
+-- 
+2.43.0
+

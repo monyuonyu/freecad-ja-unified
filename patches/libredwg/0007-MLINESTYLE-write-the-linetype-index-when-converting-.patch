@@ -1,7 +1,7 @@
 From 5a418c8a69b368546e9988d488fdb11e6876a559 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 8 Oct 2026 08:51:05 +0900
-Subject: [PATCH 007/116] MLINESTYLE: write the linetype index when converting
+Subject: [PATCH 007/122] MLINESTYLE: write the linetype index when converting
  R2018+ to earlier
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

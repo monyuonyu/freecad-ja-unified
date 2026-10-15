@@ -1,7 +1,7 @@
 From e6ae9241bd3c612c554c7357b2eb72304af66d0d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 12:08:34 +0900
-Subject: [PATCH 040/116] out_dxf: R13/R14 drawings keep their newer class
+Subject: [PATCH 040/122] out_dxf: R13/R14 drawings keep their newer class
  entities in DXF
 
 An R14 DWG saved by newer AutoCAD has MULTILEADER, WIPEOUT, MESH,

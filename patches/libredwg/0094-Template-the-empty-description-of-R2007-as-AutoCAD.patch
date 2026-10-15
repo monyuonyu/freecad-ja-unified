@@ -1,7 +1,7 @@
 From 056010a63ae287af66ee287f1dc16eb5ecccb212 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:58:43 +0900
-Subject: [PATCH 094/116] Template: the empty description of R2007+ as AutoCAD
+Subject: [PATCH 094/122] Template: the empty description of R2007+ as AutoCAD
 
 AutoCAD's R2007+ Template section has the empty description as RS 1
 with the terminating 0 (6 bytes), R2004 as RS 0 (4 bytes).

@@ -1,7 +1,7 @@
 From ddcf55c49817bdf0ae88c8fb773fa6cb0657d80b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:22:47 +0900
-Subject: [PATCH 088/116] AcDbBlockElement: keep the version read from R2007+
+Subject: [PATCH 088/122] AcDbBlockElement: keep the version read from R2007+
 
 be_major and be_minor were written as 33 and 29 for R2007+, but
 AutoCAD's R2018 drawings have 33 and 329.

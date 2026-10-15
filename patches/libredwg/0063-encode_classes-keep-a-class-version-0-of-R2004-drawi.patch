@@ -1,7 +1,7 @@
 From 2bf8ae50d1261e55baf7dc4a48f4da416fa6d115 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:28:13 +0900
-Subject: [PATCH 063/116] encode_classes: keep a class version 0 of R2004+
+Subject: [PATCH 063/122] encode_classes: keep a class version 0 of R2004+
  drawings
 
 AutoCAD writes the class version 0 for many classes (2004/Line.dwg:

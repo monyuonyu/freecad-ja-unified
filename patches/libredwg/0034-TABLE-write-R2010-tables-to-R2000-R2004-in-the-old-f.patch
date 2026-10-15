@@ -1,7 +1,7 @@
 From 20a34a930c5df525225335537c59f15a2f61d51e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:19:09 +0900
-Subject: [PATCH 034/116] TABLE: write R2010+ tables to R2000/R2004 in the old
+Subject: [PATCH 034/122] TABLE: write R2010+ tables to R2000/R2004 in the old
  format
 
 AutoCAD keeps ACAD_TABLE in R2000 files (sample_AC1015, example_2000),

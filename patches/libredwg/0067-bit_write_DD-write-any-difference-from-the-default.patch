@@ -1,7 +1,7 @@
 From 0c98446e71d5b4dd80b9acda382bb0e8c267cab2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:32:36 +0900
-Subject: [PATCH 067/116] bit_write_DD: write any difference from the default
+Subject: [PATCH 067/122] bit_write_DD: write any difference from the default
 
 Values within 1e-12 of the default were written as the default: a LINE
 end 1 ulp off its start (example_2004, -276.8548009664509 and ...508)

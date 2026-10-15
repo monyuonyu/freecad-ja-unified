@@ -1,0 +1,1023 @@
+From 34ce4d000dd965e13531807be4570f268a3fedc6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 09:51:30 +0900
+Subject: [PATCH 214/216] Part: 2D export keeps the model's groups (PPTX group
+ shapes, SVG <g>, JSON paths)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Field feedback on a 2,113-part truck loading model: the 28,011 shapes came
+out flat on the slide.  Now every visible object is a group of its face
+shapes, nested in groups for the model's hierarchy:
+
+  PPTX  <p:grpSp> per group, frames (off/ext = chOff/chExt) are the union
+        of the children, so PowerPoint shows and moves them right
+  SVG   nested <g id="gN" inkscape:label="...">
+  JSON  "items": [{object, label, group: [labels], groupId: [ids]}], and
+        "group" on every face and edge
+
+Where the path comes from, first match wins:
+1. "group" of a dict item: "はしごの列/はしご1/間口3" or a list
+2. group= argument: a function obj -> path or a dict {Name|Label|index: path}
+3. a string property named "Group" on the object
+4. the document tree: App::Part, document groups, App::Link (a link to an
+   assembly is expanded and drawn as its own group), link arrays, a hidden
+   Part::Compound whose children are drawn
+Groups are identified by objects and link paths, never by labels, so
+FreeCAD's renamed duplicates (間口1 -> 間口001) do not merge or split
+groups.  group=False gives the flat output as before.
+
+Collecting the scene now walks the document tree (getSubObjects): objects
+in hidden App::Parts are no longer drawn, and link arrays are no longer
+drawn twice (array and its elements).
+
+Tests: rack document (nested App::Parts, renamed labels, group, link,
+"Group" property, hidden object) checked in PPTX (nesting and every group
+frame), SVG and JSON; dict paths and the group= argument.  1,800 boxes in
+4-level App::Parts: 3,467 shapes in 1,429 groups in 3.0 s, read back with
+python-pptx: all group frames equal the union of their children.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/PartViews.py               | 647 ++++++++++++++++++------
+ src/Mod/Part/parttests/TestPartViews.py | 160 ++++++
+ 2 files changed, 664 insertions(+), 143 deletions(-)
+
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index f33e37b8d..2e76f8bdb 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -18,6 +18,11 @@ Edges (--export-edges, edges=): "all" draws the visible edges as separate lines,
+ draws the outline of every visible face region as the line of its own shape (no extra
+ shapes; the default for PPTX), "none" only fills.  Defaults: PPTX "outline", SVG and
+ JSON "all".
++
++Groups: PPTX gets nested group shapes, SVG nested <g> (inkscape:label) and JSON a
++"group" path per face, edge and item: the groups of the model (App::Part, document
++groups, links), then one group per object.  A dict item's "group" ("a/b/c") or a string
++property "Group" of an object replaces the path; see scene_entries.
+     FreeCADCmd model.FCStd --interference [--interference-report report.json]
+ 
+ Python:
+@@ -52,8 +57,6 @@ VIEW_NAMES = (
+ )  # fmt: skip
+ 
+ _SKIP_TYPES = (
+-    "App::Part",
+-    "App::DocumentObjectGroup",
+     "App::Origin",
+     "App::Line",
+     "App::Plane",
+@@ -90,79 +93,296 @@ def _visible(obj):
+         return True
+ 
+ 
+-def scene_objects(source=None):
+-    """[(document object or None, item)] for the visible solids/faces/meshes of a document.
+-
+-    source: None (active document), a document, an object, a shape or a list of them.
+-    item is what Part.renderImage / Part.projectVisible take."""
+-    if source is None:
+-        source = App.ActiveDocument
+-        if source is None:
+-            raise RuntimeError("No document is open")
+-    if isinstance(source, App.Document):
+-        objs = [o for o in source.Objects if _visible(o)]
+-        return _items(objs, from_document=True)
+-    if isinstance(source, (list, tuple)):
+-        return _items(list(source), from_document=False)
+-    return _items([source], from_document=False)
+-
+-
+-def _items(objs, from_document):
+-    result = []
+-    for obj in objs:
+-        if isinstance(obj, Part.Shape):
+-            if not obj.isNull():
+-                result.append((None, obj))
+-            continue
+-        if isinstance(obj, dict):
+-            result.append((None, obj))
+-            continue
+-        if hasattr(obj, "Topology") and not hasattr(obj, "TypeId"):
+-            result.append((None, obj))  # Mesh.Mesh
++class SceneEntry:
++    """One thing to draw: the document object (or None), the item for the C++ functions
++    (shape, mesh tuple or Mesh.Mesh), its name and label, the group path (list of
++    (id, label) from the outermost group) and an optional colour."""
++
++    __slots__ = ("obj", "item", "name", "label", "group", "color", "face_colors")
++
++    def __init__(self, obj, item, name, label, group=(), color=None, face_colors=None):
++        self.obj = obj
++        self.item = item
++        self.name = name
++        self.label = label
++        self.group = list(group)
++        self.color = color
++        self.face_colors = face_colors
++
++    def scene_item(self):
++        """What Part.renderImage / Part.projectVisible take."""
++        if self.color is None and not self.face_colors:
++            return self.item
++        d = {"mesh" if isinstance(self.item, (tuple, list)) or hasattr(self.item, "Topology") else "shape": self.item}
++        if self.color is not None:
++            d["color"] = self.color
++        if self.face_colors:
++            d["faceColors"] = self.face_colors
++        return d
++
++
++def _split_path(path):
++    """'a/b/c', ['a', 'b'] or None -> list of labels."""
++    if path is None:
++        return None
++    if isinstance(path, str):
++        return [p for p in (s.strip() for s in path.split("/")) if p]
++    return [str(p) for p in path]
++
++
++def _named_path(labels):
++    """Group path of explicit names: the ids are the paths themselves, so equal names merge."""
++    return [("path:" + "/".join(labels[: i + 1]), lab) for i, lab in enumerate(labels)]
++
++
++def _group_property(obj):
++    """Path from a string property named "Group" (a document group's Group is a link list)."""
++    for o in (obj, getattr(obj, "LinkedObject", None)):
++        if o is None or not hasattr(o, "getTypeIdOfProperty"):
+             continue
+-        if not hasattr(obj, "TypeId"):
+-            raise TypeError("Cannot draw %r" % (obj,))
+-        if from_document:
+-            if obj.TypeId in _SKIP_TYPES or _in_body(obj):
+-                continue
+-        if hasattr(obj, "Mesh") and hasattr(obj.Mesh, "Topology"):
+-            mesh = obj.Mesh.copy()
++        try:
++            if "Group" in o.PropertiesList and o.getTypeIdOfProperty("Group") == "App::PropertyString":
++                path = _split_path(o.Group)
++                if path:
++                    return path
++        except Exception:
++            pass
++    return None
++
++
++def _is_container(obj):
++    if obj.isDerivedFrom("Part::Feature") or obj.isDerivedFrom("Mesh::Feature"):
++        return False
++    if obj.isDerivedFrom("App::Link") or obj.isDerivedFrom("App::LinkElement"):
++        return bool(obj.getSubObjects())
++    if obj.isDerivedFrom("App::LinkGroup"):
++        return True
++    try:
++        return obj.hasExtension("App::GroupExtension")
++    except Exception:
++        return obj.isDerivedFrom("App::Part") or obj.isDerivedFrom("App::DocumentObjectGroup")
++
++
++def _parents(obj):
++    """The containers holding obj in the document tree (App::Part, groups; a hidden
++    Part::Compound when obj is drawn on its own)."""
++    parent = None
++    try:
++        parent = obj.getParentGroup() or obj.getParentGeoFeatureGroup()
++    except Exception:
++        pass
++    if parent is None:
++        for o in getattr(obj, "InList", ()):
++            if o.isDerivedFrom("Part::Compound") and obj in (o.Links or ()) and not _visible(o):
++                parent = o
++                break
++    return parent
++
++
++def _tree_path(obj):
++    """[(id, label)] of the containers above obj, outermost first."""
++    path = []
++    parent = _parents(obj)
++    seen = set()
++    while parent is not None and parent.Name not in seen:
++        seen.add(parent.Name)
++        path.insert(0, (parent.Document.Name + "#" + parent.Name, parent.Label))
++        parent = _parents(parent)
++    return path
++
++
++def _leaf_item(obj, root, sub, from_document):
++    """Shape or mesh topology of obj reached from root by subname sub, placed in the scene."""
++    if hasattr(obj, "Mesh") and hasattr(obj.Mesh, "Topology") and not obj.isDerivedFrom("Part::Feature"):
++        mesh = obj.Mesh.copy()
++        if sub:
++            _o, mat = root.getSubObject(sub, retType=1, matrix=App.Matrix())
++            mat = _parent_placement(root).toMatrix().multiply(mat)
++            mesh.transform(mat.multiply(obj.Placement.toMatrix().inverse()))
++        else:
+             pl = _parent_placement(obj)
+             if not pl.isIdentity():
+                 mesh.transform(pl.toMatrix())
+-            result.append((obj, mesh.Topology))
+-            continue
++        return mesh.Topology
++    try:
++        shape = Part.getShape(root, sub) if sub else Part.getShape(obj)
++    except Exception:
++        shape = None if sub else getattr(obj, "Shape", None)
++    if shape is None or shape.isNull():
++        return None
++    if from_document and not shape.Faces and not shape.Edges:
++        return None
++    if from_document and not shape.Faces and obj.isDerivedFrom("Part::Part2DObject"):
++        return None
++    pl = _parent_placement(root)
++    if not pl.isIdentity():
++        shape = shape.transformed(pl.toMatrix())
++    return shape
++
++
++def _walk(root, out, from_document, path=None):
++    """Entries of root (a container or a shape/mesh object) and everything below it."""
++    if path is None:
++        path = _tree_path(root)
++
++    def visit(obj, sub, key, label, path):
++        if _is_container(obj):
++            node = path + [(key, label)]
++            for s in obj.getSubObjects():
++                name = s.rstrip(".")
++                try:
++                    child = obj.getSubObject(s, retType=1)
++                except Exception:
++                    child = None
++                if child is None:
++                    continue
++                shown = obj.isElementVisible(name)
++                if shown == 0 or (shown < 0 and not _visible(child)):
++                    continue
++                if child.TypeId in _SKIP_TYPES:
++                    continue
++                child_label = child.Label
++                if name.isdigit() and not child.isDerivedFrom("App::LinkElement"):
++                    child_label = "%s[%s]" % (child.Label, name)
++                visit(child, sub + s, key + "." + name, child_label, node)
++            return
++        if from_document and (obj.TypeId in _SKIP_TYPES or (not sub and _in_body(obj))):
++            return
++        item = _leaf_item(obj, root, sub, from_document)
++        if item is None:
++            return
++        own = _group_property(obj)
++        out.append(SceneEntry(obj, item, obj.Name, label, _named_path(own) if own else path))
++
++    visit(root, "", root.Document.Name + "#" + root.Name, root.Label, path)
++
++
++def _roots(doc):
++    roots = []
++    for o in doc.Objects:
++        if o.isDerivedFrom("App::LinkElement"):
++            continue  # reached through its link
+         try:
+-            shape = Part.getShape(obj)
++            if o.getParentGroup() is not None or o.getParentGeoFeatureGroup() is not None:
++                continue
+         except Exception:
+-            shape = getattr(obj, "Shape", None)
+-        if shape is None or shape.isNull():
+-            continue
+-        if from_document and not shape.Faces and not shape.Edges:
+-            continue
+-        if from_document and not shape.Faces and obj.TypeId.startswith("Part::Part2DObject"):
+-            continue
+-        pl = _parent_placement(obj)
+-        if not pl.isIdentity():
+-            shape = shape.transformed(pl.toMatrix())
+-        result.append((obj, shape))
+-    return result
+-
+-
+-def _with_colors(pairs, colors=None):
+-    items = []
+-    for i, (obj, item) in enumerate(pairs):
+-        color = None
+-        if colors:
+-            key = obj.Name if obj is not None else i
+-            color = colors.get(key) or (colors.get(obj.Label) if obj is not None else None)
+-        if color is not None:
+-            items.append({"object" if not isinstance(item, (Part.Shape, tuple, list)) else
+-                          ("shape" if isinstance(item, Part.Shape) else "mesh"): item,
+-                          "color": color})  # fmt: skip
+-        else:
+-            items.append(item)
+-    return items
++            pass
++        roots.append(o)
++    return roots
++
++
++def _is_mesh_tuple(obj):
++    if not isinstance(obj, (tuple, list)) or len(obj) != 2:
++        return False
++    pts, fcs = obj
++    try:
++        return len(fcs) > 0 and len(fcs[0]) == 3 and isinstance(fcs[0][0], int)
++    except TypeError:
++        return False
++
++
++def scene_entries(source=None, group=True, colors=None):
++    """[SceneEntry] for the visible solids/faces/meshes.
++
++    source: None (active document), a document, an object, a shape, a mesh (points,
++    facets), a Mesh.Mesh, a dict {"shape"|"mesh"|"object": ..., "color": (r, g, b),
++    "group": "a/b/c", "label": "name"} or a list of these.  Containers (App::Part,
++    groups, links to them) are drawn with everything visible inside.
++
++    The group path of an entry comes from, in this order: the "group" of a dict item,
++    the group argument (a function obj -> path or a dict {Name or Label: path}), a string
++    property named "Group" of the object, the document tree (App::Part, groups, links,
++    a hidden Part::Compound) and finally nothing (top level).  Groups are told apart by
++    the objects (and link paths), never by labels, so renamed duplicates (間口001) stay
++    apart.  group=False: no groups."""
++    if source is None:
++        source = App.ActiveDocument
++        if source is None:
++            raise RuntimeError("No document is open")
++    out = []
++    if isinstance(source, App.Document):
++        for root in _roots(source):
++            if _visible(root) or root.isDerivedFrom("App::DocumentObjectGroup"):
++                _walk(root, out, from_document=True)
++    elif isinstance(source, (list, tuple)) and not _is_mesh_tuple(source):
++        for obj in source:
++            _add_entries(obj, out)
++    else:
++        _add_entries(source, out)
++    for i, e in enumerate(out):
++        if e.obj is None and e.name is None:
++            e.name = e.label = "item%d" % i
++        if e.label is None:
++            e.label = e.name
++    _apply_options(out, group, colors)
++    return out
++
++
++def _add_entries(obj, out):
++    if isinstance(obj, dict):
++        what = obj.get("shape", obj.get("mesh", obj.get("object")))
++        if what is None:
++            raise ValueError("An item dict needs 'shape', 'mesh' or 'object'")
++        start = len(out)
++        _add_entries(what, out)
++        path = _split_path(obj.get("group"))
++        label = obj.get("label", obj.get("name"))
++        for e in out[start:]:
++            if "color" in obj:
++                e.color = obj["color"]
++            if "faceColors" in obj:
++                e.face_colors = obj["faceColors"]
++            if path is not None:
++                e.group = _named_path(path)
++            if label is not None and len(out) - start == 1:
++                e.label = str(label)
++                if e.obj is None:
++                    e.name = str(label)
++        return
++    if isinstance(obj, Part.Shape):
++        if not obj.isNull():
++            out.append(SceneEntry(None, obj, None, None))
++        return
++    if _is_mesh_tuple(obj) or (hasattr(obj, "Topology") and not hasattr(obj, "TypeId")):
++        out.append(SceneEntry(None, obj, None, None))
++        return
++    if not hasattr(obj, "TypeId"):
++        raise TypeError("Cannot draw %r" % (obj,))
++    _walk(obj, out, from_document=False)
++
++
++def _apply_options(entries, group, colors):
++    if group is False or group is None or group == "none":
++        for e in entries:
++            e.group = []
++    elif callable(group) or isinstance(group, dict):
++        for i, e in enumerate(entries):
++            if callable(group):
++                path = group(e.obj if e.obj is not None else e.item)
++            else:
++                path = None
++                for key in ((e.obj.Name, e.obj.Label) if e.obj is not None else ()) + (e.name, e.label, i):
++                    if key in group:
++                        path = group[key]
++                        break
++            path = _split_path(path)
++            if path is not None:
++                e.group = _named_path(path)
++    if colors:
++        for i, e in enumerate(entries):
++            keys = ((e.obj.Name, e.obj.Label) if e.obj is not None else ()) + (e.name, e.label, i)
++            for key in keys:
++                if key in colors:
++                    e.color = colors[key]
++                    break
++
++
++def scene_objects(source=None):
++    """[(document object or None, item)] for the visible solids/faces/meshes of a document.
++
++    source: None (active document), a document, an object, a shape or a list of them.
++    item is what Part.renderImage / Part.projectVisible take.  See scene_entries."""
++    return [(e.obj, e.scene_item()) for e in scene_entries(source, group=False)]
+ 
+ 
+ def _parse_size(size):
+@@ -194,10 +414,10 @@ def render(source=None, path="view.png", view="iso", size=None, style="shaded",
+            colors=None, line_width=1.0, deflection=0.0, background=(1, 1, 1)):  # fmt: skip
+     """Write PNG picture(s).  Several views ('iso,front' or a list) write path_<view>.png.
+     Returns the list of written files."""
+-    pairs = scene_objects(source)
+-    if not pairs:
++    entries = scene_entries(source, group=False, colors=colors)
++    if not entries:
+         raise RuntimeError("Nothing to draw")
+-    items = _with_colors(pairs, colors)
++    items = [e.scene_item() for e in entries]
+     w, h = _parse_size(size)
+     views = _split_views(view)
+     root, ext = os.path.splitext(path)
+@@ -231,30 +451,34 @@ def _edge_mode(edges, default="all"):
+     return mode
+ 
+ 
+-def project(source=None, view="iso", deflection=0.0, colors=None, edges=True):
++def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, group=True):
+     """Visible face polygons and visible edges (hidden parts removed) as a dict.
+ 
+     {"view", "units": "model", "bounds": [xmin, ymin, xmax, ymax], "camera",
+-     "faces": [{"object", "label", "face", "depth", "shade", "color", "fill",
+-                "polygons": [{"outer": [[x, y], ...], "holes": [[[x, y], ...]]}]}],
+-     "edges": [{"object", "kind", "points": [[x, y], ...]}]}
+-    x is to the right and y up on the screen; faces are sorted far to near.
++     "items": [{"object", "label", "group": [labels], "groupId": [ids]}],
++     "faces": [{"item", "object", "label", "group", "face", "depth", "shade", "color",
++                "fill", "polygons": [{"outer": [[x, y], ...], "holes": [[[x, y], ...]]}]}],
++     "edges": [{"item", "object", "label", "group", "kind", "points": [[x, y], ...]}]}
++    x is to the right and y up on the screen; faces are sorted far to near.  "group" is the
++    path of groups the object is in, outermost first (see scene_entries; "groupId" tells
++    apart groups of equal labels).  A visible region gets holes where it encloses nearer
++    parts; where nearer parts reach its outline it is split into several polygons instead.
+     edges=False (or "none"/"outline") leaves the edge list empty and is faster."""
+-    pairs = scene_objects(source)
+-    items = _with_colors(pairs, colors)
++    entries = scene_entries(source, group=group, colors=colors)
++    items = [e.scene_item() for e in entries]
+     with_edges = _edge_mode(edges) == "all"
+     data = Part.projectVisible(items, view=view, deflection=deflection, edges=with_edges)
+-
+-    def names(i):
+-        obj = pairs[i][0]
+-        return (obj.Name, obj.Label) if obj is not None else ("item%d" % i, "item%d" % i)
++    table = [{"object": e.name, "label": e.label, "group": [g[1] for g in e.group],
++              "groupId": [g[0] for g in e.group]} for e in entries]  # fmt: skip
+ 
+     faces = []
+     for f in data["faces"]:
+-        name, label = names(f["item"])
++        it = table[f["item"]]
+         faces.append({
+-            "object": name,
+-            "label": label,
++            "item": f["item"],
++            "object": it["object"],
++            "label": it["label"],
++            "group": it["group"],
+             "face": f["face"],
+             "depth": f["depth"],
+             "shade": f["shade"],
+@@ -266,13 +490,16 @@ def project(source=None, view="iso", deflection=0.0, colors=None, edges=True):
+         })  # fmt: skip
+     edges = []
+     for e in data["edges"]:
+-        edges.append({"object": names(e["item"])[0], "kind": e["kind"],
++        it = table[e["item"]]
++        edges.append({"item": e["item"], "object": it["object"], "label": it["label"],
++                      "group": it["group"], "kind": e["kind"],
+                       "points": [list(p) for p in e["points"]]})  # fmt: skip
+     return {
+         "view": view if isinstance(view, str) else list(view),
+         "units": "model",
+         "bounds": list(data["bounds"]),
+         "camera": {k: list(v) for k, v in data["camera"].items()},
++        "items": table,
+         "faces": faces,
+         "edges": edges,
+     }
+@@ -294,8 +521,64 @@ def export_polygons(source=None, path="view.json", view="iso", deflection=0.0, c
+     return data
+ 
+ 
+-def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_color="#1a1a1f"):
+-    """SVG document of a project() result.  edges: "all", "outline" or "none"."""
++class _GroupNode:
++    __slots__ = ("label", "children", "faces", "edges", "far")
++
++    def __init__(self, label):
++        self.label = label
++        self.children = {}
++        self.faces = []
++        self.edges = []
++        self.far = float("-inf")
++
++    def child(self, key, label):
++        node = self.children.get(key)
++        if node is None:
++            node = self.children[key] = _GroupNode(label)
++        return node
++
++    def ordered(self):
++        """Children far to near (by their farthest face)."""
++        return sorted(self.children.values(), key=lambda n: -n.far)
++
++
++def _group_tree(data, grouped=True):
++    """Tree of the groups of a project() result: a node per group (data["items"][i]["group"])
++    and below it a node per object holding its faces and edges.  None without groups."""
++    items = data.get("items")
++    if not grouped or not items:
++        return None
++    root = _GroupNode(None)
++    leaves = {}
++
++    def leaf(i):
++        node = leaves.get(i)
++        if node is None:
++            node = root
++            it = items[i]
++            for gid, label in zip(it["groupId"], it["group"]):
++                node = node.child(gid, label)
++            node = leaves[i] = node.child(("item", i), it["label"])
++        return node
++
++    for f in data["faces"]:
++        leaf(f["item"]).faces.append(f)
++    for e in data["edges"]:
++        leaf(e["item"]).edges.append(e)
++
++    def far(node):
++        node.far = max([f["depth"] for f in node.faces] + [far(c) for c in node.children.values()]
++                       + [float("-inf")])  # fmt: skip
++        return node.far
++
++    far(root)
++    return root
++
++
++def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_color="#1a1a1f",
++             group=True):  # fmt: skip
++    """SVG document of a project() result.  edges: "all", "outline" or "none".  With group,
++    the groups and objects are nested <g> elements with inkscape:label set to their names."""
+     mode = _edge_mode(edges, "all")
+     xmin, ymin, xmax, ymax = data["bounds"]
+     w = max(xmax - xmin, 1e-9)
+@@ -310,49 +593,79 @@ def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_
+ 
+     out = [
+         '<?xml version="1.0" encoding="UTF-8"?>',
+-        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %.6g %.6g">'
+-        % (width_px, height_px, vw, vh),
++        '<svg xmlns="http://www.w3.org/2000/svg" '
++        'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
++        'width="%d" height="%d" viewBox="0 0 %.6g %.6g">' % (width_px, height_px, vw, vh),
+         '<rect x="0" y="0" width="%.6g" height="%.6g" fill="#ffffff"/>' % (vw, vh),
+     ]
+-    if faces:
+-        out.append('<g id="faces" stroke-linejoin="round">')
+-        for f in data["faces"]:
+-            d = []
+-            for poly in f["polygons"]:
+-                for ring in [poly["outer"]] + poly["holes"]:
+-                    d.append("M" + " L".join(P(p) for p in ring) + "Z")
+-            if mode == "outline":
+-                stroke, stroke_w = edge_color, line_width * px
+-            else:
+-                # a hairline in the fill colour hides the seams between neighbouring faces
+-                stroke, stroke_w = f["fill"], 0.6 * px
+-            out.append('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
+-                       '<title>%s face %d</title></path>'
+-                       % (" ".join(d), f["fill"], stroke, stroke_w, _xml(f["label"]), f["face"] + 1))  # fmt: skip
+-        out.append("</g>")
+-    if mode == "all":
+-        out.append('<g id="edges" fill="none" stroke="%s" stroke-width="%.4g" '
+-                   'stroke-linecap="round" stroke-linejoin="round">' % (edge_color, line_width * px))  # fmt: skip
+-        for e in data["edges"]:
+-            out.append('<polyline points="%s"/>' % " ".join(P(p) for p in e["points"]))
++    edge_style = ('fill="none" stroke="%s" stroke-width="%.4g" stroke-linecap="round" '
++                  'stroke-linejoin="round"' % (edge_color, line_width * px))  # fmt: skip
++
++    def face_path(f):
++        d = []
++        for poly in f["polygons"]:
++            for ring in [poly["outer"]] + poly["holes"]:
++                d.append("M" + " L".join(P(p) for p in ring) + "Z")
++        if mode == "outline":
++            stroke, stroke_w = edge_color, line_width * px
++        else:
++            # a hairline in the fill colour hides the seams between neighbouring faces
++            stroke, stroke_w = f["fill"], 0.6 * px
++        return ('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
++                '<title>%s face %d</title></path>'
++                % (" ".join(d), f["fill"], stroke, stroke_w, _xml(f["label"]), f["face"] + 1))  # fmt: skip
++
++    def polyline(e):
++        return '<polyline points="%s"/>' % " ".join(P(p) for p in e["points"])
++
++    tree = _group_tree(data, group)
++    if tree is None:
++        if faces:
++            out.append('<g id="faces" stroke-linejoin="round">')
++            out.extend(face_path(f) for f in data["faces"])
++            out.append("</g>")
++        if mode == "all":
++            out.append('<g id="edges" %s>' % edge_style)
++            out.extend(polyline(e) for e in data["edges"])
++            out.append("</g>")
++    else:
++        counter = [0]
++
++        def emit(node):
++            counter[0] += 1
++            out.append('<g id="g%d" inkscape:label="%s">' % (counter[0], _xml(node.label)))
++            for child in node.ordered():
++                emit(child)
++            if faces:
++                out.extend(face_path(f) for f in node.faces)
++            if mode == "all" and node.edges:
++                out.append("<g %s>" % edge_style)
++                out.extend(polyline(e) for e in node.edges)
++                out.append("</g>")
++            out.append("</g>")
++
++        out.append('<g id="model" stroke-linejoin="round">')
++        for child in tree.ordered():
++            emit(child)
+         out.append("</g>")
+     out.append("</svg>")
+     return "\n".join(out) + "\n"
+ 
+ 
+ def _xml(s):
+-    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
++    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+ 
+ 
+ def export_svg(source=None, path="view.svg", view="iso", deflection=0.0, colors=None,
+-               width_px=1000, line_width=1.0, data=None, edges="all"):  # fmt: skip
++               width_px=1000, line_width=1.0, data=None, edges="all", group=True):  # fmt: skip
+     """Write an SVG with filled visible faces and visible edges (edges: "all", "outline" or
+-    "none", see the module docstring).  Returns the project() dict."""
++    "none", see the module docstring).  Groups and objects become nested <g> elements
++    (group=False: flat; see scene_entries for the grouping).  Returns the project() dict."""
+     mode = _edge_mode(edges, "all")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group)
+     with open(path, "w", encoding="utf-8") as f:
+-        f.write(svg_text(data, width_px=width_px, line_width=line_width, edges=mode))
++        f.write(svg_text(data, width_px=width_px, line_width=line_width, edges=mode, group=bool(group)))
+     return data
+ 
+ 
+@@ -459,27 +772,47 @@ def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0
+         line_xml = '<a:ln w="%d" cap="rnd"><a:solidFill><a:srgbClr val="%s"/></a:solidFill><a:round/></a:ln>' % (line_w, line)
+     else:
+         line_xml = "<a:ln><a:noFill/></a:ln>"
+-    return (
++    xml = (
+         '<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+         '<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>'
+         '<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/>'
+         '<a:pathLst><a:path w="%d" h="%d"%s>%s</a:path></a:pathLst></a:custGeom>%s%s</p:spPr></p:sp>'
+         % (sid, _xml(name), left, top, w, h, w, h, "" if closed else ' fill="none"', "".join(path), fill_xml, line_xml)
+     )  # fmt: skip
++    return xml, (left, top, left + w, top + h)
++
++
++def _pptx_group(sid, name, children, box):
++    """Group shape around children (xml) whose shapes span box (left, top, right, bottom).
++    The child coordinates are slide coordinates, so the group maps chOff/chExt 1:1."""
++    l, t, r, b = box
++    return (
++        '<p:grpSp><p:nvGrpSpPr><p:cNvPr id="%d" name="%s"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
++        '<p:grpSpPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/><a:chOff x="%d" y="%d"/>'
++        '<a:chExt cx="%d" cy="%d"/></a:xfrm></p:grpSpPr>%s</p:grpSp>'
++        % (sid, _xml(name), l, t, r - l, b - t, l, t, r - l, b - t, "".join(children))
++    )  # fmt: skip
++
++
++def _union_box(boxes):
++    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+ 
+ 
+ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, colors=None,
+-                line_width=0.5, data=None, edges="outline"):  # fmt: skip
++                line_width=0.5, data=None, edges="outline", group=True, stats=None):  # fmt: skip
+     """Write a PowerPoint file with one slide: every visible face region as a filled
+-    freeform shape (far to near).  The shapes can be recoloured or moved in PowerPoint.
++    freeform shape (a region with holes is one shape with several subpaths).  The shapes
++    can be recoloured or moved in PowerPoint.
+     edges: "outline" (default) draws each region's outline as the line of its own shape,
+     "all" adds the visible edges as separate lines, "none" only fills.  line_width in
+-    points.  Returns the project() dict."""
++    points.  group: nested group shapes for the groups of the model and one group per
++    object (see scene_entries); False: all shapes flat on the slide.
++    Returns the project() dict; stats (a dict) gets "shapes" and "groups"."""
+     import zipfile
+ 
+     mode = _edge_mode(edges, "outline")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group)
+     xmin, ymin, xmax, ymax = data["bounds"]
+     w = max(xmax - xmin, 1e-9)
+     h = max(ymax - ymin, 1e-9)
+@@ -491,10 +824,16 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+     def E(p):
+         return (int(round(ox + (p[0] - xmin) * scale)), int(round(oy + (ymax - p[1]) * scale)))
+ 
+-    shapes = []
+-    sid = 2
+     line_emu = int(round(12700 * line_width))  # points
+-    for f in data["faces"]:
++    counts = {"shapes": 0, "groups": 0}
++    next_id = [2]
++
++    def new_id():
++        next_id[0] += 1
++        return next_id[0] - 1
++
++    def face_shapes(f):
++        result = []
+         for poly in f["polygons"]:
+             rings = [[E(p) for p in poly["outer"]]] + [[E(p) for p in hole] for hole in poly["holes"]]
+             fill = f["fill"].lstrip("#").upper()
+@@ -503,14 +842,44 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+             else:
+                 # hairline in the fill colour hides seams between neighbouring faces
+                 line, line_w = fill, 3175
+-            shapes.append(_pptx_shape(sid, "%s face %d" % (f["label"], f["face"] + 1), rings,
++            result.append(_pptx_shape(new_id(), "%s face %d" % (f["label"], f["face"] + 1), rings,
+                                       0, 0, 1, 1, fill=fill, line=line, line_w=line_w))  # fmt: skip
+-            sid += 1
+-    for e in data["edges"] if mode == "all" else ():
++        return result
++
++    def edge_shape(e):
+         pts = [E(p) for p in e["points"]]
+-        shapes.append(_pptx_shape(sid, "%s %s" % (e["object"], e["kind"]), [pts], 0, 0, 1, 1,
+-                                  line="1A1A1F", line_w=line_emu, closed=False))  # fmt: skip
+-        sid += 1
++        return _pptx_shape(new_id(), "%s %s" % (e["label"] if "label" in e else e["object"], e["kind"]),
++                           [pts], 0, 0, 1, 1, line="1A1A1F", line_w=line_emu, closed=False)  # fmt: skip
++
++    tree = _group_tree(data, group)
++    if tree is None:
++        shapes = [s for f in data["faces"] for s in face_shapes(f)]
++        shapes += [edge_shape(e) for e in data["edges"]] if mode == "all" else []
++        counts["shapes"] = len(shapes)
++        shapes = [s[0] for s in shapes]
++    else:
++
++        def emit(node):
++            """(xml, box) of a node, or None when it has nothing visible."""
++            gid = new_id()
++            parts = [p for p in (emit(c) for c in node.ordered()) if p is not None]
++            for f in node.faces:
++                parts.extend(face_shapes(f))
++            if mode == "all":
++                parts.extend(edge_shape(e) for e in node.edges)
++            counts["shapes"] += sum(len(f["polygons"]) for f in node.faces)
++            counts["shapes"] += len(node.edges) if mode == "all" else 0
++            if not parts:
++                return None
++            if len(parts) == 1 and not node.children:
++                return parts[0]  # an object drawn as a single shape needs no group
++            counts["groups"] += 1
++            box = _union_box([p[1] for p in parts])
++            return _pptx_group(gid, node.label, [p[0] for p in parts], box), box
++
++        shapes = [p[0] for p in (emit(c) for c in tree.ordered()) if p is not None]
++    if stats is not None:
++        stats.update(counts)
+     slide = (
+         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+@@ -531,22 +900,14 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+     return data
+ 
+ 
+-def _solid_shape(obj, item):
+-    if isinstance(item, Part.Shape):
+-        return item
+-    return None
+-
+-
+ def interference(source=None, tolerance=0.0, min_volume=1e-6, threads=0, stats=False):
+     """[(name_a, name_b, volume)] of overlapping solids.  With stats=True: (pairs, stats)."""
+-    pairs = scene_objects(source)
+     shapes, names = [], []
+-    for i, (obj, item) in enumerate(pairs):
+-        shape = _solid_shape(obj, item)
+-        if shape is None or not shape.Solids:
++    for e in scene_entries(source, group=False):
++        if not isinstance(e.item, Part.Shape) or not e.item.Solids:
+             continue
+-        shapes.append(shape)
+-        names.append(obj.Label if obj is not None else "item%d" % i)
++        shapes.append(e.item)
++        names.append(e.label)
+     found, st = Part.findInterferences(shapes, tolerance=tolerance, minVolume=min_volume,
+                                        threads=threads, stats=True)  # fmt: skip
+     result = [(names[a], names[b], vol) for a, b, vol in found]
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 48a871421..0b53978db 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -74,6 +74,43 @@ def shape_fill(sp):
+     return clr.get("val") if clr is not None else None
+ 
+ 
++def group_tree(parent):
++    """{name: (box, children)} of the group shapes below a spTree or grpSp element; checks
++    that every group's frame (off/ext and chOff/chExt) is the union of its children."""
++    P = "{%s}" % NS["p"]
++    result = {}
++    for el in parent:
++        if el.tag == P + "grpSp":
++            x = el.find("p:grpSpPr/a:xfrm", NS)
++            off, ext = x.find("a:off", NS), x.find("a:ext", NS)
++            choff, chext = x.find("a:chOff", NS), x.find("a:chExt", NS)
++            box = (int(off.get("x")), int(off.get("y")), int(ext.get("cx")), int(ext.get("cy")))
++            chbox = (int(choff.get("x")), int(choff.get("y")), int(chext.get("cx")), int(chext.get("cy")))
++            assert box == chbox, (box, chbox)
++            kids = child_boxes(el)
++            l, t = min(b[0] for b in kids), min(b[1] for b in kids)
++            r, b_ = max(b[0] + b[2] for b in kids), max(b[1] + b[3] for b in kids)
++            assert box == (l, t, r - l, b_ - t), (box, (l, t, r - l, b_ - t))
++            name = el.find("p:nvGrpSpPr/p:cNvPr", NS).get("name")
++            result[name] = (box, group_tree(el))
++    return result
++
++
++def child_boxes(parent):
++    P = "{%s}" % NS["p"]
++    boxes = []
++    for el in parent:
++        if el.tag == P + "grpSp":
++            x = el.find("p:grpSpPr/a:xfrm", NS)
++        elif el.tag == P + "sp":
++            x = el.find("p:spPr/a:xfrm", NS)
++        else:
++            continue
++        off, ext = x.find("a:off", NS), x.find("a:ext", NS)
++        boxes.append((int(off.get("x")), int(off.get("y")), int(ext.get("cx")), int(ext.get("cy"))))
++    return boxes
++
++
+ class TestPartViews(unittest.TestCase):
+     def setUp(self):
+         self.tmp = tempfile.mkdtemp()
+@@ -208,6 +245,129 @@ class TestPartViews(unittest.TestCase):
+         with self.assertRaises(ValueError):
+             PartViews.export_svg([box], svg, edges="some")
+ 
++    def _rack_document(self):
++        """はしごの列 (App::Part) / はしご1, はしご2 (App::Part) / 間口1..2 (boxes; the second
++        ladder's labels get renamed by FreeCAD), a document group, a link to a ladder and a
++        box with a "Group" property."""
++        doc = App.newDocument("PartViewsGroups")
++        self.addCleanup(App.closeDocument, doc.Name)
++        row = doc.addObject("App::Part", "Row")
++        row.Label = "はしごの列"
++        for k in range(2):
++            lad = doc.addObject("App::Part", "Ladder")
++            lad.Label = "はしご%d" % (k + 1)
++            lad.Placement.Base = App.Vector(0, k * 300, 0)
++            row.addObject(lad)
++            for j in range(2):
++                b = doc.addObject("Part::Box", "Box")
++                b.Label = "間口%d" % (j + 1)
++                b.Placement.Base = App.Vector(j * 100, 0, 0)
++                lad.addObject(b)
++        grp = doc.addObject("App::DocumentObjectGroup", "Shelf")
++        grp.Label = "棚"
++        cyl = doc.addObject("Part::Cylinder", "Cyl")
++        cyl.Placement.Base = App.Vector(-100, 0, 0)
++        grp.addObject(cyl)
++        link = doc.addObject("App::Link", "Link")
++        link.LinkedObject = doc.getObject("Ladder")
++        link.Label = "はしご3"
++        link.Placement.Base = App.Vector(0, 700, 0)
++        loose = doc.addObject("Part::Box", "Loose")
++        loose.Placement.Base = App.Vector(400, 0, 0)
++        loose.addProperty("App::PropertyString", "Group")
++        loose.Group = "外/箱"
++        hidden = doc.addObject("Part::Box", "Hidden")
++        hidden.Visibility = False
++        doc.recompute()
++        return doc
++
++    def testGroupsFromDocumentTree(self):
++        import PartViews
++
++        doc = self._rack_document()
++        data = PartViews.project(doc, view="iso")
++        groups = {(tuple(it["group"]), it["label"]) for it in data["items"]}
++        second = doc.getObject("Ladder001").Group  # renamed duplicates: 間口001 ...
++        self.assertNotEqual(second[0].Label, "間口1")
++        self.assertEqual(groups, {
++            (("はしごの列", "はしご1"), "間口1"), (("はしごの列", "はしご1"), "間口2"),
++            (("はしごの列", "はしご2"), second[0].Label), (("はしごの列", "はしご2"), second[1].Label),
++            (("棚",), "Cyl"),
++            (("はしご3",), "間口1"), (("はしご3",), "間口2"),  # the link drawn as its own group
++            (("外", "箱"), "Loose"),
++        })  # fmt: skip
++        self.assertEqual(len(data["items"]), 8)  # nothing hidden, nothing twice
++        # groups are told apart by objects, not labels
++        ids = {tuple(it["groupId"]) for it in data["items"]}
++        self.assertEqual(len(ids), 5)
++        self.assertTrue(all(f["group"] == data["items"][f["item"]]["group"] for f in data["faces"]))
++
++        pptx = os.path.join(self.tmp, "g.pptx")
++        stats = {}
++        PartViews.export_pptx(doc, pptx, view="iso", stats=stats)
++        tree = group_tree(read_slide(pptx))  # also checks every group frame
++        self.assertEqual(set(tree), {"はしごの列", "棚", "はしご3", "外"})
++        row = tree["はしごの列"][1]
++        self.assertEqual(set(row), {"はしご1", "はしご2"})
++        self.assertEqual(set(row["はしご1"][1]), {"間口1", "間口2"})
++        self.assertEqual(set(row["はしご2"][1]), {o.Label for o in second})
++        self.assertEqual(list(tree["外"][1]), ["箱"])
++        self.assertEqual(list(tree["外"][1]["箱"][1]), ["Loose"])
++        self.assertEqual(stats["shapes"], len(read_slide(pptx).findall(".//p:sp", NS)))
++        self.assertEqual(stats["groups"], len(read_slide(pptx).findall(".//p:grpSp", NS)))
++
++        # SVG: nested <g> with inkscape:label
++        svg = os.path.join(self.tmp, "g.svg")
++        PartViews.export_svg(doc, svg, view="iso")
++        label = "{http://www.inkscape.org/namespaces/inkscape}label"
++        root = ET.parse(svg).getroot()
++        model = root.find("svg:g[@id='model']", NS)
++        top = {g.get(label): g for g in model.findall("svg:g", NS)}
++        self.assertEqual(set(top), {"はしごの列", "棚", "はしご3", "外"})
++        ladders = {g.get(label) for g in top["はしごの列"].findall("svg:g", NS)}
++        self.assertEqual(ladders, {"はしご1", "はしご2"})
++        ids = [g.get("id") for g in root.iter("{%s}g" % NS["svg"]) if g.get(label)]
++        self.assertGreater(len(ids), 10)
++        self.assertEqual(len(ids), len(set(ids)))
++
++        # JSON keeps the paths
++        js = os.path.join(self.tmp, "g.json")
++        PartViews.export_polygons(doc, js, view="iso")
++        with open(js, encoding="utf-8") as f:
++            saved = json.load(f)
++        self.assertIn(["はしごの列", "はしご1"], [f["group"] for f in saved["faces"]])
++
++        # no groups
++        PartViews.export_pptx(doc, pptx, view="iso", group=False)
++        self.assertEqual(read_slide(pptx).findall(".//p:grpSp", NS), [])
++        PartViews.export_svg(doc, svg, view="iso", group=False)
++        self.assertIsNone(ET.parse(svg).getroot().find(".//svg:g[@id='model']", NS))
++
++    def testGroupsFromDicts(self):
++        import PartViews
++
++        items = [
++            {"shape": Part.makeBox(10, 10, 10), "group": "列/はしご1/間口1", "label": "a"},
++            {"shape": Part.makeBox(10, 10, 10, App.Vector(20, 0, 0)), "group": "列/はしご1/間口2"},
++            {"shape": Part.makeBox(10, 10, 10, App.Vector(40, 0, 0)), "group": ["列", "はしご2"]},
++            Part.makeBox(10, 10, 10, App.Vector(60, 0, 0)),
++        ]
++        data = PartViews.project(items, view="iso")
++        self.assertEqual([it["group"] for it in data["items"]],
++                         [["列", "はしご1", "間口1"], ["列", "はしご1", "間口2"], ["列", "はしご2"], []])  # fmt: skip
++        self.assertEqual([it["label"] for it in data["items"]], ["a", "item1", "item2", "item3"])
++        pptx = os.path.join(self.tmp, "d.pptx")
++        PartViews.export_pptx(items, pptx, view="iso")
++        tree = group_tree(read_slide(pptx))
++        self.assertEqual(set(tree), {"列", "item3"})
++        self.assertEqual(set(tree["列"][1]), {"はしご1", "はしご2"})
++        self.assertEqual(set(tree["列"][1]["はしご1"][1]), {"間口1", "間口2"})
++        # the group argument: a function or a dict by label/index
++        data = PartViews.project(items[3:], view="iso", group=lambda obj: "x/y")
++        self.assertEqual(data["items"][0]["group"], ["x", "y"])
++        data = PartViews.project(items[3:], view="iso", group={0: "z"})
++        self.assertEqual(data["items"][0]["group"], ["z"])
++
+     def testFindInterferences(self):
+         a = Part.makeBox(10, 10, 10)
+         b = Part.makeBox(10, 10, 10, App.Vector(5, 5, 5))  # overlaps a by 125
+-- 
+2.43.0
+

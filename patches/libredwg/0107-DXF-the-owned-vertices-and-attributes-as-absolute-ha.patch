@@ -1,7 +1,7 @@
 From fc5d4719af9a329c119134f7a863ee6cb2853cbb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 20:19:15 +0900
-Subject: [PATCH 107/116] DXF: the owned vertices and attributes as absolute
+Subject: [PATCH 107/122] DXF: the owned vertices and attributes as absolute
  handles
 
 dxf_postprocess_SEQEND made the vertex[] of POLYLINE_PFACE/MESH and

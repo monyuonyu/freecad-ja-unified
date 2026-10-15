@@ -1,7 +1,7 @@
 From 9e367197c3da9e41f627b50846edbb4dcb21308c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:05:08 +0900
-Subject: [PATCH 057/116] encode_classes: the R2004+ class version and
+Subject: [PATCH 057/122] encode_classes: the R2004+ class version and
  maintenance version are BL
 
 As decode.c (fixed before, the spec has BS) and ACadSharp read them. With

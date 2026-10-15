@@ -1,7 +1,7 @@
 From 78cf971426f07b0092dbd5e389d2919ee6276530 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:47:29 +0900
-Subject: [PATCH 090/116] bits_test: bit_write_T to TU without the terminating
+Subject: [PATCH 090/122] bits_test: bit_write_T to TU without the terminating
  0
 
 * test/unit-testing/bits_test.c (main): The TU string ends 2 bytes

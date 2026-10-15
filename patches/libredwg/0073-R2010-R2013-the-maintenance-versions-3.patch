@@ -1,7 +1,7 @@
 From c3d3a7c326831128414931fb68ae1d81f6594ada Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 10:11:25 +0900
-Subject: [PATCH 073/116] R2010, R2013: the maintenance versions > 3
+Subject: [PATCH 073/122] R2010, R2013: the maintenance versions > 3
 
 The header and classes sections of R2010 and R2013 have a 4 byte hsize
 after their size only with a maintenance version > 3. ACadSharp takes

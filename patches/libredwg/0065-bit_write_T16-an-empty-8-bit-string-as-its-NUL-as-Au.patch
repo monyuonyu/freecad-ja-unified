@@ -1,7 +1,7 @@
 From 5dd04cb4bfff86da98045b2494706d0bb18653db Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:31:34 +0900
-Subject: [PATCH 065/116] bit_write_T16: an empty 8-bit string as its NUL, as
+Subject: [PATCH 065/122] bit_write_T16: an empty 8-bit string as its NUL, as
  AutoCAD
 
 AutoCAD's R2004 SummaryInfo has 01 00 00 for an empty title, subject,

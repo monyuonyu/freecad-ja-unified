@@ -1,7 +1,7 @@
 From 2ce53c15ff33aa4f10326903e176e684b2929986 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 11:58:43 +0900
-Subject: [PATCH 093/116] T16 strings: with the terminating 0 since R2007,
+Subject: [PATCH 093/122] T16 strings: with the terminating 0 since R2007,
  8-bit until R2004
 
 As AutoCAD's SummaryInfo: since R2007 the RS length counts the

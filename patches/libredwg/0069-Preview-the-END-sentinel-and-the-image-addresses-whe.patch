@@ -1,7 +1,7 @@
 From dd1abaa8dc3a4867e5e4f36c229d4009bd76c912 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 08:41:31 +0900
-Subject: [PATCH 069/116] Preview: the END sentinel and the image addresses
+Subject: [PATCH 069/122] Preview: the END sentinel and the image addresses
  when moved
 
 - R13-R2000 to R2004+: the decoded R2000 preview lacks the END sentinel,

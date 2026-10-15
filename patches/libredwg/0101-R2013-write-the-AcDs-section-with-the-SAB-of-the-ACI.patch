@@ -1,7 +1,7 @@
 From b9740dadc7dde818419dd7c7e7ae66ef1e2f660c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 13:50:03 +0900
-Subject: [PATCH 101/116] R2013+: write the AcDs section with the SAB of the
+Subject: [PATCH 101/122] R2013+: write the AcDs section with the SAB of the
  ACIS entities
 
 Since R2013 the SAB of the REGIONs, 3DSOLIDs, BODYs and SURFACEs is not

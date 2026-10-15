@@ -1,7 +1,7 @@
 From f5cc52cde33199298d854577594baa593586b35c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 13 Oct 2026 14:31:41 +0900
-Subject: [PATCH 104/116] DXF 3DSOLID: the SAT lines over 255 chars continued
+Subject: [PATCH 104/122] DXF 3DSOLID: the SAT lines over 255 chars continued
  in 3
 
 The SAT of the ACIS entities is written to DXF in 1 lines, and a line

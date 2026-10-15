@@ -1,7 +1,7 @@
 From 629c2f72ad7e4869514cfd98bdd91396e6358887 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 12:07:21 +0900
-Subject: [PATCH 039/116] encode: add the ACDBPLACEHOLDER class when needed for
+Subject: [PATCH 039/122] encode: add the ACDBPLACEHOLDER class when needed for
  unsupported objects
 
 DXF of R2007+ drawings has no such class; every unsupported object
