@@ -182,6 +182,7 @@ def main():
     issues = collections.OrderedDict()
     hangs, crashes, stage_fail, pyexc, test_fail = [], [], collections.Counter(), {}, []
     stage_examples = {}
+    mism = collections.OrderedDict()  # (check, kind, ext) -> [count, files, example detail, status]
     for st in statuses:
         cdir = os.path.join(a.results, "cases", st["id"])
         so = open(os.path.join(cdir, "stdout"), errors="replace").read()
@@ -226,6 +227,20 @@ def main():
                 and sg.get("load", ("",))[0] != "fail"):
             last = list(sg)[-1]
             crashes.append((st, ["stopped after stage %s (rc=%s)" % (last, st["rc"])]))
+        ext = os.path.splitext(st.get("file") or "")[1].lower().lstrip(".")
+        for l in so.splitlines():
+            p = l.split(" ", 3)
+            if l.startswith("BH-MM ") and len(p) >= 3:
+                k = (p[1], p[2], ext)
+            elif l.startswith("BH-CK ") and len(p) >= 3 and p[2] == "error":
+                det = p[3] if len(p) > 3 else ""
+                k = (p[1], "check raised: " + re.sub(r"\d+", "N", det.split(":")[0])[:60], ext)
+            else:
+                continue
+            e = mism.setdefault(k, [0, [], (p[3] if len(p) > 3 else ""), st])
+            e[0] += 1
+            if st["id"] not in e[1]:
+                e[1].append(st["id"])
         for t in tracebacks(se):
             k = re.sub(r"\d+", "N", t)[:120]
             pyexc.setdefault(k, []).append(st["id"])
@@ -244,6 +259,12 @@ def main():
             n, v["type"].replace("|", "/"), v["component"], v["owner"] or "?",
             "<br>".join(x.replace("|", "/") for x in v["frames"]) or v.get("loc") or "?",
             v["count"], v["repro"]))
+    md += ["", "## Silent mismatches (grouped by check, kind, file type)", "",
+           "| # | check | kind | ext | files | hits | example detail | reproducer |", "|---|---|---|---|---|---|---|---|"]
+    for n, ((chk, kind, ext), (cnt, ids, det, st)) in enumerate(
+            sorted(mism.items(), key=lambda kv: -len(kv[1][1])), 1):
+        md.append("| %d | %s | %s | %s | %d | %d | %s | `%s` |" % (
+            n, chk, kind, ext, len(ids), cnt, det.replace("|", "/")[:120], repro(st)))
     md += ["", "## Hangs (timeout)", ""]
     md += ["- %s `%s` (%ss)" % (s["kind"], s.get("file") or s.get("suite"), s["seconds"]) for s in hangs] or ["none"]
     md += ["", "## Crashes / abnormal exits without sanitizer report", ""]
@@ -264,7 +285,10 @@ def main():
     else:
         print(text)
     if a.json:
-        json.dump({"issues": list(issues.values()), "hangs": [s["id"] for s in hangs],
+        json.dump({"mismatches": [{"check": k[0], "kind": k[1], "ext": k[2], "files": len(v[1]),
+                                   "hits": v[0], "detail": v[2], "example": v[3]["id"],
+                                   "repro": repro(v[3])} for k, v in mism.items()],
+                   "issues": list(issues.values()), "hangs": [s["id"] for s in hangs],
                    "crashes": [(s["id"], t) for s, t in crashes]}, open(a.json, "w"), indent=1)
 
 

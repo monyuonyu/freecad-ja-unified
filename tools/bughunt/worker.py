@@ -7,7 +7,15 @@ import os
 import sys
 import traceback
 
+import faulthandler
+
 import FreeCAD as App
+
+# hangs: dump the Python stack every BH_HANG_DUMP seconds (triage.py reads the last one)
+faulthandler.dump_traceback_later(int(os.environ.get("BH_HANG_DUMP", "240")), repeat=True)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import checks  # noqa: E402
 
 SRC = os.environ["BH_IN"]
 OUT = os.environ["BH_OUT"]
@@ -62,6 +70,7 @@ doc = load()
 if doc is None:
     sys.exit(0)
 say("objects", "ok", len(doc.Objects))
+stored = checks.object_snapshot(doc) if EXT == "fcstd" else None
 
 
 @stage("recompute")
@@ -80,6 +89,9 @@ def shape_objects():
         sh = getattr(o, "Shape", None)
         if sh is None or not hasattr(sh, "isNull") or sh.isNull():
             continue
+        if o.TypeId in ("App::Line", "App::Plane", "App::Point", "App::Origin") or \
+                not sh.BoundBox.isValid() or sh.BoundBox.DiagonalLength > 1e10:
+            continue  # infinite datum geometry (Shape.check(True) on App::Line crashes; reported)
         if o.InList and any(p.TypeId != "App::Part" and hasattr(p, "Shape") for p in o.InList):
             continue  # only roots (children are inside their parent's shape)
         out.append(o)
@@ -96,14 +108,18 @@ def check():
     return "shapes=%d invalid=%d" % (len(objs), bad)
 
 
-check()
-objs = shape_objects()
-meshes = [o for o in doc.Objects if o.TypeId.startswith("Mesh::")]
-
-
 def compound():
     import Part
     return Part.makeCompound([o.Shape.copy() for o in objs])
+
+
+check()
+objs = shape_objects()
+if objs:
+    # before any export: exportStl leaves a 0.01 mm mesh on the shapes, which made
+    # projectVisible take minutes (fixed in 28fc51f32 on unified-ui, not yet in the patches)
+    checks.projection_and_render(compound(), OUT)
+meshes = [o for o in doc.Objects if o.TypeId.startswith("Mesh::")]
 
 
 if objs:
@@ -184,6 +200,26 @@ if objs or meshes:
 
     if meshes:
         mesh_check()
+
+# silent-bug checks (BH-MM lines)
+if objs:
+    import Part
+    comp = compound()
+    solids = checks.usable_solids(comp)
+    checks.roundtrip_cad(comp, OUT)
+    checks.roundtrip_mesh(comp, OUT)
+    checks.export_twice(comp, OUT)
+    checks.valid_vs_check([o.Shape for o in objs][:20])
+    checks.mesh_volume(solids)
+    checks.booleans(solids)
+    checks.interference_vs_bruteforce(solids)
+    checks.metamorphic(solids)
+    checks.reorder_invariance([o.Shape for o in objs if o.Shape.Solids][:30])
+    if EXT in ("dxf", "dwg"):
+        checks.drawing_roundtrip(doc, objs, OUT, EXT)
+checks.recompute_idempotent(doc, stored)
+if EXT == "fcstd":
+    checks.fcstd_roundtrip(doc, OUT)
 
 say("done", "ok")
 App.closeDocument(doc.Name)

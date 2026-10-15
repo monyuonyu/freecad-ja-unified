@@ -74,6 +74,9 @@ jobs:
         working-directory: FreeCAD
         run: |
           set -euo pipefail
+          # headless builds need Qt LinguistTools too (fixed on unified-ui, not yet in the patches)
+          grep -q 'Core Concurrent Network Xml LinguistTools' cMake/FreeCAD_Helpers/SetupQt.cmake ||
+            sed -i 's/^set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml)/set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml LinguistTools)/' cMake/FreeCAD_Helpers/SetupQt.cmake
           SAN="-fsanitize=address,undefined -fsanitize-recover=address,undefined -fno-sanitize=vptr,function -fno-omit-frame-pointer"
           pixi run --locked env CFLAGS= CXXFLAGS= DEBUG_CFLAGS= DEBUG_CXXFLAGS= \
             cmake --preset conda-linux-release \
