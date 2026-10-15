@@ -149,9 +149,15 @@ def mesh_volume(solids):
         if not m.isSolid():
             mm("tessellation", "not_closed", "solid %d: %d facets, open mesh" % (i, m.CountFacets))
             continue
-        if rel(abs(m.Volume), s.Volume) > 0.02:
-            mm("tessellation", "volume", "solid %d: mesh %.6g vs brep %.6g" % (i, m.Volume, s.Volume))
-        if m.Volume < 0:
+        # Mesh.Volume sums in single precision about the origin: far from it the result is
+        # quantised (68.5, 71.625 ...). Sum in double about the centre of the box instead.
+        c = s.BoundBox.Center
+        pts, facets = m.Topology
+        pts = [p - c for p in pts]
+        vol = sum(pts[a].dot(pts[b].cross(pts[d])) for a, b, d in facets) / 6.0
+        if rel(abs(vol), s.Volume) > 0.02:
+            mm("tessellation", "volume", "solid %d: mesh %.6g vs brep %.6g" % (i, vol, s.Volume))
+        if vol < 0:
             mm("tessellation", "orientation", "solid %d: negative mesh volume" % i)
     note("mesh_volume", "ok")
 
