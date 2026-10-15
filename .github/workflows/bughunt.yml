@@ -120,7 +120,10 @@ jobs:
       - name: Fetch the corpus
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 patches/tools/bughunt/fetch_corpus.py --out corpus --freecad-src FreeCAD | tail -25
+        run: |
+          # the build takes hours: use the newest bughunt tools from main, not the ones at the start
+          git -C patches fetch -q origin main && git -C patches checkout -q FETCH_HEAD -- tools/bughunt || true
+          python3 patches/tools/bughunt/fetch_corpus.py --out corpus --freecad-src FreeCAD | tail -25
 
       - name: Run the corpus and the tests
         working-directory: FreeCAD

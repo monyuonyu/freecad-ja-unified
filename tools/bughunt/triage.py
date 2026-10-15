@@ -17,15 +17,26 @@ import subprocess
 
 ASAN_HEAD = re.compile(r"^==\d+==ERROR: (AddressSanitizer|LeakSanitizer|MemorySanitizer): ([\w-]+)(.*)")
 UBSAN = re.compile(r"^(.+?):(\d+):(\d+): runtime error: (.*)")
-FRAME = re.compile(r"^\s*#(\d+) 0x[0-9a-f]+ in (.+?) (/\S+?)(?::(\d+))?(?::\d+)?$")
+FRAME = re.compile(r"^\s*#(\d+) 0x[0-9a-f]+ in (.+?) (/\S+?|\?\?)(?::(\d+|\?))?(?::\d+)?$")
 FRAME_MOD = re.compile(r"^\s*#(\d+) 0x[0-9a-f]+ (?:in (.+?) )?\((\S+?)\+0x[0-9a-f]+\)")
 PYEXC = re.compile(r"^(?:<class '([\w.]+)'>|([\w.]*(?:Error|Exception|Failure)))[:>]?\s*(.*)$")
 CPP_HINT = re.compile(r"Standard_|OCC|Unknown C\+\+|C\+\+ exception|std::|Base\.|FreeCADError|"
                       r"SystemError|bad_alloc|Segmentation|access violation", re.I)
 
 
+FC_NS = re.compile(r"^(?:\w+ )*(Part|App|Base|Mesh|MeshCore|MeshPart|Import|Sketcher|PartDesign|"
+                   r"Data|Py|Points|Surface|TechDraw|Spreadsheet|Measure|Materials|Assembly|"
+                   r"Attacher|GCS|KDL|zipios|Unified)::")
+OCC_FN = re.compile(r"^(?:\w+ )*[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+(::|\()")
+
+
 def component(path, func=""):
     p = path or ""
+    if p in ("??", "") and func:
+        if FC_NS.match(func):
+            return "FreeCAD"
+        if OCC_FN.match(func):
+            return "OCC"
     if "/3rdParty/coin" in p or "libCoin" in p:
         return "Coin"
     if "/3rdParty/" in p:
@@ -52,7 +63,7 @@ def parse_frames(lines, i):
         m = FRAME.match(l)
         if m:
             frames.append({"n": int(m.group(1)), "func": m.group(2), "file": m.group(3),
-                           "line": int(m.group(4)) if m.group(4) else None})
+                           "line": int(m.group(4)) if m.group(4) and m.group(4).isdigit() else None})
         else:
             m = FRAME_MOD.match(l)
             if m:
@@ -78,6 +89,7 @@ def key_frames(frames):
         if f["n"] is not None and f.get("_stop"):
             break
         c = component(f["file"], f["func"])
+        f["comp"] = c
         if c in ("other", "Python") or "sanitizer" in f["file"] or "libclang_rt" in f["file"]:
             continue
         out.append(f)
@@ -103,6 +115,22 @@ def parse_stderr(text):
             reps.append({"tool": m.group(1), "type": kind, "msg": (m.group(2) + m.group(3))[:200],
                          "frames": frames})
             continue
+        if l.startswith("Program received signal"):  # FreeCAD's own handler (non-ASan builds)
+            frames = []
+            i += 1
+            while i < len(lines):
+                mm_ = re.match(r"^#(\d+)\s+\S+ in (.+) from (\S+)\+0x[0-9a-f]+$", lines[i])
+                if not mm_:
+                    if lines[i].startswith("#"):
+                        i += 1
+                        continue
+                    break
+                frames.append({"n": int(mm_.group(1)), "func": mm_.group(2), "file": mm_.group(3),
+                               "line": None})
+                i += 1
+            frames = [f for f in frames if "SystemHandler" not in f["func"] and "libc.so" not in f["file"]]
+            reps.append({"tool": "FreeCAD-handler", "type": "SEGV", "msg": l[:200], "frames": frames})
+            continue
         m = UBSAN.match(l)
         if m and "runtime error" in l:
             msg = m.group(4)
@@ -127,7 +155,7 @@ def blame(src, base, path, line):
     if k in _blame_cache:
         return _blame_cache[k]
     rel = None
-    m = re.search(r"(src/.*)$", path)
+    m = re.search(r".*/(src/(?:App|Base|Mod|Gui|Main|3rdParty)/.*)$", path)
     if m and os.path.exists(os.path.join(src, m.group(1))):
         rel = m.group(1)
     r = None
@@ -196,17 +224,18 @@ def main():
                 top = kf[0] if kf else (r["frames"][0] if r["frames"] else {"file": r.get("loc", "?"), "func": "?", "line": None})
                 comp = component(top["file"], top["func"]) if kf or r["frames"] else component(r.get("loc", ""))
                 owner = None
-                for f in kf:
-                    if component(f["file"]) == "FreeCAD":
-                        owner = blame(a.freecad_src, a.base, f["file"], f["line"])
-                        if owner and owner.startswith("ours"):
-                            break
+                fc = [f for f in r["frames"] if component(f["file"], f["func"]) == "FreeCAD"][:3]
+                for f in fc:
+                    owner = blame(a.freecad_src, a.base, f["file"], f["line"])
+                    if owner and owner.startswith("ours"):
+                        break
+                caller = ("%s %s:%s" % (short_func(fc[0]["func"]), fc[0]["file"].split("/src/")[-1], fc[0]["line"])) if fc else None
                 if r["tool"] == "UBSan" and owner is None and r.get("loc"):
                     p, ln = r["loc"].rsplit(":", 1)
                     if component(p) == "FreeCAD":
                         owner = blame(a.freecad_src, a.base, p, int(ln))
                 issues[key] = {"type": r["type"], "tool": r["tool"], "msg": r["msg"], "loc": r.get("loc"),
-                               "component": comp, "owner": owner,
+                               "component": comp, "owner": owner, "caller": caller,
                                "frames": ["%s %s:%s" % (short_func(f["func"]), f["file"].split("/src/")[-1].split("/opencascade/")[-1], f["line"])
                                           for f in (kf or r["frames"][:3])],
                                "count": 0, "cases": [], "repro": repro(st), "example": st["id"]}
@@ -257,7 +286,7 @@ def main():
     for n, (k, v) in enumerate(issues.items(), 1):
         md.append("| %d | %s | %s | %s | %s | %d | `%s` |" % (
             n, v["type"].replace("|", "/"), v["component"], v["owner"] or "?",
-            "<br>".join(x.replace("|", "/") for x in v["frames"]) or v.get("loc") or "?",
+            "<br>".join(x.replace("|", "/") for x in v["frames"] + (["(FreeCAD) " + v["caller"]] if v["caller"] and v["component"] != "FreeCAD" else [])) or v.get("loc") or "?",
             v["count"], v["repro"]))
     md += ["", "## Silent mismatches (grouped by check, kind, file type)", "",
            "| # | check | kind | ext | files | hits | example detail | reproducer |", "|---|---|---|---|---|---|---|---|"]

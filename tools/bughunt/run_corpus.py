@@ -36,9 +36,9 @@ def sanitizer_env(args, home):
         "QT_QPA_PLATFORM": "offscreen",
         "ASAN_OPTIONS": ":".join([
             "detect_leaks=0", "halt_on_error=0", "abort_on_error=0", "allocator_may_return_null=1",
-            "detect_odr_violation=0", "handle_segv=1", "handle_abort=1", "symbolize=1",
+            "detect_odr_violation=0", "handle_segv=1", "allow_user_segv_handler=0", "handle_abort=1", "symbolize=1",
             "fast_unwind_on_malloc=0", "malloc_context_size=10", "detect_stack_use_after_return=0",
-            "alloc_dealloc_mismatch=0", "max_uar_stack_size_log=0", "print_summary=1",
+            "alloc_dealloc_mismatch=0", "print_summary=1",
         ] + (["external_symbolizer_path=" + args.symbolizer] if args.symbolizer else [])),
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=0:report_error_type=1:symbolize=1"
                          + (":external_symbolizer_path=" + args.symbolizer if args.symbolizer else ""),
