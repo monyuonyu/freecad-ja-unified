@@ -1,0 +1,22 @@
+# Bug-hunt corpus: where the files come from (the files themselves are not kept in this repo).
+# fetch_corpus.py downloads them; the sample inside a repo is fixed (sorted by sha1 of the path),
+# so the same commit gives the same files.
+# columns (tab separated): name  repo  commit  path-regex  max-files  max-bytes
+#   repo "freecad" = the patched FreeCAD tree itself (--freecad-src), commit is ignored.
+ff-examples	freecad	-	^data/examples/.*\.FCStd$	40	20000000
+ff-testdata-fcstd	freecad	-	^(src/Mod|data/tests)/.*\.[Ff][Cc][Ss]td$	40	5000000
+ff-testdata-cad	freecad	-	^(src/Mod|data/tests)/.*\.(brep|brp|stp|step|iges|igs|stl|obj|off|ply|3mf|dxf)$	60	5000000
+ff-testdata-svg	freecad	-	^src/Mod/(Draft|TechDraw|BIM)/.*(Test|test).*\.svg$	15	2000000
+fc-examples	FreeCAD/Examples	40a806f3f3ef0e6a248fd5aed168a4d29213c421	\.FCStd$	40	3000000
+fc-library-fcstd	FreeCAD/FreeCAD-library	f5ca01cdcaa2f69b9295a6382719c2d90628780c	\.[Ff][Cc][Ss]td$	40	1500000
+fc-library-step	FreeCAD/FreeCAD-library	f5ca01cdcaa2f69b9295a6382719c2d90628780c	\.(step|stp|STEP|STP)$	30	1500000
+fc-library-other	FreeCAD/FreeCAD-library	f5ca01cdcaa2f69b9295a6382719c2d90628780c	\.(stl|iges|igs|brep|dxf|obj)$	12	1500000
+occt-data	Open-Cascade-SAS/OCCT	3d097a0328e71b826377d4814ab05ec3c3d23871	^data/.*\.(brep|step|iges|stl)$	30	3000000
+mf3-samples	3MFConsortium/3mf-samples	665e20dc4d7777fd4c9702bca86a2d4028440337	\.3mf$	15	2000000
+ifc-samples	buildingSMART/Sample-Test-Files	80d976a9b193a26a8e928c3e79bff67af1de68a8	\.ifc$	6	1000000
+trimesh-models	mikedh/trimesh	dc8490c825c382d2d58b5bd87ecacc74790ead27	^models/.*\.(step|stl|obj|off|ply|3mf|dxf|svg)$	90	1000000
+c3d-models	alecjacobson/common-3d-test-models	8a4f8642acaf43f9cd7b67858a1502e1055ef202	\.(obj|ply)$	6	3000000
+libredwg-dwg	LibreDWG/libredwg	f860b0fb76d5f8effb5a70769a3389cb1e0308c8	^test/test-data/.*\.dwg$	10	600000
+libredwg-dxf	LibreDWG/libredwg	f860b0fb76d5f8effb5a70769a3389cb1e0308c8	^test/test-data/.*\.dxf$	15	1000000
+acadsharp-dwg	DomCR/ACadSharp	3889e1da308fb77d5750912f877bdf965002c421	\.dwg$	4	600000
+acadsharp-dxf	DomCR/ACadSharp	3889e1da308fb77d5750912f877bdf965002c421	\.dxf$	8	1000000
