@@ -226,7 +226,8 @@ def main():
                 owner = None
                 fc = [f for f in r["frames"] if component(f["file"], f["func"]) == "FreeCAD"][:3]
                 for f in fc:
-                    owner = blame(a.freecad_src, a.base, f["file"], f["line"])
+                    b = blame(a.freecad_src, a.base, f["file"], f["line"])
+                    owner = b or owner
                     if owner and owner.startswith("ours"):
                         break
                 caller = ("%s %s:%s" % (short_func(fc[0]["func"]), fc[0]["file"].split("/src/")[-1], fc[0]["line"])) if fc else None
