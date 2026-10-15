@@ -61,9 +61,12 @@ def load():
     if not mods:
         raise RuntimeError("no importer for ." + EXT)
     doc = App.newDocument("bh")
-    mod = __import__(mods[0])
-    mod.insert(SRC, doc.Name)
-    return doc
+    for name in mods:  # e.g. ifc: nativeifc has no insert(), importIFC has
+        mod = __import__(name)
+        if hasattr(mod, "insert"):
+            mod.insert(SRC, doc.Name)
+            return doc
+    raise RuntimeError("no importer with insert() for ." + EXT)
 
 
 doc = load()
@@ -83,6 +86,9 @@ def recompute():
 recompute()
 
 
+CONTAINERS = ("App::Part", "App::DocumentObjectGroup", "App::DocumentObjectGroupPython")
+
+
 def shape_objects():
     out = []
     for o in doc.Objects:
@@ -92,7 +98,9 @@ def shape_objects():
         if o.TypeId in ("App::Line", "App::Plane", "App::Point", "App::Origin") or \
                 not sh.BoundBox.isValid() or sh.BoundBox.DiagonalLength > 1e10:
             continue  # infinite datum geometry (Shape.check(True) on App::Line crashes; reported)
-        if o.InList and any(p.TypeId != "App::Part" and hasattr(p, "Shape") for p in o.InList):
+        if o.TypeId in CONTAINERS:
+            continue  # their children are taken one by one
+        if o.InList and any(p.TypeId not in CONTAINERS and hasattr(p, "Shape") for p in o.InList):
             continue  # only roots (children are inside their parent's shape)
         out.append(o)
     return out

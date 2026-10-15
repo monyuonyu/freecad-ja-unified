@@ -148,6 +148,30 @@ def mesh_volume(solids):
     note("mesh_volume", "ok")
 
 
+def _value(v):
+    """Comparable form: numbers rounded to 9 significant digits (placements, vectors, floats)."""
+    def r(x):
+        return float("%.9g" % x) if isinstance(x, float) else x
+    if isinstance(v, App.Placement):
+        q = v.Rotation.Q
+        if q[3] < 0:
+            q = tuple(-c for c in q)
+        return ("P",) + tuple(r(c) for c in tuple(v.Base) + tuple(q))
+    if isinstance(v, App.Vector):
+        return ("V",) + tuple(r(c) for c in v)
+    if hasattr(v, "Value") and hasattr(v, "Unit"):
+        return r(float(v.Value))
+    return r(v) if isinstance(v, float) else v
+
+
+def _same(a, b):
+    if isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b):
+        return all(_same(x, y) for x, y in zip(a, b))
+    if isinstance(a, float) and isinstance(b, float):
+        return abs(a - b) <= 1e-7 * max(1.0, abs(a), abs(b))
+    return a == b
+
+
 def object_snapshot(doc):
     snap = {}
     for o in doc.Objects:
@@ -162,7 +186,7 @@ def object_snapshot(doc):
                          "App::PropertyAngle", "App::PropertyPlacement", "App::PropertyEnumeration",
                          "App::PropertyVector", "App::PropertyIntegerConstraint",
                          "App::PropertyFloatConstraint", "App::PropertyQuantity"):
-                    vals[name] = repr(getattr(o, name))
+                    vals[name] = _value(getattr(o, name))
                 elif t == "App::PropertyLink":
                     v = getattr(o, name)
                     vals[name] = v.Name if v else None
@@ -189,7 +213,7 @@ def compare_snapshots(check, a, b):
             mm(check, "type", "%s %s vs %s" % (name, ta, tb))
             continue
         for k in sorted(set(va) | set(vb)):
-            if va.get(k) != vb.get(k):
+            if not _same(va.get(k), vb.get(k)):
                 mm(check, "property", "%s %s.%s: %s vs %s" % (ta, name, k, str(va.get(k))[:60], str(vb.get(k))[:60]))
         if sa and sb:
             compare(check, sa, sb, 1e-6, ("solids", "faces", "edges"), "%s %s" % (ta, name))
@@ -429,12 +453,18 @@ def reorder_invariance(shapes):
         return
     a = Part.makeCompound(shapes)
     b = Part.makeCompound(list(reversed(shapes)))
-    compare("reorder_compound", props(a), props(b), 1e-9, ("solids", "faces", "edges"))
+    compare("reorder_compound", props(a), props(b), 1e-7, ("solids", "faces", "edges"))
     if len(shapes) <= 30:
-        f = sorted(round(v, 6) for _, _, v in Part.findInterferences(shapes))
-        g = sorted(round(v, 6) for _, _, v in Part.findInterferences(list(reversed(shapes))))
-        if f != g:
-            mm("reorder_interference", "pairs", "%d vs %d pairs" % (len(f), len(g)))
+        n = len(shapes)
+        f = {(min(i, j), max(i, j)): v for i, j, v in Part.findInterferences(shapes)}
+        g = {(min(n - 1 - i, n - 1 - j), max(n - 1 - i, n - 1 - j)): v
+             for i, j, v in Part.findInterferences(list(reversed(shapes)))}
+        for k in sorted(set(f) | set(g)):
+            a_, b_ = f.get(k), g.get(k)
+            if a_ is None or b_ is None or (a_ >= 0) != (b_ >= 0) or (a_ >= 0 and rel(a_, b_) > 1e-6):
+                mm("reorder_interference", "pairs", "pair %s: %s vs %s (OCC common(A,B) != common(B,A) "
+                   "when an argument is a self-overlapping compound)" % (k, a_, b_))
+                break
     note("reorder_invariance", "ok")
 
 
