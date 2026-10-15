@@ -106,10 +106,18 @@ def roundtrip_cad(comp, out):
 
 
 @guarded
-def roundtrip_mesh(comp, out):
+def roundtrip_mesh(comp, out, has_meshes=False):
     import Mesh
     import MeshPart
+    import Part
     p = props(comp)
+    if comp.Faces:
+        # only faces become facets: wires, edges and points of the drawing are not in the mesh
+        fb = Part.makeCompound(comp.Faces).BoundBox
+        p["bbox"] = (fb.XMin, fb.YMin, fb.ZMin, fb.XMax, fb.YMax, fb.ZMax)
+        p["diag"] = fb.DiagonalLength
+    if has_meshes:
+        p["bbox"] = None  # mesh objects of the document are exported too
     closed = p["solids"] > 0 and all(s.isClosed() for s in comp.Solids) if p["solids"] else False
     for ext in ("stl", "obj", "off", "ply", "3mf"):
         path = os.path.join(out, "mesh." + ext)
@@ -153,8 +161,11 @@ def _value(v):
     def r(x):
         return float("%.9g" % x) if isinstance(x, float) else x
     if isinstance(v, App.Placement):
+        # q and -q are the same rotation; make the sign unique by the first clearly non-zero
+        # component (only w for half turns gives 4e-19 vs 0 with all other signs flipped)
         q = v.Rotation.Q
-        if q[3] < 0:
+        lead = next((c for c in (q[3], q[0], q[1], q[2]) if abs(c) > 1e-12), 1.0)
+        if lead < 0:
             q = tuple(-c for c in q)
         return ("P",) + tuple(r(c) for c in tuple(v.Base) + tuple(q))
     if isinstance(v, App.Vector):
@@ -172,13 +183,40 @@ def _same(a, b):
     return a == b
 
 
+# FeaturePython objects whose Shape is only drawn in the 3D view and rebuilt by the GUI
+DISPLAY_PROXIES = ("WorkingPlaneProxy", "_SectionPlane")
+
+
+def display_only(o):
+    return getattr(getattr(o, "Proxy", None), "__class__", type(None)).__name__ in DISPLAY_PROXIES
+
+
+def output_property(o, name):
+    """Values the object computes itself (read-only/output, or a direction that follows the sketch):
+    an older file may have saved them stale or before the property existed."""
+    try:
+        st = o.getPropertyStatus(name)
+        mode = o.getEditorMode(name)
+    except Exception:
+        return False
+    if "ReadOnly" in st or "ReadOnly" in mode or 24 in st or 26 in st or "Output" in st:
+        return name != "Placement"  # a derived Placement still has to come out the same
+    if name == "Direction" and getattr(o, "UseCustomVector", True) is False:
+        return True
+    return False
+
+
 def object_snapshot(doc):
     snap = {}
     for o in doc.Objects:
         vals = {}
+        outs = set()
         for name in o.PropertiesList:
             if name.startswith("_"):
                 continue  # internal bookkeeping (_ElementMapVersion ...)
+            if output_property(o, name):
+                outs.add(name)
+                continue
             try:
                 t = o.getTypeIdOfProperty(name)
                 if t in ("App::PropertyFloat", "App::PropertyInteger", "App::PropertyString",
@@ -196,9 +234,9 @@ def object_snapshot(doc):
                 pass
         sh = getattr(o, "Shape", None)
         shp = None
-        if sh is not None and hasattr(sh, "isNull") and not sh.isNull():
+        if sh is not None and hasattr(sh, "isNull") and not sh.isNull() and not display_only(o):
             shp = props(sh)
-        snap[o.Name] = (o.TypeId, vals, shp)
+        snap[o.Name] = (o.TypeId, vals, shp, outs)
     return snap
 
 
@@ -207,12 +245,12 @@ def compare_snapshots(check, a, b):
         mm(check, "objects", "%d vs %d objects; missing %s"
            % (len(a), len(b), sorted(set(a) ^ set(b))[:5]))
     for name in sorted(set(a) & set(b)):
-        ta, va, sa = a[name]
-        tb, vb, sb = b[name]
+        ta, va, sa, oa = a[name]
+        tb, vb, sb, ob = b[name]
         if ta != tb:
             mm(check, "type", "%s %s vs %s" % (name, ta, tb))
             continue
-        for k in sorted(set(va) | set(vb)):
+        for k in sorted((set(va) | set(vb)) - oa - ob):
             if not _same(va.get(k), vb.get(k)):
                 mm(check, "property", "%s %s.%s: %s vs %s" % (ta, name, k, str(va.get(k))[:60], str(vb.get(k))[:60]))
         if sa and sb:
@@ -248,7 +286,12 @@ def recompute_idempotent(doc, stored):
     doc.recompute()
     first = object_snapshot(doc)
     if stored is not None:
-        compare_snapshots("stored_vs_recomputed", stored, first)
+        # files saved before 1.0 (old topological naming, refine and attachment code) are expected
+        # to come out different: keep them apart from regressions on current files
+        import re
+        m = re.match(r"(\d+)\.(\d+)", getattr(doc, "getProgramVersion", lambda: "")() or "")
+        legacy = m is not None and (int(m.group(1)), int(m.group(2))) < (1, 0)
+        compare_snapshots("stored_vs_recomputed" + ("_pre1.0" if legacy else ""), stored, first)
     for o in doc.Objects:
         o.touch()
     doc.recompute()
@@ -283,20 +326,30 @@ def export_twice(comp, out):
 
 # --- 3. self-consistency ---------------------------------------------------------------------
 
+# BOP-check findings that are not defects of a single shape: members of a compound may overlap,
+# BOP needs C1 curves, and infinite/open edges cannot be checked at all
+_BOP_EXPECTED = ("GeomAbs_C0", "no end vertex")
+
+
 @guarded
 def valid_vs_check(shapes):
+    import re
     for i, s in enumerate(shapes):
-        if len(s.Faces) > MAX_FACES:
+        if len(s.Faces) > MAX_FACES or s.ShapeType in ("Compound", "CompSolid"):
             continue
+        if s.ShapeType == "Solid" and abs(s.Volume) < 1e-9:
+            continue  # flat "solid" in the input: BRepCheck accepts it, BOP sees the faces touch
         v = s.isValid()
         try:
             s.check(True)
-            c = True
-        except Exception:
-            c = False
-        if v and not c:
-            mm("valid_vs_check", "check_fails", "shape %d: isValid() True but check(True) raises" % i)
-        if c and not v:
+            err = None
+        except Exception as e:
+            err = " ".join(str(e).split())
+        if v and err and not any(x in err for x in _BOP_EXPECTED):
+            kinds = sorted(set(re.findall(r"BOPAlgo[ _](\w+)", err))) or ["other"]
+            mm("valid_vs_check", "check_fails_" + "+".join(kinds),
+               "shape %d (%s): isValid() True but check(True) raises" % (i, s.ShapeType))
+        if not err and not v:
             mm("valid_vs_check", "isvalid_fails", "shape %d: check(True) passes but isValid() False" % i)
     note("valid_vs_check", "ok")
 
@@ -430,9 +483,10 @@ def metamorphic(solids):
             mm("rotate", "valid", "solid %d" % i)
         k = s.copy().scale(2.0) if hasattr(s, "scale") else None
         if k is not None:
-            if rel(k.Volume, 8 * s.Volume) > 1e-6:
+            # GProp integrates with a fixed number of Gauss points: a few 1e-5 apart after scaling
+            if rel(k.Volume, 8 * s.Volume) > 1e-4:
                 mm("scale2", "volume", "solid %d: %.6g vs 8x %.6g" % (i, k.Volume, 8 * s.Volume))
-            if rel(k.Area, 4 * s.Area) > 1e-6:
+            if rel(k.Area, 4 * s.Area) > 1e-4:
                 mm("scale2", "area", "solid %d: %.6g vs 4x %.6g" % (i, k.Area, 4 * s.Area))
             if p["valid"] and not k.isValid():
                 mm("scale2", "valid", "solid %d" % i)

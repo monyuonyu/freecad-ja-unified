@@ -89,6 +89,13 @@ recompute()
 CONTAINERS = ("App::Part", "App::DocumentObjectGroup", "App::DocumentObjectGroupPython")
 
 
+def is_group(o):
+    try:
+        return o.hasExtension("App::GroupExtension")  # BIM BuildingPart, App::Part ...
+    except Exception:
+        return False
+
+
 def shape_objects():
     out = []
     for o in doc.Objects:
@@ -98,8 +105,10 @@ def shape_objects():
         if o.TypeId in ("App::Line", "App::Plane", "App::Point", "App::Origin") or \
                 not sh.BoundBox.isValid() or sh.BoundBox.DiagonalLength > 1e10:
             continue  # infinite datum geometry (Shape.check(True) on App::Line crashes; reported)
-        if o.TypeId in CONTAINERS:
+        if o.TypeId in CONTAINERS or is_group(o):
             continue  # their children are taken one by one
+        if checks.display_only(o):
+            continue  # the shape is only what the 3D view draws (working plane, section plane)
         if o.InList and any(p.TypeId not in CONTAINERS and hasattr(p, "Shape") for p in o.InList):
             continue  # only roots (children are inside their parent's shape)
         out.append(o)
@@ -215,7 +224,7 @@ if objs:
     comp = compound()
     solids = checks.usable_solids(comp)
     checks.roundtrip_cad(comp, OUT)
-    checks.roundtrip_mesh(comp, OUT)
+    checks.roundtrip_mesh(comp, OUT, bool(meshes))
     checks.export_twice(comp, OUT)
     checks.valid_vs_check([o.Shape for o in objs][:20])
     checks.mesh_volume(solids)
