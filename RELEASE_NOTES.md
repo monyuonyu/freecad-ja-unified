@@ -1,23 +1,17 @@
-**元にした FreeCAD: {BASE_VERSION}（main のコミット [`{BASE_SHORT}`](https://github.com/FreeCAD/FreeCAD/commit/{BASE_SHA})）＋ このリポジトリのパッチ {TAG}**
+日本語で迷わず使える一つの画面にした FreeCAD の改良版。DWG（AutoCAD の図面）を R2018 まで読み書きできる LibreDWG を同梱。**元にした FreeCAD: {BASE_VERSION}（main のコミット [`{BASE_SHORT}`](https://github.com/FreeCAD/FreeCAD/commit/{BASE_SHA})）＋ このリポジトリのパッチ {TAG}**
 
-ファイル名は `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-<OS>…`（元の FreeCAD の版・元にしたコミット・このパッチの版）。
-試しに使ってもらうための先行版。
+**ダウンロード**
 
-- **Linux**: `…-Linux-x86_64.AppImage` に実行権限を付けて起動
-- **Windows**: `…-Windows-x86_64-installer.exe`（インストーラー）か `.7z`（展開して `bin\FreeCAD.exe`）
+| OS | ファイル | 使い方 |
+|---|---|---|
+| Windows（x64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Windows-x86_64-installer.exe` | インストーラー |
+| | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Windows-x86_64.7z` | 展開して `bin\FreeCAD.exe`（署名なし。SmartScreen は「詳細情報」→「実行」） |
+| Linux（x86_64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Linux-x86_64.AppImage` | 実行権限を付けて起動。WSL など FUSE の無い所では `--appimage-extract` で展開して `squashfs-root/AppRun` |
 
-署名はしていないので、Windows では SmartScreen の警告が出る（「詳細情報」→「実行」）。
-設定フォルダは本家の FreeCAD とは別（`FreeCAD-ja-unified`）。0.3.1 以前の設定は引き継がない。
-アンインストールでは、画面の「ユーザー設定も削除」を選ぶと設定も消える（選ばなければ残る。本家の設定には触れない）。
+チェックサム: 各ファイルの `-SHA256.txt`。設定フォルダは本家とは別（`FreeCAD-ja-unified`）。アンインストールで「ユーザー設定も削除」を選ぶと設定も消える。
 
-変更点は [README](https://github.com/monyuonyu/freecad-ja-unified/blob/main/README.ja.md) を参照:
-作業場の切り替えを無くした一つの画面、選んだものの横に出る操作、1 種類に固定したマウス操作、
-プロパティ欄と失敗の知らせまで含めた日本語化、設計の検査（DRC のような間違い探しと自動修正）、
-AI チャット、今風のナビキューブ、コマンドライン・スクリプトまわりの修正。
+**変更点**: [README の各版の変更](https://github.com/monyuonyu/freecad-ja-unified/blob/main/README.ja.md)。機能の一覧も README にある。
+AI チャットは自分の Anthropic の API キーで使う（AI が実行するコードは毎回表示され、承認したときだけ動く）。
 
-DWG（AutoCAD の図面）は、同梱の LibreDWG で開く・取り込む・書き出すことができる（R2018 まで読み書きできる。FreeCAD からの書き出しは R2000、新しい版は同梱の dxf2dwg で）。
-
-AI チャットを使うには、自分の Anthropic の API キーが要る（使った分はキーの持ち主に請求される。
-AI が実行するコードは毎回表示され、承認したときだけ動く）。
-
-Built from FreeCAD {BASE_VERSION} (main, commit {BASE_SHORT}) with the patches {TAG} of this repository. Unsigned preview build.
+---
+FreeCAD {BASE_VERSION} (main, {BASE_SHORT}) + patches {TAG}: one Japanese-first working screen, DWG read/write up to R2018 via the bundled LibreDWG, headless rendering/interference/2D export. Windows (installer/7z) and Linux (AppImage); unsigned preview builds. See the [README](https://github.com/monyuonyu/freecad-ja-unified#readme).
