@@ -47,9 +47,11 @@ make -j"$(nproc)" -C src MAKEINFO=true > build.log 2>&1 || { tail -30 build.log;
 # 静的に入れるため、実行ファイルは -all-static でつなぐ
 linkflags=""
 [ "$TARGET" = win64 ] && linkflags="-all-static"
-make -C programs MAKEINFO=true LDFLAGS="$ldflags $linkflags" "dwg2dxf$exe" "dxf2dwg$exe" >> build.log 2>&1 \
+# PROGRAMS: 作る道具（既定は FreeCAD が使う 2 つ。libredwg-fixes のリリースでは dwgread なども）
+programs=(${PROGRAMS:-dwg2dxf dxf2dwg})
+make -C programs MAKEINFO=true LDFLAGS="$ldflags $linkflags" "${programs[@]/%/$exe}" >> build.log 2>&1 \
   || { tail -30 build.log; exit 1; }
-for p in dwg2dxf dxf2dwg; do
+for p in "${programs[@]}"; do
   cp "programs/$p$exe" "$OUT/"
   [ "$TARGET" = win64 ] || strip "$OUT/$p$exe"
 done
