@@ -474,11 +474,16 @@ def drawing_counts(doc):
     n_obj = len([o for o in doc.Objects if hasattr(o, "Shape")])
     edges = 0
     length = 0.0
+    def has_shape(x):
+        sh = getattr(x, "Shape", None)
+        return sh is not None and hasattr(sh, "isNull") and not sh.isNull()
+
     for o in doc.Objects:
-        sh = getattr(o, "Shape", None)
-        if sh is not None and hasattr(sh, "isNull") and not sh.isNull() and not o.InList:
-            edges += len(sh.Edges)
-            length += sum(e.Length for e in sh.Edges)
+        # roots of the geometry: no parent with a shape of its own (layers and groups have none;
+        # a Part::Compound has, and its children are already in it)
+        if has_shape(o) and not any(has_shape(p) for p in o.InList):
+            edges += len(o.Shape.Edges)
+            length += sum(e.Length for e in o.Shape.Edges)
     return {"objects": n_obj, "edges": edges, "length": length}
 
 
