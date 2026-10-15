@@ -48,12 +48,15 @@ def props(s):
         bb = s.optimalBoundingBox(False, False)
     except Exception:
         bb = s.BoundBox
+    # volume of the solids only: Volume of a compound also integrates loose faces and shells.
+    # Flat (zero volume) solids are not counted: STEP export drops them.
+    solids = [x for x in s.Solids if abs(x.Volume) > 1e-9]
     return {
-        "volume": s.Volume if s.Solids else 0.0,
+        "volume": sum(x.Volume for x in solids),
         "area": s.Area,
         "bbox": (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax) if bb.isValid() else None,
         "diag": bb.DiagonalLength if bb.isValid() else 0.0,
-        "solids": len(s.Solids), "shells": len(s.Shells), "faces": len(s.Faces),
+        "solids": len(solids), "shells": len(s.Shells), "faces": len(s.Faces),
         "edges": len(s.Edges), "vertexes": len(s.Vertexes), "valid": s.isValid(),
     }
 
@@ -99,6 +102,8 @@ def roundtrip_cad(comp, out):
         if not os.path.exists(path):
             continue
         q = props(Part.read(path))
+        if ext == "step" and any(abs(x.Volume) <= 1e-9 for x in comp.Solids):
+            counts = ("solids",)  # STEP drops flat solids, and their faces with them
         if ext == "iges":
             q["volume"] = p["volume"]
         compare("roundtrip_" + ext, p, q, rtol, counts)
@@ -113,9 +118,8 @@ def roundtrip_mesh(comp, out, has_meshes=False):
     p = props(comp)
     if comp.Faces:
         # only faces become facets: wires, edges and points of the drawing are not in the mesh
-        fb = Part.makeCompound(comp.Faces).BoundBox
-        p["bbox"] = (fb.XMin, fb.YMin, fb.ZMin, fb.XMax, fb.YMax, fb.ZMax)
-        p["diag"] = fb.DiagonalLength
+        fp = props(Part.makeCompound(comp.Faces))  # optimal box, not the loose BoundBox
+        p["bbox"], p["diag"] = fp["bbox"], fp["diag"]
     if has_meshes:
         p["bbox"] = None  # mesh objects of the document are exported too
     closed = p["solids"] > 0 and all(s.isClosed() for s in comp.Solids) if p["solids"] else False
@@ -464,7 +468,12 @@ def projection_and_render(comp, out):
                 idat += data[p + 8:p + 8 + n]
             p += 12 + n
         raw = zlib.decompress(idat)
-        if len(set(raw)) <= 2:
+        bb = comp.BoundBox
+        dims = sorted((bb.XLength, bb.YLength, bb.ZLength))
+        # at 64x48 a 10x10x900 beam or the lines of a drawing are below one pixel: only a solid
+        # that should cover a few pixels counts
+        visible = comp.Solids and dims[2] > 0 and dims[1] / dims[2] * 48 >= 3
+        if visible and len(set(raw)) <= 2:
             mm("render", "blank", "image has a single colour")
     note("projection_and_render", "ok")
 
