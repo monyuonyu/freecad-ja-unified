@@ -65,8 +65,40 @@ def rel(a, b):
     return abs(a - b) / max(abs(a), abs(b), 1e-9)
 
 
-def compare(check, p, q, rtol, counts=("solids", "faces", "edges"), what=""):
-    """Compare two props dicts; print one BH-MM per differing quantity. Returns number of diffs."""
+def mesh_vol(s, k=3e-4):
+    """Volume of a fine tessellation: a second opinion for GProp, which is wrong on some BSpline
+    prisms and a few 1e-4 off on others (OCC). Meshed about the origin: Mesh.Volume sums in
+    single precision."""
+    import MeshPart
+    if s.isNull() or not s.Faces:
+        return 0.0
+    t = s.copy()
+    t.translate(-s.BoundBox.Center)
+    m = MeshPart.meshFromShape(Shape=t, LinearDeflection=s.BoundBox.DiagonalLength * k,
+                               AngularDeflection=0.5, Relative=False)
+    return m.Volume
+
+
+def fine_bbox(s):
+    """Box of a fine tessellation (faces) and discretised edges. optimalBoundingBox works on the
+    UV box of a face and overshoots on trimmed surfaces of revolution (IGES reimport)."""
+    xs = []
+    # 1e-3: BRepMesh takes minutes at 1e-4 on the broken faces of OCC's linkrods.step
+    d = max(s.BoundBox.DiagonalLength, 1e-9) * 1e-3
+    t = s.copy()
+    if t.Faces:
+        xs += t.tessellate(d)[0]
+    for e in t.Edges:
+        xs += e.discretize(Deflection=d)
+    if not xs:
+        return None
+    return (min(x.x for x in xs), min(x.y for x in xs), min(x.z for x in xs),
+            max(x.x for x in xs), max(x.y for x in xs), max(x.z for x in xs))
+
+
+def compare(check, p, q, rtol, counts=("solids", "faces", "edges"), what="", shapes=None):
+    """Compare two props dicts; print one BH-MM per differing quantity. Returns number of diffs.
+    shapes=(a, b): a box difference is confirmed on fine tessellations before it is reported."""
     n = 0
     tag = (" " + what) if what else ""
     for k in ("volume", "area"):
@@ -74,7 +106,13 @@ def compare(check, p, q, rtol, counts=("solids", "faces", "edges"), what=""):
             mm(check, k, "%.6g vs %.6g%s" % (p[k], q[k], tag)); n += 1
     if p["bbox"] and q["bbox"]:
         d = max(abs(x - y) for x, y in zip(p["bbox"], q["bbox"]))
-        if d > max(rtol * max(p["diag"], 1e-9), 1e-7):
+        lim = max(rtol * max(p["diag"], 1e-9), 1e-7)
+        if d > lim and shapes is not None:
+            fa, fb = fine_bbox(shapes[0]), fine_bbox(shapes[1])
+            if fa and fb:  # tessellation is within 1e-3 of the diagonal: use that as the floor
+                d = max(abs(x - y) for x, y in zip(fa, fb))
+                lim = max(lim, 2e-3 * max(p["diag"], 1e-9))
+        if d > lim:
             mm(check, "bbox", "off by %.3g (diag %.3g)%s" % (d, p["diag"], tag)); n += 1
     elif bool(p["bbox"]) != bool(q["bbox"]):
         mm(check, "bbox", "one side empty" + tag); n += 1
@@ -101,12 +139,13 @@ def roundtrip_cad(comp, out):
         path = os.path.join(out, "out." + ext)
         if not os.path.exists(path):
             continue
-        q = props(Part.read(path))
+        rs = Part.read(path)
+        q = props(rs)
         if ext == "step" and any(abs(x.Volume) <= 1e-9 for x in comp.Solids):
             counts = ("solids",)  # STEP drops flat solids, and their faces with them
         if ext == "iges":
             q["volume"] = p["volume"]
-        compare("roundtrip_" + ext, p, q, rtol, counts)
+        compare("roundtrip_" + ext, p, q, rtol, counts, shapes=(comp, rs))
     note("roundtrip_cad", "ok")
 
 
@@ -144,6 +183,7 @@ def roundtrip_mesh(comp, out, has_meshes=False):
 @guarded
 def mesh_volume(solids):
     import MeshPart
+    import Part
     for i, s in enumerate(solids):
         if len(s.Faces) > MAX_FACES or not s.isValid() or not s.isClosed() or s.Volume <= 0:
             continue
@@ -151,6 +191,9 @@ def mesh_volume(solids):
         m = MeshPart.meshFromShape(Shape=s, LinearDeflection=diag * 2e-4, AngularDeflection=0.1,
                                    Relative=False)
         if not m.isSolid():
+            if any(len(s.ancestorsOfType(e, Part.Face)) > 2 for e in s.Edges):
+                note("tessellation", "skip", "solid %d: an edge has more than two faces" % i)
+                continue  # non-manifold input (BRepCheck accepts it): the mesh is right to be open
             mm("tessellation", "not_closed", "solid %d: %d facets, open mesh" % (i, m.CountFacets))
             continue
         # Mesh.Volume sums in single precision about the origin: far from it the result is
@@ -185,11 +228,29 @@ def _value(v):
     return r(v) if isinstance(v, float) else v
 
 
+def _svg_paths(t):
+    import re
+    num = re.compile(r"-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
+    return {num.sub(lambda m: "%.10g" % (round(float(m.group()), 6) + 0.0), d)
+            for d in re.findall(r' d="([^"]*)"', t)}
+
+
 def _same(a, b):
     if isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b):
         return all(_same(x, y) for x, y in zip(a, b))
     if isinstance(a, float) and isinstance(b, float):
         return abs(a - b) <= 1e-7 * max(1.0, abs(a), abs(b))
+    if isinstance(a, str) and isinstance(b, str) and a != b and "<svg" in a[:200] and "<svg" in b[:200]:
+        # SVG generated from shapes: BRep text keeps 15 significant digits for vertices, so after
+        # save/reopen -13499.999999999998 may come back as -13500, and two edges that were 1e-12
+        # apart become the same edge and are drawn once. Compare the set of paths, rounded.
+        pa, pb = _svg_paths(a), _svg_paths(b)
+        if pa == pb:
+            return True
+        # half circles: the large-arc flag of a 180 degree arc flips with the last bit of the angle
+        import re
+        arc = re.compile(r"(A \S+ \S+ \S+) [01] ")
+        return {arc.sub(r"\1 * ", x) for x in pa} == {arc.sub(r"\1 * ", x) for x in pb}
     return a == b
 
 
@@ -300,8 +361,14 @@ def recompute_idempotent(doc, stored):
         # to come out different: keep them apart from regressions on current files
         import re
         m = re.match(r"(\d+)\.(\d+)", getattr(doc, "getProgramVersion", lambda: "")() or "")
-        legacy = m is not None and (int(m.group(1)), int(m.group(2))) < (1, 0)
-        compare_snapshots("stored_vs_recomputed" + ("_pre1.0" if legacy else ""), stored, first)
+        saved = (int(m.group(1)), int(m.group(2))) if m else None
+        legacy = saved is not None and saved < (1, 0)
+        # saved by an older release: other OCC (edges split differently by HLR, offsets, refine)
+        # and fixes since (BIM areas, window hinges) are expected; kept apart from same-version files
+        here = tuple(int(x) for x in App.Version()[:2])
+        older = saved is not None and not legacy and saved < here
+        compare_snapshots("stored_vs_recomputed" + ("_pre1.0" if legacy else "_older" if older else ""),
+                          stored, first)
     for o in doc.Objects:
         o.touch()
     doc.recompute()
@@ -338,7 +405,10 @@ def export_twice(comp, out):
 
 # BOP-check findings that are not defects of a single shape: members of a compound may overlap,
 # BOP needs C1 curves, and infinite/open edges cannot be checked at all
-_BOP_EXPECTED = ("GeomAbs_C0", "no end vertex")
+# BOPAlgo findings BRepCheck does not look for, on input data (same with FreeCAD 1.1.3/OCC 7.8.1):
+# InvalidCurveOnSurface = 3D curve and pcurve further apart than the edge tolerance (STEP files);
+# SelfIntersect = drawings whose wires cross themselves (DXF), faces of OCC's broken test shells.
+_BOP_EXPECTED = ("GeomAbs_C0", "no end vertex", "InvalidCurveOnSurface", "SelfIntersect")
 
 
 @guarded
@@ -376,11 +446,17 @@ def usable_solids(comp):
 
 def bool_identities(a, b, tag):
     va, vb = a.Volume, b.Volume
-    vi = a.common(b).Volume
-    vu = a.fuse(b).Volume
-    vc = a.cut(b).Volume
+    I, U, C = a.common(b), a.fuse(b), a.cut(b)
+    vi, vu, vc = I.Volume, U.Volume, C.Volume
     scale = max(va, vb)
     tol = 1e-4 * scale
+    if abs(vu - (va + vb - vi)) > tol or abs(vc - (va - vi)) > tol:
+        # GProp is off on some BSpline surfaces (OCC): check the identities on fine meshes too
+        ma, mb, mi, mu, mc = (mesh_vol(x) for x in (a, b, I, U, C))
+        mtol = 2e-3 * max(ma, mb)
+        if abs(mu - (ma + mb - mi)) <= mtol and abs(mc - (ma - mi)) <= mtol:
+            note("booleans", "gprop", "%s: identities hold on meshes, not with GProp" % tag)
+            return vi
     if abs(vu - (va + vb - vi)) > tol:
         mm("boolean", "fuse_identity", "%s: vol(A+B)=%.6g, vA+vB-vAB=%.6g" % (tag, vu, va + vb - vi))
     if abs(vc - (va - vi)) > tol:
@@ -393,6 +469,12 @@ def bool_identities(a, b, tag):
 @guarded
 def booleans(solids):
     for i, a in enumerate(solids):
+        try:
+            a.check(True)
+        except Exception as e:
+            if "SelfIntersect" in str(e):
+                note("booleans", "skip", "solid %d: BOP check finds self-intersecting faces" % i)
+                continue  # Boolean results on self-intersecting input are undefined
         # A with itself moved by a third of its size: always overlaps, never coplanar
         b = a.copy()
         bb = a.BoundBox
@@ -509,7 +591,7 @@ def metamorphic(solids):
         if rel(abs(m.Volume), s.Volume) > 1e-6:
             mm("mirror", "volume", "solid %d: %.6g vs %.6g" % (i, m.Volume, s.Volume))
         g = s.transformGeometry(App.Matrix(2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1))
-        if rel(g.Volume, 8 * s.Volume) > 2e-2:  # NURBS conversion is approximate
+        if rel(g.Volume, 8 * s.Volume) > 2e-2 and rel(mesh_vol(g), 8 * mesh_vol(s)) > 2e-3:  # NURBS conversion is approximate; GProp too
             mm("transformGeometry2", "volume", "solid %d: %.6g vs 8x %.6g" % (i, g.Volume, 8 * s.Volume))
     note("metamorphic", "ok")
 
