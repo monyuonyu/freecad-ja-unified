@@ -251,6 +251,15 @@ def _same(a, b):
         import re
         arc = re.compile(r"(A \S+ \S+ \S+) [01] ")
         return {arc.sub(r"\1 * ", x) for x in pa} == {arc.sub(r"\1 * ", x) for x in pb}
+    if isinstance(a, str) and isinstance(b, str) and a != b:
+        # strings with numbers computed from shapes (CAM PathParams heights): the shape's last
+        # digits move after save/reopen (BRep text), 2.999999999999993 vs 2.9999999999999005
+        import re
+        num = re.compile(r"-?\d+\.\d+(?:[eE][-+]?\d+)?")
+        if num.sub("#", a) != num.sub("#", b):
+            return False
+        return all(abs(float(x) - float(y)) <= 1e-9 * max(1.0, abs(float(x)))
+                   for x, y in zip(num.findall(a), num.findall(b)))
     return a == b
 
 
