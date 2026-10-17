@@ -4,9 +4,9 @@
 
 | OS | ファイル | 使い方 |
 |---|---|---|
-| Windows（x64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Windows-x86_64-installer.exe` | インストーラー |
-| | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Windows-x86_64.7z` | 展開して `bin\FreeCAD.exe`（署名なし。SmartScreen は「詳細情報」→「実行」） |
-| Linux（x86_64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{TAG}-Linux-x86_64.AppImage` | 実行権限を付けて起動。WSL など FUSE の無い所では `--appimage-extract` で展開して `squashfs-root/AppRun` |
+| Windows（x64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{ASSET_TAG}-Windows-x86_64-installer.exe` | インストーラー |
+| | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{ASSET_TAG}-Windows-x86_64.7z` | 展開して `bin\FreeCAD.exe`（署名なし。SmartScreen は「詳細情報」→「実行」） |
+| Linux（x86_64） | `FreeCAD_{BASE_VERSION}-{BASE_SHORT}_{ASSET_TAG}-Linux-x86_64.AppImage` | 実行権限を付けて起動。WSL など FUSE の無い所では `--appimage-extract` で展開して `squashfs-root/AppRun` |
 
 チェックサム: 各ファイルの `-SHA256.txt`。設定フォルダは本家とは別（`FreeCAD-ja-unified`）。アンインストールで「ユーザー設定も削除」を選ぶと設定も消える。
 
