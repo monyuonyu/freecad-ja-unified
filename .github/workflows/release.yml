@@ -2,13 +2,13 @@ name: Build release
 
 # 本家 FreeCAD の元の版にこのリポジトリのパッチを当て、本家と同じ手順（package/bundle）で
 # Linux（AppImage）と Windows（7z とインストーラー）を作ってリリースに載せる。
-# 使い方: Actions の「Build release」から、タグ名（例 v0.5.2。0.5.1 までは ja-unified-0.5.1 の形）を入れて実行する。
+# 使い方: Actions の「Build release」から、タグ名（例 ja-unified-0.1.0）を入れて実行する。
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.5.2)"
+        description: "Release tag (e.g. ja-unified-0.1.0)"
         required: true
 
 permissions:
@@ -33,9 +33,8 @@ jobs:
           curl -fsSL "https://raw.githubusercontent.com/FreeCAD/FreeCAD/$FREECAD_BASE/version.json" -o version.json
           BASE_VERSION=$(python3 -c "import json; v=json.load(open('version.json')); print('%d.%d.%d%s' % (v['version_major'], v['version_minor'], v['version_patch'], v['version_suffix']))")
           BASE_SHORT=${FREECAD_BASE:0:7}
-          ASSET_TAG="$BUILD_TAG"; case "$ASSET_TAG" in v[0-9]*) ASSET_TAG="ja-unified-${ASSET_TAG#v}" ;; esac
           sed -e "s/{BASE_VERSION}/$BASE_VERSION/g" -e "s/{BASE_SHORT}/$BASE_SHORT/g" \
-              -e "s/{BASE_SHA}/$FREECAD_BASE/g" -e "s/{ASSET_TAG}/$ASSET_TAG/g" -e "s/{TAG}/$BUILD_TAG/g" RELEASE_NOTES.md > notes.md
+              -e "s/{BASE_SHA}/$FREECAD_BASE/g" -e "s/{TAG}/$BUILD_TAG/g" RELEASE_NOTES.md > notes.md
           gh release create "$BUILD_TAG" --target "${{ github.sha }}" --prerelease \
             --title "freecad-ja-unified $BUILD_TAG（FreeCAD $BASE_VERSION $BASE_SHORT ベース）" --notes-file notes.md \
           || gh release view "$BUILD_TAG" > /dev/null
@@ -145,9 +144,7 @@ jobs:
           set -euo pipefail
           # ファイル名に元の FreeCAD の版とコミットを入れる: FreeCAD_26.3.0dev-b48098e_ja-unified-0.2.0-Windows-x86_64...
           BASE_VERSION=$(python3 -c "import json; v=json.load(open('../../version.json')); print('%d.%d.%d%s' % (v['version_major'], v['version_minor'], v['version_patch'], v['version_suffix']))")
-          # タグが v0.5.2 の形でも、ファイル名には ja-unified-0.5.2 と入れる（何の版か分かるように）
-          tagname="$BUILD_TAG"; case "$tagname" in v[0-9]*) tagname="ja-unified-${tagname#v}" ;; esac
-          export ASSET_VERSION="${BASE_VERSION}-${FREECAD_BASE:0:7}_${tagname}"
+          export ASSET_VERSION="${BASE_VERSION}-${FREECAD_BASE:0:7}_${BUILD_TAG}"
           sed -i 's/^version_name="FreeCAD_${BUILD_TAG}-/version_name="FreeCAD_${ASSET_VERSION}-/' linux/create_bundle.sh windows/create_bundle.sh
           grep -n '^version_name=' linux/create_bundle.sh windows/create_bundle.sh
           # AppImage の更新の確認先を本家からこのリポジトリに（そのままだと本家の版に置き換わる）
