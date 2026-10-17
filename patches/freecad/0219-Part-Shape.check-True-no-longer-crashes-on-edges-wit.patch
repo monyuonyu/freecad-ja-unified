@@ -1,0 +1,42 @@
+From 2af665baf40a3e35da1bb173a57e461ac5eeaeb5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 21:28:37 +0900
+Subject: [PATCH 219/230] Part: Shape.check(True) no longer crashes on edges
+ without end vertices
+
+BOPAlgo_ArgumentAnalyzer::TestSmallEdge calls BRep_Tool::Parameter on the end
+vertices and segfaults on an infinite edge (e.g. the X axis of an origin,
+Part.Edge(Part.Line(...)).check(True)). Report it instead of running the BOP check.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/TopoShape.cpp | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/Mod/Part/App/TopoShape.cpp b/src/Mod/Part/App/TopoShape.cpp
+index d57519d74..7236b2614 100644
+--- a/src/Mod/Part/App/TopoShape.cpp
++++ b/src/Mod/Part/App/TopoShape.cpp
+@@ -1664,6 +1664,19 @@ bool TopoShape::analyze(bool runBopCheck, std::ostream& str) const
+             return false;  // errors detected
+         }
+         else if (runBopCheck) {
++            // BOPAlgo_ArgumentAnalyzer dereferences the end vertices of every edge
++            // (TestSmallEdge -> BRep_Tool::Parameter) and crashes on infinite edges
++            // such as the axes of an origin, which have none.
++            for (TopExp_Explorer xp(this->_Shape, TopAbs_EDGE); xp.More(); xp.Next()) {
++                TopoDS_Vertex first, last;
++                TopExp::Vertices(TopoDS::Edge(xp.Current()), first, last);
++                if (first.IsNull() || last.IsNull()) {
++                    str << "BOP check not possible: an edge has no end vertex "
++                           "(infinite or open geometry)"
++                        << std::endl;
++                    return false;
++                }
++            }
+ 
+             TopoDS_Shape BOPCopy = BRepBuilderAPI_Copy(this->_Shape).Shape();
+             BOPAlgo_ArgumentAnalyzer BOPCheck;
+-- 
+2.43.0
+

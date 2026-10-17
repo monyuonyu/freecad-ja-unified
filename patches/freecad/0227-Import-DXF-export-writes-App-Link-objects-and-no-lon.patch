@@ -1,0 +1,128 @@
+From 81f20fd7a03512ebcae52499d770a9789e581c19 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 16 Oct 2026 07:38:36 +0900
+Subject: [PATCH 227/230] Import: DXF export writes App::Link objects and no
+ longer casts any object to Part::Feature
+
+Import.writeDXFObject (the default DXF exporter, also behind the DWG
+export) took only Part::Feature from a list, so the block inserts that the
+DXF/DWG importer makes (App::Link) were silently dropped: import a DWG
+with a block, export it, and the drawing is empty. With a single object it
+static_cast whatever it got to Part::Feature.
+
+Take the shape through Part::Feature::getShape (resolving links, with the
+placement) for Part features and links; other objects are skipped.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/AppImportPy.cpp | 60 +++++++++++++++++-------------
+ 1 file changed, 35 insertions(+), 25 deletions(-)
+
+diff --git a/src/Mod/Import/App/AppImportPy.cpp b/src/Mod/Import/App/AppImportPy.cpp
+index c0c044459..f67e753f8 100644
+--- a/src/Mod/Import/App/AppImportPy.cpp
++++ b/src/Mod/Import/App/AppImportPy.cpp
+@@ -53,6 +53,7 @@
+ #include "SketchExportHelper.h"
+ #include <App/Application.h>
+ #include <App/Document.h>
++#include <App/Link.h>
+ #include <App/DocumentObjectPy.h>
+ #include <Base/Console.h>
+ #include <Base/PyWrapParseTupleAndKeywords.h>
+@@ -60,6 +61,7 @@
+ #include <Mod/Part/App/ImportStep.h>
+ #include <Mod/Part/App/Interface.h>
+ #include <Mod/Part/App/OCAF/ImportExportSettings.h>
++#include <Mod/Part/App/PartFeature.h>
+ #include <Mod/Part/App/PartFeaturePy.h>
+ #include <Mod/Part/App/TopoShapePy.h>
+ #include <Mod/Part/App/encodeFilename.h>
+@@ -75,6 +77,28 @@
+ namespace Import
+ {
+ 
++namespace
++{
++// Shape written to DXF for one object: sketches flattened onto XY, Part features and links with
++// their placement. Null for anything else.
++TopoDS_Shape shapeForDxf(App::DocumentObject* obj)
++{
++    if (SketchExportHelper::isSketch(obj)) {
++        // project sketch along sketch Z via hlrProjector to get geometry on XY plane
++        return SketchExportHelper::getFlatSketchXY(obj);
++    }
++    // not groups and other containers: their children are in the list on their own
++    if (!obj->isDerivedFrom<Part::Feature>() && !obj->isDerivedFrom<App::Link>()) {
++        return {};
++    }
++    return Part::Feature::getShape(
++        obj,
++        Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform
++    );
++}
++}  // namespace
++
++
+ class Module: public Py::ExtensionModule<Module>
+ {
+ public:
+@@ -608,24 +632,18 @@ private:
+                 writer.init();
+                 Py::Sequence list(docObj);
+                 for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
+-                    if (PyObject_TypeCheck((*it).ptr(), &(Part::PartFeaturePy::Type))) {
++                    // any object with a shape: Part features, but also App::Link (the block
++                    // inserts of the DXF/DWG importer), which were silently left out
++                    if (PyObject_TypeCheck((*it).ptr(), &(App::DocumentObjectPy::Type))) {
+                         PyObject* item = (*it).ptr();
+                         App::DocumentObject* obj
+                             = static_cast<App::DocumentObjectPy*>(item)->getDocumentObjectPtr();
++                        TopoDS_Shape shapeToExport = shapeForDxf(obj);
++                        if (shapeToExport.IsNull()) {
++                            continue;
++                        }
+                         layerName = obj->getNameInDocument();
+                         writer.setLayerName(layerName);
+-                        TopoDS_Shape shapeToExport;
+-                        if (SketchExportHelper::isSketch(obj)) {
+-                            // project sketch along sketch Z via hlrProjector to get geometry on XY
+-                            // plane
+-                            shapeToExport = SketchExportHelper::getFlatSketchXY(obj);
+-                        }
+-                        else {
+-                            // do we know that obj is a Part::Feature? is this checked somewhere
+-                            // before this? this should be a located shape??
+-                            Part::Feature* part = static_cast<Part::Feature*>(obj);
+-                            shapeToExport = part->Shape.getValue();
+-                        }
+                         writer.exportShape(shapeToExport);
+                     }
+                 }
+@@ -681,19 +699,11 @@ private:
+                     = static_cast<App::DocumentObjectPy*>(docObj)->getDocumentObjectPtr();
+                 layerName = obj->getNameInDocument();
+                 writer.setLayerName(layerName);
+-                TopoDS_Shape shapeToExport;
+-                if (SketchExportHelper::isSketch(obj)) {
+-                    // project sketch along sketch Z via hlrProjector to get geometry on XY plane
+-                    shapeToExport = SketchExportHelper::getFlatSketchXY(obj);
+-                }
+-                else {
+-                    // TODO: do we know that obj is a Part::Feature? is this checked somewhere
+-                    // before this?
+-                    // TODO: this should be a located shape??
+-                    Part::Feature* part = static_cast<Part::Feature*>(obj);
+-                    shapeToExport = part->Shape.getValue();
++                // was a static_cast to Part::Feature of whatever object came in
++                TopoDS_Shape shapeToExport = shapeForDxf(obj);
++                if (!shapeToExport.IsNull()) {
++                    writer.exportShape(shapeToExport);
+                 }
+-                writer.exportShape(shapeToExport);
+                 writer.endRun();
+                 return Py::None();
+             }
+-- 
+2.43.0
+

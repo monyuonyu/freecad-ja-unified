@@ -1,0 +1,77 @@
+From 4ee0f13458f2eeeca0e0553c813bbd042e5d3b84 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:13:00 +0900
+Subject: [PATCH 222/230] Mesh: 3MF reads coordinates below FLT_MIN and writes
+ floats exactly
+
+std::stof throws std::out_of_range for 1e-39, so a 3MF with one such
+coordinate (FreeCAD's own export of the Sprocket STEP from FreeCAD-library)
+was read as an empty mesh. Parse with strtod. The writer used the default 6
+significant digits; 9 keep every float.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Mesh/App/Core/IO/Reader3MF.cpp | 18 +++++++++++++++---
+ src/Mod/Mesh/App/Core/IO/Writer3MF.cpp |  3 +++
+ 2 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Mesh/App/Core/IO/Reader3MF.cpp b/src/Mod/Mesh/App/Core/IO/Reader3MF.cpp
+index 46c135dce..cbfec79fa 100644
+--- a/src/Mod/Mesh/App/Core/IO/Reader3MF.cpp
++++ b/src/Mod/Mesh/App/Core/IO/Reader3MF.cpp
+@@ -26,6 +26,7 @@
+ #include <memory>
+ #include <numeric>
+ #include <ostream>
++#include <cstdlib>
+ #include <sstream>
+ #include <xercesc/dom/DOM.hpp>
+ #include <xercesc/parsers/XercesDOMParser.hpp>
+@@ -468,6 +469,17 @@ void Reader3MF::LoadVertices(DOMNodeList* nodes, MeshPointArray& points)
+     }
+ }
+ 
++namespace
++{
++// std::stof throws std::out_of_range for values below FLT_MIN (e.g. 1e-39, written by
++// exporters for coordinates that are zero up to rounding), and the whole file was then
++// read as empty. strtod has no such limit; the cast gives 0 or a denormal.
++float toFloat(const char* str)
++{
++    return static_cast<float>(std::strtod(str, nullptr));
++}
++}  // namespace
++
+ void Reader3MF::ReadVertices(DOMNodeList* vertexList, MeshPointArray& points)
+ {
+     XMLSize_t numVertices = vertexList->getLength();
+@@ -481,9 +493,9 @@ void Reader3MF::ReadVertices(DOMNodeList* vertexList, MeshPointArray& points)
+             DOMNode* zAttr = attr->getNamedItem(XStrLiteral("z").unicodeForm());
+             if (xAttr && yAttr && zAttr) {
+                 // NOLINTBEGIN
+-                float x = std::stof(StrX(xAttr->getNodeValue()).c_str());
+-                float y = std::stof(StrX(yAttr->getNodeValue()).c_str());
+-                float z = std::stof(StrX(zAttr->getNodeValue()).c_str());
++                float x = toFloat(StrX(xAttr->getNodeValue()).c_str());
++                float y = toFloat(StrX(yAttr->getNodeValue()).c_str());
++                float z = toFloat(StrX(zAttr->getNodeValue()).c_str());
+                 points.emplace_back(x, y, z);
+                 // NOLINTEND
+             }
+diff --git a/src/Mod/Mesh/App/Core/IO/Writer3MF.cpp b/src/Mod/Mesh/App/Core/IO/Writer3MF.cpp
+index a7e432240..f2c4c5c06 100644
+--- a/src/Mod/Mesh/App/Core/IO/Writer3MF.cpp
++++ b/src/Mod/Mesh/App/Core/IO/Writer3MF.cpp
+@@ -57,6 +57,9 @@ void Writer3MF::SetForceModel(bool model)
+ 
+ void Writer3MF::Initialize(std::ostream& str)
+ {
++    // 9 significant digits: a float survives the round trip (the default 6 lost up to
++    // 0.05 mm at 1 m from the origin)
++    str.precision(9);
+     str << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<model unit=\"millimeter\" xml:lang=\"en-US\" "
+            "xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n"
+-- 
+2.43.0
+

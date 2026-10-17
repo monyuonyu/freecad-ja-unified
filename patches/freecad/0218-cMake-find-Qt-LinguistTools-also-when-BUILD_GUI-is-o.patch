@@ -1,0 +1,39 @@
+From 9f704563714dd6bfba3920bea52236e8c8294196 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 21:23:44 +0900
+Subject: [PATCH 218/230] cMake: find Qt LinguistTools also when BUILD_GUI is
+ off
+
+App and Base call qt_add_translation, so configuring without the GUI stopped
+with 'Unknown CMake command qt_add_translation'.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ cMake/FreeCAD_Helpers/SetupQt.cmake | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/cMake/FreeCAD_Helpers/SetupQt.cmake b/cMake/FreeCAD_Helpers/SetupQt.cmake
+index f536efb4a..ebc5bec24 100644
+--- a/cMake/FreeCAD_Helpers/SetupQt.cmake
++++ b/cMake/FreeCAD_Helpers/SetupQt.cmake
+@@ -1,6 +1,7 @@
+ # -------------------------------- Qt --------------------------------
+ 
+-set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml)
++# LinguistTools also without the GUI: App and Base build their translations (qt_add_translation)
++set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml LinguistTools)
+ set(Qt6Core_MOC_EXECUTABLE Qt6::moc)
+ 
+ if(BUILD_GUI)
+@@ -8,7 +9,7 @@ if(BUILD_GUI)
+     list (APPEND FREECAD_QT_COMPONENTS SvgWidgets)
+     list (APPEND FREECAD_QT_COMPONENTS OpenGLWidgets)
+ 
+-    list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets LinguistTools)
++    list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets)
+ 
+     if(BUILD_DESIGNER_PLUGIN)
+         list (APPEND FREECAD_QT_COMPONENTS Designer)
+-- 
+2.43.0
+

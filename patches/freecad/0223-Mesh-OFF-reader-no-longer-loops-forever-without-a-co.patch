@@ -1,0 +1,53 @@
+From 34ccb624401c4aad1d9f06f2de9334d0be9d4e06 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:19:49 +0900
+Subject: [PATCH 223/230] Mesh: OFF reader no longer loops forever without a
+ count line
+
+The counts may follow the keyword ("OFF8 6 12 # comment" in trimesh's
+models/whitespace.off); the loop looking for them on later lines never
+checked for the end of the file and hung. Read them from the first line too
+and stop at the end of the file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Mesh/App/Core/MeshIO.cpp | 20 +++++++++++++++-----
+ 1 file changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Mesh/App/Core/MeshIO.cpp b/src/Mod/Mesh/App/Core/MeshIO.cpp
+index a88d03638..fb1cab7ee 100644
+--- a/src/Mod/Mesh/App/Core/MeshIO.cpp
++++ b/src/Mod/Mesh/App/Core/MeshIO.cpp
+@@ -521,14 +521,24 @@ bool MeshInput::LoadOFF(std::istream& input)
+     // get number of vertices and faces
+     int numPoints = 0, numFaces = 0;
+ 
+-    while (true) {
+-        std::getline(input, line);
+-        boost::algorithm::to_lower(line);
+-        if (boost::regex_match(line.c_str(), what, rx_n)) {
++    // the counts may follow the keyword on the same line ("OFF 8 6 12", "OFF8 6 12 # c")
++    auto countsIn = [&](std::string text) {
++        std::string::size_type hash = text.find('#');
++        if (hash != std::string::npos) {
++            text.erase(hash);
++        }
++        if (boost::regex_match(text.c_str(), what, rx_n)) {
+             numPoints = std::atoi(what[1].first);
+             numFaces = std::atoi(what[2].first);
+-            break;
++            return true;
+         }
++        return false;
++    };
++    bool haveCounts = countsIn(line.substr(line.find("off") + 3));
++    // stop at the end of the file: this loop never ended for a file without a count line
++    while (!haveCounts && std::getline(input, line)) {
++        boost::algorithm::to_lower(line);
++        haveCounts = countsIn(line);
+     }
+ 
+     if (numPoints == 0 || numFaces == 0) {
+-- 
+2.43.0
+

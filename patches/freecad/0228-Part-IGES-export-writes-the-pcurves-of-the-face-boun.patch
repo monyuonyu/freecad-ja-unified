@@ -1,0 +1,95 @@
+From 578cc08907770504b1139421ac04545434c6a4e7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 16 Oct 2026 07:56:18 +0900
+Subject: [PATCH 228/230] Part: IGES export writes the pcurves of the face
+ boundaries
+
+"write.surfacecurve.mode" is set off at start-up (preference
+WriteSurfaceCurveMode, meant to keep STEP files small), but OCC's IGES
+writer reads it as well. Without parameter-space curves the two sides of a
+seam are the same 3D curve and a reader cannot tell them apart: a full
+sphere written by Shape.exportIges or Import.export came back as a face of
+zero area, spheres, cylinders and BSpline faces of the OCC sample parts
+lost or gained area. Switch it on while an IGES file is written; STEP keeps
+the setting.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/WriterIges.cpp |  1 +
+ src/Mod/Part/App/Interface.cpp    | 11 +++++++++++
+ src/Mod/Part/App/Interface.h      | 17 +++++++++++++++++
+ src/Mod/Part/App/TopoShape.cpp    |  1 +
+ 4 files changed, 30 insertions(+)
+
+diff --git a/src/Mod/Import/App/WriterIges.cpp b/src/Mod/Import/App/WriterIges.cpp
+index a70c15580..1e34b3815 100644
+--- a/src/Mod/Import/App/WriterIges.cpp
++++ b/src/Mod/Import/App/WriterIges.cpp
+@@ -47,6 +47,7 @@ void WriterIges::write(Handle(TDocStd_Document) hDoc) const  // NOLINT
+     std::string name8bit = Part::encodeFilename(utf8Name);
+ 
+     IGESControl_Controller::Init();
++    Part::IgesPCurvesOn pcurves;
+     IGESCAFControl_Writer writer;
+     IGESData_GlobalSection header = writer.Model()->GlobalSection();
+     header.SetAuthorName(new TCollection_HAsciiString(Part::Interface::writeIgesHeaderAuthor()));
+diff --git a/src/Mod/Part/App/Interface.cpp b/src/Mod/Part/App/Interface.cpp
+index da5f95958..e61fa7ea1 100644
+--- a/src/Mod/Part/App/Interface.cpp
++++ b/src/Mod/Part/App/Interface.cpp
+@@ -198,3 +198,14 @@ bool Interface::writeIgesBrepMode(int mode)
+ {
+     return Interface_Static::SetIVal("write.iges.brep.mode", mode);
+ }
++
++IgesPCurvesOn::IgesPCurvesOn()
++    : previous(Interface_Static::IVal("write.surfacecurve.mode"))
++{
++    Interface_Static::SetIVal("write.surfacecurve.mode", 1);
++}
++
++IgesPCurvesOn::~IgesPCurvesOn()
++{
++    Interface_Static::SetIVal("write.surfacecurve.mode", previous);
++}
+diff --git a/src/Mod/Part/App/Interface.h b/src/Mod/Part/App/Interface.h
+index da4044d3c..2ec9d2534 100644
+--- a/src/Mod/Part/App/Interface.h
++++ b/src/Mod/Part/App/Interface.h
+@@ -78,4 +78,21 @@ public:
+     //@}
+ };
+ 
++/** While alive, IGES export writes the parameter-space curves (pcurves) of the face boundaries.
++ * "write.surfacecurve.mode" is off by default to keep STEP files small, but the IGES writer
++ * reads it too, and without pcurves a seam is the same 3D curve on both sides: a reader cannot
++ * tell them apart, and a full sphere comes back as a face of zero area.
++ */
++class PartExport IgesPCurvesOn
++{
++public:
++    IgesPCurvesOn();
++    ~IgesPCurvesOn();
++    IgesPCurvesOn(const IgesPCurvesOn&) = delete;
++    IgesPCurvesOn& operator=(const IgesPCurvesOn&) = delete;
++
++private:
++    int previous;
++};
++
+ }  // namespace Part
+diff --git a/src/Mod/Part/App/TopoShape.cpp b/src/Mod/Part/App/TopoShape.cpp
+index 7adf4acd5..10af8fe62 100644
+--- a/src/Mod/Part/App/TopoShape.cpp
++++ b/src/Mod/Part/App/TopoShape.cpp
+@@ -876,6 +876,7 @@ void TopoShape::exportIges(const char* filename) const
+     try {
+         // write iges file
+         IGESControl_Controller::Init();
++        IgesPCurvesOn pcurves;
+         IGESControl_Writer aWriter;
+         IGESData_GlobalSection header = aWriter.Model()->GlobalSection();
+         header.SetAuthorName(new TCollection_HAsciiString(Interface::writeIgesHeaderAuthor()));
+-- 
+2.43.0
+

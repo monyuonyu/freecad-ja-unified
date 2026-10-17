@@ -1,0 +1,36 @@
+From 28fc51f32aa53f4c372f200db0fb4471d32f7688 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 21:20:19 +0900
+Subject: [PATCH 217/230] Part: projectVisible/renderImage mesh a copy of the
+ shape
+
+A finer triangulation already on the input (exportStl meshes with 0.01 mm by
+default) was kept by BRepMesh, and the hidden-surface pass then ran for many
+minutes (OCCT Axis_of_bearing.brep: 3 s -> over 6 min after exportStl). The
+copy also stops our mesh from being attached to the caller's shape.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 31da19a43..f5383a0c5 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -116,7 +116,11 @@ double sceneDeflection(const std::vector<SceneItem>& items, double requested, Bn
+ 
+ void addShape(Scene& scene, int itemIndex, const SceneItem& item)
+ {
+-    const TopoDS_Shape& shape = item.shape;
++    // Mesh a copy without the caller's triangulation: BRepMesh keeps a finer mesh that is
++    // already there (exportStl's default 0.01 mm, a viewer), which made the hidden-surface
++    // pass take many minutes, and the caller's shape would get our mesh attached.
++    const TopoDS_Shape shape =
++        BRepBuilderAPI_Copy(item.shape, Standard_False, Standard_False).Shape();
+     BRepMesh_IncrementalMesh(shape, scene.deflection, Standard_False, 0.35, Standard_True);
+ 
+     // faces inside closed solids
+-- 
+2.43.0
+

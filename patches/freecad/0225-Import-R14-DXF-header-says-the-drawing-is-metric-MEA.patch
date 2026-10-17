@@ -1,0 +1,34 @@
+From 9d12c0fecf5a65994553f3d87911a5446adb8466 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:53:42 +0900
+Subject: [PATCH 225/230] Import: R14 DXF header says the drawing is metric
+ ($MEASUREMENT 1)
+
+The header had $INSUNITS 4 (mm), which R14 does not define. LibreDWG's dxf2dwg
+ignores it for an AC1014 file, the DWG gets MEASUREMENT 0 (imperial), and
+reading it back scaled everything by 25.4 (a circle of length 2159 came back
+as 54848 after DWG export and import). $MEASUREMENT exists in R14.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/DxfPlate/header14.rub | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Mod/Import/DxfPlate/header14.rub b/src/Mod/Import/DxfPlate/header14.rub
+index 17d05768a..ca0074928 100644
+--- a/src/Mod/Import/DxfPlate/header14.rub
++++ b/src/Mod/Import/DxfPlate/header14.rub
+@@ -35,6 +35,10 @@ $INSUNITS
+  70
+ 4
+   9
++$MEASUREMENT
++ 70
++1
++  9
+ $PEXTMAX
+  10
+ 50
+-- 
+2.43.0
+

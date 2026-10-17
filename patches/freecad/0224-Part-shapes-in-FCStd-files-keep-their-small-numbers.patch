@@ -1,0 +1,43 @@
+From fd981f77241ed9e44c72ec50cdb36c9d66166d8c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:24:38 +0900
+Subject: [PATCH 224/230] Part: shapes in FCStd files keep their small numbers
+
+Base::ZipWriter sets its stream to std::fixed for the XML, and BRepTools wrote
+the shape with "%.15f", so values below 1e-15 became 0. Part__Feature004 of
+src/Mod/CAM/DemoParts/hole_puzzle.fcstd is valid, but invalid after saveCopy
+and reopening. exportBrep(std::ostream&) now writes in the default float format
+and restores the stream's flags.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/TopoShape.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/Mod/Part/App/TopoShape.cpp b/src/Mod/Part/App/TopoShape.cpp
+index 7236b2614..7adf4acd5 100644
+--- a/src/Mod/Part/App/TopoShape.cpp
++++ b/src/Mod/Part/App/TopoShape.cpp
+@@ -964,11 +964,19 @@ void TopoShape::exportBrep(std::ostream& out) const
+         VERSION_2 = 2,
+         VERSION_3 = 3
+     };
++    // The document's zip stream is set to std::fixed (for its XML); BRepTools then wrote
++    // "%.15f" and small numbers lost their digits (1e-17 -> 0.000000000000000), so a valid
++    // shape could come back invalid after save and reopen. Use the default float format.
++    const std::ios_base::fmtflags flags = out.flags();
++    const std::streamsize precision = out.precision();
++    out.unsetf(std::ios_base::floatfield);
+     BRepTools_ShapeSet SS(Standard_False);
+     SS.SetFormatNb(VERSION_1);
+     SS.Add(this->_Shape);
+     SS.Write(out);
+     SS.Write(this->_Shape, out);
++    out.flags(flags);
++    out.precision(precision);
+ }
+ 
+ void TopoShape::exportBinary(std::ostream& out) const
+-- 
+2.43.0
+

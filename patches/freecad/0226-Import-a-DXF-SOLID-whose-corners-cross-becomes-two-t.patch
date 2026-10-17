@@ -1,0 +1,63 @@
+From 0bc79cd8fe1641f4a80e8e9afc73a1f87eb8258e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 16 Oct 2026 07:38:36 +0900
+Subject: [PATCH 226/230] Import: a DXF SOLID whose corners cross becomes two
+ triangles, not one invalid face
+
+DXF SOLID corners are drawn 1-2-4-3. Files that store them in polygon
+order (test-data example_2007.dxf) give a crossing wire, and the single
+face built on it was invalid: STEP export doubled its area, mesh export
+wrote nothing. Build the bowtie AutoCAD draws: two triangles meeting where
+the edges 2-4 and 3-1 cross.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/dxf/ImpExpDxf.cpp | 32 ++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/src/Mod/Import/App/dxf/ImpExpDxf.cpp b/src/Mod/Import/App/dxf/ImpExpDxf.cpp
+index 80d303dae..e303566cf 100644
+--- a/src/Mod/Import/App/dxf/ImpExpDxf.cpp
++++ b/src/Mod/Import/App/dxf/ImpExpDxf.cpp
+@@ -1340,6 +1340,38 @@ void ImpExpDxfRead::OnReadSolid(
+         bool isTriangle = (third - fourth).Length() < Precision::Confusion();
+ 
+         // DXF SOLID vertex order is 1-2-4-3, not 1-2-3-4; connecting naively produces a bowtie.
++        // Some writers still store the corners in polygon order, so 1-2-4-3 crosses itself and
++        // AutoCAD draws a bowtie. One face on that wire is invalid (and exports as garbage):
++        // make the two triangles that meet where the edges 2-4 and 3-1 cross.
++        if (!isTriangle) {
++            gp_Pnt a = makePoint(first), b = makePoint(second), c = makePoint(third),
++                   d = makePoint(fourth);
++            gp_Vec u(b, d), v(c, a), w(b, c);
++            gp_Vec n = u.Crossed(v);
++            double nn = n.SquareMagnitude();
++            if (nn > Precision::SquareConfusion() * u.SquareMagnitude() * v.SquareMagnitude()) {
++                double s = w.Crossed(v).Dot(n) / nn;
++                double t = w.Crossed(u).Dot(n) / nn;
++                const double eps = 1e-9;
++                if (s > eps && s < 1 - eps && t > eps && t < 1 - eps) {
++                    gp_Pnt x = b.Translated(u * s);
++                    auto triangle = [](const gp_Pnt& p, const gp_Pnt& q, const gp_Pnt& r) {
++                        BRepBuilderAPI_MakeWire mw;
++                        mw.Add(BRepBuilderAPI_MakeEdge(p, q).Edge());
++                        mw.Add(BRepBuilderAPI_MakeEdge(q, r).Edge());
++                        mw.Add(BRepBuilderAPI_MakeEdge(r, p).Edge());
++                        return BRepBuilderAPI_MakeFace(mw.Wire()).Face();
++                    };
++                    BRep_Builder builder;
++                    TopoDS_Compound bowtie;
++                    builder.MakeCompound(bowtie);
++                    builder.Add(bowtie, triangle(a, b, x));
++                    builder.Add(bowtie, triangle(x, d, c));
++                    Collector->AddObject(bowtie, "Solid");
++                    return;
++                }
++            }
++        }
+         BRepBuilderAPI_MakeWire wireBuilder;
+         wireBuilder.Add(BRepBuilderAPI_MakeEdge(makePoint(first), makePoint(second)).Edge());
+         if (isTriangle) {
+-- 
+2.43.0
+

@@ -1,0 +1,36 @@
+From 21b403b6cdbde26ff900eb1db894834a132d904c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:09:27 +0900
+Subject: [PATCH 221/230] Part: Tools::getPointNormals no longer throws for
+ points without a normal
+
+A point used by no triangle, or only by degenerate ones, has a zero normal sum
+and gp_Vec::Normalize() threw Standard_ConstructionError. projectVisible on the
+Group of data/examples/AssemblyExample.FCStd failed with "gp_Vec::Normalize() -
+vector has zero norm". Leave such normals zero (callers fall back to the
+triangle normal).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/Tools.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Part/App/Tools.cpp b/src/Mod/Part/App/Tools.cpp
+index 76441bfe8..f35651859 100644
+--- a/src/Mod/Part/App/Tools.cpp
++++ b/src/Mod/Part/App/Tools.cpp
+@@ -438,7 +438,10 @@ void Part::Tools::getPointNormals(
+     }
+ 
+     for (auto& it : vertexnormals) {
+-        it.Normalize();
++        // a point of no (or only degenerate) triangles has no normal; Normalize() would throw
++        if (it.SquareMagnitude() > 1e-30) {
++            it.Normalize();
++        }
+     }
+ }
+ 
+-- 
+2.43.0
+

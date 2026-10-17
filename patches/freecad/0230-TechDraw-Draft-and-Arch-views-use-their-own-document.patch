@@ -1,0 +1,167 @@
+From ce34557871cbd3e7ce67e17e24ff055aa0dc8ccd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 17 Oct 2026 05:28:21 +0900
+Subject: [PATCH 230/230] TechDraw: Draft and Arch views use their own
+ document, not the active one
+
+DrawViewDraft::execute and DrawViewArch::execute ran
+Draft.get_svg(App.activeDocument().<Source>) and wrote
+App.activeDocument().<Name>.Symbol. When the document being recomputed was
+not the active one (a script that opened another file, recompute of a
+background document) the view failed and kept a stale Symbol, or read the
+source and wrote the Symbol of same-named objects in the other document.
+Found by the bughunt corpus: ArchDetail.FCStd DraftView changed after save
+and reopen. Both are now addressed by document and object name.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawViewArch.cpp        | 13 ++++--
+ src/Mod/TechDraw/App/DrawViewDraft.cpp       | 13 ++++--
+ src/Mod/TechDraw/CMakeLists.txt              |  1 +
+ src/Mod/TechDraw/TDTest/DrawViewDraftTest.py | 46 ++++++++++++++++++++
+ src/Mod/TechDraw/TestTechDrawApp.py          |  1 +
+ 5 files changed, 66 insertions(+), 8 deletions(-)
+ create mode 100644 src/Mod/TechDraw/TDTest/DrawViewDraftTest.py
+
+diff --git a/src/Mod/TechDraw/App/DrawViewArch.cpp b/src/Mod/TechDraw/App/DrawViewArch.cpp
+index 10d994cfd..a16e4ea2d 100644
+--- a/src/Mod/TechDraw/App/DrawViewArch.cpp
++++ b/src/Mod/TechDraw/App/DrawViewArch.cpp
+@@ -27,6 +27,7 @@
+ # include <sstream>
+ 
+ 
++#include <App/Document.h>
+ #include <Base/Console.h>
+ #include <Base/Interpreter.h>
+ 
+@@ -129,10 +130,14 @@ App::DocumentObjectExecReturn *DrawViewArch::execute()
+                  << ", joinArch=" << (JoinArch.getValue() ? "True" : "False");
+ 
+         Base::Interpreter().runString("import ArchSectionPlane");
+-        Base::Interpreter().runStringArg("svgBody = ArchSectionPlane.getSVG(App.activeDocument().%s %s)",
+-                                         SourceName.c_str(), paramStr.str().c_str());
+-        Base::Interpreter().runStringArg("App.activeDocument().%s.Symbol = '%s' + svgBody + '%s'",
+-                                          FeatName.c_str(), svgHead.c_str(), svgTail.c_str());
++        // the source and this view may be in a document that is not the active one (recompute of
++        // another document, a document opened by a script): name both by their documents
++        Base::Interpreter().runStringArg("svgBody = ArchSectionPlane.getSVG(App.getDocument(\"%s\").getObject(\"%s\") %s)",
++                                         sourceObj->getDocument()->getName(), SourceName.c_str(),
++                                         paramStr.str().c_str());
++        Base::Interpreter().runStringArg("App.getDocument(\"%s\").getObject(\"%s\").Symbol = '%s' + svgBody + '%s'",
++                                         getDocument()->getName(), FeatName.c_str(), svgHead.c_str(),
++                                         svgTail.c_str());
+     }
+     overrideKeepUpdated(false);
+     return DrawView::execute();
+diff --git a/src/Mod/TechDraw/App/DrawViewDraft.cpp b/src/Mod/TechDraw/App/DrawViewDraft.cpp
+index b0d718c46..4e68180ab 100644
+--- a/src/Mod/TechDraw/App/DrawViewDraft.cpp
++++ b/src/Mod/TechDraw/App/DrawViewDraft.cpp
+@@ -27,6 +27,7 @@
+ # include <sstream>
+ 
+ 
++#include <App/Document.h>
+ #include <Base/Console.h>
+ #include <Base/Interpreter.h>
+ #include <Base/Tools.h>
+@@ -112,11 +113,15 @@ App::DocumentObjectExecReturn *DrawViewDraft::execute()
+ // (Arch section, etc)
+ // like Draft.makeDrawingView, but we don't need to create the actual document objects in Draft, just the svg.
+         Base::Interpreter().runString("import Draft");
+-        Base::Interpreter().runStringArg("svgBody = Draft.get_svg(App.activeDocument().%s %s)",
+-                                         SourceName.c_str(), paramStr.str().c_str());
++        // the source and this view may be in a document that is not the active one (recompute of
++        // another document, a document opened by a script): name both by their documents
++        Base::Interpreter().runStringArg("svgBody = Draft.get_svg(App.getDocument(\"%s\").getObject(\"%s\") %s)",
++                                         sourceObj->getDocument()->getName(), SourceName.c_str(),
++                                         paramStr.str().c_str());
+ //        Base::Interpreter().runString("print svgBody");
+-        Base::Interpreter().runStringArg("App.activeDocument().%s.Symbol = '%s' + svgBody + '%s'",
+-                                          FeatName.c_str(), svgHead.c_str(), svgTail.c_str());
++        Base::Interpreter().runStringArg("App.getDocument(\"%s\").getObject(\"%s\").Symbol = '%s' + svgBody + '%s'",
++                                         getDocument()->getName(), FeatName.c_str(), svgHead.c_str(),
++                                         svgTail.c_str());
+         }
+ 
+     overrideKeepUpdated(false);
+diff --git a/src/Mod/TechDraw/CMakeLists.txt b/src/Mod/TechDraw/CMakeLists.txt
+index 5582cc175..a5308b3dc 100644
+--- a/src/Mod/TechDraw/CMakeLists.txt
++++ b/src/Mod/TechDraw/CMakeLists.txt
+@@ -184,6 +184,7 @@ SET(TDTest_SRCS
+     TDTest/DrawViewAnnotationTest.py
+     TDTest/DrawViewImageTest.py
+     TDTest/DrawViewSymbolTest.py
++    TDTest/DrawViewDraftTest.py
+     TDTest/DrawViewDimensionTest.py
+     TDTest/DrawViewPartTest.py
+     TDTest/DrawViewSectionTest.py
+diff --git a/src/Mod/TechDraw/TDTest/DrawViewDraftTest.py b/src/Mod/TechDraw/TDTest/DrawViewDraftTest.py
+new file mode 100644
+index 000000000..e2feba93f
+--- /dev/null
++++ b/src/Mod/TechDraw/TDTest/DrawViewDraftTest.py
+@@ -0,0 +1,46 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++import FreeCAD
++import unittest
++from .TechDrawTestUtilities import createPageWithSVGTemplate
++
++
++class DrawViewDraftTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = FreeCAD.newDocument("TDDraft")
++        FreeCAD.setActiveDocument("TDDraft")
++        self.page = createPageWithSVGTemplate(self.doc)
++        self.box = self.doc.addObject("Part::Box", "Box")
++        self.box.Length = 77
++        self.view = self.doc.addObject("TechDraw::DrawViewDraft", "DraftView")
++        self.view.Source = self.box
++        self.page.addView(self.view)
++        self.doc.recompute()
++
++    def tearDown(self):
++        for name in ("TDDraft", "TDDraftOther"):
++            if name in FreeCAD.listDocuments():
++                FreeCAD.closeDocument(name)
++
++    def testSymbolFromSource(self):
++        self.assertIn("77", self.view.Symbol)
++        self.assertIn("Up-to-date", self.view.State)
++
++    def testRecomputeWhileAnotherDocumentIsActive(self):
++        """The view and its source are taken from their own document, not the active one"""
++        other = FreeCAD.newDocument("TDDraftOther")
++        box = other.addObject("Part::Box", "Box")
++        box.Length = 33
++        view = other.addObject("TechDraw::DrawViewDraft", "DraftView")
++        other.recompute()
++        FreeCAD.setActiveDocument("TDDraftOther")
++        self.box.Length = 55
++        self.doc.recompute()
++        self.assertNotIn("Invalid", self.view.State)
++        self.assertIn("55", self.view.Symbol)
++        self.assertNotIn("33", self.view.Symbol)
++        self.assertEqual(view.Symbol, "")  # the other document's view was not written to
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/TechDraw/TestTechDrawApp.py b/src/Mod/TechDraw/TestTechDrawApp.py
+index 6fe4d3283..0926e253e 100644
+--- a/src/Mod/TechDraw/TestTechDrawApp.py
++++ b/src/Mod/TechDraw/TestTechDrawApp.py
+@@ -28,6 +28,7 @@ from TDTest.DrawViewAnnotationTest import DrawViewAnnotationTest  # noqa: F401
+ from TDTest.DrawViewBalloonTest import DrawViewBalloonTest  # noqa: F401
+ from TDTest.DrawViewImageTest import DrawViewImageTest  # noqa: F401
+ from TDTest.DrawViewSymbolTest import DrawViewSymbolTest  # noqa: F401
++from TDTest.DrawViewDraftTest import DrawViewDraftTest  # noqa: F401
+ from TDTest.DrawProjectionGroupTest import DrawProjectionGroupTest  # noqa: F401
+ from TDTest.DrawViewScaleTypeTest import DrawViewScaleTypeTest  # noqa: F401
+ 
+-- 
+2.43.0
+

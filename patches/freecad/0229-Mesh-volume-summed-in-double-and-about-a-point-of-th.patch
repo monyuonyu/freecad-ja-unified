@@ -1,0 +1,71 @@
+From 109e7425f81ad6b994f9af77b03ef55db0da4f62 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 16 Oct 2026 08:09:45 +0900
+Subject: [PATCH 229/230] Mesh: volume summed in double and about a point of
+ the mesh
+
+MeshKernel::GetVolume added the signed tetrahedra about the origin in
+single precision. For a part a few hundred units away the terms cancel
+badly: a 68.7 mm^3 solid (OCC sample Sink_1, ~300 mm from the origin)
+came out as 65.6, and refining the tessellation moved the result in steps
+of 1/8 (68.5, 71.6). Sum in double relative to the first point.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Mesh/App/Core/MeshKernel.cpp | 28 +++++++++++++++-------------
+ 1 file changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/src/Mod/Mesh/App/Core/MeshKernel.cpp b/src/Mod/Mesh/App/Core/MeshKernel.cpp
+index bae2681a3..6f9a28017 100644
+--- a/src/Mod/Mesh/App/Core/MeshKernel.cpp
++++ b/src/Mod/Mesh/App/Core/MeshKernel.cpp
+@@ -31,6 +31,7 @@
+ #include <stdexcept>
+ 
+ 
++#include <Base/Converter.h>
+ #include <Base/Exception.h>
+ #include <Base/Stream.h>
+ #include <Base/Swap.h>
+@@ -1221,24 +1222,25 @@ float MeshKernel::GetVolume() const
+     // if ( !cSolid.Evaluate() )
+     //     return 0.0f; // no solid
+ 
+-    float fVolume = 0.0;
++    // Sum in double and about a point of the mesh, not the origin: in single precision the
++    // terms of a part a few hundred units away cancel badly (a 68.7 mm^3 part 300 mm from the
++    // origin came out as 65.6, and the result moved in steps of 1/8 with the tessellation).
++    if (_aclPointArray.empty()) {
++        return 0.0F;
++    }
++    const auto& first = static_cast<const Base::Vector3f&>(_aclPointArray[0]);
++    const Base::Vector3d origin = Base::convertTo<Base::Vector3d>(first);
++    double volume = 0.0;
+     MeshFacetIterator cIter(*this);
+-    Base::Vector3f p1, p2, p3;
+     for (cIter.Init(); cIter.More(); cIter.Next()) {
+         const MeshGeomFacet& rclF = *cIter;
+-        p1 = rclF._aclPoints[0];
+-        p2 = rclF._aclPoints[1];
+-        p3 = rclF._aclPoints[2];
+-
+-        fVolume
+-            += (-p3.x * p2.y * p1.z + p2.x * p3.y * p1.z + p3.x * p1.y * p2.z - p1.x * p3.y * p2.z
+-                - p2.x * p1.y * p3.z + p1.x * p2.y * p3.z);
++        Base::Vector3d p1 = Base::convertTo<Base::Vector3d>(rclF._aclPoints[0]) - origin;
++        Base::Vector3d p2 = Base::convertTo<Base::Vector3d>(rclF._aclPoints[1]) - origin;
++        Base::Vector3d p3 = Base::convertTo<Base::Vector3d>(rclF._aclPoints[2]) - origin;
++        volume += p1.Dot(p2.Cross(p3));
+     }
+ 
+-    fVolume /= 6.0F;
+-    fVolume = std::fabs(fVolume);
+-
+-    return fVolume;
++    return static_cast<float>(std::fabs(volume / 6.0));
+ }
+ 
+ bool MeshKernel::HasOpenEdges() const
+-- 
+2.43.0
+

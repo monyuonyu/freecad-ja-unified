@@ -1,0 +1,46 @@
+From 2d44bcb8faa8a7db980379d79b49fbda905bc7ac Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 15 Oct 2026 22:06:32 +0900
+Subject: [PATCH 220/230] Part: projectVisible keeps one of two coincident
+ faces
+
+Coincident groups (a body twice, copies in a STEP assembly) each counted the
+other as behind, so both stayed visible and SVG/PPTX got the faces twice
+(visible area 27.2 > bounds 24.1 for a resistor STEP doubled). The later group
+now covers the earlier one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index f5383a0c5..cb0f6c1a0 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -1216,6 +1216,22 @@ Projection Part::ViewTools::projectVisible(
+             if (G.x1 < F.x0 || G.x0 > F.x1 || G.y1 < F.y0 || G.y0 > F.y1) {
+                 return;
+             }
++            {
++                // coincident faces (a body twice, a STEP assembly with copies): the later
++                // group wins; before, each counted the other as behind and both stayed
++                // visible, so SVG/PPTX got every such face twice
++                double A0 = G.a - F.a, B0 = G.b - F.b, C0 = G.c - F.c;
++                double sx = (double)(std::min(F.x1, G.x1) - std::max(F.x0, G.x0)) + 4;
++                double sy = (double)(std::min(F.y1, G.y1) - std::max(F.y0, G.y0)) + 4;
++                double xm = (double)std::max(F.x0, G.x0), ym = (double)std::max(F.y0, G.y0);
++                if (std::fabs(A0) * sx + std::fabs(B0) * sy
++                        + std::fabs(A0 * xm + B0 * ym + C0) <= eps) {
++                    if (hi > gi) {
++                        occluders.insert(occluders.end(), G.region.begin(), G.region.end());
++                    }
++                    return;
++                }
++            }
+             if (G.dmin >= F.dmax - eps) {
+                 return;  // behind
+             }
+-- 
+2.43.0
+
