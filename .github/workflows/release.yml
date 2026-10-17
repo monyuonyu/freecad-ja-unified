@@ -112,15 +112,36 @@ jobs:
           cache: false
           locked: true
 
+      # コンパイルの結果（ccache）を次の回に持ち越す。パッチが少し変わっただけなら、ビルドは数分〜十数分で済む
+      - name: Restore the compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: ccache-${{ matrix.target }}-
+
       - name: Build FreeCAD
         shell: bash
         working-directory: FreeCAD
         env:
           TARGET_PLATFORM: ${{ matrix.target }}
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_MAXSIZE: 3G
+          CCACHE_COMPILERCHECK: content
+          CCACHE_NOHASHDIR: "true"
         run: |
           set -euo pipefail
           python3 package/scripts/write_version_info.py ../freecad_version.txt
           pixi run --locked "bash package/bundle/build.sh"
+          pixi run --locked ccache -s || true
+
+      - name: Save the compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ matrix.target }}-${{ github.run_id }}
 
       - name: Get LibreDWG
         uses: actions/download-artifact@v4
