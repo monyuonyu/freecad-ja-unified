@@ -1,0 +1,135 @@
+From e1d8040692ec1f0fab666651939c120e83249820 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 18 Oct 2026 15:36:24 +0900
+Subject: [PATCH 231/231] Sketcher: solver result no longer depends on where
+ the heap put the parameters
+
+SubSystem::initialize took the unknowns through a std::set<double*> and the SQP
+solve (System::solve(subsysA, subsysB)) sorted them as pointers, so their order,
+and with it the Jacobian columns and the iterations, followed the addresses the
+parameters happened to get. A conflicting sketch (Sketch in the CAM test file
+Drilling_1) could then solve, fail, or be reported conflicting or redundant from
+one solve to the next with the same geometry; in a document this made the body
+recompute or not, and recomputing twice gave different shapes. Keep the order
+the parameters were declared in.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/App/planegcs/GCS.cpp         | 19 +++++++----
+ src/Mod/Sketcher/App/planegcs/SubSystem.cpp   | 11 +++++--
+ .../SketcherTests/TestSketcherSolver.py       | 33 +++++++++++++++++++
+ 3 files changed, 54 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/Sketcher/App/planegcs/GCS.cpp b/src/Mod/Sketcher/App/planegcs/GCS.cpp
+index e6327c665..db2bfa19c 100644
+--- a/src/Mod/Sketcher/App/planegcs/GCS.cpp
++++ b/src/Mod/Sketcher/App/planegcs/GCS.cpp
+@@ -4533,18 +4533,23 @@ SolveStatus System::solve(SubSystem* subsysA, SubSystem* subsysB, bool isRedunda
+     int xsizeB = subsysB->pSize();
+     int csizeA = subsysA->cSize();
+ 
+-    VEC_pD plistAB(xsizeA + xsizeB);
++    VEC_pD plistAB;
+     {
+         VEC_pD plistA, plistB;
+         subsysA->getParamList(plistA);
+         subsysB->getParamList(plistB);
+ 
+-        std::sort(plistA.begin(), plistA.end());
+-        std::sort(plistB.begin(), plistB.end());
+-
+-        VEC_pD::const_iterator it;
+-        it = std::set_union(plistA.begin(), plistA.end(), plistB.begin(), plistB.end(), plistAB.begin());
+-        plistAB.resize(it - plistAB.begin());
++        // the union in the order of the parameters, not of their addresses (see
++        // SubSystem::initialize): sorting the pointers made the result depend on the heap
++        plistAB.reserve(xsizeA + xsizeB);
++        SET_pD seen;
++        for (const VEC_pD* list : {&plistA, &plistB}) {
++            for (double* param : *list) {
++                if (seen.insert(param).second) {
++                    plistAB.push_back(param);
++                }
++            }
++        }
+     }
+     int xsize = plistAB.size();
+ 
+diff --git a/src/Mod/Sketcher/App/planegcs/SubSystem.cpp b/src/Mod/Sketcher/App/planegcs/SubSystem.cpp
+index d3cf35e3d..3e886d584 100644
+--- a/src/Mod/Sketcher/App/planegcs/SubSystem.cpp
++++ b/src/Mod/Sketcher/App/planegcs/SubSystem.cpp
+@@ -58,9 +58,11 @@ void SubSystem::initialize(VEC_pD& params, MAP_pD_pD& reductionmap)
+ 
+     // tmpplist will contain the subset of parameters from params that are
+     // relevant for the constraints listed in clist
++    // Keep the order of params. Sorting them as pointers (std::set) made the order of the unknowns
++    // depend on where the heap placed each parameter, so the same sketch could solve, fail, or be
++    // reported conflicting or redundant from one run (or one solve) to the next.
+     VEC_pD tmpplist;
+     {
+-        SET_pD s1(params.begin(), params.end());
+         SET_pD s2;
+         for (std::vector<Constraint*>::iterator constr = clist.begin(); constr != clist.end();
+              ++constr) {
+@@ -68,7 +70,12 @@ void SubSystem::initialize(VEC_pD& params, MAP_pD_pD& reductionmap)
+             VEC_pD constr_params = (*constr)->params();
+             s2.insert(constr_params.begin(), constr_params.end());
+         }
+-        std::set_intersection(s1.begin(), s1.end(), s2.begin(), s2.end(), std::back_inserter(tmpplist));
++        SET_pD seen;
++        for (double* param : params) {
++            if (s2.count(param) != 0 && seen.insert(param).second) {
++                tmpplist.push_back(param);
++            }
++        }
+     }
+ 
+     plist.clear();
+diff --git a/src/Mod/Sketcher/SketcherTests/TestSketcherSolver.py b/src/Mod/Sketcher/SketcherTests/TestSketcherSolver.py
+index 03146decc..6c9fde830 100644
+--- a/src/Mod/Sketcher/SketcherTests/TestSketcherSolver.py
++++ b/src/Mod/Sketcher/SketcherTests/TestSketcherSolver.py
+@@ -1201,6 +1201,39 @@ class TestSketcherSolver(unittest.TestCase):
+                 msg=msg or "expected %s but got %s" % (expected, actual),
+             )
+ 
++    def testSolveDoesNotDependOnTheHeap(self):
++        """The unknowns were ordered by their addresses: the same conflicting sketch (CAM test
++        file Drilling_1) could solve, fail or come out redundant from one solve to the next."""
++        path = os.path.join(FreeCAD.getHomePath(), "Mod", "CAM", "CAMTests", "Drilling_1.FCStd")
++        if not os.path.exists(path):
++            self.skipTest("needs the CAM test file Drilling_1.FCStd")
++        src = FreeCAD.openDocument(path, True)
++        try:
++            geometry = src.Sketch.Geometry
++            constraints = src.Sketch.Constraints
++        finally:
++            FreeCAD.closeDocument(src.Name)
++
++        def values(sketch):
++            out = []
++            for geo in sketch.Geometry:
++                for name in ("StartPoint", "EndPoint", "Center", "Radius", "MajorRadius", "MinorRadius"):
++                    value = getattr(geo, name, None)
++                    if value is not None:
++                        out += list(value) if hasattr(value, "x") else [value]
++            return tuple(out)
++
++        results = set()
++        keep = []
++        for i in range(12):
++            keep.append([FreeCAD.Vector(j, i, 0) for j in range(37 * i)])  # move the heap around
++            sketch = self.Doc.addObject("Sketcher::SketchObject", "Copy%d" % i)
++            sketch.addGeometry(geometry, False)
++            sketch.addConstraint(constraints)
++            status = sketch.solve()
++            results.add((status, values(sketch)))
++        self.assertEqual(len(results), 1, [r[0] for r in results])
++
+     def assertShapeDistance(self, shape1, shape2, expected_distance, msg=None):
+         distance, _, _ = shape1.distToShape(shape2)
+         self.assertAlmostEqual(
+-- 
+2.43.0
+

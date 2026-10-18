@@ -1,7 +1,7 @@
 From fd981f77241ed9e44c72ec50cdb36c9d66166d8c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:24:38 +0900
-Subject: [PATCH 224/230] Part: shapes in FCStd files keep their small numbers
+Subject: [PATCH 224/231] Part: shapes in FCStd files keep their small numbers
 
 Base::ZipWriter sets its stream to std::fixed for the XML, and BRepTools wrote
 the shape with "%.15f", so values below 1e-15 became 0. Part__Feature004 of
