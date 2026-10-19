@@ -193,6 +193,12 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 | 画像を出す | 画面（xvfb）と GUI が要る | `FreeCADCmd a.FCStd --render a.png --view iso`（画面も OpenGL も不要。`--render-style shaded\|hidden-lines\|lines`、`--size 1600x1200`、Python は `Part.renderImage`） |
 | 干渉チェック | 部品の組を総当たり（300 部品で 106 秒） | `FreeCADCmd a.FCStd --interference`／`Part.findInterferences`（外形で絞って並列、1.2 秒） |
 | 隠れ線を消した 2D 図 | TechDraw のページが要る | `--export-svg`、`--export-polygons`（面ごとの多角形 JSON）、`--export-pptx`（編集できる図形の PowerPoint）／`Part.projectVisible` |
+| 視点・拡大・断面（0.5.4） | — | `--view` に名前（`iso-bottom` など下からの等角も）か向き `dx,dy,dz`、`--up x,y,z`（画面の上）、`--focus 名前,…` か `--region x0,y0,z0,x1,y1,z1`（その範囲に拡大）、`--section z=10`（z>10 を取り去る。`-x=5` は x<5、`px,py,pz,nx,ny,nz` は法線の側）で切り口を塗ってハッチング。値が `-` で始まるときは `--section=-x=5`。Python は `Part.renderImage`/`projectVisible`/`exportSvg`/`exportPptx` の `up=`・`focus=`・`region=`・`section=(点, 法線)` |
+| 大きな組立の隠れ線（0.5.4） | 1200 部品で 15 分以上終わらないことがあった | 深さバッファで隠す側の候補を絞り、全コアで並列。1200 部品 3.9 秒、STL 由来 1200 部品 5.4 秒（0.5.3 は 72 秒）。`--progress`（標準エラーに進み具合）、`--max-seconds 60`（時間切れなら手前から済んだ分を書いて警告）、`--deflection`（粗くして速く） |
+| 点の内外判定・光線（0.5.4） | `Shape.isInside` を 1 点ずつ（10 万点で約 52 秒） | `Part.pointsInside(shape, 点の列)`（10 万点 0.16 秒、結果は isInside と同じ）、`Part.rayCast(shapes, 原点, 向き, all=False)`（距離・何番目の形・面・点・法線） |
+| STL から作った立体（0.5.4） | `makeShapeFromMesh`＋`makeSolid` は三角形だらけで、閉じていない・裏返り・重複があるとブール演算が不安定 | `Part.solidFromMesh(mesh, 0.01, report=True)`（直して縫い、同じ平面の三角形を 1 つの面に。直したこと・残った問題を返す）。ブール演算は許容差つきで `a.common(b, 0.01)`。角の丸めは `Part.filletMeshSolid(mesh, 1.0)`（平らな面どうしの角だけ。曲面部分は丸めない） |
+| DWG/DXF の 3D ソリッド（0.5.4） | 3DSOLID・REGION・BODY は読み捨て | Part の形として読み込む（平面・円柱・円錐・球・トーラス・B スプライン。試験図面 81 個中 80 個が閉じた立体）。ブロックの中のソリッドと、AutoCAD 2013 以降が書いた DXF（ACDSDATA に入っている）はまだ読めない |
+| スクリプトに引数を渡す | — | `FreeCADCmd a.py -- x y`（`--` の後ろが `sys.argv`）。`FreeCADCmd a.py x` で `x` がファイルでないときは「`script.py -- x` で渡す」と案内する |
 | `Mesh.addFacets(shape.tessellate(d))` | 接した箱どうしの面を**黙って捨てる**（52 個の箱で 624 → 12 面） | 全部入れる（`check=True` のときだけ捨て、数を警告） |
 
 ## 本家から取り込んだ修正（PR 一覧）
@@ -264,6 +270,20 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.5.4 の変更
+
+社外の実機の組立（機密のため合成データで再現）を 1 日 FreeCADCmd で使った同僚の要望から:
+- 隠れ線の 2D 書き出し（`--export-svg` など・`Part.projectVisible`）が大きな組立で終わらない: 面ごとに、外形が重なる全部の面と切り抜きをしていた。
+  深さバッファで「その面の上に見えている面」だけを相手にし、面・辺・三角形分割を全コアで並列に。結果は 0.5.3 と同じ（見える面積の差 0.001 % 以下）で、
+  合成の 1200 部品が 17.7 → 3.9 秒、STL から作った 1200 部品が 72 → 5.4 秒。三角形だけの形（STL 由来）はメッシュとして扱い、同じ平面の三角形は 1 つの面に、
+  三角形の間の線は描かない。`--progress`・`--max-seconds`（`maxSeconds=`、時間切れは手前の面から済んだ分と警告）・`--deflection`
+- 画像・2D 書き出しの視点: 向きをベクトルで、画面の上の向き（`up`）、下からの等角（`iso-bottom` ほか 7 つ）、範囲や部品に拡大（`region`・`focus`）、
+  断面（`section`。切り口を色で塗りハッチング。SVG はパターン、PowerPoint は柄の塗り）。重なった部品の同じ面が画像で黒く潰れていたのも直した
+- `Part.pointsInside`・`Part.rayCast`（たくさんの点の内外判定と光線の当たり。上の表）
+- `Part.solidFromMesh`・`Part.filletMeshSolid`（STL から作った立体をブール演算・断面・丸めに使える形に。上の表）
+- DWG/DXF の 3DSOLID・REGION・BODY を読み込む（ACIS の SAT を自前で読む `AcisSat`。上の表）
+- `FreeCADCmd a.py 値` で値がファイルでないときに `--` の使い方を案内する
 
 ## 0.5.3 の変更
 

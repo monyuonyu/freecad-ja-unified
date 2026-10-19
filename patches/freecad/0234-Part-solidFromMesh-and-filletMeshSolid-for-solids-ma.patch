@@ -1,0 +1,576 @@
+From d35d2a3652cd9c62be76b3de79daed764194aba7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 07:44:12 +0900
+Subject: [PATCH 234/235] Part: solidFromMesh and filletMeshSolid for solids
+ made from STL
+
+Part.solidFromMesh(mesh, tolerance, refine=True, fillHoles=20, report=False) repairs
+the mesh before making the shape (points closer than the tolerance merged,
+duplicated and degenerated facets removed, orientation made consistent, small holes
+filled), sews, turns an inverted solid outside out, merges coplanar triangles into
+faces (UnifySameDomain with the tolerance, fixed and checked against the volume)
+and reports repairs and problems (open, non-manifold, self-intersecting).  Fewer,
+real faces make booleans and sections faster and steadier; the doc string says to
+use a fuzzy value (common(b, tol), findInterferences(tolerance=tol)).
+
+Part.filletMeshSolid(shape_or_mesh, radius, edges=None, minAngle=30) rounds the
+sharp straight edges of such a solid (prismatic parts); edges where the fillet fails
+stay sharp and are reported, with a time limit for the one-by-one fallback.  Curved
+regions of a mesh (narrow facets) are not rounded.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewToolsPy.cpp            |  40 ++-
+ src/Mod/Part/CMakeLists.txt                 |   2 +
+ src/Mod/Part/PartMeshTools.py               | 316 ++++++++++++++++++++
+ src/Mod/Part/TestPartApp.py                 |   1 +
+ src/Mod/Part/parttests/TestPartMeshTools.py | 116 +++++++
+ 5 files changed, 473 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Part/PartMeshTools.py
+ create mode 100644 src/Mod/Part/parttests/TestPartMeshTools.py
+
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index afcd8ebef..d85e3ee8f 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -614,9 +614,9 @@ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds
+ }
+ 
+ // Part.exportPptx / Part.exportSvg: the writers are Python (PartViews)
+-PyObject* callPartViews(const char* name, PyObject* args, PyObject* kwds)
++PyObject* callPython(const char* moduleName, const char* name, PyObject* args, PyObject* kwds)
+ {
+-    PyObject* module = PyImport_ImportModule("PartViews");
++    PyObject* module = PyImport_ImportModule(moduleName);
+     if (!module) {
+         return nullptr;
+     }
+@@ -630,6 +630,21 @@ PyObject* callPartViews(const char* name, PyObject* args, PyObject* kwds)
+     return result;
+ }
+ 
++PyObject* callPartViews(const char* name, PyObject* args, PyObject* kwds)
++{
++    return callPython("PartViews", name, args, kwds);
++}
++
++PyObject* solidFromMesh(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    return callPython("PartMeshTools", "part_solid_from_mesh", args, kwds);
++}
++
++PyObject* filletMeshSolid(PyObject* /*self*/, PyObject* args, PyObject* kwds)
++{
++    return callPython("PartMeshTools", "part_fillet_mesh_solid", args, kwds);
++}
++
+ PyObject* exportPptx(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ {
+     return callPartViews("part_export_pptx", args, kwds);
+@@ -706,6 +721,27 @@ PyMethodDef methods[] = {
+      "group: True (dict 'group', a 'Group' string property, the document tree), False\n"
+      "(flat), a function obj -> 'a/b/c' or a dict {Name|Label|index: 'a/b/c'}.\n"
+      "Returns {'faces', 'edges', 'shapes', 'groups'}."},
++    {"solidFromMesh",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(solidFromMesh)),
++     METH_VARARGS | METH_KEYWORDS,
++     "solidFromMesh(mesh, tolerance=0.01, refine=True, fillHoles=20, report=False)\n"
++     "A closed, valid solid from a triangle mesh (Mesh.Mesh, a mesh object, (points, facets),\n"
++     "an STL file name or a shape from makeShapeFromMesh): removes duplicated and degenerated\n"
++     "facets, makes the orientation consistent, fills small holes, sews, turns an inverted\n"
++     "solid outside out and merges coplanar triangles into faces (refine).  With report=True\n"
++     "returns (shape, {'repairs', 'problems', 'faces', 'closed', 'valid', 'volume', ...}).\n"
++     "Use a fuzzy value of about the mesh accuracy in booleans with such solids:\n"
++     "a.common(b, 0.01), a.section(b, 0.01), Part.findInterferences(s, tolerance=0.01)."},
++    {"filletMeshSolid",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(filletMeshSolid)),
++     METH_VARARGS | METH_KEYWORDS,
++     "filletMeshSolid(shape_or_mesh, radius, edges=None, minAngle=30, tolerance=0.01,\n"
++     "                report=False, maxSeconds=60)\n"
++     "Round the sharp straight edges of a solid made from a mesh: solidFromMesh merges the\n"
++     "flat triangles into faces, then edges whose faces meet at more than minAngle degrees\n"
++     "(or the given indices into the refined solid's Edges) are filleted; edges where the\n"
++     "fillet fails stay sharp (report 'skipped').  For prismatic parts; curved regions of a\n"
++     "mesh (many narrow facets) are not rounded."},
+     {"exportSvg",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(exportSvg)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/CMakeLists.txt b/src/Mod/Part/CMakeLists.txt
+index 39d997d8b..1487ff6d2 100644
+--- a/src/Mod/Part/CMakeLists.txt
++++ b/src/Mod/Part/CMakeLists.txt
+@@ -17,6 +17,7 @@ set(Part_Scripts
+     MakeBottle.py
+     PartEnums.py
+     PartViews.py
++    PartMeshTools.py
+     TestPartApp.py
+ )
+ 
+@@ -90,6 +91,7 @@ set(Part_tests
+     parttests/TestLinkArrayPoint.py
+     parttests/TestPartMirror.py
+     parttests/TestPartViews.py
++    parttests/TestPartMeshTools.py
+     parttests/TestFaceMakerUnifiedPlanar.py
+     parttests/TestFaceMakerUnifiedNonPlanar.py
+ )
+diff --git a/src/Mod/Part/PartMeshTools.py b/src/Mod/Part/PartMeshTools.py
+new file mode 100644
+index 000000000..bf9649608
+--- /dev/null
++++ b/src/Mod/Part/PartMeshTools.py
+@@ -0,0 +1,316 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++"""Solids from triangle meshes (STL) that booleans, sections and fillets can work with.
++
++    shape, report = Part.solidFromMesh(mesh, tolerance=0.01, report=True)
++    rounded, report = Part.filletMeshSolid(shape_or_mesh, 1.0, report=True)
++
++Part.Shape.makeShapeFromMesh + Part.makeSolid gives a solid of thousands of planar
++triangles.  Booleans (common, cut, section) on such solids are slow and fail when the
++triangle soup is not closed, has flipped or duplicated facets, or touches another part
++on coincident faces.  solidFromMesh repairs the mesh first (duplicates, degenerated
++facets, orientation, small holes), sews, makes a closed solid with the right
++orientation, merges coplanar triangles into faces (removeSplitter) and reports what it
++found.  For the booleans use a fuzzy value of about the mesh accuracy, for example
++a.common(b, 0.01), Part.findInterferences(shapes, tolerance=0.01), a.section(b, 0.01).
++"""
++
++import FreeCAD as App
++import Part
++
++__all__ = ["solid_from_mesh", "fillet_mesh_solid"]
++
++
++def _to_mesh(source):
++    import Mesh
++
++    if isinstance(source, str):
++        return Mesh.Mesh(source)
++    if hasattr(source, "Topology") and hasattr(source, "Facets"):
++        return source.copy()
++    if hasattr(source, "Mesh") and hasattr(source.Mesh, "Topology"):
++        return source.Mesh.copy()
++    if isinstance(source, (tuple, list)) and len(source) == 2:
++        return Mesh.Mesh(source)
++    if isinstance(source, Part.Shape):
++        return None
++    raise TypeError("Expected a Mesh.Mesh, a mesh object, (points, facets) or an STL file name")
++
++
++def solid_from_mesh(source, tolerance=0.01, refine=True, fill_holes=20, report=False):
++    """A closed, valid solid from a triangle mesh.  See the module docstring.
++
++    source: Mesh.Mesh, a mesh document object, (points, facets), a file name, or a shape
++    made by makeShapeFromMesh (then only the shape steps are done).
++    tolerance: sewing tolerance (model units, about the mesh accuracy).
++    refine: merge coplanar triangles into one face each (fewer faces: faster, more robust
++    booleans, and edges that can be filleted).
++    fill_holes: fill holes with at most this many boundary edges (0: do not).
++    Returns the solid, or (solid, report) with report=True.  report["problems"] lists
++    what could not be repaired; the solid is then the best that could be made (an open
++    shell gives a Shell, not a Solid)."""
++    info = {"problems": [], "repairs": []}
++    mesh = _to_mesh(source)
++    if mesh is not None:
++        info["facets"] = mesh.CountFacets
++        before = mesh.CountFacets
++        merged = _merge_close_points(mesh, tolerance * 0.1)
++        if merged is not None:
++            mesh, count = merged
++            info["repairs"].append("merged %d points closer than %g" % (count, tolerance * 0.1))
++        mesh.removeDuplicatedPoints()
++        mesh.removeDuplicatedFacets()
++        try:
++            mesh.fixDegenerations(tolerance * 1e-3)
++        except Exception:
++            pass
++        mesh.fixIndices()
++        if mesh.CountFacets != before:
++            info["repairs"].append("removed %d duplicated or degenerated facets" % (before - mesh.CountFacets))
++        flipped = mesh.countNonUniformOrientedFacets()
++        if flipped:
++            mesh.harmonizeNormals()
++            info["repairs"].append("turned %d facets to agree with their neighbours" % flipped)
++        if not mesh.isSolid() and fill_holes:
++            before = mesh.CountFacets
++            try:
++                mesh.fillupHoles(fill_holes, 1)
++            except Exception:
++                pass
++            if mesh.CountFacets != before:
++                info["repairs"].append("filled holes with %d facets" % (mesh.CountFacets - before))
++        nm = mesh.hasNonManifolds()
++        if nm:
++            info["problems"].append("non-manifold edges (more than two facets share an edge)")
++        try:
++            si = mesh.hasSelfIntersections()
++        except Exception:
++            si = False
++        if si:
++            info["problems"].append("the mesh intersects itself")
++        if not mesh.isSolid():
++            info["problems"].append("the mesh is not closed (open edges remain)")
++        shape = Part.Shape()
++        shape.makeShapeFromMesh(mesh.Topology, tolerance, True)
++    else:
++        shape = source
++        info["facets"] = len(shape.Faces)
++    solid = _make_solid(shape, tolerance, info)
++    if refine and solid.ShapeType == "Solid":
++        try:
++            refined = _unify(solid, tolerance)
++            if refined.isValid() and refined.Solids and abs(refined.Volume - solid.Volume) <= solid.Area * tolerance:
++                solid = refined.Solids[0] if len(refined.Solids) == 1 else refined
++                info["repairs"].append("merged coplanar triangles into %d faces" % len(solid.Faces))
++            else:
++                info["problems"].append("merging coplanar triangles failed; kept the triangles")
++        except Exception as e:
++            info["problems"].append("merging coplanar triangles failed (%s); kept the triangles" % e)
++    info["type"] = solid.ShapeType
++    info["faces"] = len(solid.Faces)
++    info["closed"] = bool(solid.isClosed()) if solid.ShapeType in ("Solid", "Shell") else False
++    info["valid"] = bool(solid.isValid())
++    info["volume"] = solid.Volume if solid.ShapeType in ("Solid", "CompSolid", "Compound") else 0.0
++    if not info["valid"]:
++        info["problems"].append("the result is not a valid shape (Shape.check() tells more)")
++    return (solid, info) if report else solid
++
++
++def _merge_close_points(mesh, tol):
++    """(new mesh, number of points merged) when points closer than tol exist (an STL
++    written with a few digits, or from separately rounded facets), else None."""
++    import Mesh
++
++    points, facets = mesh.Topology
++    if tol <= 0 or not points:
++        return None
++    cells = {}
++    index = [0] * len(points)
++    kept = []
++    merged = 0
++    for i, p in enumerate(points):
++        key = (int(p.x // tol), int(p.y // tol), int(p.z // tol))
++        found = -1
++        for dx in (-1, 0, 1):
++            for dy in (-1, 0, 1):
++                for dz in (-1, 0, 1):
++                    for j in cells.get((key[0] + dx, key[1] + dy, key[2] + dz), ()):
++                        if (kept[j] - p).Length <= tol:
++                            found = j
++                            break
++                    if found >= 0:
++                        break
++                if found >= 0:
++                    break
++        if found >= 0:
++            index[i] = found
++            if (kept[found] - p).Length > 0:
++                merged += 1
++            continue
++        index[i] = len(kept)
++        cells.setdefault(key, []).append(len(kept))
++        kept.append(p)
++    if merged == 0:
++        return None
++    new_facets = []
++    for f in facets:
++        t = (index[f[0]], index[f[1]], index[f[2]])
++        if len(set(t)) == 3:
++            new_facets.append(t)
++    return Mesh.Mesh((kept, new_facets)), merged
++
++
++def _unify(solid, tolerance):
++    """Coplanar neighbouring faces merged (removeSplitter with a tolerance: the triangles
++    of an STL are flat only to the precision it was written with)."""
++    try:
++        from Part import ShapeUpgrade
++
++        usd = ShapeUpgrade.UnifySameDomain(solid, True, True, True)
++        usd.setLinearTolerance(tolerance)
++        usd.setAngularTolerance(1e-2)
++        usd.build()
++        shape = usd.shape()
++        if not shape.isValid():
++            shape.fix(tolerance, tolerance, tolerance)
++        return shape
++    except Exception:
++        return solid.removeSplitter()
++
++
++def _make_solid(shape, tolerance, info):
++    shells = shape.Shells
++    if not shells:
++        try:
++            sewed = shape.copy()
++            sewed.sewShape(tolerance)
++            shells = sewed.Shells
++        except Exception:
++            shells = []
++    if not shells:
++        info["problems"].append("no shell could be sewn from the triangles")
++        return shape
++    if len(shells) > 1:
++        info["repairs"].append("%d separate shells, each becomes a solid" % len(shells))
++    solids = []
++    for shell in shells:
++        if not shell.isClosed():
++            info["problems"].append("a shell is open; returned as a shell")
++            solids.append(shell)
++            continue
++        solid = Part.Solid(shell)
++        try:
++            solid.fix(tolerance, tolerance, tolerance)
++        except Exception:
++            pass
++        if solid.Volume < 0:
++            solid.reverse()
++            info["repairs"].append("turned the solid inside out (it was inverted)")
++        solids.append(solid)
++    return solids[0] if len(solids) == 1 else Part.Compound(solids)
++
++
++def _dihedral(shape, edge):
++    """Angle in degrees between the normals of the two faces at an edge, or None."""
++    faces = shape.ancestorsOfType(edge, Part.Face)
++    if len(faces) != 2:
++        return None
++    mid = edge.valueAt((edge.FirstParameter + edge.LastParameter) / 2)
++    normals = []
++    for f in faces:
++        u, v = f.Surface.parameter(mid)
++        n = f.normalAt(u, v)
++        normals.append(n)
++    return normals[0].getAngle(normals[1]) * 180.0 / 3.141592653589793
++
++
++def fillet_mesh_solid(source, radius, edges=None, min_angle=30.0, tolerance=0.01, report=False,
++                      max_seconds=60.0):  # fmt: skip
++    """Round edges of a solid made from a mesh (STL).
++
++    A triangle soup has no edges to fillet: its "edges" are the sides of triangles.  This
++    first makes a solid with solid_from_mesh (coplanar triangles merged into faces), so
++    flat sides become single faces and the sharp edges between them real edges.  Then it
++    fillets the straight edges whose faces meet at more than min_angle degrees (or the
++    edges given: indices into the refined solid's Edges, 0 based).  Edges that make the
++    fillet fail are left sharp and listed in the report.
++
++    Works for prismatic parts (3D printed brackets, plates, boxes).  It cannot round
++    edges on curved regions of the mesh (a cylinder is many narrow flat faces; their
++    edges are below min_angle and left alone) nor edges that run into such regions in a
++    way the fillet cannot follow.  When filleting all edges at once fails, they are tried
++    one by one for at most max_seconds (the rest stay sharp).
++    Returns the shape, or (shape, report) with report=True;
++    report has "filleted", "skipped" (edge indices) and the solid_from_mesh report."""
++    if isinstance(source, Part.Shape) and source.ShapeType == "Solid" and len(source.Faces) < 2000 \
++            and any(len(f.Edges) != 3 for f in source.Faces):  # fmt: skip
++        solid, info = source, {"problems": [], "repairs": []}
++    else:
++        solid, info = solid_from_mesh(source, tolerance=tolerance, refine=True, report=True)
++    if solid.ShapeType != "Solid":
++        raise ValueError("No closed solid could be made from the mesh: %s" % "; ".join(info["problems"]))
++    if edges is None:
++        chosen = []
++        for i, e in enumerate(solid.Edges):
++            if not isinstance(e.Curve, Part.Line):
++                continue
++            angle = _dihedral(solid, e)
++            if angle is not None and angle > min_angle:
++                chosen.append(i)
++    else:
++        chosen = list(edges)
++    result = solid
++    done, skipped = [], []
++    if chosen:
++        try:
++            result = solid.makeFillet(radius, [solid.Edges[i] for i in chosen])
++            if not result.isValid():
++                raise RuntimeError("invalid result")
++            done = list(chosen)
++        except Exception:
++            # one by one, on the original edges (matched by their end points)
++            import time
++
++            result = solid
++            start = time.time()
++            for i in chosen:
++                if time.time() - start > max_seconds:
++                    skipped.append(i)
++                    continue
++                e = solid.Edges[i]
++                ends = (e.Vertexes[0].Point, e.Vertexes[-1].Point)
++                match = None
++                for f in result.Edges:
++                    p = (f.Vertexes[0].Point, f.Vertexes[-1].Point)
++                    if (p[0].isEqual(ends[0], tolerance) and p[1].isEqual(ends[1], tolerance)) or \
++                            (p[0].isEqual(ends[1], tolerance) and p[1].isEqual(ends[0], tolerance)):  # fmt: skip
++                        match = f
++                        break
++                if match is None:
++                    skipped.append(i)
++                    continue
++                try:
++                    trial = result.makeFillet(radius, [match])
++                    if trial.isValid() and trial.Solids:
++                        result = trial.Solids[0] if len(trial.Solids) == 1 else trial
++                        done.append(i)
++                    else:
++                        skipped.append(i)
++                except Exception:
++                    skipped.append(i)
++    info = dict(info)
++    info["filleted"] = done
++    info["skipped"] = skipped
++    return (result, info) if report else result
++
++
++def part_solid_from_mesh(mesh, tolerance=0.01, refine=True, fillHoles=20, report=False):
++    """Part.solidFromMesh: see its doc string."""
++    return solid_from_mesh(mesh, tolerance=tolerance, refine=refine, fill_holes=fillHoles, report=report)
++
++
++def part_fillet_mesh_solid(shape, radius, edges=None, minAngle=30.0, tolerance=0.01, report=False,
++                           maxSeconds=60.0):  # fmt: skip
++    """Part.filletMeshSolid: see its doc string."""
++    return fillet_mesh_solid(shape, radius, edges=edges, min_angle=minAngle, tolerance=tolerance,
++                             report=report, max_seconds=maxSeconds)  # fmt: skip
+diff --git a/src/Mod/Part/TestPartApp.py b/src/Mod/Part/TestPartApp.py
+index cb89c5677..391e04480 100644
+--- a/src/Mod/Part/TestPartApp.py
++++ b/src/Mod/Part/TestPartApp.py
+@@ -42,6 +42,7 @@ from parttests.TestLinkArrayPath import TestLinkArrayPath
+ from parttests.TestLinkArrayPoint import TestLinkArrayPoint
+ from parttests.TestPartMirror import TestPartMirroringRegression
+ from parttests.TestPartViews import TestPartViews, TestPartViewOptions
++from parttests.TestPartMeshTools import TestSolidFromMesh, TestFilletMeshSolid, TestSpatialQueries
+ from parttests.TestFaceMakerUnifiedPlanar import *
+ from parttests.TestFaceMakerUnifiedNonPlanar import *
+ 
+diff --git a/src/Mod/Part/parttests/TestPartMeshTools.py b/src/Mod/Part/parttests/TestPartMeshTools.py
+new file mode 100644
+index 000000000..04852a949
+--- /dev/null
++++ b/src/Mod/Part/parttests/TestPartMeshTools.py
+@@ -0,0 +1,116 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++"""Part.solidFromMesh, Part.filletMeshSolid, Part.pointsInside, Part.rayCast"""
++
++import random
++import unittest
++
++import FreeCAD as App
++import Part
++
++
++def _soup(shape, deflection=0.1, jitter=0.0, flip_every=0, seed=1):
++    """An STL-like triangle soup of a shape: no shared points, optional noise and
++    flipped facets."""
++    import Mesh
++
++    rnd = random.Random(seed)
++    points, facets = shape.tessellate(deflection)
++    pts, fcs = [], []
++    for k, f in enumerate(facets):
++        idx = list(range(len(pts), len(pts) + 3))
++        if flip_every and k % flip_every == 0:
++            idx = [idx[0], idx[2], idx[1]]
++        fcs.append(tuple(idx))
++        for i in f:
++            p = points[i]
++            pts.append(App.Vector(p.x + rnd.uniform(-jitter, jitter), p.y + rnd.uniform(-jitter, jitter),
++                                  p.z + rnd.uniform(-jitter, jitter)))  # fmt: skip
++    return Mesh.Mesh((pts, fcs))
++
++
++class TestSolidFromMesh(unittest.TestCase):
++    def setUp(self):
++        self.box = Part.makeBox(20, 20, 10)
++        self.holed = self.box.cut(Part.makeCylinder(4, 10, App.Vector(10, 10, 0)))
++
++    def testRepairsAndRefines(self):
++        mesh = _soup(self.holed, jitter=1e-4, flip_every=7)
++        mesh.flipNormals()  # inverted as well
++        solid, rep = Part.solidFromMesh(mesh, 0.01, report=True)
++        self.assertEqual(solid.ShapeType, "Solid")
++        self.assertTrue(rep["valid"] and rep["closed"])
++        self.assertAlmostEqual(solid.Volume, self.holed.Volume, delta=0.01 * self.holed.Volume)
++        # the flat top and bottom (with the hole) and the four sides are one face each
++        self.assertLess(len(solid.Faces), len(mesh.Facets) / 2)
++        self.assertEqual(rep["problems"], [])
++
++    def testHoleIsFilled(self):
++        mesh = _soup(self.box)
++        mesh.removeFacets([0])
++        solid, rep = Part.solidFromMesh(mesh, 0.01, report=True)
++        self.assertEqual(solid.ShapeType, "Solid")
++        self.assertAlmostEqual(solid.Volume, 4000, delta=1)
++
++    def testBooleansWithFuzzy(self):
++        a = Part.solidFromMesh(_soup(self.box, jitter=1e-4))
++        b = Part.solidFromMesh(_soup(Part.makeBox(10, 20, 10, App.Vector(20, 0, 0)), jitter=1e-4, seed=2))
++        c = Part.solidFromMesh(_soup(Part.makeBox(10, 10, 10, App.Vector(15, 5, 0)), jitter=1e-4, seed=3))
++        self.assertLess(a.common(b, 0.01).Volume, 0.1)  # touching only
++        self.assertAlmostEqual(a.common(c, 0.01).Volume, 500, delta=1)
++        pairs = Part.findInterferences([a, b, c], tolerance=0.01)
++        self.assertEqual(sorted((p[0], p[1]) for p in pairs), [(0, 2), (1, 2)])
++
++
++class TestFilletMeshSolid(unittest.TestCase):
++    def testPrismaticPart(self):
++        bracket = Part.makeBox(30, 20, 5).fuse(Part.makeBox(5, 20, 25)).removeSplitter()
++        mesh = _soup(bracket)
++        rounded, rep = Part.filletMeshSolid(mesh, 1.0, report=True)
++        self.assertTrue(rounded.isValid())
++        self.assertGreater(len(rep["filleted"]), 6)
++        self.assertLess(rounded.Volume, bracket.Volume)
++        self.assertTrue(any(f.Surface.TypeId == "Part::GeomCylinder" for f in rounded.Faces))
++
++    def testCurvedRegionsLeftAlone(self):
++        mesh = _soup(Part.makeCylinder(5, 10), deflection=0.3)
++        rounded, rep = Part.filletMeshSolid(mesh, 0.5, report=True, maxSeconds=5)
++        # the facets of the side meet at small angles: only the rim edges qualify
++        self.assertTrue(rounded.isValid())
++
++
++class TestSpatialQueries(unittest.TestCase):
++    def setUp(self):
++        box = Part.makeBox(40, 30, 20)
++        self.shape = box.makeFillet(3, box.Edges).cut(Part.makeCylinder(6, 20, App.Vector(20, 15, 0)))
++
++    def testPointsInsideMatchesIsInside(self):
++        rnd = random.Random(4)
++        bb = self.shape.BoundBox
++        pts = [App.Vector(rnd.uniform(bb.XMin - 2, bb.XMax + 2), rnd.uniform(bb.YMin - 2, bb.YMax + 2),
++                          rnd.uniform(bb.ZMin - 2, bb.ZMax + 2)) for _ in range(3000)]  # fmt: skip
++        # points right on the surface and just inside/outside it
++        for f in self.shape.Faces[:6]:
++            u0, u1, v0, v1 = f.ParameterRange
++            p = f.valueAt((u0 + u1) / 2, (v0 + v1) / 2)
++            n = f.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
++            pts += [p, p + n * 1e-3, p - n * 1e-3]
++        ref = [self.shape.isInside(p, 1e-6, True) for p in pts]
++        for method in ("auto", "exact"):
++            self.assertEqual(Part.pointsInside(self.shape, pts, method=method), ref, method)
++        res, stats = Part.pointsInside(self.shape, pts, stats=True)
++        self.assertEqual(stats["byBox"] + stats["byRay"] + stats["exact"], len(pts))
++        self.assertGreater(stats["byRay"], stats["exact"])
++        with self.assertRaises(ValueError):
++            Part.pointsInside(Part.makePlane(1, 1), pts)
++
++    def testRayCast(self):
++        hit = Part.rayCast(self.shape, App.Vector(-10, 15, 10), App.Vector(1, 0, 0))
++        self.assertAlmostEqual(hit["distance"], 10, places=6)
++        self.assertAlmostEqual(hit["normal"].x, -1, places=6)
++        hits = Part.rayCast([self.shape], App.Vector(-10, 15, 10), App.Vector(1, 0, 0), all=True)
++        self.assertEqual([round(h["distance"], 6) for h in hits], [10, 24, 36, 50])
++        self.assertIsNone(Part.rayCast(self.shape, App.Vector(-10, 15, 10), App.Vector(-1, 0, 0)))
++        many = Part.rayCast(self.shape, [App.Vector(10, 10, 50), App.Vector(20, 15, 50)], App.Vector(0, 0, -1))
++        self.assertAlmostEqual(many[0]["distance"], 30, places=6)
++        self.assertIsNone(many[1])  # through the hole
+-- 
+2.43.0
+

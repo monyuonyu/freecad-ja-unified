@@ -1,7 +1,7 @@
 From b8207438a5988d80b6e3bf27f4393cf6afa74a6b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 17:10:13 +0900
-Subject: [PATCH 206/231] Unified: AI chat tells when the turn limit is hit
+Subject: [PATCH 206/235] Unified: AI chat tells when the turn limit is hit
  (raised to 80) instead of stopping silently
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

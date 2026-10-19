@@ -1,0 +1,2323 @@
+From c93237e4696767a7b919dcf92c094df4ea1cbf48 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 07:22:29 +0900
+Subject: [PATCH 232/235] Part views: fast hidden-line projection, section,
+ zoom, up vector, time limit
+
+projectVisible clipped every face against every face whose box overlapped it, on
+one thread.  Now a 2048 px depth buffer picks the occluders (the groups on top
+over the face, plus the other triangles of their curved face), faces and edges run
+on all cores, tessellation too, and shapes made only of planar triangles (STL via
+makeShapeFromMesh) go the mesh way: coplanar triangles merge and no lines are drawn
+between them, and BRepMesh is skipped.  Results are the same as before (visible
+area within 0.001 %), 1200 parts 17.7 s -> 3.9 s, 300 STL-derived parts 48 s -> 1.5 s.
+
+New keywords for renderImage / projectVisible / exportSvg / exportPptx: up,
+region / focus (zoom), section=(point, normal) with filled and hatched cut faces,
+sectionColor, hatch, progress (stderr), maxSeconds / timeout (partial result,
+nearest faces first, RuntimeWarning, 'complete': False), threads.  Named views
+iso-front-left, iso-back-right, iso-bottom and its variants.  Command line:
+--up, --region, --focus, --section (z=10, -x=5 or px,py,pz,nx,ny,nz),
+--deflection, --max-seconds, --progress.
+
+Coincident faces in the CPU renderer no longer flicker pixel by pixel into solid
+black.  "No such file" after a script hints at 'script.py -- value'.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |  31 +-
+ src/Mod/Part/App/ViewTools.cpp          | 991 ++++++++++++++++++++----
+ src/Mod/Part/App/ViewTools.h            |  48 +-
+ src/Mod/Part/App/ViewToolsPy.cpp        | 262 ++++++-
+ src/Mod/Part/PartViews.py               | 158 +++-
+ src/Mod/Part/TestPartApp.py             |   2 +-
+ src/Mod/Part/parttests/TestPartViews.py | 115 ++-
+ 7 files changed, 1400 insertions(+), 207 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 6c8a295eb..4c096bb82 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2482,9 +2482,16 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
+     ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
+     ("render", boost::program_options::value<std::string>(), "Write a PNG picture of the visible objects after processing the input files; needs no display or OpenGL (e.g. --render out.png)")
+-    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-back, iso-low, dimetric, trimetric, dx,dy,dz; several names separated by commas write one picture each")
++    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-back, iso-front-left, iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left, iso-bottom-back-right, iso-low, dimetric, trimetric, dx,dy,dz (direction from the eye into the model); several names separated by commas write one picture each")
+     ("size", boost::program_options::value<std::string>(), "Picture size for --render, WxH or W (default 1200x900)")
+     ("render-style", boost::program_options::value<std::string>(), "Style for --render: shaded (default), shaded-only, hidden-lines, lines")
++    ("up", boost::program_options::value<std::string>(), "Direction that is up in the picture for --render/--export-*, x,y,z (default 0,0,1)")
++    ("region", boost::program_options::value<std::string>(), "Zoom --render/--export-* to a box in model coordinates: xmin,ymin,zmin,xmax,ymax,zmax")
++    ("focus", boost::program_options::value<std::string>(), "Zoom --render/--export-* to objects (names or labels, separated by commas)")
++    ("section", boost::program_options::value<std::string>(), "Cut --render/--export-* with a plane and fill the cut faces: z=10 (cut away z > 10), -x=5 (cut away x < 5) or px,py,pz,nx,ny,nz (cut away the side the normal points to)")
++    ("deflection", boost::program_options::value<std::string>(), "Tessellation tolerance for --render/--export-* in model units (larger is coarser and faster; default from the size of the model)")
++    ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
++    ("progress", "Progress of --render/--export-* on stderr")
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+@@ -2722,6 +2729,12 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"view", "RenderView"},
+         {"size", "RenderSize"},
+         {"render-style", "RenderStyle"},
++        {"up", "RenderUp"},
++        {"region", "RenderRegion"},
++        {"focus", "RenderFocus"},
++        {"section", "RenderSection"},
++        {"deflection", "RenderDeflection"},
++        {"max-seconds", "RenderMaxSeconds"},
+         {"export-svg", "ExportSvg"},
+         {"export-polygons", "ExportPolygons"},
+         {"export-pptx", "ExportPptx"},
+@@ -2733,6 +2746,9 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+             mConfig[key] = vm[option].as<std::string>();
+         }
+     }
++    if (vm.contains("progress")) {
++        mConfig["RenderProgress"] = "1";
++    }
+     if (vm.contains("interference") && !vm.contains("interference-report")) {
+         mConfig["InterferenceReport"] = "-";
+     }
+@@ -3227,6 +3243,7 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+ {
+     std::list<std::string> processed;
+     Base::Console().log("Init: Processing command line files\n");
++    bool sawScript = false;
+     for (const auto & it : files) {
+         Base::FileInfo file(it);
+         // Can we safely remove the isSymlink check and directly query the canonical
+@@ -3243,9 +3260,19 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+         Base::Console().log("Init:     Processing file: {}\n",file.filePath());
+ 
+         if (!file.exists()) {
+-            Base::Console().error("No such file: {}\n", file.filePath());
++            if (sawScript) {
++                // 'FreeCADCmd script.py value': arguments for the script go after '--'
++                Base::Console().error("No such file: {} (to pass it to the script use: "
++                                      "script.py -- {})\n", file.filePath(), it);
++            }
++            else {
++                Base::Console().error("No such file: {}\n", file.filePath());
++            }
+             continue;
+         }
++        if (file.hasExtension("py") || file.hasExtension("fcmacro") || file.hasExtension("fcscript")) {
++            sawScript = true;
++        }
+ 
+         try {
+             if (file.hasExtension("fcstd") || file.hasExtension("fcbak")
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index cb0f6c1a0..5624225e0 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -5,6 +5,9 @@
+ #include <chrono>
+ #include <cmath>
+ #include <cstdio>
++#include <cstdlib>
++#include <exception>
++#include <iterator>
+ #include <limits>
+ #include <map>
+ #include <memory>
+@@ -23,6 +26,10 @@
+ #include <BRepBuilderAPI_Copy.hxx>
+ #include <BRepGProp.hxx>
+ #include <BRepMesh_IncrementalMesh.hxx>
++#include <BRepAlgoAPI_Cut.hxx>
++#include <BRepPrimAPI_MakeBox.hxx>
++#include <gp_Ax2.hxx>
++#include <gp_Pln.hxx>
+ #include <Bnd_Box.hxx>
+ #include <GCPnts_TangentialDeflection.hxx>
+ #include <GProp_GProps.hxx>
+@@ -58,6 +65,7 @@ struct SFace
+     bool solid = false;  // belongs to a closed solid: faces turned away are never seen
+     bool planar = false;
+     int smooth = 0;  // faces with the same key meet without a visible edge (mesh patches)
++    bool section = false;  // cut face of a section plane
+     std::vector<gp_Pnt> p;
+     std::vector<gp_Vec> n;  // smooth vertex normals (outward)
+     std::vector<std::array<int, 3>> t;
+@@ -89,6 +97,108 @@ struct Scene
+     int smoothKeys = 0;
+ };
+ 
++// Time budget, cancel flag and progress messages of one projection or picture
++class Budget
++{
++public:
++    explicit Budget(const ViewOptions& vo)
++        : progress(vo.progress)
++        , maxSeconds(vo.maxSeconds)
++        , threads(vo.threads)
++        , t0(std::chrono::steady_clock::now())
++    {}
++    double elapsed() const
++    {
++        return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
++    }
++    bool expired()
++    {
++        if (!stop && maxSeconds > 0 && elapsed() > maxSeconds) {
++            stop = true;
++        }
++        return stop;
++    }
++    void say(const char* what, std::size_t done, std::size_t total) const
++    {
++        if (progress) {
++            std::fprintf(stderr, "  %s: %zu/%zu (%.1f s)\n", what, done, total, elapsed());
++            std::fflush(stderr);
++        }
++    }
++    int threadCount(std::size_t n) const
++    {
++        int t = threads > 0 ? threads : (int)std::max(1U, std::thread::hardware_concurrency());
++        return (int)std::max<std::size_t>(1, std::min<std::size_t>((std::size_t)t, n));
++    }
++
++    const bool progress;
++    const double maxSeconds;
++    const int threads;
++    std::atomic<bool> stop {false};
++
++private:
++    std::chrono::steady_clock::time_point t0;
++};
++
++// f(index, thread) for index 0..n-1 on several threads; stops early when the budget runs
++// out.  The calling thread watches the clock and prints progress every two seconds.
++template<typename F>
++void parallelFor(std::size_t n, Budget& budget, const char* what, F&& f, bool always = false)
++{
++    if (n == 0) {
++        return;
++    }
++    const int T = budget.threadCount(n);
++    std::atomic<std::size_t> next {0}, done {0};
++    std::atomic<int> running {T};
++    std::atomic<bool> failed {false};
++    std::exception_ptr error;
++    std::mutex errorMutex;
++    auto work = [&](int tid) {
++        for (;;) {
++            if (failed || (!always && budget.stop)) {
++                break;
++            }
++            std::size_t i = next++;
++            if (i >= n) {
++                break;
++            }
++            try {
++                f(i, tid);
++            }
++            catch (...) {
++                std::lock_guard<std::mutex> lock(errorMutex);
++                if (!error) {
++                    error = std::current_exception();
++                }
++                failed = true;
++            }
++            ++done;
++        }
++        --running;
++    };
++    std::vector<std::thread> pool;
++    for (int t = 0; t < T; ++t) {
++        pool.emplace_back(work, t);
++    }
++    double lastSay = budget.elapsed();
++    while (running > 0) {
++        std::this_thread::sleep_for(std::chrono::milliseconds(50));
++        budget.expired();
++        if (budget.progress && budget.elapsed() - lastSay >= 2.0) {
++            lastSay = budget.elapsed();
++            budget.say(what, done, n);
++        }
++    }
++    for (auto& t : pool) {
++        t.join();
++    }
++    budget.say(what, done, n);
++    if (error) {
++        std::rethrow_exception(error);
++    }
++}
++
+ gp_Vec triNormal(const gp_Pnt& a, const gp_Pnt& b, const gp_Pnt& c)
+ {
+     return gp_Vec(a, b).Crossed(gp_Vec(a, c));
+@@ -114,8 +224,78 @@ double sceneDeflection(const std::vector<SceneItem>& items, double requested, Bn
+     return std::max(diag * 0.0008, 1e-4);
+ }
+ 
++void addMesh(Scene& scene, int itemIndex, const SceneItem& item);
++
++// A shape made of planar triangles only (Part.Shape.makeShapeFromMesh of an STL) as a mesh,
++// or false.  The mesh path merges coplanar triangles and shows no edges between them, and
++// needs no BRepMesh (which took most of the time for such shapes).
++bool meshOfTriangleShape(const SceneItem& item, SceneItem& mesh)
++{
++    if (!item.faceColors.empty() || !item.sectionFaces.empty()) {
++        return false;
++    }
++    TopTools_IndexedMapOfShape faceMap;
++    TopExp::MapShapes(item.shape, TopAbs_FACE, faceMap);
++    if (faceMap.Extent() < 4) {
++        return false;
++    }
++    Bnd_Box box;
++    BRepBndLib::Add(item.shape, box);
++    if (box.IsVoid()) {
++        return false;
++    }
++    const double tol = std::max(std::sqrt(box.SquareExtent()) * 1e-9, 1e-12);
++    std::map<std::array<long long, 3>, int> index;
++    mesh.color = item.color;
++    for (int i = 1; i <= faceMap.Extent(); ++i) {
++        const TopoDS_Face& face = TopoDS::Face(faceMap(i));
++        BRepAdaptor_Surface surf(face, Standard_False);
++        if (surf.GetType() != GeomAbs_Plane) {
++            return false;
++        }
++        TopTools_IndexedMapOfShape vertices, edges;
++        TopExp::MapShapes(face, TopAbs_VERTEX, vertices);
++        TopExp::MapShapes(face, TopAbs_EDGE, edges);
++        if (vertices.Extent() != 3 || edges.Extent() != 3) {
++            return false;
++        }
++        std::array<int, 3> tri {};
++        std::array<gp_Pnt, 3> pts;
++        for (int k = 0; k < 3; ++k) {
++            pts[k] = BRep_Tool::Pnt(TopoDS::Vertex(vertices(k + 1)));
++            std::array<long long, 3> key {
++                std::llround(pts[k].X() / tol),
++                std::llround(pts[k].Y() / tol),
++                std::llround(pts[k].Z() / tol)
++            };
++            auto it = index.find(key);
++            if (it == index.end()) {
++                it = index.emplace(key, (int)mesh.meshPoints.size()).first;
++                mesh.meshPoints.push_back(pts[k]);
++            }
++            tri[k] = it->second;
++        }
++        gp_Dir normal = surf.Plane().Axis().Direction();
++        if (face.Orientation() == TopAbs_REVERSED) {
++            normal.Reverse();
++        }
++        if (triNormal(pts[0], pts[1], pts[2]).Dot(gp_Vec(normal)) < 0) {
++            std::swap(tri[1], tri[2]);
++        }
++        mesh.meshFacets.push_back(tri);
++    }
++    return true;
++}
++
+ void addShape(Scene& scene, int itemIndex, const SceneItem& item)
+ {
++    {
++        SceneItem mesh;
++        if (meshOfTriangleShape(item, mesh)) {
++            addMesh(scene, itemIndex, mesh);
++            return;
++        }
++    }
+     // Mesh a copy without the caller's triangulation: BRepMesh keeps a finer mesh that is
+     // already there (exportStl's default 0.01 mm, a viewer), which made the hidden-surface
+     // pass take many minutes, and the caller's shape would get our mesh attached.
+@@ -143,6 +323,10 @@ void addShape(Scene& scene, int itemIndex, const SceneItem& item)
+         sf.face = i - 1;
+         sf.color = (size_t)(i - 1) < item.faceColors.size() ? item.faceColors[i - 1] : item.color;
+         sf.solid = solidFaces.Contains(face);
++        if ((size_t)(i - 1) < item.sectionFaces.size() && item.sectionFaces[i - 1]) {
++            sf.section = true;
++            sf.color = item.sectionColor;
++        }
+         sf.smooth = scene.smoothKeys++;
+         BRepAdaptor_Surface surf(face, Standard_False);
+         sf.planar = surf.GetType() == GeomAbs_Plane;
+@@ -403,17 +587,31 @@ void addMesh(Scene& scene, int itemIndex, const SceneItem& item)
+     }
+ }
+ 
+-Scene buildScene(const std::vector<SceneItem>& items, double deflection)
++Scene buildScene(const std::vector<SceneItem>& items, double deflection, Budget& budget)
+ {
+     Scene scene;
+     scene.deflection = sceneDeflection(items, deflection, scene.box);
+-    for (int i = 0; i < (int)items.size(); ++i) {
++    // each item on its own (BRepMesh is the slow part), merged in order afterwards
++    std::vector<Scene> parts(items.size());
++    parallelFor(items.size(), budget, "tessellate", [&](std::size_t i, int) {
++        Scene& part = parts[i];
++        part.deflection = scene.deflection;
+         if (!items[i].shape.IsNull()) {
+-            addShape(scene, i, items[i]);
++            addShape(part, (int)i, items[i]);
+         }
+         else if (!items[i].meshFacets.empty()) {
+-            addMesh(scene, i, items[i]);
++            addMesh(part, (int)i, items[i]);
+         }
++    });
++    for (auto& part : parts) {
++        for (auto& f : part.faces) {
++            f.smooth += scene.smoothKeys;
++            scene.faces.push_back(std::move(f));
++        }
++        scene.smoothKeys += part.smoothKeys;
++        std::move(part.edges.begin(), part.edges.end(), std::back_inserter(scene.edges));
++        std::move(part.soft.begin(), part.soft.end(), std::back_inserter(scene.soft));
++        part = Scene();
+     }
+     return scene;
+ }
+@@ -507,6 +705,9 @@ Fit fitView(const Scene& scene, const Camera& cam, int W, int H, double margin)
+ 
+ void rasterize(Raster& R, const Scene& scene, const Camera& cam, const Fit& fit)
+ {
++    // coincident faces (overlapping parts, both cut by a section): the first one drawn
++    // keeps the pixel, instead of noise deciding pixel by pixel (drawn as solid edges)
++    const double tie = 1e-7 * std::sqrt(scene.box.IsVoid() ? 1.0 : scene.box.SquareExtent());
+     for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
+         const SFace& f = scene.faces[fi];
+         std::vector<double> sx(f.p.size()), sy(f.p.size()), sd(f.p.size());
+@@ -547,7 +748,7 @@ void rasterize(Raster& R, const Scene& scene, const Camera& cam, const Fit& fit)
+                     }
+                     double d = w0 * sd[a] + w1 * sd[b] + w2 * sd[c];
+                     size_t idx = (size_t)py * R.w + px;
+-                    if (d >= R.depth[idx]) {
++                    if (d >= R.depth[idx] - tie) {
+                         continue;
+                     }
+                     R.depth[idx] = (float)d;
+@@ -640,6 +841,23 @@ void putChunk(std::ostream& out, const std::string& type, const std::vector<std:
+ 
+ // ------------------------------------------------------------------ camera
+ 
++Camera Camera::fromDirection(const gp_Vec& d, const gp_Vec& upHint)
++{
++    if (d.Magnitude() < 1e-12) {
++        throw Base::ValueError("View direction must not be zero");
++    }
++    gp_Vec dir = d.Normalized();
++    gp_Vec up = upHint - dir * upHint.Dot(dir);
++    if (up.Magnitude() < 1e-9) {
++        throw Base::ValueError("The up direction must not be parallel to the view direction");
++    }
++    Camera cam;
++    cam.dir = gp_Dir(dir);
++    cam.up = gp_Dir(up);
++    cam.right = gp_Dir(dir.Crossed(gp_Vec(cam.up)));
++    return cam;
++}
++
+ Camera Camera::fromDirection(const gp_Vec& d)
+ {
+     if (d.Magnitude() < 1e-12) {
+@@ -671,6 +889,14 @@ Camera Camera::fromName(const std::string& name)
+         {"top", {0, 0, -1}},
+         {"bottom", {0, 0, 1}},
+         {"iso-back", {1, -1, -1}},
++        {"iso-front-left", {1, 1, -1}},
++        {"iso-back-right", {-1, -1, -1}},
++        {"iso-back-left", {1, -1, -1}},
++        {"iso-bottom", {-1, 1, 1}},
++        {"iso-bottom-front-left", {1, 1, 1}},
++        {"iso-bottom-back-right", {-1, -1, 1}},
++        {"iso-bottom-back-left", {1, -1, 1}},
++        {"bottom-iso", {-1, 1, 1}},
+         {"iso-low", {-1, 1, 0.6}},
+         {"dimetric", {-0.6, 1, -0.5}},
+         {"trimetric", {-0.5, 1, -0.7}},
+@@ -687,14 +913,251 @@ Camera Camera::fromName(const std::string& name)
+     }
+     throw Base::ValueError(
+         "Unknown view '" + name
+-        + "' (iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric, "
+-          "trimetric or dx,dy,dz)"
++        + "' (iso, front, back, right, left, top, bottom, iso-back, iso-front-left, "
++          "iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left, "
++          "iso-bottom-back-right, iso-low, dimetric, trimetric or dx,dy,dz)"
+     );
+ }
+ 
++
++// ------------------------------------------------------------------ section and zoom
++
++namespace
++{
++
++struct Rect2
++{
++    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
++    bool overlaps(const Rect2& o) const
++    {
++        return !(o.x1 < x0 || o.x0 > x1 || o.y1 < y0 || o.y0 > y1);
++    }
++};
++
++Rect2 projectBox(const Bnd_Box& box, const Camera& cam)
++{
++    double x0 {}, y0 {}, z0 {}, x1 {}, y1 {}, z1 {};
++    box.Get(x0, y0, z0, x1, y1, z1);
++    Rect2 r {1e300, 1e300, -1e300, -1e300};
++    for (int k = 0; k < 8; ++k) {
++        gp_Pnt p((k & 1) ? x1 : x0, (k & 2) ? y1 : y0, (k & 4) ? z1 : z0);
++        double x {}, y {}, d {};
++        cam.project(p, x, y, d);
++        r.x0 = std::min(r.x0, x);
++        r.y0 = std::min(r.y0, y);
++        r.x1 = std::max(r.x1, x);
++        r.y1 = std::max(r.y1, y);
++    }
++    return r;
++}
++
++Bnd_Box regionBox(const ViewOptions& vo)
++{
++    Bnd_Box box;
++    const auto& r = vo.region;
++    box.Update(std::min(r[0], r[3]), std::min(r[1], r[4]), std::min(r[2], r[5]),
++               std::max(r[0], r[3]), std::max(r[1], r[4]), std::max(r[2], r[5]));
++    return box;
++}
++
++Bnd_Box itemBox(const SceneItem& item)
++{
++    Bnd_Box box;
++    if (!item.shape.IsNull()) {
++        BRepBndLib::Add(item.shape, box, Standard_False);
++    }
++    for (const auto& p : item.meshPoints) {
++        box.Add(p);
++    }
++    return box;
++}
++
++// a mesh with the triangles clipped to where (p - point).normal <= 0
++void clipMesh(SceneItem& item, const gp_Pnt& point, const gp_Dir& normal)
++{
++    std::vector<gp_Pnt> pts;
++    std::vector<std::array<int, 3>> facets;
++    auto dist = [&](const gp_Pnt& p) {
++        return gp_Vec(point, p).Dot(gp_Vec(normal));
++    };
++    for (const auto& f : item.meshFacets) {
++        std::vector<gp_Pnt> poly;
++        for (int e = 0; e < 3; ++e) {
++            const gp_Pnt& a = item.meshPoints[f[e]];
++            const gp_Pnt& b = item.meshPoints[f[(e + 1) % 3]];
++            double da = dist(a), db = dist(b);
++            if (da <= 0) {
++                poly.push_back(a);
++            }
++            if ((da <= 0) != (db <= 0)) {
++                double t = da / (da - db);
++                poly.emplace_back(a.XYZ() + (b.XYZ() - a.XYZ()) * t);
++            }
++        }
++        if (poly.size() < 3) {
++            continue;
++        }
++        int base = (int)pts.size();
++        pts.insert(pts.end(), poly.begin(), poly.end());
++        for (int k = 1; k + 1 < (int)poly.size(); ++k) {
++            facets.push_back({base, base + k, base + k + 1});
++        }
++    }
++    item.meshPoints = std::move(pts);
++    item.meshFacets = std::move(facets);
++}
++
++// The items as the view shows them: cut by the section plane, and those outside the zoom
++// region left out (empty items keep the indices)
++const std::vector<SceneItem>& prepareItems(
++    const std::vector<SceneItem>& items,
++    const Camera& cam,
++    const ViewOptions& vo,
++    std::vector<SceneItem>& storage,
++    std::vector<std::string>* warnings
++)
++{
++    if (!vo.hasSection && !vo.hasRegion) {
++        return items;
++    }
++    storage = vo.hasSection ? sectionItems(items, vo, warnings) : items;
++    if (vo.hasRegion) {
++        const Rect2 rect = projectBox(regionBox(vo), cam);
++        for (auto& item : storage) {
++            Bnd_Box box = itemBox(item);
++            if (box.IsVoid() || !projectBox(box, cam).overlaps(rect)) {
++                Color c = item.color;
++                item = SceneItem();
++                item.color = c;
++            }
++        }
++    }
++    return storage;
++}
++
++double regionDeflection(const ViewOptions& vo, double requested)
++{
++    if (requested > 0 || !vo.hasRegion) {
++        return requested;
++    }
++    Bnd_Box box = regionBox(vo);
++    return std::max(std::sqrt(box.SquareExtent()) * 0.0008, 1e-4);
++}
++
++}  // namespace
++
++std::vector<SceneItem> Part::ViewTools::sectionItems(
++    const std::vector<SceneItem>& items,
++    const ViewOptions& vo,
++    std::vector<std::string>* warnings
++)
++{
++    std::vector<SceneItem> out(items.size());
++    if (!vo.hasSection) {
++        return items;
++    }
++    const gp_Pnt P = vo.sectionPoint;
++    const gp_Dir N = vo.sectionNormal;
++    std::mutex warnMutex;
++    Budget budget(vo);
++    parallelFor(items.size(), budget, "section", [&](std::size_t i, int) {
++        const SceneItem& in = items[i];
++        SceneItem& res = out[i];
++        res = in;
++        res.sectionColor = vo.sectionColor;
++        if (in.shape.IsNull()) {
++            if (!in.meshFacets.empty()) {
++                clipMesh(res, P, N);
++            }
++            return;
++        }
++        Bnd_Box box;
++        BRepBndLib::Add(in.shape, box, Standard_False);
++        if (box.IsVoid()) {
++            return;
++        }
++        double x0 {}, y0 {}, z0 {}, x1 {}, y1 {}, z1 {};
++        box.Get(x0, y0, z0, x1, y1, z1);
++        double smin = 1e300, smax = -1e300;
++        for (int k = 0; k < 8; ++k) {
++            gp_Pnt c((k & 1) ? x1 : x0, (k & 2) ? y1 : y0, (k & 4) ? z1 : z0);
++            double d = gp_Vec(P, c).Dot(gp_Vec(N));
++            smin = std::min(smin, d);
++            smax = std::max(smax, d);
++        }
++        const double diag = std::sqrt(box.SquareExtent());
++        const double tol = std::max(diag * 1e-9, 1e-9);
++        if (smax <= tol) {
++            return;  // all on the kept side
++        }
++        if (smin >= -tol) {
++            res.shape.Nullify();  // all cut away
++            res.faceColors.clear();
++            return;
++        }
++        // a box on the removed side, large enough to hold the shape
++        gp_Pnt center((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
++        gp_Pnt onPlane = center.Translated(-gp_Vec(N) * gp_Vec(P, center).Dot(gp_Vec(N)));
++        gp_Ax2 ax(onPlane, N);
++        const double L = 2 * diag + 1;
++        gp_Pnt corner = onPlane.Translated(-gp_Vec(ax.XDirection()) * L - gp_Vec(ax.YDirection()) * L);
++        TopoDS_Shape tool = BRepPrimAPI_MakeBox(gp_Ax2(corner, N, ax.XDirection()), 2 * L, 2 * L, L).Shape();
++        BRepAlgoAPI_Cut cut(in.shape, tool);
++        if (!cut.IsDone() || cut.HasErrors() || cut.Shape().IsNull()) {
++            std::lock_guard<std::mutex> lock(warnMutex);
++            if (warnings) {
++                warnings->push_back("section: item " + std::to_string(i) + " could not be cut, shown whole");
++            }
++            return;
++        }
++        const TopoDS_Shape result = cut.Shape();
++        // colours of the faces that came from the shape's faces, section colour on the plane
++        TopTools_IndexedMapOfShape oldFaces, newFaces;
++        TopExp::MapShapes(in.shape, TopAbs_FACE, oldFaces);
++        TopExp::MapShapes(result, TopAbs_FACE, newFaces);
++        std::vector<Color> colors(newFaces.Extent(), in.color);
++        if (!in.faceColors.empty()) {
++            for (int k = 1; k <= oldFaces.Extent() && k <= (int)in.faceColors.size(); ++k) {
++                const Color& c = in.faceColors[k - 1];
++                int same = newFaces.FindIndex(oldFaces(k));
++                if (same > 0) {
++                    colors[same - 1] = c;
++                }
++                for (const auto& m : cut.Modified(oldFaces(k))) {
++                    int idx = newFaces.FindIndex(m);
++                    if (idx > 0) {
++                        colors[idx - 1] = c;
++                    }
++                }
++            }
++        }
++        res.shape = result;
++        res.faceColors = in.faceColors.empty() ? std::vector<Color>() : colors;
++        res.sectionFaces.assign(newFaces.Extent(), 0);
++        const gp_Pln plane(P, N);
++        for (int k = 1; k <= newFaces.Extent(); ++k) {
++            BRepAdaptor_Surface surf(TopoDS::Face(newFaces(k)), Standard_False);
++            if (surf.GetType() != GeomAbs_Plane) {
++                continue;
++            }
++            gp_Pln pl = surf.Plane();
++            if (std::fabs(pl.Axis().Direction().Dot(N)) > 1 - 1e-9
++                && plane.Distance(pl.Location()) < std::max(tol * 100, 1e-7)) {
++                res.sectionFaces[k - 1] = 1;
++            }
++        }
++    });
++    return out;
++}
++
+ // ------------------------------------------------------------------ render
+ 
+-Image Part::ViewTools::render(const std::vector<SceneItem>& items, const Camera& cam, const RenderOptions& opt)
++Image Part::ViewTools::render(
++    const std::vector<SceneItem>& items,
++    const Camera& cam,
++    const RenderOptions& opt,
++    const ViewOptions& vo
++)
+ {
+     if (opt.width < 8 || opt.height < 8 || opt.width > 16384 || opt.height > 16384) {
+         throw Base::ValueError("Image size must be between 8 and 16384 pixels");
+@@ -715,8 +1178,21 @@ Image Part::ViewTools::render(const std::vector<SceneItem>& items, const Camera&
+     const int W = opt.width * s;
+     const int H = opt.height * s;
+ 
+-    Scene scene = buildScene(items, opt.deflection);
++    Budget budget(vo);
++    std::vector<SceneItem> storage;
++    const std::vector<SceneItem>& shown = prepareItems(items, cam, vo, storage, nullptr);
++    Scene scene = buildScene(shown, regionDeflection(vo, opt.deflection), budget);
+     Fit fit = fitView(scene, cam, W, H, opt.margin);
++    if (vo.hasRegion) {
++        // frame the region instead of everything
++        Rect2 r = projectBox(regionBox(vo), cam);
++        double bw = std::max(r.x1 - r.x0, 1e-9), bh = std::max(r.y1 - r.y0, 1e-9);
++        fit.scale = std::min(W * (1 - 2 * opt.margin) / bw, H * (1 - 2 * opt.margin) / bh);
++        fit.cx = (r.x0 + r.x1) / 2;
++        fit.cy = (r.y0 + r.y1) / 2;
++    }
++    const int hatchPeriod = 9 * s;
++    const int hatchWidth = std::max(1, (int)std::lround(opt.lineWidth * s));
+ 
+     Raster R;
+     R.init(W, H);
+@@ -804,11 +1280,20 @@ Image Part::ViewTools::render(const std::vector<SceneItem>& items, const Camera&
+                     else if (R.id[i] >= 0) {
+                         if (hiddenLines) {
+                             c = {1.0F, 1.0F, 1.0F};
++                            if (scene.faces[R.id[i]].section && vo.sectionHatch
++                                && ((x * s + sx) + (y * s + sy)) % hatchPeriod < hatchWidth) {
++                                c = opt.edgeColor;
++                            }
+                         }
+                         else {
+-                            const Color& fc = scene.faces[R.id[i]].color;
+-                            float sh = R.shade[i];
++                            const SFace& face = scene.faces[R.id[i]];
++                            const Color& fc = face.color;
++                            float sh = face.section ? 1.0F : R.shade[i];
+                             c = {fc[0] * sh, fc[1] * sh, fc[2] * sh};
++                            if (face.section && vo.sectionHatch
++                                && ((x * s + sx) + (y * s + sy)) % hatchPeriod < hatchWidth) {
++                                c = {fc[0] * 0.45F, fc[1] * 0.45F, fc[2] * 0.45F};
++                            }
+                         }
+                     }
+                     acc[0] += c[0];
+@@ -885,6 +1370,7 @@ struct Group
+ {
+     int face = 0;  // index in scene.faces
+     Paths64 region;
++    Paths64 tris;  // counter-clockwise triangles of region
+     double a = 0, b = 0, c = 0;  // depth = a*X + b*Y + c in integer space
+     double dmin = 0, dmax = 0;
+     std::int64_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // bounding box
+@@ -911,59 +1397,6 @@ struct Space
+     }
+ };
+ 
+-class Grid
+-{
+-public:
+-    Grid(std::int64_t x0, std::int64_t y0, std::int64_t x1, std::int64_t y1, int n)
+-        : x0(x0)
+-        , y0(y0)
+-        , n(n)
+-    {
+-        cw = std::max<double>(1.0, double(x1 - x0) / n);
+-        ch = std::max<double>(1.0, double(y1 - y0) / n);
+-        cells.resize((size_t)n * n);
+-    }
+-    void cellRange(std::int64_t a0, std::int64_t b0, std::int64_t a1, std::int64_t b1, int& i0, int& j0, int& i1, int& j1) const
+-    {
+-        i0 = std::clamp((int)((a0 - x0) / cw), 0, n - 1);
+-        i1 = std::clamp((int)((a1 - x0) / cw), 0, n - 1);
+-        j0 = std::clamp((int)((b0 - y0) / ch), 0, n - 1);
+-        j1 = std::clamp((int)((b1 - y0) / ch), 0, n - 1);
+-    }
+-    void insert(int id, const Group& g)
+-    {
+-        int i0 {}, j0 {}, i1 {}, j1 {};
+-        cellRange(g.x0, g.y0, g.x1, g.y1, i0, j0, i1, j1);
+-        for (int j = j0; j <= j1; ++j) {
+-            for (int i = i0; i <= i1; ++i) {
+-                cells[(size_t)j * n + i].push_back(id);
+-            }
+-        }
+-    }
+-    template<typename F>
+-    void query(std::int64_t a0, std::int64_t b0, std::int64_t a1, std::int64_t b1, std::vector<int>& stamp, int mark, F&& f) const
+-    {
+-        int i0 {}, j0 {}, i1 {}, j1 {};
+-        cellRange(a0, b0, a1, b1, i0, j0, i1, j1);
+-        for (int j = j0; j <= j1; ++j) {
+-            for (int i = i0; i <= i1; ++i) {
+-                for (int id : cells[(size_t)j * n + i]) {
+-                    if (stamp[id] != mark) {
+-                        stamp[id] = mark;
+-                        f(id);
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-private:
+-    std::int64_t x0, y0;
+-    int n;
+-    double cw, ch;
+-    std::vector<std::vector<int>> cells;
+-};
+-
+ // convex polygon of the rectangle part where A*X + B*Y + C < 0
+ Path64 halfPlaneClip(double A, double B, double C, double x0, double y0, double x1, double y1)
+ {
+@@ -1053,14 +1486,39 @@ Projection Part::ViewTools::projectVisible(
+     const std::vector<SceneItem>& items,
+     const Camera& cam,
+     double deflection,
+-    bool withEdges
++    bool withEdges,
++    const ViewOptions& vo
+ )
+ {
+-    Scene scene = buildScene(items, deflection);
++    Budget budget(vo);
++    std::vector<std::string> warnings;
++    std::vector<SceneItem> storage;
++    const std::vector<SceneItem>& shown = prepareItems(items, cam, vo, storage, &warnings);
++    Scene scene = buildScene(shown, regionDeflection(vo, deflection), budget);
+     Projection result;
++    auto finish = [&]() {
++        if (budget.stop) {
++            result.complete = false;
++            char buf[200];
++            std::snprintf(
++                buf,
++                sizeof(buf),
++                "time limit of %g s reached: the result is incomplete (nearest faces first)",
++                vo.maxSeconds
++            );
++            warnings.insert(warnings.begin(), buf);
++        }
++        for (const auto& w : warnings) {
++            result.warning += (result.warning.empty() ? "" : "\n") + w;
++        }
++        if (budget.progress) {
++            std::fprintf(stderr, "  done (%.1f s)\n", budget.elapsed());
++        }
++        return std::move(result);
++    };
+ 
+     // 2D extent
+-    double xmin = 1e300, xmax = -1e300, ymin = 1e300, ymax = -1e300, dmin = 1e300, dmax = -1e300;
++    double xmin = 1e300, xmax = -1e300, ymin = 1e300, ymax = -1e300;
+     for (const auto& f : scene.faces) {
+         for (const auto& p : f.p) {
+             double x {}, y {}, d {};
+@@ -1069,8 +1527,6 @@ Projection Part::ViewTools::projectVisible(
+             xmax = std::max(xmax, x);
+             ymin = std::min(ymin, y);
+             ymax = std::max(ymax, y);
+-            dmin = std::min(dmin, d);
+-            dmax = std::max(dmax, d);
+         }
+     }
+     for (const auto& e : scene.edges) {
+@@ -1083,8 +1539,15 @@ Projection Part::ViewTools::projectVisible(
+             ymax = std::max(ymax, y);
+         }
+     }
++    if (vo.hasRegion) {
++        Rect2 r = projectBox(regionBox(vo), cam);
++        xmin = r.x0;
++        ymin = r.y0;
++        xmax = r.x1;
++        ymax = r.y1;
++    }
+     if (xmin > xmax) {
+-        return result;
++        return finish();
+     }
+     result.xmin = xmin;
+     result.xmax = xmax;
+@@ -1100,10 +1563,10 @@ Projection Part::ViewTools::projectVisible(
+     const double eps = std::max(diag * 1e-7, scene.deflection * 0.25);
+ 
+     // groups: planar faces as a whole, curved faces per triangle
+-    std::vector<Group> groups;
+-    std::vector<std::vector<int>> groupsOfFace(scene.faces.size());
++    std::vector<std::vector<Group>> faceGroups(scene.faces.size());
+     std::vector<double> faceShade(scene.faces.size(), 1.0);
+-    for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
++    parallelFor(scene.faces.size(), budget, "faces", [&](std::size_t fidx, int) {
++        const int fi = (int)fidx;
+         const SFace& f = scene.faces[fi];
+         std::vector<double> X(f.p.size()), Y(f.p.size()), D(f.p.size());
+         for (size_t k = 0; k < f.p.size(); ++k) {
+@@ -1115,7 +1578,6 @@ Projection Part::ViewTools::projectVisible(
+         }
+         gp_Vec nsum(0, 0, 0);
+         auto addGroup = [&](const std::vector<std::array<int, 3>>& tris, const gp_Vec& normal) {
+-            // depth plane through the triangles: fit with the normal and the first point
+             gp_Vec n = normal;
+             double nx = n.XYZ().Dot(cam.right.XYZ());
+             double ny = n.XYZ().Dot(cam.up.XYZ());
+@@ -1133,9 +1595,7 @@ Projection Part::ViewTools::projectVisible(
+             const double d0 = D[k0];
+             g.a = -nx / nd / sp.S;
+             g.b = -ny / nd / sp.S;
+-            // c so that a*X + b*Y + c = d0 at (X0, Y0)
+             g.c = d0 - g.a * X[k0] - g.b * Y[k0];
+-            Paths64 tri;
+             g.dmin = 1e300;
+             g.dmax = -1e300;
+             for (const auto& t : tris) {
+@@ -1149,13 +1609,13 @@ Projection Part::ViewTools::projectVisible(
+                     std::reverse(path.begin(), path.end());
+                 }
+                 if (Clipper2Lib::Area(path) != 0) {
+-                    tri.push_back(std::move(path));
++                    g.tris.push_back(std::move(path));
+                 }
+             }
+-            if (tri.empty()) {
++            if (g.tris.empty()) {
+                 return;
+             }
+-            g.region = tris.size() == 1 ? tri : Clipper2Lib::Union(tri, Clipper2Lib::FillRule::NonZero);
++            g.region = g.tris.size() == 1 ? g.tris : Clipper2Lib::Union(g.tris, Clipper2Lib::FillRule::NonZero);
+             if (g.region.empty()) {
+                 return;
+             }
+@@ -1164,8 +1624,7 @@ Projection Part::ViewTools::projectVisible(
+             g.y0 = r.top;
+             g.x1 = r.right;
+             g.y1 = r.bottom;
+-            groupsOfFace[fi].push_back((int)groups.size());
+-            groups.push_back(std::move(g));
++            faceGroups[fi].push_back(std::move(g));
+         };
+         if (f.planar) {
+             gp_Vec n(0, 0, 0);
+@@ -1192,29 +1651,138 @@ Projection Part::ViewTools::projectVisible(
+         if (nsum.SquareMagnitude() > 1e-30) {
+             faceShade[fi] = shadeOf(cam, nsum.Normalized());
+         }
++    });
++    std::vector<Group> groups;
++    std::vector<std::vector<int>> groupsOfFace(scene.faces.size());
++    for (std::size_t fi = 0; fi < faceGroups.size(); ++fi) {
++        for (auto& g : faceGroups[fi]) {
++            groupsOfFace[fi].push_back((int)groups.size());
++            groups.push_back(std::move(g));
++        }
++        faceGroups[fi] = std::vector<Group>();
++    }
++
++    // Depth buffer of the nearest group at each pixel.  What hides part of a group F is,
++    // at every point, also hidden by or equal to the nearest surface there; so the groups
++    // that are on top somewhere over F are the only ones to clip F with.  Before, every
++    // group whose box overlapped F's was clipped against F (minutes for 1000 parts).
++    const double W1 = (xmax - xmin) * sp.S, H1 = (ymax - ymin) * sp.S;
++    const int res = std::getenv("FC_PV_RES") ? std::atoi(std::getenv("FC_PV_RES")) : 2048;
++    const double ps = std::max({W1, H1, 1.0}) / res;
++    const int RW = std::max(1, (int)std::ceil(W1 / ps) + 1);
++    const int RH = std::max(1, (int)std::ceil(H1 / ps) + 1);
++    const double margin = 2 * eps;
++    std::vector<double> zbuf((size_t)RW * RH, std::numeric_limits<double>::infinity());
++    std::vector<int> ibuf((size_t)RW * RH, -1);
++    auto edgeFn = [](double ax, double ay, double bx, double by, double px, double py) {
++        return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
++    };
++    // pixels whose centre is inside triangle t (grown by r): f(index, cx, cy)
++    auto scanTriangle = [&](const Path64& t, double r, auto&& f) {
++        const double x0 = (double)t[0].x, y0 = (double)t[0].y;
++        const double x1 = (double)t[1].x, y1 = (double)t[1].y;
++        const double x2 = (double)t[2].x, y2 = (double)t[2].y;
++        const double l01 = std::hypot(x1 - x0, y1 - y0), l12 = std::hypot(x2 - x1, y2 - y1),
++                     l20 = std::hypot(x0 - x2, y0 - y2);
++        int i0 = std::max(0, (int)std::floor((std::min({x0, x1, x2}) - r) / ps - 0.5));
++        int i1 = std::min(RW - 1, (int)std::ceil((std::max({x0, x1, x2}) + r) / ps - 0.5));
++        int j0 = std::max(0, (int)std::floor((std::min({y0, y1, y2}) - r) / ps - 0.5));
++        int j1 = std::min(RH - 1, (int)std::ceil((std::max({y0, y1, y2}) + r) / ps - 0.5));
++        for (int j = j0; j <= j1; ++j) {
++            const double cy = (j + 0.5) * ps;
++            for (int i = i0; i <= i1; ++i) {
++                const double cx = (i + 0.5) * ps;
++                if (edgeFn(x0, y0, x1, y1, cx, cy) >= -r * l01 && edgeFn(x1, y1, x2, y2, cx, cy) >= -r * l12
++                    && edgeFn(x2, y2, x0, y0, cx, cy) >= -r * l20) {
++                    f((size_t)j * RW + i, cx, cy);
++                }
++            }
++        }
++    };
++    for (int gi = 0; gi < (int)groups.size(); ++gi) {
++        const Group& G = groups[gi];
++        for (const auto& t : G.tris) {
++            scanTriangle(t, 0.0, [&](size_t idx, double cx, double cy) {
++                const double d = G.a * cx + G.b * cy + G.c;
++                const double z = zbuf[idx];
++                // coincident faces: the later group wins, as in the exact test below
++                if (d < z - margin || (d <= z + margin && gi > ibuf[idx])) {
++                    zbuf[idx] = std::min(d, z);
++                    ibuf[idx] = gi;
++                }
++            });
++        }
++    }
++    if (budget.progress) {
++        std::fprintf(stderr, "  depth buffer %dx%d, %zu groups (%.1f s)\n", RW, RH, groups.size(), budget.elapsed());
+     }
+ 
+-    // spatial index
+-    Grid grid(0, 0, (std::int64_t)1e8, (std::int64_t)1e8, std::clamp((int)std::sqrt((double)groups.size()), 1, 128));
++    // A curved face is clipped per triangle, and triangles smaller than a pixel (thin ones
++    // near a silhouette) may own no pixel of the buffer: when one triangle of a face is a
++    // candidate, so are the others of that face that overlap the box.
++    std::vector<int> faceOfGroup(groups.size());
+     for (int gi = 0; gi < (int)groups.size(); ++gi) {
+-        grid.insert(gi, groups[gi]);
++        faceOfGroup[gi] = groups[gi].face;
++    }
++    auto addSiblings = [&](std::vector<int>& candidates, std::vector<int>& stamp, int mark,
++                           std::int64_t x0, std::int64_t y0, std::int64_t x1, std::int64_t y1) {
++        const std::size_t n = candidates.size();
++        int lastFace = -1;
++        for (std::size_t k = 0; k < n; ++k) {
++            const int face = faceOfGroup[candidates[k]];
++            if (face == lastFace || groupsOfFace[face].size() < 2) {
++                continue;
++            }
++            lastFace = face;
++            for (int gi : groupsOfFace[face]) {
++                const Group& G = groups[gi];
++                if (stamp[gi] == mark || G.x1 < x0 || G.x0 > x1 || G.y1 < y0 || G.y0 > y1) {
++                    continue;
++                }
++                stamp[gi] = mark;
++                candidates.push_back(gi);
++            }
++        }
++    };
++    const int threadCount = budget.threadCount(std::numeric_limits<std::size_t>::max());
++    std::vector<std::vector<int>> stamps(threadCount, std::vector<int>(groups.size(), -1));
++    std::vector<int> marks(threadCount, 0);
++
++    // nearest groups first: when the time runs out the result has the front of the scene
++    std::vector<int> order(groups.size());
++    for (int i = 0; i < (int)order.size(); ++i) {
++        order[i] = i;
+     }
+-    std::vector<int> stamp(groups.size(), -1);
+-    int mark = 0;
++    std::sort(order.begin(), order.end(), [&](int a, int b) {
++        return groups[a].dmin < groups[b].dmin;
++    });
+ 
+     // visible region of each group
+     std::vector<Paths64> visible(groups.size());
+-    for (int gi = 0; gi < (int)groups.size(); ++gi) {
++    parallelFor(order.size(), budget, "hidden surfaces", [&](std::size_t k, int tid) {
++        const int gi = order[k];
+         const Group& F = groups[gi];
++        std::vector<int>& stamp = stamps[tid];
++        const int mark = ++marks[tid];
++        std::vector<int> candidates;
++        for (const auto& t : F.tris) {
++            scanTriangle(t, 1.5 * ps, [&](size_t idx, double cx, double cy) {
++                const int id = ibuf[idx];
++                if (id < 0 || id == gi || stamp[id] == mark) {
++                    return;
++                }
++                if (zbuf[idx] < F.a * cx + F.b * cy + F.c + margin) {
++                    stamp[id] = mark;
++                    candidates.push_back(id);
++                }
++            });
++        }
++        addSiblings(candidates, stamp, mark, F.x0, F.y0, F.x1, F.y1);
+         Paths64 occluders;
+-        ++mark;
+-        grid.query(F.x0, F.y0, F.x1, F.y1, stamp, mark, [&](int hi) {
+-            if (hi == gi) {
+-                return;
+-            }
++        for (int hi : candidates) {
+             const Group& G = groups[hi];
+             if (G.x1 < F.x0 || G.x0 > F.x1 || G.y1 < F.y0 || G.y0 > F.y1) {
+-                return;
++                continue;
+             }
+             {
+                 // coincident faces (a body twice, a STEP assembly with copies): the later
+@@ -1224,20 +1792,19 @@ Projection Part::ViewTools::projectVisible(
+                 double sx = (double)(std::min(F.x1, G.x1) - std::max(F.x0, G.x0)) + 4;
+                 double sy = (double)(std::min(F.y1, G.y1) - std::max(F.y0, G.y0)) + 4;
+                 double xm = (double)std::max(F.x0, G.x0), ym = (double)std::max(F.y0, G.y0);
+-                if (std::fabs(A0) * sx + std::fabs(B0) * sy
+-                        + std::fabs(A0 * xm + B0 * ym + C0) <= eps) {
++                if (std::fabs(A0) * sx + std::fabs(B0) * sy + std::fabs(A0 * xm + B0 * ym + C0) <= eps) {
+                     if (hi > gi) {
+                         occluders.insert(occluders.end(), G.region.begin(), G.region.end());
+                     }
+-                    return;
++                    continue;
+                 }
+             }
+             if (G.dmin >= F.dmax - eps) {
+-                return;  // behind
++                continue;  // behind
+             }
+             if (G.dmax < F.dmin - eps) {
+                 occluders.insert(occluders.end(), G.region.begin(), G.region.end());
+-                return;
++                continue;
+             }
+             // where is G nearer than F:  dG - dF + eps < 0
+             double A = G.a - F.a, B = G.b - F.b, C = G.c - F.c + eps;
+@@ -1247,84 +1814,111 @@ Projection Part::ViewTools::projectVisible(
+                 if (C < 0) {
+                     occluders.insert(occluders.end(), G.region.begin(), G.region.end());
+                 }
+-                return;
++                continue;
+             }
+             Path64 hp = halfPlaneClip(A, B, C, bx0, by0, bx1, by1);
+             if (hp.size() < 3) {
+-                return;
++                continue;
+             }
+             Paths64 part = Clipper2Lib::Intersect(G.region, Paths64 {hp}, Clipper2Lib::FillRule::NonZero);
+             occluders.insert(occluders.end(), part.begin(), part.end());
+-        });
++        }
+         if (occluders.empty()) {
+             visible[gi] = F.region;
+         }
+         else {
+             visible[gi] = Clipper2Lib::Difference(F.region, occluders, Clipper2Lib::FillRule::NonZero);
+         }
+-    }
++    });
++    const bool facesComplete = !budget.stop;
+ 
+     // per face
+-    for (int fi = 0; fi < (int)scene.faces.size(); ++fi) {
+-        Paths64 all;
+-        double depthSum = 0, areaSum = 0;
+-        for (int gi : groupsOfFace[fi]) {
+-            for (const auto& path : visible[gi]) {
+-                double area = std::fabs(Clipper2Lib::Area(path));
+-                // centroid depth approximately from the first point
+-                double cxp = 0, cyp = 0;
+-                for (const auto& pt : path) {
+-                    cxp += (double)pt.x;
+-                    cyp += (double)pt.y;
++    Path64 window;
++    if (vo.hasRegion) {
++        const auto wx = (std::int64_t)std::llround(W1), wy = (std::int64_t)std::llround(H1);
++        const std::int64_t zero = 0;
++        window.push_back(Point64(zero, zero));
++        window.push_back(Point64(wx, zero));
++        window.push_back(Point64(wx, wy));
++        window.push_back(Point64(zero, wy));
++    }
++    const double minArea = std::pow(extent * 1e-4, 2);
++    std::vector<VisibleFace> perFace(scene.faces.size());
++    parallelFor(
++        scene.faces.size(),
++        budget,
++        "outlines",
++        [&](std::size_t fidx, int) {
++            const int fi = (int)fidx;
++            Paths64 all;
++            double depthSum = 0, areaSum = 0;
++            for (int gi : groupsOfFace[fi]) {
++                for (const auto& path : visible[gi]) {
++                    double area = std::fabs(Clipper2Lib::Area(path));
++                    double cxp = 0, cyp = 0;
++                    for (const auto& pt : path) {
++                        cxp += (double)pt.x;
++                        cyp += (double)pt.y;
++                    }
++                    cxp /= (double)path.size();
++                    cyp /= (double)path.size();
++                    const Group& G = groups[gi];
++                    depthSum += (G.a * cxp + G.b * cyp + G.c) * area;
++                    areaSum += area;
+                 }
+-                cxp /= (double)path.size();
+-                cyp /= (double)path.size();
+-                const Group& G = groups[gi];
+-                depthSum += (G.a * cxp + G.b * cyp + G.c) * area;
+-                areaSum += area;
++                all.insert(all.end(), visible[gi].begin(), visible[gi].end());
+             }
+-            all.insert(all.end(), visible[gi].begin(), visible[gi].end());
+-        }
+-        if (all.empty() || areaSum <= 0) {
+-            continue;
+-        }
+-        Clipper2Lib::PolyTree64 tree;
+-        Clipper2Lib::Clipper64 clipper;
+-        clipper.AddSubject(all);
+-        clipper.Execute(Clipper2Lib::ClipType::Union, Clipper2Lib::FillRule::NonZero, tree);
+-        VisibleFace vf;
+-        const SFace& f = scene.faces[fi];
+-        vf.item = f.item;
+-        vf.face = f.face;
+-        vf.color = f.color;
+-        vf.shade = faceShade[fi];
+-        vf.depth = depthSum / areaSum;
+-        collectPolygons(tree, sp, vf.polygons);
+-        // drop slivers below a square of 0.5 % of a pixel on a 1000 px picture
+-        const double minArea = std::pow(extent * 1e-4, 2);
+-        vf.polygons.erase(
+-            std::remove_if(
+-                vf.polygons.begin(),
+-                vf.polygons.end(),
+-                [minArea](const Polygon2d& p) {
+-                    double a = 0;
+-                    for (size_t i = 0, j = p.outer.size() - 1; i < p.outer.size(); j = i++) {
+-                        a += p.outer[j][0] * p.outer[i][1] - p.outer[i][0] * p.outer[j][1];
++            if (all.empty() || areaSum <= 0) {
++                return;
++            }
++            Clipper2Lib::PolyTree64 tree;
++            Clipper2Lib::Clipper64 clipper;
++            clipper.AddSubject(all);
++            if (vo.hasRegion) {
++                clipper.AddClip(Paths64 {window});
++                clipper.Execute(Clipper2Lib::ClipType::Intersection, Clipper2Lib::FillRule::NonZero, tree);
++            }
++            else {
++                clipper.Execute(Clipper2Lib::ClipType::Union, Clipper2Lib::FillRule::NonZero, tree);
++            }
++            VisibleFace& vf = perFace[fi];
++            const SFace& f = scene.faces[fi];
++            vf.item = f.item;
++            vf.face = f.face;
++            vf.color = f.color;
++            vf.section = f.section;
++            vf.shade = f.section ? 1.0 : faceShade[fi];
++            vf.depth = depthSum / areaSum;
++            collectPolygons(tree, sp, vf.polygons);
++            // drop slivers below a square of 0.5 % of a pixel on a 1000 px picture
++            vf.polygons.erase(
++                std::remove_if(
++                    vf.polygons.begin(),
++                    vf.polygons.end(),
++                    [minArea](const Polygon2d& p) {
++                        double a = 0;
++                        for (size_t i = 0, j = p.outer.size() - 1; i < p.outer.size(); j = i++) {
++                            a += p.outer[j][0] * p.outer[i][1] - p.outer[i][0] * p.outer[j][1];
++                        }
++                        return std::fabs(a) / 2 < minArea;
+                     }
+-                    return std::fabs(a) / 2 < minArea;
+-                }
+-            ),
+-            vf.polygons.end()
+-        );
++                ),
++                vf.polygons.end()
++            );
++        },
++        true
++    );
++    for (auto& vf : perFace) {
+         if (!vf.polygons.empty()) {
+             result.faces.push_back(std::move(vf));
+         }
+     }
++    perFace.clear();
+     std::stable_sort(result.faces.begin(), result.faces.end(), [](const VisibleFace& a, const VisibleFace& b) {
+         return a.depth > b.depth;
+     });
+-    if (!withEdges) {
+-        return result;
++    if (!withEdges || !facesComplete) {
++        return finish();
+     }
+ 
+     // visible edges
+@@ -1351,31 +1945,80 @@ Projection Part::ViewTools::projectVisible(
+         }
+     }
+ 
+-    const double minLen = extent * 2e-4;
+-    int lastChain = -1;
+-    for (const auto& seg : segs) {
++    std::vector<std::vector<std::pair<double, double>>> segVisible(segs.size());
++    std::vector<char> segDone(segs.size(), 0);
++    parallelFor(segs.size(), budget, "edges", [&](std::size_t si, int tid) {
++        const Seg& seg = segs[si];
+         double xa {}, ya {}, da {}, xb {}, yb {}, db {};
+         cam.project(seg.a, xa, ya, da);
+         cam.project(seg.b, xb, yb, db);
+         double XA = (double)sp.X(xa), YA = (double)sp.Y(ya), XB = (double)sp.X(xb), YB = (double)sp.Y(yb);
++        double dx = XB - XA, dy = YB - YA;
++        // the part of the segment inside the zoom window
++        double tlo = 0, thi = 1;
++        if (vo.hasRegion) {
++            auto clip = [&](double p, double q) {
++                if (std::fabs(p) < 1e-300) {
++                    return q >= 0;
++                }
++                double r = q / p;
++                if (p < 0) {
++                    tlo = std::max(tlo, r);
++                }
++                else {
++                    thi = std::min(thi, r);
++                }
++                return true;
++            };
++            if (!clip(-dx, XA) || !clip(dx, W1 - XA) || !clip(-dy, YA) || !clip(dy, H1 - YA) || tlo >= thi) {
++                segDone[si] = 1;
++                return;
++            }
++        }
++        // candidates: groups on top near the segment
++        std::vector<int>& stamp = stamps[tid];
++        const int mark = ++marks[tid];
++        std::vector<int> candidates;
++        const double len = std::hypot(dx, dy);
++        const int steps = std::max(1, (int)std::ceil(len / (0.5 * ps)));
++        const double dfar = std::max(da, db) + margin;
++        for (int k = 0; k <= steps; ++k) {
++            double t = (double)k / steps;
++            int ci = (int)std::floor((XA + dx * t) / ps);
++            int cj = (int)std::floor((YA + dy * t) / ps);
++            for (int j = std::max(0, cj - 1); j <= std::min(RH - 1, cj + 1); ++j) {
++                for (int i = std::max(0, ci - 1); i <= std::min(RW - 1, ci + 1); ++i) {
++                    size_t idx = (size_t)j * RW + i;
++                    int id = ibuf[idx];
++                    if (id >= 0 && stamp[id] != mark && zbuf[idx] < dfar) {
++                        stamp[id] = mark;
++                        candidates.push_back(id);
++                    }
++                }
++            }
++        }
+         std::vector<std::pair<double, double>> hidden;
+-        ++mark;
++        {
++            auto bx0 = (std::int64_t)std::floor(std::min(XA, XB)), by0 = (std::int64_t)std::floor(std::min(YA, YB));
++            auto bx1 = (std::int64_t)std::ceil(std::max(XA, XB)), by1 = (std::int64_t)std::ceil(std::max(YA, YB));
++            addSiblings(candidates, stamp, mark, bx0, by0, bx1, by1);
++        }
+         auto sx0 = (std::int64_t)std::floor(std::min(XA, XB)), sy0 = (std::int64_t)std::floor(std::min(YA, YB));
+         auto sx1 = (std::int64_t)std::ceil(std::max(XA, XB)), sy1 = (std::int64_t)std::ceil(std::max(YA, YB));
+-        grid.query(sx0, sy0, sx1, sy1, stamp, mark, [&](int gi) {
++        for (int gi : candidates) {
+             const Group& G = groups[gi];
+             if (G.x1 < sx0 || G.x0 > sx1 || G.y1 < sy0 || G.y0 > sy1) {
+-                return;
++                continue;
+             }
+             if (G.dmin >= std::max(da, db) - eps) {
+-                return;
++                continue;
+             }
+             // f(t) = dG(t) - dseg(t) + eps, hidden where f < 0
+             double f0 = G.a * XA + G.b * YA + G.c - da + eps;
+             double f1 = G.a * XB + G.b * YB + G.c - db + eps;
+             double t0 = 0, t1 = 1;
+             if (f0 >= 0 && f1 >= 0) {
+-                return;
++                continue;
+             }
+             if (f0 < 0 && f1 >= 0) {
+                 t1 = f0 / (f0 - f1);
+@@ -1385,7 +2028,6 @@ Projection Part::ViewTools::projectVisible(
+             }
+             // where is the segment inside G's region
+             std::vector<double> ts {t0, t1};
+-            double dx = XB - XA, dy = YB - YA;
+             for (const auto& path : G.region) {
+                 size_t n = path.size();
+                 for (size_t i = 0, j = n - 1; i < n; j = i++) {
+@@ -1412,10 +2054,16 @@ Projection Part::ViewTools::projectVisible(
+                     hidden.emplace_back(ts[i - 1], ts[i]);
+                 }
+             }
+-        });
++        }
++        if (tlo > 0) {
++            hidden.emplace_back(0.0, tlo);
++        }
++        if (thi < 1) {
++            hidden.emplace_back(thi, 1.0);
++        }
+         // visible = [0,1] minus hidden
+         std::sort(hidden.begin(), hidden.end());
+-        std::vector<std::pair<double, double>> vis;
++        auto& vis = segVisible[si];
+         double cur = 0;
+         for (const auto& h : hidden) {
+             if (h.first > cur) {
+@@ -1426,6 +2074,21 @@ Projection Part::ViewTools::projectVisible(
+         if (cur < 1) {
+             vis.emplace_back(cur, 1.0);
+         }
++        segDone[si] = 1;
++    });
++
++    const double minLen = extent * 2e-4;
++    int lastChain = -1;
++    for (std::size_t si = 0; si < segs.size(); ++si) {
++        if (!segDone[si]) {
++            lastChain = -1;
++            continue;
++        }
++        const Seg& seg = segs[si];
++        const auto& vis = segVisible[si];
++        double xa {}, ya {}, da {}, xb {}, yb {}, db {};
++        cam.project(seg.a, xa, ya, da);
++        cam.project(seg.b, xb, yb, db);
+         double len = std::hypot(xb - xa, yb - ya);
+         for (const auto& v : vis) {
+             if ((v.second - v.first) * len < minLen) {
+@@ -1452,7 +2115,7 @@ Projection Part::ViewTools::projectVisible(
+             lastChain = -1;
+         }
+     }
+-    return result;
++    return finish();
+ }
+ 
+ // ------------------------------------------------------------------ interference
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index d0fa03df3..35c512088 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -38,6 +38,30 @@ struct SceneItem
+     /// Colours of the faces of a shape (in the order of Shape.Faces); faces past the end
+     /// get \a color
+     std::vector<Color> faceColors;
++    /// Faces (same order) made by a section plane: drawn in the section colour, hatched
++    std::vector<std::uint8_t> sectionFaces;
++    Color sectionColor {0.93F, 0.45F, 0.38F};
++};
++
++/// What a view shows besides the camera: a zoom region, a section plane, a time budget
++struct ViewOptions
++{
++    /// Zoom: only this box (model coordinates xmin, ymin, zmin, xmax, ymax, zmax) is framed;
++    /// things outside it on the screen are left out
++    bool hasRegion = false;
++    std::array<double, 6> region {};
++    /// Section: the material on the side the normal points to is cut away and the cut
++    /// faces are filled with sectionColor (hatched when sectionHatch)
++    bool hasSection = false;
++    gp_Pnt sectionPoint;
++    gp_Dir sectionNormal {0, 0, 1};
++    Color sectionColor {0.93F, 0.45F, 0.38F};
++    bool sectionHatch = true;
++    /// Progress messages on stderr
++    bool progress = false;
++    /// Stop after this many seconds (0: no limit) and return what is done
++    double maxSeconds = 0;
++    int threads = 0;  // 0: all cores
+ };
+ 
+ /// Orthographic camera.  \a dir points from the eye into the scene.
+@@ -51,6 +75,8 @@ struct PartExport Camera
+     /// or a direction "dx,dy,dz" (from the eye into the scene)
+     static Camera fromName(const std::string& name);
+     static Camera fromDirection(const gp_Vec& dir);
++    /// \a up is the direction that points up on the screen (made perpendicular to dir)
++    static Camera fromDirection(const gp_Vec& dir, const gp_Vec& up);
+ 
+     void project(const gp_Pnt& p, double& x, double& y, double& depth) const
+     {
+@@ -82,7 +108,12 @@ struct Image
+     std::vector<std::uint8_t> rgb;
+ };
+ 
+-PartExport Image render(const std::vector<SceneItem>& items, const Camera& cam, const RenderOptions& opt);
++PartExport Image render(
++    const std::vector<SceneItem>& items,
++    const Camera& cam,
++    const RenderOptions& opt,
++    const ViewOptions& view = {}
++);
+ PartExport void writePng(const Image& img, const std::string& path);
+ 
+ /// A visible region of one face: outer boundary (counter-clockwise) and holes (clockwise)
+@@ -99,6 +130,7 @@ struct VisibleFace
+     double depth = 0;  // mean depth along the view direction, larger is farther
+     double shade = 1;  // 0..1, simple lighting
+     Color color {};
++    bool section = false;  // a cut face of the section plane
+     std::vector<Polygon2d> polygons;
+ };
+ 
+@@ -114,6 +146,9 @@ struct Projection
+     std::vector<VisibleFace> faces;  // sorted far to near
+     std::vector<VisibleEdge> edges;
+     double xmin = 0, ymin = 0, xmax = 0, ymax = 0;
++    /// false when maxSeconds ran out: faces are the nearest ones done so far
++    bool complete = true;
++    std::string warning;
+ };
+ 
+ /// Project with hidden parts removed.  2D coordinates are model units: x to the right,
+@@ -122,7 +157,16 @@ PartExport Projection projectVisible(
+     const std::vector<SceneItem>& items,
+     const Camera& cam,
+     double deflection = 0.0,
+-    bool withEdges = true
++    bool withEdges = true,
++    const ViewOptions& view = {}
++);
++
++/// The items cut by the section plane of \a view (items cut away entirely stay as empty
++/// items so the indices keep their meaning).  Problems are added to \a warnings.
++PartExport std::vector<SceneItem> sectionItems(
++    const std::vector<SceneItem>& items,
++    const ViewOptions& view,
++    std::vector<std::string>* warnings = nullptr
+ );
+ 
+ struct InterferencePair
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index dca886c7e..afcd8ebef 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -206,16 +206,164 @@ std::vector<SceneItem> toItems(PyObject* objs)
+     return items;
+ }
+ 
+-Camera toCamera(PyObject* view)
++Camera toCamera(PyObject* view, PyObject* up = nullptr)
+ {
++    Camera cam;
+     if (!view || view == Py_None) {
+-        return Camera::fromName("iso");
++        cam = Camera::fromName("iso");
+     }
+-    if (PyUnicode_Check(view)) {
+-        return Camera::fromName(PyUnicode_AsUTF8(view));
++    else if (PyUnicode_Check(view)) {
++        cam = Camera::fromName(PyUnicode_AsUTF8(view));
+     }
+-    gp_Pnt p = toPoint(Py::Object(view));
+-    return Camera::fromDirection(gp_Vec(p.XYZ()));
++    else {
++        gp_Pnt p = toPoint(Py::Object(view));
++        cam = Camera::fromDirection(gp_Vec(p.XYZ()));
++    }
++    if (up && up != Py_None) {
++        gp_Pnt u = toPoint(Py::Object(up));
++        cam = Camera::fromDirection(gp_Vec(cam.dir), gp_Vec(u.XYZ()));
++    }
++    return cam;
++}
++
++// Bounding box of a BoundBox, a shape, a mesh, a document object or a list of them
++void addBounds(const Py::Object& obj, std::array<double, 6>& box, bool& any)
++{
++    Py::Object o = obj;
++    if (o.hasAttr("XMin") && o.hasAttr("ZMax")) {
++        double v[6] = {
++            (double)Py::Float(o.getAttr("XMin")), (double)Py::Float(o.getAttr("YMin")),
++            (double)Py::Float(o.getAttr("ZMin")), (double)Py::Float(o.getAttr("XMax")),
++            (double)Py::Float(o.getAttr("YMax")), (double)Py::Float(o.getAttr("ZMax"))
++        };
++        if (v[0] > v[3]) {
++            return;  // empty box
++        }
++        for (int k = 0; k < 3; ++k) {
++            box[k] = any ? std::min(box[k], v[k]) : v[k];
++            box[k + 3] = any ? std::max(box[k + 3], v[k + 3]) : v[k + 3];
++        }
++        any = true;
++        return;
++    }
++    if (o.hasAttr("Shape") && !PyObject_TypeCheck(o.ptr(), &Part::TopoShapePy::Type)) {
++        addBounds(o.getAttr("Shape"), box, any);
++        return;
++    }
++    if (o.hasAttr("Mesh") && !o.hasAttr("Topology")) {
++        addBounds(o.getAttr("Mesh"), box, any);
++        return;
++    }
++    if (o.hasAttr("BoundBox")) {
++        addBounds(o.getAttr("BoundBox"), box, any);
++        return;
++    }
++    if (PySequence_Check(o.ptr()) && !PyUnicode_Check(o.ptr())) {
++        for (const auto& e : Py::Sequence(o)) {
++            addBounds(Py::Object(e), box, any);
++        }
++        return;
++    }
++    throw Py::TypeError("region/focus: expected a BoundBox, a shape, an object or a list of them");
++}
++
++// Removes the view keywords from \a kwds (a copy) and returns them as ViewOptions
++ViewOptions takeViewOptions(Py::Dict& kw, PyObject*& up)
++{
++    ViewOptions vo;
++    auto take = [&kw](const char* key) -> PyObject* {
++        if (!kw.hasKey(key)) {
++            return nullptr;
++        }
++        Py::Object v = kw[key];
++        kw.delItem(key);
++        return v.isNone() ? nullptr : Py::new_reference_to(v);
++    };
++    auto hold = [](PyObject* o) {
++        return Py::Object(o, true);
++    };
++    if (PyObject* o = take("up")) {
++        up = o;  // the caller keeps the reference
++    }
++    std::array<double, 6> box {};
++    bool any = false;
++    if (PyObject* o = take("region")) {
++        Py::Object r = hold(o);
++        if (PySequence_Check(o) && !r.hasAttr("XMin") && Py::Sequence(r).size() == 6
++            && PyNumber_Check(Py::Sequence(r)[0].ptr())) {
++            Py::Sequence seq(r);
++            for (int k = 0; k < 6; ++k) {
++                box[k] = (double)Py::Float(seq[k]);
++            }
++            any = true;
++        }
++        else if (PySequence_Check(o) && !r.hasAttr("XMin") && Py::Sequence(r).size() == 2
++                 && !r.hasAttr("Shape") && !PyObject_TypeCheck(o, &Part::TopoShapePy::Type)
++                 && (PyObject_TypeCheck(Py::Sequence(r)[0].ptr(), &Base::VectorPy::Type)
++                     || PyTuple_Check(Py::Sequence(r)[0].ptr()))) {
++            gp_Pnt a = toPoint(Py::Sequence(r)[0]);
++            gp_Pnt b = toPoint(Py::Sequence(r)[1]);
++            box = {a.X(), a.Y(), a.Z(), b.X(), b.Y(), b.Z()};
++            any = true;
++        }
++        else {
++            addBounds(r, box, any);
++        }
++    }
++    if (PyObject* o = take("focus")) {
++        Py::Object f = hold(o);
++        std::array<double, 6> fb {};
++        bool fany = false;
++        addBounds(f, fb, fany);
++        if (fany) {
++            // a little room around the object
++            double pad = 0.03 * std::max({fb[3] - fb[0], fb[4] - fb[1], fb[5] - fb[2], 1e-6});
++            for (int k = 0; k < 3; ++k) {
++                fb[k] -= pad;
++                fb[k + 3] += pad;
++            }
++            box = any ? std::array<double, 6> {std::min(box[0], fb[0]), std::min(box[1], fb[1]),
++                                                std::min(box[2], fb[2]), std::max(box[3], fb[3]),
++                                                std::max(box[4], fb[4]), std::max(box[5], fb[5])}
++                      : fb;
++            any = true;
++        }
++    }
++    if (any) {
++        vo.hasRegion = true;
++        vo.region = box;
++    }
++    if (PyObject* o = take("section")) {
++        Py::Sequence sec(hold(o));
++        if (sec.size() != 2) {
++            throw Py::ValueError("section is (point, normal)");
++        }
++        vo.hasSection = true;
++        vo.sectionPoint = toPoint(sec[0]);
++        gp_Pnt n = toPoint(sec[1]);
++        if (gp_Vec(n.XYZ()).Magnitude() < 1e-12) {
++            throw Py::ValueError("section normal must not be zero");
++        }
++        vo.sectionNormal = gp_Dir(n.XYZ());
++    }
++    if (PyObject* o = take("sectionColor")) {
++        vo.sectionColor = toColor(hold(o));
++    }
++    if (PyObject* o = take("hatch")) {
++        vo.sectionHatch = PyObject_IsTrue(hold(o).ptr()) == 1;
++    }
++    if (PyObject* o = take("progress")) {
++        vo.progress = PyObject_IsTrue(hold(o).ptr()) == 1;
++    }
++    for (const char* key : {"maxSeconds", "timeout"}) {
++        if (PyObject* o = take(key)) {
++            vo.maxSeconds = (double)Py::Float(hold(o));
++        }
++    }
++    if (PyObject* o = take("threads")) {
++        vo.threads = (int)(long)Py::Long(hold(o));
++    }
++    return vo;
+ }
+ 
+ PyObject* renderImage(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+@@ -231,8 +379,21 @@ PyObject* renderImage(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+     const char* style = "shaded";
+     double lineWidth = 1.0, deflection = 0.0;
+     PyObject* background = nullptr;
++    PyObject* up = nullptr;
++    ViewOptions vo;
++    Py::Dict kw;
++    try {
++        if (kwds) {
++            kw = Py::Dict(PyDict_Copy(kwds), true);
++        }
++        vo = takeViewOptions(kw, up);
++    }
++    catch (const Py::Exception&) {
++        return nullptr;
++    }
++    Py::Object upHold(up ? up : Py_None, up != nullptr);
+     if (!PyArg_ParseTupleAndKeywords(
+-            args, kwds, "Os|OiisddOi", const_cast<char**>(kwlist), &objs, &filename, &view,
++            args, kw.ptr(), "Os|OiisddOi", const_cast<char**>(kwlist), &objs, &filename, &view,
+             &width, &height, &style, &lineWidth, &deflection, &background, &supersample
+         )) {
+         return nullptr;
+@@ -249,8 +410,19 @@ PyObject* renderImage(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+             opt.background = toColor(Py::Object(background));
+         }
+         std::vector<SceneItem> items = toItems(objs);
+-        Camera cam = toCamera(view);
+-        Image img = render(items, cam, opt);
++        Camera cam = toCamera(view, up);
++        Image img;
++        {
++            Py_BEGIN_ALLOW_THREADS
++            try {
++                img = render(items, cam, opt, vo);
++            }
++            catch (...) {
++                Py_BLOCK_THREADS
++                throw;
++            }
++            Py_END_ALLOW_THREADS
++        }
+         writePng(img, filename);
+         Py_Return;
+     }
+@@ -283,13 +455,43 @@ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+     PyObject* view = nullptr;
+     double deflection = 0.0;
+     PyObject* withEdges = Py_True;
+-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OdO", const_cast<char**>(kwlist), &objs, &view, &deflection, &withEdges)) {
++    PyObject* up = nullptr;
++    ViewOptions vo;
++    Py::Dict kw;
++    try {
++        if (kwds) {
++            kw = Py::Dict(PyDict_Copy(kwds), true);
++        }
++        vo = takeViewOptions(kw, up);
++    }
++    catch (const Py::Exception&) {
++        return nullptr;
++    }
++    Py::Object upHold(up ? up : Py_None, up != nullptr);
++    if (!PyArg_ParseTupleAndKeywords(args, kw.ptr(), "O|OdO", const_cast<char**>(kwlist), &objs, &view, &deflection, &withEdges)) {
+         return nullptr;
+     }
+     try {
+         std::vector<SceneItem> items = toItems(objs);
+-        Camera cam = toCamera(view);
+-        Projection proj = projectVisible(items, cam, deflection, PyObject_IsTrue(withEdges) == 1);
++        Camera cam = toCamera(view, up);
++        const bool edgesWanted = PyObject_IsTrue(withEdges) == 1;
++        Projection proj;
++        {
++            Py_BEGIN_ALLOW_THREADS
++            try {
++                proj = projectVisible(items, cam, deflection, edgesWanted, vo);
++            }
++            catch (...) {
++                Py_BLOCK_THREADS
++                throw;
++            }
++            Py_END_ALLOW_THREADS
++        }
++        if (!proj.warning.empty()) {
++            if (PyErr_WarnEx(PyExc_RuntimeWarning, proj.warning.c_str(), 1) < 0) {
++                return nullptr;
++            }
++        }
+         Py::Dict result;
+         Py::List faces;
+         for (const auto& f : proj.faces) {
+@@ -299,6 +501,7 @@ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+             d["depth"] = Py::Float(f.depth);
+             d["shade"] = Py::Float(f.shade);
+             d["color"] = Py::TupleN(Py::Float(f.color[0]), Py::Float(f.color[1]), Py::Float(f.color[2]));
++            d["section"] = Py::Boolean(f.section);
+             Py::List polys;
+             for (const auto& p : f.polygons) {
+                 Py::Dict pd;
+@@ -330,6 +533,8 @@ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+         camera["right"] = Py::TupleN(Py::Float(cam.right.X()), Py::Float(cam.right.Y()), Py::Float(cam.right.Z()));
+         camera["up"] = Py::TupleN(Py::Float(cam.up.X()), Py::Float(cam.up.Y()), Py::Float(cam.up.Z()));
+         result["camera"] = camera;
++        result["complete"] = Py::Boolean(proj.complete);
++        result["warning"] = Py::String(proj.warning);
+         return Py::new_reference_to(result);
+     }
+     catch (const Py::Exception&) {
+@@ -446,9 +651,21 @@ PyMethodDef methods[] = {
+      "{'shape'|'mesh'|'object': ..., 'color': (r,g,b), 'faceColors': [(r,g,b), ...]} or a list\n"
+      "of these.  Document objects without a colour get their view colours (headless: as\n"
+      "stored in the FCStd file), others a palette.\n"
+-     "view: iso, front, back, right, left, top, bottom, iso-back, iso-low, dimetric,\n"
+-     "trimetric, 'dx,dy,dz' or a vector (direction from the eye into the scene).\n"
+-     "style: shaded, shaded-only, hidden-lines, lines."},
++     "view: iso, front, back, right, left, top, bottom, iso-back, iso-front-left,\n"
++     "iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left,\n"
++     "iso-bottom-back-right, iso-low, dimetric, trimetric, 'dx,dy,dz' or a vector (direction\n"
++     "from the eye into the scene).\n"
++     "style: shaded, shaded-only, hidden-lines, lines.\n"
++     "View keywords (renderImage, projectVisible, exportSvg, exportPptx):\n"
++     "  up: vector that points up on the screen (default: +Z, +Y for top/bottom).\n"
++     "  region: zoom to a box in model coordinates: a BoundBox, (xmin,ymin,zmin,xmax,ymax,zmax)\n"
++     "    or (point, point); focus: zoom to objects/shapes (their box plus 3 %).\n"
++     "  section: (point, normal) cuts the shapes with the plane and removes the side the\n"
++     "    normal points to; cut faces are filled with sectionColor and hatched (hatch=False:\n"
++     "    plain).  Meshes are clipped without filling.\n"
++     "  progress=True: progress on stderr; maxSeconds (or timeout): stop after that time\n"
++     "    and return what is done (nearest faces first) with a RuntimeWarning; threads.\n"
++     },
+     {"projectVisible",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(projectVisible)),
+      METH_VARARGS | METH_KEYWORDS,
+@@ -460,7 +677,20 @@ PyMethodDef methods[] = {
+      "and their polygons are only the visible parts.  A visible region gets holes where it\n"
+      "encloses nearer parts (or the face has holes); where nearer parts reach its outline it\n"
+      "is split into several polygons instead, so dense scenes have few holes.\n"
+-     "edges=False skips the edges (faster)."},
++     "edges=False skips the edges (faster).  'complete' is False when maxSeconds ran out,\n"
++     "'warning' tells why; faces of a section have 'section': True.  Shapes made of planar\n"
++     "triangles only (from STL) are handled as meshes: coplanar triangles merge into one\n"
++     "region and no edges are drawn between them.  deflection: coarser is faster.\n"
++     "View keywords (renderImage, projectVisible, exportSvg, exportPptx):\n"
++     "  up: vector that points up on the screen (default: +Z, +Y for top/bottom).\n"
++     "  region: zoom to a box in model coordinates: a BoundBox, (xmin,ymin,zmin,xmax,ymax,zmax)\n"
++     "    or (point, point); focus: zoom to objects/shapes (their box plus 3 %).\n"
++     "  section: (point, normal) cuts the shapes with the plane and removes the side the\n"
++     "    normal points to; cut faces are filled with sectionColor and hatched (hatch=False:\n"
++     "    plain).  Meshes are clipped without filling.\n"
++     "  progress=True: progress on stderr; maxSeconds (or timeout): stop after that time\n"
++     "    and return what is done (nearest faces first) with a RuntimeWarning; threads.\n"
++     },
+     {"exportPptx",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(exportPptx)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index e53a34968..fb5a27347 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -62,9 +62,23 @@ __all__ = [
+ 
+ VIEW_NAMES = (
+     "iso", "isometric", "front", "back", "rear", "right", "left", "top", "bottom",
+-    "iso-back", "iso-low", "dimetric", "trimetric",
++    "iso-back", "iso-front-left", "iso-back-right", "iso-back-left", "iso-bottom",
++    "bottom-iso", "iso-bottom-front-left", "iso-bottom-back-right", "iso-bottom-back-left",
++    "iso-low", "dimetric", "trimetric",
+ )  # fmt: skip
+ 
++# keywords of Part.renderImage / Part.projectVisible passed through by render, project,
++# export_svg, export_pptx (see the doc string of Part.renderImage)
++VIEW_KEYWORDS = ("up", "region", "focus", "section", "sectionColor", "hatch", "progress",
++                 "maxSeconds", "timeout", "threads")  # fmt: skip
++
++
++def _view_kw(kw):
++    unknown = set(kw) - set(VIEW_KEYWORDS)
++    if unknown:
++        raise TypeError("unexpected keyword(s): %s" % ", ".join(sorted(unknown)))
++    return {k: v for k, v in kw.items() if v is not None}
++
+ _SKIP_TYPES = (
+     "App::Origin",
+     "App::Line",
+@@ -570,9 +584,11 @@ def _split_views(view):
+ 
+ 
+ def render(source=None, path="view.png", view="iso", size=None, style="shaded",
+-           colors=None, line_width=1.0, deflection=0.0, background=(1, 1, 1)):  # fmt: skip
++           colors=None, line_width=1.0, deflection=0.0, background=(1, 1, 1), **view_kw):  # fmt: skip
+     """Write PNG picture(s).  Several views ('iso,front' or a list) write path_<view>.png.
++    view_kw: up, region, focus, section, ... (see Part.renderImage).
+     Returns the list of written files."""
++    view_kw = _view_kw(view_kw)
+     entries = scene_entries(source, group=False, colors=colors)
+     if not entries:
+         raise RuntimeError("Nothing to draw")
+@@ -584,7 +600,8 @@ def render(source=None, path="view.png", view="iso", size=None, style="shaded",
+     for v in views:
+         out = path if len(views) == 1 else "%s_%s%s" % (root, v if isinstance(v, str) else "view", ext)
+         Part.renderImage(items, out, view=v, width=w, height=h, style=style,
+-                         lineWidth=line_width, deflection=deflection, background=background)  # fmt: skip
++                         lineWidth=line_width, deflection=deflection, background=background,
++                         **view_kw)  # fmt: skip
+         written.append(out)
+     return written
+ 
+@@ -610,7 +627,7 @@ def _edge_mode(edges, default="all"):
+     return mode
+ 
+ 
+-def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, group=True):
++def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, group=True, **view_kw):
+     """Visible face polygons and visible edges (hidden parts removed) as a dict.
+ 
+     {"view", "units": "model", "bounds": [xmin, ymin, xmax, ymax], "camera",
+@@ -622,11 +639,14 @@ def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, gr
+     path of groups the object is in, outermost first (see scene_entries; "groupId" tells
+     apart groups of equal labels).  A visible region gets holes where it encloses nearer
+     parts; where nearer parts reach its outline it is split into several polygons instead.
+-    edges=False (or "none"/"outline") leaves the edge list empty and is faster."""
++    edges=False (or "none"/"outline") leaves the edge list empty and is faster.
++    view_kw: up, region, focus, section, progress, maxSeconds ... (see Part.renderImage);
++    "complete" is False when maxSeconds ran out, faces of a section have "section": True."""
++    view_kw = _view_kw(view_kw)
+     entries = scene_entries(source, group=group, colors=colors)
+     items = [e.scene_item() for e in entries]
+     with_edges = _edge_mode(edges) == "all"
+-    data = Part.projectVisible(items, view=view, deflection=deflection, edges=with_edges)
++    data = Part.projectVisible(items, view=view, deflection=deflection, edges=with_edges, **view_kw)
+     table = [{"object": e.name, "label": e.label, "group": [g[1] for g in e.group],
+               "groupId": [g[0] for g in e.group]} for e in entries]  # fmt: skip
+ 
+@@ -643,6 +663,7 @@ def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, gr
+             "shade": f["shade"],
+             "color": list(f["color"]),
+             "fill": _hex(f["color"], f["shade"]),
++            "section": bool(f.get("section", False)),
+             "polygons": [{"outer": [list(p) for p in poly["outer"]],
+                           "holes": [[list(p) for p in hole] for hole in poly["holes"]]}
+                          for poly in f["polygons"]],
+@@ -661,6 +682,8 @@ def project(source=None, view="iso", deflection=0.0, colors=None, edges=True, gr
+         "items": table,
+         "faces": faces,
+         "edges": edges,
++        "complete": data.get("complete", True),
++        "warning": data.get("warning", ""),
+     }
+ 
+ 
+@@ -757,6 +780,14 @@ def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_
+         'width="%d" height="%d" viewBox="0 0 %.6g %.6g">' % (width_px, height_px, vw, vh),
+         '<rect x="0" y="0" width="%.6g" height="%.6g" fill="#ffffff"/>' % (vw, vh),
+     ]
++    if any(f.get("section") for f in data["faces"]):
++        step = 8 * px
++        out.append(
++            '<defs><pattern id="section-hatch" patternUnits="userSpaceOnUse" width="%.6g" '
++            'height="%.6g" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="%.6g" '
++            'stroke="%s" stroke-width="%.4g"/></pattern></defs>'
++            % (step, step, step, edge_color, line_width * px)
++        )  # fmt: skip
+     edge_style = ('fill="none" stroke="%s" stroke-width="%.4g" stroke-linecap="round" '
+                   'stroke-linejoin="round"' % (edge_color, line_width * px))  # fmt: skip
+ 
+@@ -770,9 +801,13 @@ def svg_text(data, width_px=1000, line_width=1.0, edges="all", faces=True, edge_
+         else:
+             # a hairline in the fill colour hides the seams between neighbouring faces
+             stroke, stroke_w = f["fill"], 0.6 * px
+-        return ('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
++        text = ('<path d="%s" fill="%s" fill-rule="evenodd" stroke="%s" stroke-width="%.4g">'
+                 '<title>%s face %d</title></path>'
+                 % (" ".join(d), f["fill"], stroke, stroke_w, _xml(f["label"]), f["face"] + 1))  # fmt: skip
++        if f.get("section"):
++            text += ('<path d="%s" fill="url(#section-hatch)" fill-rule="evenodd" stroke="none">'
++                     '<title>%s section</title></path>' % (" ".join(d), _xml(f["label"])))  # fmt: skip
++        return text
+ 
+     def polyline(e):
+         return '<polyline points="%s"/>' % " ".join(P(p) for p in e["points"])
+@@ -816,13 +851,14 @@ def _xml(s):
+ 
+ 
+ def export_svg(source=None, path="view.svg", view="iso", deflection=0.0, colors=None,
+-               width_px=1000, line_width=1.0, data=None, edges="all", group=True):  # fmt: skip
++               width_px=1000, line_width=1.0, data=None, edges="all", group=True, **view_kw):  # fmt: skip
+     """Write an SVG with filled visible faces and visible edges (edges: "all", "outline" or
+     "none", see the module docstring).  Groups and objects become nested <g> elements
+     (group=False: flat; see scene_entries for the grouping).  Returns the project() dict."""
+     mode = _edge_mode(edges, "all")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group,
++                       **view_kw)  # fmt: skip
+     with open(path, "w", encoding="utf-8") as f:
+         f.write(svg_text(data, width_px=width_px, line_width=line_width, edges=mode, group=bool(group)))
+     return data
+@@ -912,7 +948,8 @@ def _pptx_theme():
+     )
+ 
+ 
+-def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0, closed=True):
++def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0, closed=True,
++                hatch=None):  # fmt: skip
+     """Freeform shape; rings are lists of slide EMU points."""
+     xs = [p[0] for r in rings for p in r]
+     ys = [p[1] for r in rings for p in r]
+@@ -927,6 +964,9 @@ def _pptx_shape(sid, name, rings, x0, y0, sx, sy, fill=None, line=None, line_w=0
+         if closed:
+             path.append("<a:close/>")
+     fill_xml = ('<a:solidFill><a:srgbClr val="%s"/></a:solidFill>' % fill) if fill else "<a:noFill/>"
++    if fill and hatch:
++        fill_xml = ('<a:pattFill prst="wdUpDiag"><a:fgClr><a:srgbClr val="%s"/></a:fgClr>'
++                    '<a:bgClr><a:srgbClr val="%s"/></a:bgClr></a:pattFill>' % (hatch, fill))  # fmt: skip
+     if line:
+         line_xml = '<a:ln w="%d" cap="rnd"><a:solidFill><a:srgbClr val="%s"/></a:solidFill><a:round/></a:ln>' % (line_w, line)
+     else:
+@@ -958,7 +998,7 @@ def _union_box(boxes):
+ 
+ 
+ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, colors=None,
+-                line_width=0.5, data=None, edges="outline", group=True, stats=None):  # fmt: skip
++                line_width=0.5, data=None, edges="outline", group=True, stats=None, **view_kw):  # fmt: skip
+     """Write a PowerPoint file with one slide: every visible face region as a filled
+     freeform shape (a region with holes is one shape with several subpaths).  The shapes
+     can be recoloured or moved in PowerPoint.
+@@ -971,7 +1011,8 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+ 
+     mode = _edge_mode(edges, "outline")
+     if data is None:
+-        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group)
++        data = project(source, view=view, deflection=deflection, colors=colors, edges=mode, group=group,
++                       **view_kw)  # fmt: skip
+     xmin, ymin, xmax, ymax = data["bounds"]
+     w = max(xmax - xmin, 1e-9)
+     h = max(ymax - ymin, 1e-9)
+@@ -1002,7 +1043,8 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+                 # hairline in the fill colour hides seams between neighbouring faces
+                 line, line_w = fill, 3175
+             result.append(_pptx_shape(new_id(), "%s face %d" % (f["label"], f["face"] + 1), rings,
+-                                      0, 0, 1, 1, fill=fill, line=line, line_w=line_w))  # fmt: skip
++                                      0, 0, 1, 1, fill=fill, line=line, line_w=line_w,
++                                      hatch="1A1A1F" if f.get("section") else None))  # fmt: skip
+         return result
+ 
+     def edge_shape(e):
+@@ -1060,21 +1102,22 @@ def export_pptx(source=None, path="view.pptx", view="iso", deflection=0.0, color
+ 
+ 
+ def part_export_pptx(objects, filename, view="iso", edges="outline", group=True, lineWidth=0.5,
+-                     deflection=0.0, colors=None):  # fmt: skip
++                     deflection=0.0, colors=None, **view_kw):  # fmt: skip
+     """Part.exportPptx: see its doc string."""
+     stats = {}
+     data = export_pptx(objects, filename, view=view, deflection=deflection, colors=colors,
+-                       line_width=lineWidth, edges=edges, group=group, stats=stats)  # fmt: skip
++                       line_width=lineWidth, edges=edges, group=group, stats=stats, **view_kw)  # fmt: skip
+     mode = _edge_mode(edges, "outline")
+     return {"faces": len(data["faces"]), "edges": len(data["edges"]) if mode == "all" else 0,
+-            "shapes": stats["shapes"], "groups": stats["groups"]}  # fmt: skip
++            "shapes": stats["shapes"], "groups": stats["groups"],
++            "complete": data.get("complete", True)}  # fmt: skip
+ 
+ 
+ def part_export_svg(objects, filename, view="iso", edges="all", group=True, lineWidth=1.0, width=1000,
+-                    deflection=0.0, colors=None):  # fmt: skip
++                    deflection=0.0, colors=None, **view_kw):  # fmt: skip
+     """Part.exportSvg: see its doc string."""
+     data = export_svg(objects, filename, view=view, deflection=deflection, colors=colors,
+-                      width_px=width, line_width=lineWidth, edges=edges, group=group)  # fmt: skip
++                      width_px=width, line_width=lineWidth, edges=edges, group=group, **view_kw)  # fmt: skip
+     tree = _group_tree(data, group)
+     groups = 0
+     if tree is not None:
+@@ -1085,7 +1128,7 @@ def part_export_svg(objects, filename, view="iso", edges="all", group=True, line
+             stack.extend(node.children.values())
+     mode = _edge_mode(edges, "all")
+     return {"faces": len(data["faces"]), "edges": len(data["edges"]) if mode == "all" else 0,
+-            "groups": groups}  # fmt: skip
++            "groups": groups, "complete": data.get("complete", True)}  # fmt: skip
+ 
+ 
+ def interference(source=None, tolerance=0.0, min_volume=1e-6, threads=0, stats=False):
+@@ -1109,6 +1152,72 @@ def _config(key):
+         return ""
+ 
+ 
++def _numbers(text, count, option):
++    try:
++        values = [float(v) for v in text.replace(";", ",").split(",")]
++    except ValueError:
++        values = []
++    if len(values) != count:
++        raise ValueError("--%s needs %d numbers separated by commas, not %r" % (option, count, text))
++    return values
++
++
++def parse_section(text):
++    """'z=10' (cut away z > 10), '-x=5' (cut away x < 5) or 'px,py,pz,nx,ny,nz'
++    -> (point, normal)."""
++    t = text.strip().lower().replace(" ", "")
++    if "=" in t:
++        axis, value = t.split("=", 1)
++        sign = -1.0 if axis.startswith("-") else 1.0
++        axis = axis.lstrip("+-")
++        if axis not in ("x", "y", "z"):
++            raise ValueError("--section: use x=, y=, z= (or -x= ...) or px,py,pz,nx,ny,nz, not %r" % text)
++        k = "xyz".index(axis)
++        point = [0.0, 0.0, 0.0]
++        normal = [0.0, 0.0, 0.0]
++        point[k] = float(value)
++        normal[k] = sign
++        return App.Vector(*point), App.Vector(*normal)
++    v = _numbers(t, 6, "section")
++    return App.Vector(*v[:3]), App.Vector(*v[3:])
++
++
++def _find_objects(doc, names):
++    found = []
++    for name in [n.strip() for n in names.split(",") if n.strip()]:
++        objs = [doc.getObject(name)] if doc.getObject(name) else doc.getObjectsByLabel(name)
++        if not objs:
++            raise ValueError("--focus: no object named %r" % name)
++        found.extend(objs)
++    return found
++
++
++def cli_view_options(doc):
++    """View keywords from the command line options --up, --region, --focus, --section,
++    --max-seconds, --progress."""
++    kw = {}
++    if _config("RenderUp"):
++        kw["up"] = App.Vector(*_numbers(_config("RenderUp"), 3, "up"))
++    if _config("RenderRegion"):
++        kw["region"] = tuple(_numbers(_config("RenderRegion"), 6, "region"))
++    if _config("RenderFocus"):
++        kw["focus"] = _find_objects(doc, _config("RenderFocus"))
++    if _config("RenderSection"):
++        kw["section"] = parse_section(_config("RenderSection"))
++    if _config("RenderMaxSeconds"):
++        kw["maxSeconds"] = float(_config("RenderMaxSeconds"))
++    if _config("RenderProgress"):
++        kw["progress"] = True
++    return kw
++
++
++def _view_arg(view):
++    """A view name, or 'dx,dy,dz' as a vector."""
++    if isinstance(view, str) and view not in VIEW_NAMES and view.count(",") == 2:
++        return App.Vector(*_numbers(view, 3, "view"))
++    return view
++
++
+ def cli_main():
+     """Run the command line options of this module (see the module docstring)."""
+     doc = App.ActiveDocument
+@@ -1118,9 +1227,13 @@ def cli_main():
+     view = _config("RenderView") or "iso"
+     size = _config("RenderSize") or None
+     style = _config("RenderStyle") or "shaded"
++    deflection = float(_config("RenderDeflection") or 0)
++    view_kw = cli_view_options(doc)
+     png = _config("RenderFile")
+     if png:
+-        for out in render(doc, png, view=view, size=size, style=style):
++        views = [_view_arg(v) for v in _split_views(view)]
++        for out in render(doc, png, view=views if len(views) > 1 else views[0], size=size, style=style,
++                          deflection=deflection, **view_kw):  # fmt: skip
+             print("Wrote %s" % out)
+     svg = _config("ExportSvg")
+     poly = _config("ExportPolygons")
+@@ -1130,7 +1243,10 @@ def cli_main():
+         modes = {"svg": _edge_mode(edges, "all"), "poly": _edge_mode(edges, "all"),
+                  "pptx": _edge_mode(edges, "outline")}  # fmt: skip
+         need_edges = any(modes[k] == "all" for k, out in (("svg", svg), ("poly", poly), ("pptx", pptx)) if out)
+-        data = project(doc, view=_split_views(view)[0], edges=need_edges)
++        data = project(doc, view=_view_arg(_split_views(view)[0]), edges=need_edges, deflection=deflection,
++                       **view_kw)  # fmt: skip
++        if not data.get("complete", True):
++            App.Console.PrintWarning("Warning: %s\n" % data.get("warning", "incomplete"))
+ 
+         def counts(mode):
+             return "%d faces, %d edges" % (len(data["faces"]), len(data["edges"]) if mode == "all" else 0)
+diff --git a/src/Mod/Part/TestPartApp.py b/src/Mod/Part/TestPartApp.py
+index 51b5021d4..cb89c5677 100644
+--- a/src/Mod/Part/TestPartApp.py
++++ b/src/Mod/Part/TestPartApp.py
+@@ -41,7 +41,7 @@ from parttests.TestLinkArrayLinear import TestLinkArrayLinear
+ from parttests.TestLinkArrayPath import TestLinkArrayPath
+ from parttests.TestLinkArrayPoint import TestLinkArrayPoint
+ from parttests.TestPartMirror import TestPartMirroringRegression
+-from parttests.TestPartViews import TestPartViews
++from parttests.TestPartViews import TestPartViews, TestPartViewOptions
+ from parttests.TestFaceMakerUnifiedPlanar import *
+ from parttests.TestFaceMakerUnifiedNonPlanar import *
+ 
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 392258792..456356449 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -378,7 +378,7 @@ class TestPartViews(unittest.TestCase):
+         ]  # fmt: skip
+         result = Part.exportPptx(items, pptx, view="iso", edges="none")
+         # groups: row, a, b and one per object
+-        self.assertEqual(result, {"faces": 9, "edges": 0, "shapes": 9, "groups": 6})
++        self.assertEqual(result, {"faces": 9, "edges": 0, "shapes": 9, "groups": 6, "complete": True})
+         tree = group_tree(read_slide(pptx))
+         self.assertEqual(set(tree), {"row", "item2"})
+         fills = {}
+@@ -559,5 +559,118 @@ class TestPartViews(unittest.TestCase):
+         self.assertEqual(len(Part.findInterferences([a, b, c, d], threads=1)), 2)
+ 
+ 
++def _poly_area(poly):
++    def ring(r):
++        a = 0.0
++        for i in range(len(r)):
++            x0, y0 = r[i - 1]
++            x1, y1 = r[i]
++            a += x0 * y1 - x1 * y0
++        return abs(a) / 2
++
++    return ring(poly["outer"]) - sum(ring(h) for h in poly["holes"])
++
++
++class TestPartViewOptions(unittest.TestCase):
++    """0.5.4: section, zoom, up vector, time limit, shapes made of triangles"""
++
++    def setUp(self):
++        self.dir = tempfile.mkdtemp()
++        block = Part.makeBox(20, 20, 20)
++        self.holed = block.cut(Part.makeCylinder(5, 20, App.Vector(10, 10, 0)))
++        self.small = Part.makeBox(5, 5, 5, App.Vector(40, 0, 0))
++
++    def testSectionFillsCutFaces(self):
++        data = Part.projectVisible([self.holed, self.small], view="top",
++                                   section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
++        cut = [f for f in data["faces"] if f["section"]]
++        self.assertEqual(len(cut), 1)
++        area = sum(_poly_area(p) for p in cut[0]["polygons"])
++        self.assertAlmostEqual(area, 400 - 25 * 3.14159265, delta=2.0)
++        # the small box lies below the plane and stays whole
++        self.assertIn(1, {f["item"] for f in data["faces"]})
++        # everything above the plane cut away: the item is empty, indices unchanged
++        data = Part.projectVisible([self.small, self.holed], view="top",
++                                   section=(App.Vector(0, 0, 1), App.Vector(0, 0, -1)))  # fmt: skip
++        self.assertEqual({f["item"] for f in data["faces"]}, {0, 1})
++
++    def testSectionInPictureAndFiles(self):
++        png = os.path.join(self.dir, "s.png")
++        Part.renderImage(self.holed, png, view="iso", width=80, height=60, style="hidden-lines",
++                         section=(App.Vector(10, 10, 10), App.Vector(0, -1, 0)))  # fmt: skip
++        self.assertTrue(os.path.getsize(png) > 100)
++        svg = os.path.join(self.dir, "s.svg")
++        Part.exportSvg(self.holed, svg, section=(App.Vector(0, 10, 0), App.Vector(0, -1, 0)))
++        self.assertIn("section-hatch", open(svg, encoding="utf-8").read())
++        pptx = os.path.join(self.dir, "s.pptx")
++        Part.exportPptx(self.holed, pptx, section=(App.Vector(0, 10, 0), App.Vector(0, -1, 0)))
++        self.assertIn("pattFill", zipfile.ZipFile(pptx).read("ppt/slides/slide1.xml").decode())
++
++    def testZoom(self):
++        data = Part.projectVisible([self.holed, self.small], view="top", focus=self.small)
++        self.assertEqual({f["item"] for f in data["faces"]}, {1})
++        xmin, ymin, xmax, ymax = data["bounds"]
++        self.assertAlmostEqual(xmin, 40 - 0.15, places=6)
++        self.assertAlmostEqual(xmax, 45 + 0.15, places=6)
++        data = Part.projectVisible([self.holed], view="top", region=(0, 0, 0, 10, 10, 20))
++        self.assertEqual([round(v, 6) for v in data["bounds"]], [0, 0, 10, 10])
++        area = sum(_poly_area(p) for f in data["faces"] for p in f["polygons"])
++        self.assertAlmostEqual(area, 100 - 25 * 3.14159265 / 4, delta=1.0)
++
++    def testUpAndNamedViews(self):
++        cam = Part.projectVisible(self.small, view="front", up=App.Vector(1, 0, 0))["camera"]
++        self.assertEqual([round(v, 9) for v in cam["up"]], [1, 0, 0])
++        cam = Part.projectVisible(self.small, view=App.Vector(0, 0, -1), up=App.Vector(0, 1, 0))["camera"]
++        self.assertEqual([round(v, 9) for v in cam["up"]], [0, 1, 0])
++        d = Part.projectVisible(self.small, view="iso-bottom")["camera"]["direction"]
++        self.assertGreater(d[2], 0)
++        with self.assertRaises(ValueError):
++            Part.projectVisible(self.small, view="top", up=App.Vector(0, 0, 1))
++
++    def testTimeLimit(self):
++        import warnings
++
++        with warnings.catch_warnings(record=True) as caught:
++            warnings.simplefilter("always")
++            data = Part.projectVisible([self.holed], view="iso", maxSeconds=1e-9)
++        self.assertFalse(data["complete"])
++        self.assertTrue(any("time limit" in str(w.message) for w in caught))
++        self.assertTrue(Part.projectVisible([self.holed], view="iso")["complete"])
++
++    def testTriangleShapeLikeMesh(self):
++        import Mesh
++
++        mesh = Mesh.Mesh(self.holed.tessellate(0.05))
++        shape = Part.Shape()
++        shape.makeShapeFromMesh(mesh.Topology, 0.01)
++        solid = Part.Solid(Part.Shell(shape.Faces))
++        a = Part.projectVisible(solid, view="top")
++        b = Part.projectVisible(self.holed, view="top")
++        area_a = sum(_poly_area(p) for f in a["faces"] for p in f["polygons"])
++        area_b = sum(_poly_area(p) for f in b["faces"] for p in f["polygons"])
++        self.assertAlmostEqual(area_a, area_b, delta=1.0)
++        # the flat top merged into one region, no lines between its triangles
++        self.assertEqual(len([f for f in a["faces"] if abs(f["depth"] + 20) < 1e-6]), 1)
++        def length(data):
++            return sum(
++                ((e["points"][i][0] - e["points"][i - 1][0]) ** 2
++                 + (e["points"][i][1] - e["points"][i - 1][1]) ** 2) ** 0.5
++                for e in data["edges"] for i in range(1, len(e["points"]))
++            )  # fmt: skip
++
++        self.assertLess(length(a), 1.3 * length(b))
++
++    def testSameResultAsWithoutBuffer(self):
++        # many parts in front of each other: the visible area must not depend on threads
++        shapes = [Part.makeCylinder(2, 10, App.Vector(i * 3, (i % 3) * 3, i % 2)) for i in range(20)]
++        one = Part.projectVisible(shapes, view="iso", threads=1)
++        many = Part.projectVisible(shapes, view="iso")
++        self.assertAlmostEqual(
++            sum(_poly_area(p) for f in one["faces"] for p in f["polygons"]),
++            sum(_poly_area(p) for f in many["faces"] for p in f["polygons"]),
++            places=6,
++        )
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+
