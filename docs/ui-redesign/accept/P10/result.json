@@ -1,0 +1,28 @@
+{
+ "dxf": {
+  "ok": true,
+  "band": [
+   "押し出して立体にする",
+   "スケッチにして直す",
+   "ほかの形式で保存"
+  ],
+  "volume": 39999.99999999999
+ },
+ "stl": {
+  "ok": true,
+  "band": [
+   "調べて直す",
+   "立体にする",
+   "3D プリント用に書き出す"
+  ],
+  "report": {
+   "facets": 10,
+   "solid": false,
+   "holes": 1,
+   "flipped": 0,
+   "non_manifold": 0,
+   "separate": 1
+  },
+  "written_solid": true
+ }
+}

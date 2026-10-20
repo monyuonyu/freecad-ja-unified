@@ -1,0 +1,796 @@
+From 0b9f3cbd147bccede7c9874558d947951067e903 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:36:24 +0900
+Subject: [PATCH 262/269] Unified: files in and out by purpose
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- After a 2D drawing (DXF, DWG, JWW) is opened, a band under the tool strip
+  says what can be done with it: extrude it to a solid (its closed outline
+  becomes a part), make a sketch of it, save it as another format. After a
+  mesh (STL…): check and fix, make a solid, export for 3D printing.
+- ☰ › Import, export, print: for 3D printing (3MF or STL; the fineness, the
+  check of the mesh — holes, inside-out faces, edges of more than two faces,
+  separate pieces — and "Fix, then export" in one window), to other CAD
+  (STEP), 2D (the drawing as DXF or PDF, made first if there is none), an
+  image, and any format.
+Tested without the GUI: FreeCADCmd -t TestUnifiedFiles.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   2 +
+ .../translations/UnifiedWording_ja.ts         | 160 ++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   7 +-
+ src/Mod/Unified/InitGui.py                    |   3 +
+ src/Mod/Unified/TestUnifiedFiles.py           |  60 +++
+ src/Mod/Unified/UnifiedFiles.py               | 476 ++++++++++++++++++
+ 6 files changed, 706 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Unified/TestUnifiedFiles.py
+ create mode 100644 src/Mod/Unified/UnifiedFiles.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 2c2c59c41..821f77274 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -17,6 +17,8 @@ set(Unified_Scripts
+     ContextRules.py
+     TestContextRules.py
+     DrawingAuto.py
++    UnifiedFiles.py
++    TestUnifiedFiles.py
+     TestDrawingAuto.py
+     FirstSteps.py
+ )
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index e85b663bd..97c756fff 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10799,4 +10799,164 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>どの向きにも回る（玉）</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedFiles</name>
++    <message>
++        <source>Export for 3D printing</source>
++        <translation>3D プリント用に書き出す</translation>
++    </message>
++    <message>
++        <source>Parts: {}</source>
++        <translation>部品: {}</translation>
++    </message>
++    <message>
++        <source>3MF (keeps units; most slicers)</source>
++        <translation>3MF（単位が残る。多くのスライサーで使える）</translation>
++    </message>
++    <message>
++        <source>STL</source>
++        <translation>STL</translation>
++    </message>
++    <message>
++        <source>Fineness</source>
++        <translation>細かさ</translation>
++    </message>
++    <message>
++        <source>Coarse (small file)</source>
++        <translation>粗い（ファイルが小さい）</translation>
++    </message>
++    <message>
++        <source>Normal</source>
++        <translation>標準</translation>
++    </message>
++    <message>
++        <source>Fine (round shapes smooth)</source>
++        <translation>細かい（丸い所がなめらか）</translation>
++    </message>
++    <message>
++        <source>Fix, then export…</source>
++        <translation>直してから書き出す…</translation>
++    </message>
++    <message>
++        <source>Export…</source>
++        <translation>書き出す…</translation>
++    </message>
++    <message>
++        <source>Cancel</source>
++        <translation>やめる</translation>
++    </message>
++    <message>
++        <source>{} triangles</source>
++        <translation>三角形 {} 枚</translation>
++    </message>
++    <message>
++        <source>Closed (no holes)</source>
++        <translation>閉じている（穴なし）</translation>
++    </message>
++    <message>
++        <source>Has holes (open edges)</source>
++        <translation>穴がある（閉じていない辺）</translation>
++    </message>
++    <message>
++        <source>All faces point outwards</source>
++        <translation>面がすべて外向き</translation>
++    </message>
++    <message>
++        <source>Some faces are turned inside out</source>
++        <translation>裏返った面がある</translation>
++    </message>
++    <message>
++        <source>No edges shared by more than two faces</source>
++        <translation>3 枚以上の面が付いた辺は無い</translation>
++    </message>
++    <message>
++        <source>Edges shared by more than two faces</source>
++        <translation>3 枚以上の面が付いた辺がある</translation>
++    </message>
++    <message>
++        <source>{} separate pieces</source>
++        <translation>離れた塊 {} 個</translation>
++    </message>
++    <message>
++        <source>Exported to {}</source>
++        <translation>{} に書き出しました</translation>
++    </message>
++    <message>
++        <source>There is no solid to print yet</source>
++        <translation>まだ印刷できる立体がありません</translation>
++    </message>
++    <message>
++        <source>To other CAD</source>
++        <translation>ほかの CAD へ</translation>
++    </message>
++    <message>
++        <source>2D</source>
++        <translation>2D</translation>
++    </message>
++    <message>
++        <source>What you can do with this drawing:</source>
++        <translation>この図形でできること:</translation>
++    </message>
++    <message>
++        <source>What you can do with this mesh:</source>
++        <translation>このメッシュでできること:</translation>
++    </message>
++    <message>
++        <source>Extrude it to a solid</source>
++        <translation>押し出して立体にする</translation>
++    </message>
++    <message>
++        <source>Make a sketch of it to change it</source>
++        <translation>スケッチにして直す</translation>
++    </message>
++    <message>
++        <source>Save as another format</source>
++        <translation>ほかの形式で保存</translation>
++    </message>
++    <message>
++        <source>Check and fix</source>
++        <translation>調べて直す</translation>
++    </message>
++    <message>
++        <source>Make a solid</source>
++        <translation>立体にする</translation>
++    </message>
++    <message>
++        <source>Close this band</source>
++        <translation>この帯を閉じる</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Export3DPrint</name>
++    <message>
++        <source>For 3D Printing (3MF, STL)…</source>
++        <translation>3D プリント用（3MF・STL）…</translation>
++    </message>
++    <message>
++        <source>Export the picked parts (all if none is picked) for a 3D printer, checked and fixed</source>
++        <translation>選んだ部品（選んでいなければ全部）を 3D プリンター用に、調べて直して書き出します</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_ExportCAD</name>
++    <message>
++        <source>To Other CAD (STEP)…</source>
++        <translation>ほかの CAD へ（STEP）…</translation>
++    </message>
++    <message>
++        <source>Export the picked parts (all if none is picked) as STEP</source>
++        <translation>選んだ部品（選んでいなければ全部）を STEP で書き出します</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Export2D</name>
++    <message>
++        <source>2D (DXF, PDF of a Drawing)…</source>
++        <translation>2D（図面の DXF・PDF）…</translation>
++    </message>
++    <message>
++        <source>The drawing of this file as DXF or PDF (a drawing is made first if there is none)</source>
++        <translation>このファイルの図面を DXF か PDF で（図面が無ければ先に作ります）</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 601bb5786..98a39dcbb 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -449,8 +449,11 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+     main->setCommand("Unified Main Menu");
+     auto exportMenu = new Gui::MenuItem;
+     exportMenu->setCommand("Unified Import Export");
+-    *exportMenu << "Std_Import" << "Std_Export" << "Separator" << "Std_Print" << "Std_PrintPreview"
+-                << "Std_PrintPdf";
++    // Out by purpose; any format at the end
++    *exportMenu << "Std_Import" << "Separator"
++                << "Unified_Export3DPrint" << "Unified_ExportCAD" << "Unified_Export2D"
++                << "Std_ViewScreenShot" << "Std_Export" << "Separator"
++                << "Std_Print" << "Std_PrintPreview" << "Std_PrintPdf";
+     *main << "Unified_NewPart"
+           << "Unified_NewAssembly"
+           << "Unified_NewDrawing"
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index e41656c06..95b5fe5df 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -66,6 +66,9 @@ class UnifiedWorkbench(Workbench):
+         # モードの無い画面: ☰ の右に元に戻す・検索・AI・設定、道具の列の 1 文字の近道、その他の道具
+         import UnifiedChrome
+         import UnifiedSettings  # noqa: F401  (Unified_Settings: the preferences by kind)
++        import UnifiedFiles  # 目的別の書き出し（3D プリント用など）と、開いた図面・メッシュでできることの帯
++
++        UnifiedFiles.install()
+ 
+         UnifiedChrome.install()
+ 
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+new file mode 100644
+index 000000000..cdf9d8c21
+--- /dev/null
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -0,0 +1,60 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Tests of files by purpose (UnifiedFiles.py) without the GUI: the mesh check for 3D printing
++finds holes and inside-out faces and the fix closes them; opened 2D drawings and meshes are
++recognised.
++
++    FreeCADCmd -t TestUnifiedFiles
++"""
++
++import unittest
++
++import FreeCAD as App
++import Mesh
++import Part
++
++import UnifiedFiles as F
++
++
++class TestUnifiedFiles(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("UnifiedFilesTest")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def test_good_solid(self):
++        box = self.doc.addObject("Part::Box", "Box")
++        self.doc.recompute()
++        r = F.mesh_report(F.make_mesh(F.solids_to_print(self.doc)))
++        self.assertTrue(r["solid"])
++        self.assertEqual(r["holes"], 0)
++        self.assertEqual(r["flipped"], 0)
++        self.assertEqual(r["separate"], 1)
++
++    def test_hole_found_and_fixed(self):
++        m = Mesh.createBox(10, 10, 10)
++        m.removeFacets([0])
++        r = F.mesh_report(m)
++        self.assertFalse(r["solid"])
++        self.assertEqual(r["holes"], 1)
++        fixed = F.fix_mesh(m)
++        self.assertTrue(F.mesh_report(fixed)["solid"])
++
++    def test_kinds(self):
++        line = self.doc.addObject("Part::Feature", "Line")
++        line.Shape = Part.makeLine(App.Vector(0, 0, 0), App.Vector(1, 0, 0))
++        self.assertEqual(F.kind_of_document(self.doc), "2d")
++        other = App.newDocument("UnifiedFilesMesh")
++        try:
++            mesh = other.addObject("Mesh::Feature", "Mesh")
++            mesh.Mesh = Mesh.createBox(1, 1, 1)
++            self.assertEqual(F.kind_of_document(other), "mesh")
++        finally:
++            App.closeDocument(other.Name)
++        box = self.doc.addObject("Part::Box", "Box")
++        self.doc.recompute()
++        self.assertIsNone(F.kind_of_document(self.doc))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedFiles.py b/src/Mod/Unified/UnifiedFiles.py
+new file mode 100644
+index 000000000..79953f2f2
+--- /dev/null
++++ b/src/Mod/Unified/UnifiedFiles.py
+@@ -0,0 +1,476 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Files in and out by purpose (design 6.12).
++
++- After a 2D drawing (DXF, DWG, JWW) or a mesh (STL, OBJ, 3MF) is opened, a band says what can be
++  done with it: extrude the outline, make a sketch of it, check and fix the mesh, make a solid…
++- Export by purpose: for 3D printing (3MF / STL, with a check of the mesh and "fix, then export"
++  in one window), to other CAD (STEP), 2D (DXF / PDF of a drawing), an image, or any format.
++The mesh check itself (mesh_report, fix_mesh) needs no GUI and is tested by TestUnifiedFiles.py.
++"""
++
++import os
++
++import FreeCAD as App
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++# --------------------------------------------------------------------------- without the GUI
++def solids_to_print(doc, picked=()):
++    """The shapes to print: the picked ones, else the visible solids that are not inside others"""
++    objs = list(picked)
++    if not objs and doc is not None:
++        for o in doc.Objects:
++            if not getattr(o, "Visibility", True) or not o.isDerivedFrom("Part::Feature"):
++                continue
++            if o.isDerivedFrom("PartDesign::Feature") and not getattr(o, "isDerivedFrom", lambda t: False)("PartDesign::Body"):
++                continue  # the steps of a part: the part (body) itself is printed
++            if any(p.isDerivedFrom("PartDesign::Body") for p in o.InList):
++                continue
++            if o.Shape.Solids:
++                objs.append(o)
++    return objs
++
++
++def make_mesh(objs, fineness="normal"):
++    import Mesh
++    import MeshPart
++
++    deflection = {"coarse": 0.2, "normal": 0.05, "fine": 0.01}[fineness]
++    mesh = Mesh.Mesh()
++    for o in objs:
++        if o.isDerivedFrom("Mesh::Feature"):
++            mesh.addMesh(o.Mesh)
++            continue
++        shape = o.Shape.copy()
++        shape.Placement = o.getGlobalPlacement() if hasattr(o, "getGlobalPlacement") else shape.Placement
++        mesh.addMesh(MeshPart.meshFromShape(Shape=shape, LinearDeflection=deflection,
++                                            AngularDeflection=0.35, Relative=False))
++    return mesh
++
++
++def boundary_loops(mesh):
++    """The number of holes: loops of edges that belong to one triangle only"""
++    count = {}
++    for tri in mesh.Topology[1]:
++        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
++            key = (a, b) if a < b else (b, a)
++            count[key] = count.get(key, 0) + 1
++    open_edges = [e for e, n in count.items() if n == 1]
++    if not open_edges:
++        return 0
++    # Loops: connected groups of open edges
++    parent = {}
++
++    def find(x):
++        while parent.get(x, x) != x:
++            parent[x] = parent.get(parent[x], parent[x])
++            x = parent[x]
++        return x
++
++    for a, b in open_edges:
++        ra, rb = find(a), find(b)
++        if ra != rb:
++            parent[ra] = rb
++    return len({find(a) for a, _ in open_edges})
++
++
++def mesh_report(mesh):
++    """What a slicer would trip on: {holes, flipped, separate, non_manifold, solid, facets}"""
++    holes = boundary_loops(mesh)
++    return {
++        "facets": mesh.CountFacets,
++        "solid": bool(mesh.isSolid()),
++        "holes": holes,
++        "flipped": int(mesh.hasNonUniformOrientedFacets()),
++        "non_manifold": int(mesh.hasNonManifolds()),
++        "separate": len(mesh.getSeparateComponents()) if hasattr(mesh, "getSeparateComponents") else 1,
++    }
++
++
++def fix_mesh(mesh):
++    """Fix what can be fixed safely: duplicates, orientation, small holes"""
++    mesh = mesh.copy()
++    for step in ("removeDuplicatedPoints", "removeDuplicatedFacets", "removeNonManifolds",
++                 "harmonizeNormals"):
++        try:
++            getattr(mesh, step)()
++        except Exception:
++            pass
++    try:
++        mesh.fillupHoles(1000)
++    except Exception:
++        pass
++    try:
++        if mesh.isSolid() and mesh.Volume < 0:
++            mesh.flipNormals()
++    except Exception:
++        pass
++    return mesh
++
++
++def kind_of_document(doc):
++    """"2d" for a document of loose lines (an opened DXF / DWG / JWW), "mesh" for one of meshes,
++    else None"""
++    if doc is None:
++        return None
++    import ContextRules
++
++    shapes = [o for o in doc.Objects if o.isDerivedFrom("Part::Feature") or o.isDerivedFrom("Mesh::Feature")]
++    if not shapes:
++        return None
++    if all(o.isDerivedFrom("Mesh::Feature") for o in shapes):
++        return "mesh"
++    if any(ContextRules.is_loose_2d(o) for o in shapes) and not any(
++        o.isDerivedFrom("Part::Feature") and o.Shape.Solids for o in shapes
++    ):
++        return "2d"
++    return None
++
++
++# --------------------------------------------------------------------------- with the GUI
++def _gui():
++    import FreeCADGui as Gui
++    from PySide import QtCore, QtGui, QtWidgets
++
++    return Gui, QtCore, QtGui, QtWidgets
++
++
++class PrintDialog:
++    """For 3D printing: format, fineness, what the check found, fix then export"""
++
++    def __init__(self, objs):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        self.objs = objs
++        self.mesh = None
++        d = self.dialog = QtWidgets.QDialog(Gui.getMainWindow())
++        d.setObjectName("UnifiedPrintExport")
++        d.setWindowTitle(translate("UnifiedFiles", "Export for 3D printing"))
++        lay = QtWidgets.QVBoxLayout(d)
++        lay.addWidget(QtWidgets.QLabel(translate("UnifiedFiles", "Parts: {}").format(
++            ", ".join(o.Label for o in objs))))
++        row = QtWidgets.QHBoxLayout()
++        self.fmt3mf = QtWidgets.QRadioButton(translate("UnifiedFiles", "3MF (keeps units; most slicers)"))
++        self.fmtstl = QtWidgets.QRadioButton(translate("UnifiedFiles", "STL"))
++        self.fmt3mf.setChecked(True)
++        row.addWidget(self.fmt3mf)
++        row.addWidget(self.fmtstl)
++        row.addStretch(1)
++        lay.addLayout(row)
++        row = QtWidgets.QHBoxLayout()
++        row.addWidget(QtWidgets.QLabel(translate("UnifiedFiles", "Fineness")))
++        self.fine = QtWidgets.QComboBox()
++        for key, text in (("coarse", "Coarse (small file)"), ("normal", "Normal"), ("fine", "Fine (round shapes smooth)")):
++            self.fine.addItem(translate("UnifiedFiles", text), key)
++        self.fine.setCurrentIndex(1)
++        self.fine.currentIndexChanged.connect(lambda _i: self.check())
++        row.addWidget(self.fine)
++        row.addStretch(1)
++        lay.addLayout(row)
++        self.result = QtWidgets.QLabel()
++        self.result.setObjectName("UnifiedPrintCheck")
++        self.result.setWordWrap(True)
++        self.result.setTextFormat(QtCore.Qt.RichText)
++        lay.addWidget(self.result)
++        buttons = QtWidgets.QHBoxLayout()
++        buttons.addStretch(1)
++        self.fix_btn = QtWidgets.QPushButton(translate("UnifiedFiles", "Fix, then export…"))
++        self.fix_btn.clicked.connect(lambda: self.export(fix=True))
++        self.export_btn = QtWidgets.QPushButton(translate("UnifiedFiles", "Export…"))
++        self.export_btn.setDefault(True)
++        self.export_btn.clicked.connect(lambda: self.export(fix=False))
++        cancel = QtWidgets.QPushButton(translate("UnifiedFiles", "Cancel"))
++        cancel.clicked.connect(d.reject)
++        for b in (self.fix_btn, self.export_btn, cancel):
++            buttons.addWidget(b)
++        lay.addLayout(buttons)
++        self.check()
++
++    def check(self):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        try:
++            self.mesh = make_mesh(self.objs, self.fine.currentData())
++            r = self.report = mesh_report(self.mesh)
++        finally:
++            QtWidgets.QApplication.restoreOverrideCursor()
++        ok = "<span style='color:#1a7f37'>✓ {}</span>"
++        bad = "<span style='color:#b42318'>✕ {}</span>"
++        lines = [translate("UnifiedFiles", "{} triangles").format(r["facets"])]
++        lines.append((ok if r["solid"] and not r["holes"] else bad).format(
++            translate("UnifiedFiles", "Closed (no holes)") if r["solid"] and not r["holes"]
++            else translate("UnifiedFiles", "Has holes (open edges)")))
++        lines.append((ok if not r["flipped"] else bad).format(
++            translate("UnifiedFiles", "All faces point outwards") if not r["flipped"]
++            else translate("UnifiedFiles", "Some faces are turned inside out")))
++        lines.append((ok if not r["non_manifold"] else bad).format(
++            translate("UnifiedFiles", "No edges shared by more than two faces") if not r["non_manifold"]
++            else translate("UnifiedFiles", "Edges shared by more than two faces")))
++        lines.append(translate("UnifiedFiles", "{} separate pieces").format(r["separate"]))
++        self.result.setText("<br>".join(lines))
++        self.fix_btn.setEnabled(bool(r["holes"] or r["flipped"] or r["non_manifold"] or not r["solid"]))
++
++    def export(self, fix):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        ext = "3mf" if self.fmt3mf.isChecked() else "stl"
++        doc = App.ActiveDocument
++        start = os.path.join(os.path.dirname(doc.FileName) if doc and doc.FileName else os.path.expanduser("~"),
++                             (self.objs[0].Label if len(self.objs) == 1 else (doc.Label if doc else "print")) + "." + ext)
++        path, _ = QtWidgets.QFileDialog.getSaveFileName(
++            self.dialog, translate("UnifiedFiles", "Export for 3D printing"), start,
++            "3MF (*.3mf)" if ext == "3mf" else "STL (*.stl)")
++        if not path:
++            return
++        if not path.lower().endswith("." + ext):
++            path += "." + ext
++        mesh = fix_mesh(self.mesh) if fix else self.mesh
++        mesh.write(path)
++        Gui.getMainWindow().statusBar().showMessage(translate("UnifiedFiles", "Exported to {}").format(path), 8000)
++        self.path = path
++        self.dialog.accept()
++
++    def exec(self):
++        return self.dialog.exec()
++
++
++def _picked():
++    Gui, *_ = _gui()
++    return [s.Object for s in Gui.Selection.getSelectionEx()]
++
++
++class Export3DPrintCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Mesh_Export",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Export3DPrint", "For 3D Printing (3MF, STL)…"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_Export3DPrint",
++                                         "Export the picked parts (all if none is picked) for a 3D printer, checked and fixed"),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None
++
++    def Activated(self):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        objs = solids_to_print(App.ActiveDocument, _picked())
++        if not objs:
++            Gui.getMainWindow().statusBar().showMessage(
++                translate("UnifiedFiles", "There is no solid to print yet"), 6000)
++            return
++        PrintDialog(objs).exec()
++
++
++class ExportCADCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Std_Export",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_ExportCAD", "To Other CAD (STEP)…"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_ExportCAD", "Export the picked parts (all if none is picked) as STEP"),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None
++
++    def Activated(self):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        objs = _picked() or [o for o in App.ActiveDocument.RootObjects if o.isDerivedFrom("Part::Feature")
++                             or o.isDerivedFrom("App::Part") or o.isDerivedFrom("App::Link")]
++        doc = App.ActiveDocument
++        start = os.path.join(os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~"), doc.Label + ".step")
++        path, _ = QtWidgets.QFileDialog.getSaveFileName(Gui.getMainWindow(), translate("UnifiedFiles", "To other CAD"),
++                                                        start, "STEP (*.step *.stp)")
++        if path:
++            import ImportGui
++
++            ImportGui.export(objs, path)
++
++
++class Export2DCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "TechDraw_ExportPageDXF",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Export2D", "2D (DXF, PDF of a Drawing)…"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_Export2D",
++                                         "The drawing of this file as DXF or PDF (a drawing is made first if there is none)"),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None
++
++    def Activated(self):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        doc = App.ActiveDocument
++        pages = [o for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawPage")]
++        if not pages:
++            Gui.runCommand("Unified_NewDrawing")
++            pages = [o for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawPage")]
++            if not pages:
++                return
++        page = pages[-1]
++        start = os.path.join(os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~"), doc.Label + ".pdf")
++        path, chosen = QtWidgets.QFileDialog.getSaveFileName(Gui.getMainWindow(), translate("UnifiedFiles", "2D"), start,
++                                                             "PDF (*.pdf);;DXF (*.dxf)")
++        if not path:
++            return
++        import TechDrawGui
++
++        if path.lower().endswith(".dxf") or "dxf" in chosen.lower():
++            if not path.lower().endswith(".dxf"):
++                path += ".dxf"
++            TechDrawGui.exportPageAsDxf(page, path)
++        else:
++            if not path.lower().endswith(".pdf"):
++                path += ".pdf"
++            TechDrawGui.exportPageAsPdf(page, path)
++
++
++# --------------------------------------------------------------------------- after opening
++class OpenedBand:
++    """A band under the tool strip after a 2D drawing or a mesh was opened: what can be done with it"""
++
++    def __init__(self):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        mw = Gui.getMainWindow()
++        bar = self.bar = QtWidgets.QToolBar(mw)
++        bar.setObjectName("UnifiedOpenedBand")
++        bar.setMovable(False)
++        bar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
++        bar.setStyleSheet("#UnifiedOpenedBand { background: #eef8f0; border-bottom: 2px solid #3a9b55; }"
++                          " #UnifiedOpenedTitle { font-weight: bold; color: #1f6b36; padding: 0 10px; }")
++        bar.toggleViewAction().setVisible(False)
++        mw.addToolBarBreak(QtCore.Qt.TopToolBarArea)
++        mw.addToolBar(QtCore.Qt.TopToolBarArea, bar)
++        bar.hide()
++        self.doc_name = None
++        self.dismissed = set()
++        self.timer = QtCore.QTimer(bar)
++        self.timer.timeout.connect(self.poll)
++        self.timer.start(700)
++
++    def poll(self):
++        doc = App.ActiveDocument
++        name = doc.Name if doc else None
++        if name == self.doc_name:
++            return
++        self.doc_name = name
++        kind = kind_of_document(doc) if doc and name not in self.dismissed else None
++        self.show(kind, doc)
++
++    def show(self, kind, doc):
++        Gui, QtCore, QtGui, QtWidgets = _gui()
++        self.bar.clear()
++        if kind is None:
++            self.bar.hide()
++            return
++        title = QtWidgets.QLabel(self.bar)
++        title.setObjectName("UnifiedOpenedTitle")
++        title.setText(translate("UnifiedFiles", "What you can do with this drawing:") if kind == "2d"
++                      else translate("UnifiedFiles", "What you can do with this mesh:"))
++        self.bar.addWidget(title)
++
++        def act(text, func):
++            a = self.bar.addAction(translate("UnifiedFiles", text))
++            a.triggered.connect(func)
++
++        if kind == "2d":
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Extrude it to a solid"), self.extrude)
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Make a sketch of it to change it"), self.to_sketch)
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Save as another format"), lambda: Gui.runCommand("Std_Export"))
++        else:
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Check and fix"), lambda: self.run_on_meshes("Mesh_Evaluation"))
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Make a solid"), self.mesh_to_solid)
++            act(QT_TRANSLATE_NOOP("UnifiedFiles", "Export for 3D printing"), lambda: Gui.runCommand("Unified_Export3DPrint"))
++        spacer = QtWidgets.QWidget(self.bar)
++        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
++        self.bar.addWidget(spacer)
++        close = self.bar.addAction("✕")
++        close.setToolTip(translate("UnifiedFiles", "Close this band"))
++        close.triggered.connect(self.dismiss)
++        self.bar.show()
++
++    def dismiss(self):
++        if self.doc_name:
++            self.dismissed.add(self.doc_name)
++        self.bar.hide()
++
++    def lines(self):
++        import ContextRules
++
++        return [o for o in App.ActiveDocument.Objects if ContextRules.is_loose_2d(o) and o.Visibility]
++
++    def extrude(self):
++        Gui, *_ = _gui()
++        doc = App.ActiveDocument
++        Gui.Selection.clearSelection()
++        for o in self.lines():
++            Gui.Selection.addSelection(doc.Name, o.Name)
++        Gui.runCommand("PartDesign_Pad")
++        self.dismiss()
++
++    def to_sketch(self):
++        Gui, *_ = _gui()
++        doc = App.ActiveDocument
++        Gui.Selection.clearSelection()
++        for o in self.lines():
++            Gui.Selection.addSelection(doc.Name, o.Name)
++        import ContextRules
++
++        ContextRules.run("Draft_Draft2Sketch")
++        self.dismiss()
++
++    def run_on_meshes(self, command):
++        Gui, *_ = _gui()
++        doc = App.ActiveDocument
++        Gui.Selection.clearSelection()
++        for o in doc.Objects:
++            if o.isDerivedFrom("Mesh::Feature"):
++                Gui.Selection.addSelection(doc.Name, o.Name)
++        import ContextRules
++
++        ContextRules.run(command)
++
++    def mesh_to_solid(self):
++        """Each mesh as a solid (Part.solidFromMesh of the integrated environment), in one step"""
++        doc = App.ActiveDocument
++        import Part
++
++        doc.openTransaction(translate("UnifiedFiles", "Make a solid"))
++        made = 0
++        for o in list(doc.Objects):
++            if not o.isDerivedFrom("Mesh::Feature"):
++                continue
++            try:
++                solid = Part.solidFromMesh(o.Mesh) if hasattr(Part, "solidFromMesh") else None
++                if solid is None:
++                    shape = Part.Shape()
++                    shape.makeShapeFromMesh(o.Mesh.Topology, 0.05)
++                    solid = Part.makeSolid(shape)
++                f = doc.addObject("Part::Feature", o.Name + "_solid")
++                f.Label = o.Label
++                f.Shape = solid
++                o.Visibility = False
++                made += 1
++            except Exception as e:
++                App.Console.PrintWarning("Make a solid: {}: {}\n".format(o.Label, e))
++        doc.commitTransaction()
++        doc.recompute()
++        self.dismiss()
++        return made
++
++
++_band = None
++
++
++def install():
++    global _band
++    import FreeCADGui as Gui
++
++    for name, cmd in (("Unified_Export3DPrint", Export3DPrintCommand()), ("Unified_ExportCAD", ExportCADCommand()),
++                      ("Unified_Export2D", Export2DCommand())):
++        Gui.addCommand(name, cmd)
++    if _band is None:
++        _band = OpenedBand()
+-- 
+2.43.0
+

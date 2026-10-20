@@ -1,0 +1,39 @@
+{
+ "assembly": {
+  "ok": true,
+  "parts": [
+   "base",
+   "pin"
+  ],
+  "grounded": 1,
+  "picked": [
+   [
+    "pin",
+    [
+     "Face1"
+    ]
+   ],
+   [
+    "base",
+    [
+     "Face7"
+    ]
+   ]
+  ],
+  "bar": [
+   "軸をそろえる",
+   "差し込む（回ってすべる）",
+   "回るだけ",
+   "固定でつなぐ",
+   "距離",
+   "AI に頼む",
+   "…"
+  ],
+  "joints": [
+   "Cylindrical"
+  ],
+  "floating": [],
+  "modals": [],
+  "user_actions": 9
+ }
+}

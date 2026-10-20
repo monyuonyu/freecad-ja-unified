@@ -1,0 +1,20 @@
+{
+ "settings": {
+  "ok": true,
+  "kinds": [
+   "基本",
+   "操作（マウスとキー）",
+   "図面",
+   "ファイル",
+   "ネットワークとアカウント",
+   "AI"
+  ],
+  "search": {
+   "プロキシ": true,
+   "JIS": true,
+   "タッチパッド": true
+  },
+  "mouse_style_set_at_once": "Gui::TouchpadNavigationStyle",
+  "ai_auto_box_visible": false
+ }
+}

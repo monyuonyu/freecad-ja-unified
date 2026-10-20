@@ -1,0 +1,40 @@
+From eb7240e9eb2687ab45aba4d47c044e368f096a75 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:55:19 +0900
+Subject: [PATCH 267/269] Unified: TestNetworkSettings runs on a Windows
+ console
+
+unittest prints the first line of a test's docstring; the Japanese ones
+could not be printed by FreeCADCmd on Windows (cp1252) and the run failed
+before the tests. They are comments now.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/TestNetworkSettings.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/TestNetworkSettings.py b/src/Mod/Unified/TestNetworkSettings.py
+index f59563937..6e630222c 100644
+--- a/src/Mod/Unified/TestNetworkSettings.py
++++ b/src/Mod/Unified/TestNetworkSettings.py
+@@ -149,7 +149,7 @@ class TestCheck(unittest.TestCase):
+         self.assertLess(took, 3.0)
+ 
+     def test_working_proxy(self):
+-        """CONNECT に 200・407 を返すだけのプロキシ"""
++        # CONNECT に 200・407 を返すだけのプロキシ
+         for status, want in ((b"200 Connection established", "経由で api.anthropic.com につながります"),
+                              (b"407 Proxy Authentication Required", "ユーザー名とパスワード")):
+             srv = socket.socket()
+@@ -170,7 +170,7 @@ class TestCheck(unittest.TestCase):
+             self.assertIn(want, text)
+ 
+     def test_heartbeat_while_checking(self):
+-        """画面のスレッドのタイマー（心拍）が、確認の間も遅れない。結果は画面のスレッドに届く"""
++        # 画面のスレッドのタイマー（心拍）が、確認の間も遅れない。結果は画面のスレッドに届く
+         QtCore, _ = _qt()
+         if QtCore is None:
+             self.skipTest("no Qt")
+-- 
+2.43.0
+

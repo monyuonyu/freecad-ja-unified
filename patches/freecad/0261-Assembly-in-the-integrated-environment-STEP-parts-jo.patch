@@ -1,0 +1,279 @@
+From 90f5acb726935738cb3d664ab1ff97e7309a7a75 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:31:55 +0900
+Subject: [PATCH 261/269] Assembly in the integrated environment: STEP parts,
+ joints by how they move
+
+- "Open file" in the panel that puts parts takes STEP and IGES files (read
+  into a document of their own, copied into the assembly when put)
+- Two round faces picked on two parts of an assembly offer "Insert (turns
+  and slides)", "Hinge (turns only)" and "Join rigidly" next to them; the
+  joints are named by how the parts move. The bar also works in an active
+  assembly (which counts as being edited)
+- The design check does not call a pin in a hole with a clearance fit (same
+  axis, up to 0.5 mm) floating
+- The sample STEP files of the first steps have a 12 mm hole and an 11.8 mm pin
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/CommandInsertLink.py         | 18 +++++--
+ src/Mod/Unified/ContextRules.py               |  4 ++
+ src/Mod/Unified/DesignCheck.py                | 38 ++++++++++++++
+ src/Mod/Unified/FirstSteps.py                 |  4 +-
+ src/Mod/Unified/Gui/ContextBar.cpp            | 20 ++++++-
+ .../translations/UnifiedWording_ja.ts         | 52 +++++++++++++++++++
+ 6 files changed, 128 insertions(+), 8 deletions(-)
+
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index 6d69f84a5..4d3e49a77 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -339,9 +339,9 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+     def openFiles(self):
+         selected_files, _ = QtGui.QFileDialog.getOpenFileNames(
+             None,
+-            "Select FreeCAD documents to import parts from",
++            translate("Assembly", "Select the files to put parts from"),
+             "",
+-            "Supported Formats (*.FCStd *.fcstd);;All files (*)",
++            translate("Assembly", "Parts (*.FCStd *.fcstd *.step *.stp *.STEP *.STP *.iges *.igs *.IGES *.IGS);;All files (*)"),
+         )
+ 
+         for filename in selected_files:
+@@ -354,8 +354,18 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             if not import_doc_is_open:
+                 if filename.lower().endswith(".fcstd"):
+                     App.openDocument(filename, True)
+-                    App.setActiveDocument(self.doc.Name)
+-                    self.buildPartList()
++                elif filename.lower().endswith((".step", ".stp", ".iges", ".igs")):
++                    # A STEP or IGES file: read into a document of its own (not saved); its
++                    # parts are copied into the assembly when put
++                    import ImportGui
++
++                    name = os.path.splitext(requested_file)[0]
++                    imported = App.newDocument("Unnamed", name)
++                    ImportGui.insert(filename, imported.Name)
++                else:
++                    continue
++                App.setActiveDocument(self.doc.Name)
++                self.buildPartList()
+ 
+     def onItemClicked(self, item):
+         selectedPart = item.data(0, QtCore.Qt.UserRole)
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 0c44a18e1..6f9bd7da9 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -97,6 +97,10 @@ RULES = {
+     "two picks": [
+         A("Unified_SnapFaces", T("Snap")),
+         A("Unified_SnapAxes", T("Line up axes")),
++        # In an assembly: joints by how the parts move (only offered while an assembly is open)
++        A("Assembly_CreateJointCylindrical", T("Insert (turns and slides)")),
++        A("Assembly_CreateJointRevolute", T("Hinge (turns only)")),
++        A("Assembly_CreateJointFixed", T("Join rigidly")),
+         A("Unified_PointToFace", T("Point onto face")),
+         A("Unified_MovePointToPoint", T("Point to point")),
+         A("Std_Measure", T("Distance")),
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 95827c93b..82241fb0a 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -338,6 +338,42 @@ def _remember(key, res):
+     _PAIR_CACHE[key] = res
+ 
+ 
++def _cylinders(shape):
++    out = []
++    for f in shape.Faces:
++        try:
++            surf = f.Surface
++        except Exception:
++            continue
++        if type(surf).__name__ == "Cylinder":
++            out.append((f, surf))
++    return out
++
++
++def _fitted(a, b, clearance=0.5):
++    """One shape has a round face inside a round face (a hole) of the other, on the same axis, with at
++    most `clearance` mm between them, and they overlap along the axis: a pin in a hole"""
++    if not a.BoundBox.intersect(b.BoundBox):
++        return False
++    ca, cb = _cylinders(a), _cylinders(b)
++    for fa, sa in ca:
++        for fb, sb in cb:
++            if abs(abs(sa.Axis.dot(sb.Axis)) - 1) > 1e-6:
++                continue
++            d = (sb.Center - sa.Center)
++            off = (d - sa.Axis * d.dot(sa.Axis)).Length
++            if off > 1e-3:
++                continue
++            gap = abs(sa.Radius - sb.Radius)
++            if 1e-9 < gap <= clearance or gap <= 1e-9:
++                # overlapping along the axis
++                ta = sorted(sa.Axis.dot(v.Point) for v in fa.Vertexes) or [0]
++                tb = sorted(sa.Axis.dot(v.Point) for v in fb.Vertexes) or [0]
++                if min(ta[-1], tb[-1]) - max(ta[0], tb[0]) > 1e-6:
++                    return True
++    return False
++
++
+ def _pair_compute(a, b, need_touch, opt):
+     """2 つの形の (重なりの体積, 重なりの中心, 接しているか)。重い（形によっては 1 組に数秒）"""
+     try:
+@@ -518,6 +554,8 @@ def iter_interference(doc, issues, opt, shapes):
+         # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
+         pair_touch = need_touch and not (touch[na] and touch[nb])
+         v, center, t = _pair(a, b, pair_touch, opt)
++        if pair_touch and not t and _fitted(a, b):
++            t = True  # a pin in a hole with a clearance fit is held by it, not floating
+         if v > opt["interference_mm3"]:
+             issues.append(Issue(ERROR, "interference",
+                                 translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
+diff --git a/src/Mod/Unified/FirstSteps.py b/src/Mod/Unified/FirstSteps.py
+index 778b1aba2..5b44b2af5 100644
+--- a/src/Mod/Unified/FirstSteps.py
++++ b/src/Mod/Unified/FirstSteps.py
+@@ -65,8 +65,8 @@ def sample_step_files():
+ 
+     folder = os.path.join(tempfile.gettempdir(), "freecad-first-steps")
+     os.makedirs(folder, exist_ok=True)
+-    base = Part.makeBox(60, 40, 10).cut(Part.makeCylinder(4, 10, App.Vector(30, 20, 0)))
+-    pin = Part.makeCylinder(3.9, 30)
++    base = Part.makeBox(60, 40, 10).cut(Part.makeCylinder(6, 10, App.Vector(30, 20, 0)))
++    pin = Part.makeCylinder(5.9, 30)
+     paths = []
+     for name, shape in (("base", base), ("pin", pin)):
+         path = os.path.join(folder, name + ".step")
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index d6af70521..9d7304dd0 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -26,6 +26,7 @@
+ #include <Gui/BitmapFactory.h>
+ #include <Gui/Command.h>
+ #include <Gui/Control.h>
++#include <Gui/Document.h>
+ #include <Gui/MainWindow.h>
+ #include <Gui/MDIView.h>
+ #include <Gui/View3DInventor.h>
+@@ -239,6 +240,22 @@ void ContextBar::onSelectionChanged(const Gui::SelectionChanges& msg)
+     }
+ }
+ 
++namespace
++{
++// Something is edited (a sketch, a feature): the bar stays away. An active assembly is "edited"
++// too, but that is where its parts are put together: the bar is wanted there.
++bool editingSomething()
++{
++    Gui::Document* doc = Gui::Application::Instance->editDocument();
++    if (!doc) {
++        return false;
++    }
++    auto* vp = dynamic_cast<Gui::ViewProviderDocumentObject*>(doc->getInEdit());
++    App::DocumentObject* obj = vp ? vp->getObject() : nullptr;
++    return !(obj && isDerivedFrom(obj, "Assembly::AssemblyObject"));
++}
++}  // namespace
++
+ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+ {
+     auto selection = Gui::Selection().getSelectionEx();
+@@ -302,8 +319,7 @@ void ContextBar::refresh()
+     // is running or something is edited
+     // On a drawing page, picks carry no picked point: every pick there is in the view
+     bool inView = anchored || pickedInView || isPage;
+-    bool usable = view && inView && !Gui::Control().activeDialog()
+-        && !Gui::Application::Instance->editDocument();
++    bool usable = view && inView && !Gui::Control().activeDialog() && !editingSomething();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+     if (!actions.empty()) {
+         // Last but one: hand what is picked to the AI chat, for whatever the buttons do not
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index e0ec98584..e85b663bd 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -202,6 +202,14 @@ so that self intersection is avoided.</source>
+         <source>{} : {} inserted</source>
+         <translation>{}（{} 個置いた）</translation>
+     </message>
++    <message>
++        <source>Select the files to put parts from</source>
++        <translation>部品を取り出すファイルを選ぶ</translation>
++    </message>
++    <message>
++        <source>Parts (*.FCStd *.fcstd *.step *.stp *.STEP *.STP *.iges *.igs *.IGES *.IGS);;All files (*)</source>
++        <translation>部品 (*.FCStd *.fcstd *.step *.stp *.STEP *.STP *.iges *.igs *.IGES *.IGS);;すべてのファイル (*)</translation>
++    </message>
+ </context>
+ <context>
+     <name>AssemblyGui::ViewProviderAssembly</name>
+@@ -9558,6 +9566,10 @@ for ProjectionGroups</source>
+         <source>&lt;p&gt;1 - If an assembly is active : Creates a joint statically locking two parts together, preventing any movement or rotation&lt;/p&gt;&lt;p&gt;2 - If a part is active: Positions sub-parts by matching selected coordinate systems. The second part selected will move.&lt;/p&gt;</source>
+         <translation>&lt;p&gt;1 - 組立がアクティブな場合: 2つのパーツを静的的に合体させ。移動・回転を防ぐジョイントを作成&lt;/p&gt;&lt;p&gt;2 - パーツがアクティブな場合: 選択した座標系に合致させることで下位パーツを配置。選択した2番目のパーツは動きます。&lt;/p&gt;</translation>
+     </message>
++    <message>
++        <source>Fixed Joint</source>
++        <translation>動かないつながり（固定）</translation>
++    </message>
+ </context>
+ <context>
+     <name>Assembly_ToggleGrounded</name>
+@@ -10373,6 +10385,18 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Delete</source>
+         <translation>消す</translation>
+     </message>
++    <message>
++        <source>Insert (turns and slides)</source>
++        <translation>差し込む（回ってすべる）</translation>
++    </message>
++    <message>
++        <source>Hinge (turns only)</source>
++        <translation>回るだけ</translation>
++    </message>
++    <message>
++        <source>Join rigidly</source>
++        <translation>固定でつなぐ</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_SearchUsable</name>
+@@ -10747,4 +10771,32 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>単位・マウス・図面・ファイル・ネットワーク・AI を、したいことごとに。変えるとすぐ効きます</translation>
+     </message>
+ </context>
++<context>
++    <name>Assembly_CreateJointRevolute</name>
++    <message>
++        <source>Revolute Joint</source>
++        <translation>回るだけ（回転）</translation>
++    </message>
++</context>
++<context>
++    <name>Assembly_CreateJointCylindrical</name>
++    <message>
++        <source>Cylindrical Joint</source>
++        <translation>回ってすべる（円筒）</translation>
++    </message>
++</context>
++<context>
++    <name>Assembly_CreateJointSlider</name>
++    <message>
++        <source>Slider Joint</source>
++        <translation>すべるだけ（スライダー）</translation>
++    </message>
++</context>
++<context>
++    <name>Assembly_CreateJointBall</name>
++    <message>
++        <source>Ball Joint</source>
++        <translation>どの向きにも回る（玉）</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

@@ -298,7 +298,26 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.2
+
+UI rebuild phases P5, P6 (part), P9, P10 ([status in chapter 13 of the design](docs/ui-redesign/00-design.md)).
+**0.6.1 has no Windows build; on Windows use 0.6.2.**
+
+- Preferences by purpose (basic, mouse and keys incl. touchpad, drawings, files, network and accounts, AI), effective at once, with search;
+  "run AI code without asking" moved from the AI panel into the preferences; the first start asks for the mouse style
+- Assemblies: STEP/IGES parts from the put-part panel; two round faces offer "Insert", "Hinge", "Join rigidly"; joints named by how parts move;
+  a pin in a clearance hole is no longer reported as floating
+- Export by purpose: for 3D printing (3MF/STL with a mesh check and "Fix, then export"), to other CAD (STEP), 2D (DXF/PDF of a drawing), image
+- After opening a DXF/DWG/JWW or a mesh, a band offers what can be done with it (extrude to a solid, make a sketch, check and fix, make a solid)
+- Only the active file in the tree, detailed properties folded away, the model placed beside the task panel
+- Sketch sizes are typed in a small frameless box at the cursor
+- STEP parts without product names were still named "Open CASCADE STEP translator" by one import path
+- FreeCADCmd: print() of Japanese no longer raises on Windows legacy code pages or a C locale (UTF-8 on Windows; unprintable characters replaced);
+  a Windows CI check prints Japanese under cp1252
+
 ## Changes in 0.6.1
+
+**0.6.1 has no Windows build (use 0.6.2).**
 
 UI rebuild phases P1–P4, P7 and P8 ([design](docs/ui-redesign/00-design.md)): one window without modes.
 Acceptance screenshots in [docs/ui-redesign/accept](docs/ui-redesign/accept).

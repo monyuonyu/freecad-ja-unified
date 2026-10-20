@@ -1,0 +1,154 @@
+From a18967da7321fb8416c1678b094cf61eb48f75a5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:55:44 +0900
+Subject: [PATCH 268/269] Unified: the command catalog in the sources follows
+ the new commands
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandCatalog.json | 80 +++++++++++++++++++++++++++--
+ 1 file changed, 75 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/CommandCatalog.json b/src/Mod/Unified/CommandCatalog.json
+index fb7c23748..99fd4a185 100644
+--- a/src/Mod/Unified/CommandCatalog.json
++++ b/src/Mod/Unified/CommandCatalog.json
+@@ -1148,7 +1148,7 @@
+ "en": "Ball Joint",
+ "en_raw": "Ball Joint",
+ "icon": "Assembly_CreateJointBall",
+-"ja": "ボールジョイント",
++"ja": "どの向きにも回る（玉）",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_CreateJointBall",
+@@ -1187,7 +1187,7 @@
+ "en": "Cylindrical Joint",
+ "en_raw": "Cylindrical Joint",
+ "icon": "Assembly_CreateJointCylindrical",
+-"ja": "円筒ジョイント",
++"ja": "回ってすべる（円筒）",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_CreateJointCylindrical",
+@@ -1237,7 +1237,7 @@
+ "en": "Fixed Joint",
+ "en_raw": "Fixed Joint",
+ "icon": "Assembly_CreateJointFixed",
+-"ja": "固定ジョイント",
++"ja": "動かないつながり（固定）",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_CreateJointFixed",
+@@ -1376,7 +1376,7 @@
+ "en": "Revolute Joint",
+ "en_raw": "Revolute Joint",
+ "icon": "Assembly_CreateJointRevolute",
+-"ja": "回転ジョイント",
++"ja": "回るだけ（回転）",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_CreateJointRevolute",
+@@ -1451,7 +1451,7 @@
+ "en": "Slider Joint",
+ "en_raw": "Slider Joint",
+ "icon": "Assembly_CreateJointSlider",
+-"ja": "スライダージョイント",
++"ja": "すべるだけ（スライダー）",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_CreateJointSlider",
+@@ -44819,6 +44819,48 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_Export2D",
++"en": "2D (DXF, PDF of a Drawing)…",
++"en_raw": "2D (DXF, PDF of a Drawing)…",
++"icon": "TechDraw_ExportPageDXF",
++"ja": "2D（図面の DXF・PDF）…",
++"module": "",
++"module_wb": "",
++"name": "Unified_Export2D",
++"places": [],
++"tip_en": "The drawing of this file as DXF or PDF (a drawing is made first if there is none)",
++"tip_ja": "このファイルの図面を DXF か PDF で（図面が無ければ先に作ります）",
++"wb": ""
++},
++{
++"ctx": "Unified_Export3DPrint",
++"en": "For 3D Printing (3MF, STL)…",
++"en_raw": "For 3D Printing (3MF, STL)…",
++"icon": "Mesh_Export",
++"ja": "3D プリント用（3MF・STL）…",
++"module": "",
++"module_wb": "",
++"name": "Unified_Export3DPrint",
++"places": [],
++"tip_en": "Export the picked parts (all if none is picked) for a 3D printer, checked and fixed",
++"tip_ja": "選んだ部品（選んでいなければ全部）を 3D プリンター用に、調べて直して書き出します",
++"wb": ""
++},
++{
++"ctx": "Unified_ExportCAD",
++"en": "To Other CAD (STEP)…",
++"en_raw": "To Other CAD (STEP)…",
++"icon": "Std_Export",
++"ja": "ほかの CAD へ（STEP）…",
++"module": "",
++"module_wb": "",
++"name": "Unified_ExportCAD",
++"places": [],
++"tip_en": "Export the picked parts (all if none is picked) as STEP",
++"tip_ja": "選んだ部品（選んでいなければ全部）を STEP で書き出します",
++"wb": ""
++},
++{
+ "ctx": "Unified_Hole",
+ "en": "Hole",
+ "en_raw": "Hole",
+@@ -44931,6 +44973,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_Properties",
++"en": "Detailed Properties",
++"en_raw": "Detailed Properties",
++"icon": "document-properties",
++"ja": "詳しいプロパティ",
++"module": "",
++"module_wb": "",
++"name": "Unified_Properties",
++"places": [],
++"tip_en": "Show or fold away all the properties of what is picked, under the history",
++"tip_ja": "選んだ物のプロパティを全部、作った順の下に出す・畳む",
++"wb": ""
++},
++{
+ "ctx": "Unified_Search",
+ "en": "Search Tools…",
+ "en_raw": "Search Tools…",
+@@ -44987,6 +45043,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_Settings",
++"en": "Preferences…",
++"en_raw": "Preferences…",
++"icon": "preferences-system",
++"ja": "設定…",
++"module": "",
++"module_wb": "",
++"name": "Unified_Settings",
++"places": [],
++"tip_en": "Units, mouse, drawings, files, network and the AI, by what you want to set; changes take effect at once",
++"tip_ja": "単位・マウス・図面・ファイル・ネットワーク・AI を、したいことごとに。変えるとすぐ効きます",
++"wb": ""
++},
++{
+ "ctx": "Unified_SnapAxes",
+ "en": "Line up the axes",
+ "en_raw": "Line up the axes",
+-- 
+2.43.0
+

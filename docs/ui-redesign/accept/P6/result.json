@@ -1,0 +1,15 @@
+{
+ "panel": {
+  "ok": true,
+  "model_right_edge_px": 792,
+  "panel_left_px": 1160
+ },
+ "left": {
+  "ok": true,
+  "tree_documents": [
+   "板"
+  ],
+  "properties_folded": true,
+  "properties_shown_on_request": true
+ }
+}

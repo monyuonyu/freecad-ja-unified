@@ -216,6 +216,22 @@ jobs:
           Write-Output $out
           if ($code -ne 0 -or $out -notmatch '(?m)^OK') { throw "TestNetworkSettings failed (exit code $code)" }
 
+      - name: "Windows: printing Japanese never fails, also with a legacy code page"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'fc-print-appdata'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'fc-print-localappdata'
+          Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue
+          $log = Join-Path $env:RUNNER_TEMP 'print-cp1252.txt'
+          # The code page of a western Windows console; the text is Japanese (written as \u escapes here)
+          cmd /c "chcp 1252 >nul & `"$cmd`" -c `"print('\u65e5\u672c\u8a9e\u30c6\u30b9\u30c8')`" > `"$log`" 2>&1"
+          $code = $LASTEXITCODE
+          Get-Content $log
+          if ($code -ne 0) { throw "freecadcmd failed to print Japanese under cp1252 (exit code $code)" }
+
       - name: "Windows: upload"
         if: runner.os == 'Windows'
         shell: bash

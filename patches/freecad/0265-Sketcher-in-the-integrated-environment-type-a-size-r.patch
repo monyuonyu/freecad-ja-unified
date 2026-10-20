@@ -1,0 +1,68 @@
+From b4a65accf99c7f261cab2c4aefc62230f5b1b505 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:42:12 +0900
+Subject: [PATCH 265/269] Sketcher in the integrated environment: type a size
+ right where it is
+
+Double-clicking a size of a sketch opened a dialog with a name, a
+reference switch and buttons. In the integrated environment it is a small
+box without a frame next to the cursor, with the number selected for
+typing: Enter takes it, Esc or a click elsewhere leaves it as it was.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/Gui/EditDatumDialog.cpp | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+index b19c2fbf2..f41189e96 100644
+--- a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
++++ b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+@@ -25,6 +25,7 @@
+ 
+ /// Qt Include Files
+ #include <Inventor/sensors/SoSensor.h>
++#include <QTimer>
+ #include <QApplication>
+ #include <QDialog>
+ 
+@@ -40,6 +41,7 @@
+ #include <Gui/Document.h>
+ #include <Mod/Sketcher/App/GeometryFacade.h>
+ #include <Mod/Sketcher/App/SketchObject.h>
++#include <App/SingleWorkbench.h>
+ #include <App/Datums.h>
+ 
+ #include "EditDatumDialog.h"
+@@ -209,6 +211,28 @@ int EditDatumDialog::exec(bool atCursor)
+         connect(&dlg, &QDialog::accepted, this, &EditDatumDialog::accepted);
+         connect(&dlg, &QDialog::rejected, this, &EditDatumDialog::rejected);
+ 
++        if (App::isSingleWorkbench()) {
++            // In the integrated environment the number is typed right where the size is: a
++            // small box without a frame next to the cursor, just the number (Enter takes it,
++            // Esc or a click elsewhere leaves it as it was). Names and reference sizes are in
++            // the constraint's properties.
++            dlg.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
++            ui_ins_datum->label_2->hide();
++            ui_ins_datum->name->hide();
++            ui_ins_datum->cbDriving->hide();
++            dlg.setStyleSheet(QStringLiteral(
++                "QDialog { border: 1px solid palette(highlight); border-radius: 6px; }"
++            ));
++            dlg.adjustSize();
++            atCursor = true;
++            // A pop-up does not give the focus on its own: the number is typed at once
++            auto* edit = ui_ins_datum->labelEdit;
++            QTimer::singleShot(0, edit, [edit, &dlg]() {
++                dlg.activateWindow();
++                edit->setFocus(Qt::PopupFocusReason);
++                edit->selectNumber();
++            });
++        }
+         if (atCursor) {
+             dlg.show();  // Need to show the dialog so geometry is computed
+             QRect pg = dlg.parentWidget()->geometry();
+-- 
+2.43.0
+

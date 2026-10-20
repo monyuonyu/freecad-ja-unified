@@ -1,0 +1,79 @@
+From e6ebb653cd3076aa752482df832e6cc3b30bed5e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:43:58 +0900
+Subject: [PATCH 266/269] Unified: the model beside the task panel, not under
+ it
+
+The task panel lies over the right of the view. When a tool's panel opens
+(the whole model fitted in) or a sketch is opened, the camera moves so that
+what was in the middle of the view is in the middle of the part of the
+view the panel leaves free.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedChrome.py | 39 ++++++++++++++++++++++++++++++--
+ 1 file changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 9a6108127..0708db864 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -658,6 +658,39 @@ def command_action(command, parent):
+     return action
+ 
+ 
++def clear_of_panel():
++    """The task panel lies over the right of the view: move the camera so that what was in the
++    middle of the view is in the middle of the part left free"""
++    mw = Gui.getMainWindow()
++    dock = mw.findChild(QtWidgets.QDockWidget, "Tasks")
++    if dock is None or not dock.isVisible() or Gui.ActiveDocument is None:
++        return
++    try:
++        view = Gui.ActiveDocument.ActiveView
++        width, height = view.getSize()
++    except Exception:
++        return
++    sub = mw.findChild(QtWidgets.QMdiArea).activeSubWindow()
++    if sub is None:
++        return
++    area = QtCore.QRect(sub.widget().mapToGlobal(QtCore.QPoint(0, 0)), sub.widget().size())
++    panel = QtCore.QRect(dock.mapToGlobal(QtCore.QPoint(0, 0)), dock.size())
++    covered = area.intersected(panel).width()
++    if covered <= 0 or covered >= width:
++        return  # the panel is beside the view, not over it
++    cam = view.getCameraNode()
++    try:
++        h = cam.height.getValue()  # orthographic: the height of the view in model units
++    except Exception:
++        return
++    from pivy import coin
++
++    shift = h / height * covered / 2.0
++    right = cam.orientation.getValue().multVec(coin.SbVec3f(1, 0, 0))
++    pos = cam.position.getValue()
++    cam.position.setValue(pos + right * shift)
++
++
+ def task_buttons():
+     """The OK and Cancel buttons of the open task panel (the box that is shown, or was shown
+     and hidden by the band; boxes of closed panels may still exist)"""
+@@ -779,11 +812,13 @@ class StepBand(QtWidgets.QToolBar):
+                         menu.addAction(command_action(name, menu))
+             more.setMenu(menu)
+             self.addWidget(more)
++            # The sketch beside the panel, once the view has turned to the sketch
++            QtCore.QTimer.singleShot(900, clear_of_panel)
+         else:
+             self.undo_start = None
+             text = key[1]
+-            # The whole model in sight while its panel is open
+-            QtCore.QTimer.singleShot(200, lambda: Gui.SendMsgToActiveView("ViewFit"))
++            # The whole model in sight while its panel is open, beside the panel
++            QtCore.QTimer.singleShot(200, lambda: (Gui.SendMsgToActiveView("ViewFit"), clear_of_panel()))
+             title.setText(
+                 translate("Unified", "Working on “{}”").format(text) if text else translate("Unified", "A tool is open")
+             )
+-- 
+2.43.0
+

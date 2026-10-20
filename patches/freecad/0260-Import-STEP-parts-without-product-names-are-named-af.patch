@@ -1,0 +1,49 @@
+From 4647e1701df83ce506303edebd9147c3a0ec0dad Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:31:55 +0900
+Subject: [PATCH 260/269] Import: STEP parts without product names are named
+ after the file, also when merged
+
+The importer used for plain shapes (ImportOCAF, which ImportOCAF2 hands
+the work to) and the merged import still named such parts "Open CASCADE
+STEP translator 8.0 1". They take the file's name now, as the other path.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/ImportOCAF.cpp  | 6 ++++++
+ src/Mod/Import/App/ImportOCAF2.cpp | 2 +-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Import/App/ImportOCAF.cpp b/src/Mod/Import/App/ImportOCAF.cpp
+index 49b360dc8..00f42f03f 100644
+--- a/src/Mod/Import/App/ImportOCAF.cpp
++++ b/src/Mod/Import/App/ImportOCAF.cpp
+@@ -148,6 +148,12 @@ void ImportOCAF::loadShapes(
+         extstr.ToUTF8CString(str);
+         part_name = str;
+         delete[] str;
++        // A file written without product names (e.g. by FreeCAD or Open CASCADE itself) names
++        // its parts after the program: the file name tells more
++        if (part_name.starts_with("Open CASCADE STEP translator")
++            || part_name.starts_with("Open CASCADE IGES processor")) {
++            part_name = default_name;
++        }
+         if (part_name.empty()) {
+             part_name = defaultname;
+         }
+diff --git a/src/Mod/Import/App/ImportOCAF2.cpp b/src/Mod/Import/App/ImportOCAF2.cpp
+index 27ec542c6..0d44d31d2 100644
+--- a/src/Mod/Import/App/ImportOCAF2.cpp
++++ b/src/Mod/Import/App/ImportOCAF2.cpp
+@@ -581,7 +581,7 @@ App::DocumentObject* ImportOCAF2::loadShapes()
+             Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform
+         );
+         auto feature = pDocument->addObject<Part::Feature>("Feature");
+-        auto name = Tools::labelName(pDoc->Main());
++        auto name = withoutTranslatorName(Tools::labelName(pDoc->Main()));
+         feature->Label.setValue(name.empty() ? default_name.c_str() : name.c_str());
+         feature->Shape.setValue(shape);
+         applyFaceColors(feature, {});
+-- 
+2.43.0
+

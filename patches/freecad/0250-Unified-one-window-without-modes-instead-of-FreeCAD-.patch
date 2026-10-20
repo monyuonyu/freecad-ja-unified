@@ -1,7 +1,7 @@
 From 0f5001068d2bf61e7bd554ebf69bb313aea5566c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:36:13 +0900
-Subject: [PATCH 250/258] Unified: one window without modes instead of
+Subject: [PATCH 250/269] Unified: one window without modes instead of
  FreeCAD's menus and toolbars
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

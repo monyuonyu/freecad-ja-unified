@@ -1,0 +1,79 @@
+From e5528d9095e18f0934e8caead3e00b1f7f7e012c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:57:30 +0900
+Subject: [PATCH 269/269] FreeCADCmd: printing never fails because of the
+ console's code page
+
+A Windows console with a legacy code page (cp1252, cp932), or a C locale on
+Linux, cannot show every character, and Python's sys.stdout/sys.stderr
+raised UnicodeEncodeError for them: a print() of Japanese text, or a test
+run whose descriptions are Japanese, stopped with an exception. The streams
+now replace what they cannot write. On Windows they write UTF-8: to a
+console after switching it to UTF-8 (only when attached to one), and to a
+pipe or file as it is.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Main/MainCmd.cpp | 39 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 7ea8d8a2f..3adcd7a86 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -110,6 +110,43 @@ static void useUtf8CommandLine(int& argc, char**& argv)
+ }
+ #endif
+ 
++// Printing must never fail: a Windows console with a legacy code page (cp1252, cp932), or a
++// C locale on Linux, cannot show every character, and Python's streams raised
++// UnicodeEncodeError for them (e.g. a test's Japanese description stopped a test run).
++// Characters that cannot be written are replaced. On Windows, write UTF-8: to a console after
++// switching it to UTF-8, and to a pipe or file as it is.
++static void useSafePythonStreams()
++{
++    const char* encoding = "None";
++#if defined(FC_OS_WIN32)
++    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
++    bool console = out != nullptr && out != INVALID_HANDLE_VALUE && GetFileType(out) == FILE_TYPE_CHAR;
++    if (console) {
++        SetConsoleOutputCP(CP_UTF8);
++    }
++    encoding = "'utf-8'";
++#endif
++    if (!Py_IsInitialized()) {
++        return;
++    }
++    Base::PyGILStateLocker lock;
++    std::string code = std::string(
++        "import sys\n"
++        "for _name in ('stdout', 'stderr'):\n"
++        "    _stream = getattr(sys, _name, None)\n"
++        "    if _stream is None or not hasattr(_stream, 'reconfigure'):\n"
++        "        continue\n"
++        "    try:\n"
++        "        _stream.reconfigure(encoding=") + encoding + ", errors='replace')\n"
++        "    except Exception:\n"
++        "        try:\n"
++        "            _stream.reconfigure(errors='replace')\n"
++        "        except Exception:\n"
++        "            pass\n";
++    PyRun_SimpleString(code.c_str());
++    PyErr_Clear();
++}
++
+ int main(int argc, char** argv)
+ {
+ #if defined(FC_OS_WIN32)
+@@ -200,6 +237,8 @@ int main(int argc, char** argv)
+         exit(101);
+     }
+ 
++    useSafePythonStreams();
++
+     // Run phase ===========================================================
+     try {
+         Application::runApplication();
+-- 
+2.43.0
+

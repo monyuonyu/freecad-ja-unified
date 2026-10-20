@@ -1,0 +1,626 @@
+From dd88d02342c1748b5dd07ed78b180c533e44dd17 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:22:28 +0900
+Subject: [PATCH 259/269] Unified: preferences by what you want to set,
+ effective at once
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+☰ › Preferences (and the gear at the top right) opens six kinds: basic
+(units, decimals, start page, FreeCAD's menus), mouse and keys (how the
+mouse turns and moves the view, also for a touchpad; zoom at the cursor),
+drawings (projection, decimals), files (DXF question, backups, recovery),
+network and accounts (the network and AI key pages as they are), and the
+AI. A change takes effect at once; "All preferences…" opens FreeCAD's
+full preferences. A search field goes to the kind that has the words
+(proxy, JIS, touchpad). The AI panel no longer always shows "run without
+asking": it is under Preferences › AI (still only until FreeCAD closes).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIChatGui.py                  |   8 +
+ src/Mod/Unified/CMakeLists.txt                |   2 +-
+ .../translations/UnifiedWording_ja.ts         | 218 +++++++++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   2 +-
+ src/Mod/Unified/InitGui.py                    |   1 +
+ src/Mod/Unified/UnifiedChrome.py              |   2 +-
+ src/Mod/Unified/UnifiedSettings.py            | 289 ++++++++++++++++++
+ 7 files changed, 519 insertions(+), 3 deletions(-)
+ create mode 100644 src/Mod/Unified/UnifiedSettings.py
+
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index b6cc58d0a..87cae42a5 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -259,6 +259,14 @@ class ChatPanel(QtWidgets.QWidget):
+         self.auto_box = QtWidgets.QCheckBox(translate("AIChat", "Run the AI's code without asking (until FreeCAD closes)"))
+         self.auto_box.toggled.connect(self.on_auto)
+         lay.addWidget(self.auto_box)
++        # Not always in sight: it is in the preferences (☰ › Preferences › AI) of the integrated
++        # environment's own window; still only for this session
++        try:
++            import UnifiedChrome
++
++            self.auto_box.setVisible(UnifiedChrome.classic())
++        except Exception:
++            pass
+         self._note(translate("AIChat", "The AI looks at the model, changes it and checks the result. "
+                                        "Every change it makes is one step in Undo."))
+ 
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 61f61aefd..2c2c59c41 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -24,7 +24,7 @@ set(Unified_Scripts
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+         CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
+-        UnifiedChrome.py OtherTools.svg)
++        UnifiedChrome.py OtherTools.svg UnifiedSettings.py)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index ece91ed5f..e0ec98584 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10529,4 +10529,222 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation> キリ</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedSettings</name>
++    <message>
++        <source>Basic</source>
++        <translation>基本</translation>
++    </message>
++    <message>
++        <source>Mouse and keys</source>
++        <translation>操作（マウスとキー）</translation>
++    </message>
++    <message>
++        <source>Drawings</source>
++        <translation>図面</translation>
++    </message>
++    <message>
++        <source>Files</source>
++        <translation>ファイル</translation>
++    </message>
++    <message>
++        <source>Network and accounts</source>
++        <translation>ネットワークとアカウント</translation>
++    </message>
++    <message>
++        <source>AI</source>
++        <translation>AI</translation>
++    </message>
++    <message>
++        <source>Preferences</source>
++        <translation>設定</translation>
++    </message>
++    <message>
++        <source>Find a setting, e.g. proxy, JIS, touchpad</source>
++        <translation>設定を探す（例: プロキシ、JIS、タッチパッド）</translation>
++    </message>
++    <message>
++        <source>All preferences…</source>
++        <translation>詳しい設定（すべて）…</translation>
++    </message>
++    <message>
++        <source>FreeCAD's full preferences, every page of every module</source>
++        <translation>FreeCAD 本家の設定の全ページ（全モジュール）</translation>
++    </message>
++    <message>
++        <source>Close</source>
++        <translation>閉じる</translation>
++    </message>
++    <message>
++        <source>Units</source>
++        <translation>単位</translation>
++    </message>
++    <message>
++        <source>Standard (mm, kg, s, °)</source>
++        <translation>標準（mm・kg・s・°）</translation>
++    </message>
++    <message>
++        <source>MKS (m, kg, s, °)</source>
++        <translation>MKS（m・kg・s・°）</translation>
++    </message>
++    <message>
++        <source>Metric small parts &amp; CNC (mm, mm/min)</source>
++        <translation>小さな部品と NC（mm・mm/分）</translation>
++    </message>
++    <message>
++        <source>Building Euro (cm, m², m³)</source>
++        <translation>建築（cm・m²・m³）</translation>
++    </message>
++    <message>
++        <source>Imperial decimal (in, lb)</source>
++        <translation>ヤード・ポンド（in・lb）</translation>
++    </message>
++    <message>
++        <source>Decimals</source>
++        <translation>小数の桁</translation>
++    </message>
++    <message>
++        <source>Show the start page when FreeCAD starts</source>
++        <translation>起動したときにスタート画面を出す</translation>
++    </message>
++    <message>
++        <source>Show FreeCAD's menus and toolbars instead of ☰ and the tool strip (next start)</source>
++        <translation>☰ と道具の列の代わりに本家のメニューとツールバーを出す（次の起動から）</translation>
++    </message>
++    <message>
++        <source>Language and theme: in “All preferences…” › General (they need a restart).</source>
++        <translation>言語と見た目は「詳しい設定」→ 標準 で（起動し直すと変わります）。</translation>
++    </message>
++    <message>
++        <source>How the mouse turns and moves the view</source>
++        <translation>マウスで回す・動かす方式</translation>
++    </message>
++    <message>
++        <source>Standard (right drag turns, middle drag moves)</source>
++        <translation>標準（右ドラッグで回す・中ドラッグで動かす）</translation>
++    </message>
++    <message>
++        <source>Touchpad (Shift moves, Alt turns; pinch to zoom)</source>
++        <translation>タッチパッド（Shift で動かす・Alt で回す・つまんで拡大）</translation>
++    </message>
++    <message>
++        <source>Gestures (touch screens and touchpads)</source>
++        <translation>ジェスチャー（タッチ画面・タッチパッド）</translation>
++    </message>
++    <message>
++        <source>Like SolidWorks</source>
++        <translation>SolidWorks と同じ</translation>
++    </message>
++    <message>
++        <source>Like Siemens NX</source>
++        <translation>Siemens NX と同じ</translation>
++    </message>
++    <message>
++        <source>Like Revit</source>
++        <translation>Revit と同じ</translation>
++    </message>
++    <message>
++        <source>Like Blender</source>
++        <translation>Blender と同じ</translation>
++    </message>
++    <message>
++        <source>Like Open CASCADE</source>
++        <translation>Open CASCADE と同じ</translation>
++    </message>
++    <message>
++        <source>FreeCAD's CAD style</source>
++        <translation>本家の CAD 方式</translation>
++    </message>
++    <message>
++        <source>FreeCAD's Inventor style</source>
++        <translation>本家の Inventor 方式</translation>
++    </message>
++    <message>
++        <source>Like OpenSCAD</source>
++        <translation>OpenSCAD と同じ</translation>
++    </message>
++    <message>
++        <source>Like Maya</source>
++        <translation>Maya と同じ</translation>
++    </message>
++    <message>
++        <source>Zoom at the cursor</source>
++        <translation>カーソルの位置を中心に拡大縮小</translation>
++    </message>
++    <message>
++        <source>Keys of the tool strip: S sketch, E extrude, C cut out, H hole, F fillet, M move, D measure. Ctrl+K finds any tool. They do nothing while you type text.</source>
++        <translation>道具の列のキー: S スケッチ・E 押し出し・C 切り抜き・H 穴・F 丸め・M 動かす・D 測る。Ctrl+K でどの道具も探せます。文字を打っている間は効きません。</translation>
++    </message>
++    <message>
++        <source>Projection</source>
++        <translation>投影法</translation>
++    </message>
++    <message>
++        <source>Third angle (JIS, ASME)</source>
++        <translation>第三角法（JIS・ASME）</translation>
++    </message>
++    <message>
++        <source>First angle (ISO in Europe)</source>
++        <translation>第一角法（欧州の ISO）</translation>
++    </message>
++    <message>
++        <source>Decimals of sizes</source>
++        <translation>寸法の小数の桁</translation>
++    </message>
++    <message>
++        <source>New drawings: an A4 sheet with a title block, three views, center lines and sizes (“Make Drawing”).</source>
++        <translation>新しい図面: 表題欄付きの A4 に三面図・中心線・寸法（「図面を描く」）。</translation>
++    </message>
++    <message>
++        <source>Ask how to read a DXF file each time</source>
++        <translation>DXF を開くたびに読み込み方を聞く</translation>
++    </message>
++    <message>
++        <source>Keep a backup when saving</source>
++        <translation>保存するときに前の版を残す</translation>
++    </message>
++    <message>
++        <source>Save for recovery every few minutes (from the next start)</source>
++        <translation>数分ごとに復旧用に保存する（次の起動から）</translation>
++    </message>
++    <message>
++        <source>Every</source>
++        <translation>間隔</translation>
++    </message>
++    <message>
++        <source>minutes</source>
++        <translation>分</translation>
++    </message>
++    <message>
++        <source>Formats in detail (STEP, IGES, DXF/DWG, STL…): “All preferences…” › Import-Export.</source>
++        <translation>形式ごとの細かい設定（STEP・IGES・DXF/DWG・STL…）は「詳しい設定」→ インポート/エクスポート。</translation>
++    </message>
++    <message>
++        <source>The AI shows each piece of code it wants to run and runs it only when you approve it.</source>
++        <translation>AI は実行したいコードを毎回見せ、承認したときだけ実行します。</translation>
++    </message>
++    <message>
++        <source>Run the AI's code without asking (until FreeCAD closes)</source>
++        <translation>AI のコードをたずねずに実行する（FreeCAD を閉じるまで）</translation>
++    </message>
++    <message>
++        <source>Open the AI first (AI at the top right)</source>
++        <translation>先に AI を開いてください（右上の AI）</translation>
++    </message>
++    <message>
++        <source>The API key and the proxy: “Network and accounts”.</source>
++        <translation>API キーとプロキシは「ネットワークとアカウント」。</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Settings</name>
++    <message>
++        <source>Preferences…</source>
++        <translation>設定…</translation>
++    </message>
++    <message>
++        <source>Units, mouse, drawings, files, network and the AI, by what you want to set; changes take effect at once</source>
++        <translation>単位・マウス・図面・ファイル・ネットワーク・AI を、したいことごとに。変えるとすぐ効きます</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 3dcb1b61b..601bb5786 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -492,7 +492,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+         dup->setCommand("PartDesign_DuplicateSelection");
+     }
+     *main << "Separator"
+-          << "Std_DlgPreferences"
++          << "Unified_Settings"
+           << "Std_Quit";
+     // No duplicates: preferences and quit were in the Edit and File menus
+     if (edit) {
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index a798d35c9..e41656c06 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -65,6 +65,7 @@ class UnifiedWorkbench(Workbench):
+         CommandSearchGui.free_ctrl_k()
+         # モードの無い画面: ☰ の右に元に戻す・検索・AI・設定、道具の列の 1 文字の近道、その他の道具
+         import UnifiedChrome
++        import UnifiedSettings  # noqa: F401  (Unified_Settings: the preferences by kind)
+ 
+         UnifiedChrome.install()
+ 
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 462d44169..a4277789f 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -585,7 +585,7 @@ def install_top():
+     lay.addSpacing(12)
+     lay.addWidget(CommandSearchGui.SearchField(holder))
+     lay.addSpacing(12)
+-    for command, text in (("Unified_AIChat", True), ("Std_DlgPreferences", False)):
++    for command, text in (("Unified_AIChat", True), ("Unified_Settings", False)):
+         b = _tool_button(holder, command, text)
+         if b:
+             lay.addWidget(b)
+diff --git a/src/Mod/Unified/UnifiedSettings.py b/src/Mod/Unified/UnifiedSettings.py
+new file mode 100644
+index 000000000..eadc8b93d
+--- /dev/null
++++ b/src/Mod/Unified/UnifiedSettings.py
+@@ -0,0 +1,289 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Preferences by what the user wants to do (design 6.9): basic, mouse and keys, drawings, files,
++network and accounts, AI; FreeCAD's full preferences one click away ("All preferences…").
++
++A change takes effect at once (no OK / Apply): the settings are FreeCAD's own parameters, which
++the views and modules watch. The network and AI key pages are the ones of UnifiedPreferences.py,
++shown here unchanged; they are saved when this window closes.
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++T = lambda text: QT_TRANSLATE_NOOP("UnifiedSettings", text)
++
++
++def P(path):
++    return App.ParamGet("User parameter:BaseApp/Preferences/" + path)
++
++
++# The mouse: the integrated environment's default first, then a touchpad, then the styles of
++# other programs (so people coming from them feel at home)
++MOUSE = [
++    ("Gui::TinkerCADNavigationStyle", T("Standard (right drag turns, middle drag moves)")),
++    ("Gui::TouchpadNavigationStyle", T("Touchpad (Shift moves, Alt turns; pinch to zoom)")),
++    ("Gui::GestureNavigationStyle", T("Gestures (touch screens and touchpads)")),
++    ("Gui::SolidWorksNavigationStyle", T("Like SolidWorks")),
++    ("Gui::SiemensNXNavigationStyle", T("Like Siemens NX")),
++    ("Gui::RevitNavigationStyle", T("Like Revit")),
++    ("Gui::BlenderNavigationStyle", T("Like Blender")),
++    ("Gui::OpenCascadeNavigationStyle", T("Like Open CASCADE")),
++    ("Gui::CADNavigationStyle", T("FreeCAD's CAD style")),
++    ("Gui::InventorNavigationStyle", T("FreeCAD's Inventor style")),
++    ("Gui::OpenSCADNavigationStyle", T("Like OpenSCAD")),
++    ("Gui::MayaGestureNavigationStyle", T("Like Maya")),
++]
++
++
++class Page(QtWidgets.QWidget):
++    """A page of settings: rows of a label and a control, each saved when changed"""
++
++    def __init__(self, title, parent=None):
++        super().__init__(parent)
++        self.title = title
++        self.form = QtWidgets.QFormLayout(self)
++        self.form.setLabelAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
++        head = QtWidgets.QLabel("<h2>{}</h2>".format(translate("UnifiedSettings", title)), self)
++        self.form.addRow(head)
++        self.words = [translate("UnifiedSettings", title)]
++
++    def note(self, text):
++        label = QtWidgets.QLabel(translate("UnifiedSettings", text), self)
++        label.setWordWrap(True)
++        label.setStyleSheet("color: palette(mid);")
++        self.form.addRow(label)
++        self.words.append(label.text())
++
++    def check(self, text, group, name, default, on_change=None):
++        box = QtWidgets.QCheckBox(translate("UnifiedSettings", text), self)
++        box.setChecked(P(group).GetBool(name, default))
++
++        def changed(on):
++            P(group).SetBool(name, bool(on))
++            if on_change:
++                on_change(on)
++
++        box.toggled.connect(changed)
++        self.form.addRow(box)
++        self.words.append(box.text())
++        return box
++
++    def choice(self, text, items, current, on_change):
++        combo = QtWidgets.QComboBox(self)
++        for value, label in items:
++            combo.addItem(translate("UnifiedSettings", label), value)
++        index = max(0, combo.findData(current))
++        combo.setCurrentIndex(index)
++        combo.currentIndexChanged.connect(lambda i: on_change(combo.itemData(i)))
++        self.form.addRow(translate("UnifiedSettings", text), combo)
++        self.words += [translate("UnifiedSettings", text)] + [combo.itemText(i) for i in range(combo.count())]
++        return combo
++
++    def number(self, text, group, name, default, low, high, suffix=""):
++        spin = QtWidgets.QSpinBox(self)
++        spin.setRange(low, high)
++        spin.setValue(P(group).GetInt(name, default))
++        if suffix:
++            spin.setSuffix(" " + translate("UnifiedSettings", suffix))
++        spin.valueChanged.connect(lambda v: P(group).SetInt(name, int(v)))
++        self.form.addRow(translate("UnifiedSettings", text), spin)
++        self.words.append(translate("UnifiedSettings", text))
++        return spin
++
++    def embed(self, page):
++        """A page object of UnifiedPreferences (form, loadSettings, saveSettings)"""
++        page.loadSettings()
++        self.form.addRow(page.form)
++        for kind in (QtWidgets.QLabel, QtWidgets.QAbstractButton, QtWidgets.QGroupBox):
++            for w in page.form.findChildren(kind):
++                text = w.title() if isinstance(w, QtWidgets.QGroupBox) else w.text()
++                if text:
++                    self.words.append(text)
++        return page
++
++
++def basic_page():
++    page = Page(T("Basic"))
++    units = Gui.Selection  # noqa: F841 (keeps the import of the GUI)
++    schemas = [(0, T("Standard (mm, kg, s, °)")), (1, T("MKS (m, kg, s, °)")), (6, T("Metric small parts & CNC (mm, mm/min)")),
++               (5, T("Building Euro (cm, m², m³)")), (3, T("Imperial decimal (in, lb)"))]
++    page.choice(T("Units"), schemas, P("Units").GetInt("UserSchema", 0),
++                lambda v: (P("Units").SetInt("UserSchema", int(v)), _apply_units(int(v))))
++    page.number(T("Decimals"), "Units", "Decimals", 2, 0, 8)
++    page.check(T("Show the start page when FreeCAD starts"), "Mod/Start", "ShowOnStartup", True)
++    page.check(T("Show FreeCAD's menus and toolbars instead of ☰ and the tool strip (next start)"),
++               "Mod/Unified", "ClassicChrome", False)
++    page.note(T("Language and theme: in “All preferences…” › General (they need a restart)."))
++    return page
++
++
++def _apply_units(schema):
++    try:
++        App.Units.setSchema(schema)
++    except Exception:
++        pass
++
++
++def mouse_page():
++    page = Page(T("Mouse and keys"))
++    page.choice(T("How the mouse turns and moves the view"), MOUSE,
++                P("View").GetString("NavigationStyle", "Gui::TinkerCADNavigationStyle"),
++                lambda v: P("View").SetString("NavigationStyle", v))
++    page.check(T("Zoom at the cursor"), "View", "ZoomAtCursor", True)
++    page.note(T("Keys of the tool strip: S sketch, E extrude, C cut out, H hole, F fillet, M move, D measure. "
++                "Ctrl+K finds any tool. They do nothing while you type text."))
++    return page
++
++
++def drawings_page():
++    page = Page(T("Drawings"))
++    page.choice(T("Projection"), [(1, T("Third angle (JIS, ASME)")), (0, T("First angle (ISO in Europe)"))],
++                P("Mod/TechDraw/General").GetInt("ProjectionAngle", 1),
++                lambda v: P("Mod/TechDraw/General").SetInt("ProjectionAngle", int(v)))
++    page.number(T("Decimals of sizes"), "Mod/TechDraw/Dimensions", "AltDecimals", 2, 0, 6)
++    page.note(T("New drawings: an A4 sheet with a title block, three views, center lines and sizes (“Make Drawing”)."))
++    return page
++
++
++def files_page():
++    page = Page(T("Files"))
++    page.check(T("Ask how to read a DXF file each time"), "Mod/Draft", "dxfShowDialog", False)
++    page.check(T("Keep a backup when saving"), "Document", "CreateBackupFiles", True)
++    page.check(T("Save for recovery every few minutes (from the next start)"), "Document", "AutoSaveEnabled", True)
++    page.number(T("Every"), "Document", "AutoSaveTimeout", 15, 1, 120, T("minutes"))
++    page.note(T("Formats in detail (STEP, IGES, DXF/DWG, STL…): “All preferences…” › Import-Export."))
++    return page
++
++
++def network_page():
++    page = Page(T("Network and accounts"))
++    import UnifiedPreferences
++
++    page.saved = [page.embed(UnifiedPreferences.NetworkPage()), page.embed(UnifiedPreferences.AIChatPage())]
++    return page
++
++
++def ai_page():
++    page = Page(T("AI"))
++    page.note(T("The AI shows each piece of code it wants to run and runs it only when you approve it."))
++    box = QtWidgets.QCheckBox(translate("UnifiedSettings", "Run the AI's code without asking (until FreeCAD closes)"), page)
++    try:
++        import AIChatGui
++
++        panel = AIChatGui.chat.panel
++    except Exception:
++        panel = None
++    if panel is None:
++        box.setEnabled(False)
++        box.setToolTip(translate("UnifiedSettings", "Open the AI first (AI at the top right)"))
++    else:
++        box.setChecked(panel.auto_box.isChecked())
++        box.toggled.connect(lambda on: panel.auto_box.setChecked(on))
++        panel.auto_box.toggled.connect(lambda on: (box.blockSignals(True), box.setChecked(on), box.blockSignals(False)))
++    page.form.addRow(box)
++    page.words.append(box.text())
++    page.note(T("The API key and the proxy: “Network and accounts”."))
++    return page
++
++
++class SettingsWindow(QtWidgets.QDialog):
++    def __init__(self, parent):
++        super().__init__(parent)
++        self.setObjectName("UnifiedSettings")
++        self.setWindowTitle(translate("UnifiedSettings", "Preferences"))
++        self.resize(1000, 660)
++        lay = QtWidgets.QVBoxLayout(self)
++        self.search = QtWidgets.QLineEdit(self)
++        self.search.setPlaceholderText(translate("UnifiedSettings", "Find a setting, e.g. proxy, JIS, touchpad"))
++        self.search.setClearButtonEnabled(True)
++        lay.addWidget(self.search)
++        row = QtWidgets.QHBoxLayout()
++        self.list = QtWidgets.QListWidget(self)
++        self.list.setObjectName("UnifiedSettingsKinds")
++        self.list.setMaximumWidth(230)
++        self.stack = QtWidgets.QStackedWidget(self)
++        row.addWidget(self.list)
++        row.addWidget(self.stack, 1)
++        lay.addLayout(row, 1)
++        bottom = QtWidgets.QHBoxLayout()
++        more = QtWidgets.QPushButton(translate("UnifiedSettings", "All preferences…"), self)
++        more.setToolTip(translate("UnifiedSettings", "FreeCAD's full preferences, every page of every module"))
++        more.clicked.connect(self.all_preferences)
++        bottom.addWidget(more)
++        bottom.addStretch(1)
++        close = QtWidgets.QPushButton(translate("UnifiedSettings", "Close"), self)
++        close.setDefault(True)
++        close.clicked.connect(self.accept)
++        bottom.addWidget(close)
++        lay.addLayout(bottom)
++        self.pages = [basic_page(), mouse_page(), drawings_page(), files_page(), network_page(), ai_page()]
++        for p in self.pages:
++            scroll = QtWidgets.QScrollArea(self)
++            scroll.setWidgetResizable(True)
++            scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
++            scroll.setWidget(p)
++            self.stack.addWidget(scroll)
++            self.list.addItem(translate("UnifiedSettings", p.title))
++        self.list.currentRowChanged.connect(self.stack.setCurrentIndex)
++        self.list.setCurrentRow(0)
++        self.search.textChanged.connect(self.find)
++
++    def find(self, text):
++        """The first page that has the words (labels, choices) shows; the others are dimmed"""
++        import CommandSearchCore as core
++
++        key = core.fold(text)
++        first = None
++        for i, p in enumerate(self.pages):
++            hit = not key or any(key in core.fold(w) for w in p.words)
++            item = self.list.item(i)
++            item.setForeground(self.palette().color(QtGui.QPalette.Text if hit else QtGui.QPalette.Mid))
++            if hit and first is None:
++                first = i
++        if first is not None:
++            self.list.setCurrentRow(first)
++
++    def all_preferences(self):
++        self.save()
++        Gui.runCommand("Std_DlgPreferences")
++
++    def save(self):
++        for p in self.pages:
++            for embedded in getattr(p, "saved", []):
++                try:
++                    embedded.saveSettings()
++                except Exception as e:
++                    App.Console.PrintWarning("Preferences: {}\n".format(e))
++
++    def done(self, result):
++        self.save()
++        super().done(result)
++
++
++class SettingsCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "preferences-system",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Settings", "Preferences…"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_Settings",
++                "Units, mouse, drawings, files, network and the AI, by what you want to set; changes take effect at once",
++            ),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        SettingsWindow(Gui.getMainWindow()).exec()
++
++
++Gui.addCommand("Unified_Settings", SettingsCommand())
+-- 
+2.43.0
+

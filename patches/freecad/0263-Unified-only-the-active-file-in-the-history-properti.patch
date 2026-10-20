@@ -1,0 +1,133 @@
+From a3f6994f14ec69e5337bc66b71f7c5cb8fb55ecc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:38:06 +0900
+Subject: [PATCH 263/269] Unified: only the active file in the history,
+ properties folded away
+
+The tree shows the history of the active file only (the others are in the
+tabs under the view), unless the user chose otherwise. The detailed
+properties are folded away under it and come with "Detailed Properties"
+in the right-click menu (remembered). A tool's panel opening fits the
+whole model in the view.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../translations/UnifiedWording_ja.ts         | 11 ++++
+ src/Mod/Unified/Gui/Workbench.cpp             |  2 +
+ src/Mod/Unified/UnifiedChrome.py              | 55 +++++++++++++++++++
+ 3 files changed, 68 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 97c756fff..2c3cad388 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10959,4 +10959,15 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>このファイルの図面を DXF か PDF で（図面が無ければ先に作ります）</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_Properties</name>
++    <message>
++        <source>Detailed Properties</source>
++        <translation>詳しいプロパティ</translation>
++    </message>
++    <message>
++        <source>Show or fold away all the properties of what is picked, under the history</source>
++        <translation>選んだ物のプロパティを全部、作った順の下に出す・畳む</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 98a39dcbb..e30d909e7 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -576,6 +576,8 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
+                   << "PartDesign_MoveTip"
+                   << "PartDesign_MoveFeatureInTree";
+         }
++        // The properties of what is picked, folded away under the history until asked for
++        *item << "Separator" << "Unified_Properties";
+     }
+ }
+ 
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index a4277789f..9a6108127 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -782,6 +782,8 @@ class StepBand(QtWidgets.QToolBar):
+         else:
+             self.undo_start = None
+             text = key[1]
++            # The whole model in sight while its panel is open
++            QtCore.QTimer.singleShot(200, lambda: Gui.SendMsgToActiveView("ViewFit"))
+             title.setText(
+                 translate("Unified", "Working on “{}”").format(text) if text else translate("Unified", "A tool is open")
+             )
+@@ -970,6 +972,58 @@ def install_start():
+         _on_subwindow(sub)
+ 
+ 
++# --------------------------------------------------------------------------- the left side
++def _model_splitter():
++    """The splitter of the tree (top) and the property view (bottom) in the "Model" panel"""
++    for sp in Gui.getMainWindow().findChildren(QtWidgets.QSplitter):
++        if sp.count() == 2 and sp.parentWidget() is not None and sp.parentWidget().objectName() == "Model":
++            if sp.widget(1).findChild(QtWidgets.QTabWidget, "propertyTab") is not None:
++                return sp
++    return None
++
++
++def show_properties(show=None):
++    """The detailed properties under the history: folded away unless asked for"""
++    sp = _model_splitter()
++    if sp is None:
++        return
++    total = sum(sp.sizes()) or 800
++    if show is None:
++        show = sp.sizes()[1] < 20
++    sp.setSizes([total // 2, total - total // 2] if show else [total, 0])
++    params().SetBool("ShowProperties", bool(show))
++
++
++class PropertiesCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "document-properties",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Properties", "Detailed Properties"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_Properties", "Show or fold away all the properties of what is picked, under the history"
++            ),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        show_properties()
++
++
++Gui.addCommand("Unified_Properties", PropertiesCommand())
++
++
++def install_left():
++    """Only the active file's history in the tree; the detailed properties folded away"""
++    tree = App.ParamGet("User parameter:BaseApp/Preferences/TreeView")
++    if tree.GetInt("DocumentMode", 7) == tree.GetInt("DocumentMode", 8):
++        pass  # set by the user
++    else:
++        tree.SetInt("DocumentMode", 0)
++    show_properties(params().GetBool("ShowProperties", False))
++
++
+ def install():
+     if classic():
+         import CommandSearchGui
+@@ -981,4 +1035,5 @@ def install():
+     QtCore.QTimer.singleShot(0, strip_tooltips)
+     QtCore.QTimer.singleShot(0, install_band)
+     QtCore.QTimer.singleShot(0, install_start)
++    QtCore.QTimer.singleShot(0, install_left)
+     install_keys()
+-- 
+2.43.0
+

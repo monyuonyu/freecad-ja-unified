@@ -1,0 +1,89 @@
+From faefbbb6783d0939280b0700bc8bde809f4c933f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:39:52 +0900
+Subject: [PATCH 264/269] First start: ask how the mouse should turn the view,
+ also in the integrated environment
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A touchpad needs another way of turning and moving the view than a mouse:
+the first start asks for it again (it was hidden in the integrated
+environment), next to the language and the units. The texts point to
+☰ › Preferences.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Start/Gui/GeneralSettingsWidget.cpp       |  7 ++-----
+ .../Resources/translations/UnifiedWording_ja.ts   | 15 +++++++++++++--
+ .../Gui/Resources/translations/Unified_ja.ts      |  2 +-
+ 3 files changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+index c3aa735d8..79dfc32c4 100644
+--- a/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
++++ b/src/Mod/Start/Gui/GeneralSettingsWidget.cpp
+@@ -85,11 +85,8 @@ void GeneralSettingsWidget::createHorizontalUi()
+     mainLayout->addSpacing(extraSpace);
+     mainLayout->addWidget(_navigationStyleLabel);
+     mainLayout->addWidget(_navigationStyleComboBox);
+-    if (App::isSingleWorkbench()) {
+-        // One way of navigating in the integrated environment: nothing to choose
+-        _navigationStyleLabel->hide();
+-        _navigationStyleComboBox->hide();
+-    }
++    // The integrated environment asks too: a touchpad needs another way of turning the view
++    // than a mouse (also in its preferences, "Mouse and keys")
+ }
+ 
+ 
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 2c3cad388..057644cb0 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -6549,11 +6549,11 @@ Select the method to attach this sketch to selected objects.</source>
+     </message>
+     <message>
+         <source>Set your basic configuration options below.</source>
+-        <translation>最初に、言語・単位・見た目を選んでください。</translation>
++        <translation>最初に、言語・単位・マウスの方式・見た目を選んでください。</translation>
+     </message>
+     <message>
+         <source>These options (and many more) can be changed later in the preferences.</source>
+-        <translation>どれもあとから「編集 → 設定」で変えられます。</translation>
++        <translation>どれもあとから「☰ → 設定」で変えられます。</translation>
+     </message>
+ </context>
+ <context>
+@@ -10970,4 +10970,15 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>選んだ物のプロパティを全部、作った順の下に出す・畳む</translation>
+     </message>
+ </context>
++<context>
++    <name>StartGui::GeneralSettingsWidget</name>
++    <message>
++        <source>Unit System</source>
++        <translation>単位</translation>
++    </message>
++    <message>
++        <source>Navigation Style</source>
++        <translation>マウスの方式</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index c7f3856e3..1cb8f7ddb 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -928,7 +928,7 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+     </message>
+     <message>
+         <source>An Anthropic API key is needed. Create one at console.anthropic.com (usage is billed to your account) and enter it with “Enter the API key…”. It is kept in the key store of your system, not in the FreeCAD settings. To change or remove it later: Edit → Preferences → General → AI chat.</source>
+-        <translation>Anthropic の API キーが要ります。console.anthropic.com で作り（使った分はあなたのアカウントに請求されます）、「API キーを入れる…」で入れてください。キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。あとで変える・消すときは 編集 → 設定 → 標準 → AI チャット。</translation>
++        <translation>Anthropic の API キーが要ります。console.anthropic.com で作り（使った分はあなたのアカウントに請求されます）、「API キーを入れる…」で入れてください。キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。あとで変える・消すときは ☰ → 設定 → ネットワークとアカウント。</translation>
+     </message>
+     <message>
+         <source>New conversation.</source>
+-- 
+2.43.0
+

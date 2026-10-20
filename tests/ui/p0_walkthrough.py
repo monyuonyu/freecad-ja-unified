@@ -297,16 +297,16 @@ def _():
     b = src.addObject("Part::Box", "Box")
     src.recompute()
     path = os.path.join(WORK, "bracket.step")
-    import Import
-
-    Import.export([b], path)
+    # Written without a product name (as Open CASCADE writes a bare shape): the part is named
+    # "Open CASCADE STEP translator 8.0 1" in the file
+    b.Shape.exportStep(path)
     App.closeDocument(src.Name)
     import ImportGui
 
     ImportGui.open(path)
     doc = App.ActiveDocument
     labels = [o.Label for o in doc.Objects]
-    return {"ok": not any("Open CASCADE" in l for l in labels) and doc.Label == "bracket",
+    return {"ok": not any("Open CASCADE" in l for l in labels) and "bracket" in labels and doc.Label == "bracket",
             "labels": labels, "document": doc.Label}
 
 
