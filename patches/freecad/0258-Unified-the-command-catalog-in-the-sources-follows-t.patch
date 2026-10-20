@@ -1,0 +1,909 @@
+From 75cbff026d59abf642a37c4a9145350b09e20e81 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:18:21 +0900
+Subject: [PATCH 258/258] Unified: the command catalog in the sources follows
+ the new commands
+
+The copy used when the catalog cannot be made at build time.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandCatalog.json | 799 ++++++----------------------
+ 1 file changed, 165 insertions(+), 634 deletions(-)
+
+diff --git a/src/Mod/Unified/CommandCatalog.json b/src/Mod/Unified/CommandCatalog.json
+index 5d558c3b3..fb7c23748 100644
+--- a/src/Mod/Unified/CommandCatalog.json
++++ b/src/Mod/Unified/CommandCatalog.json
+@@ -37299,91 +37299,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the bottom view",
+@@ -38685,91 +38600,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the front view",
+@@ -39340,91 +39170,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the isometric view",
+@@ -39744,91 +39489,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the left view",
+@@ -40088,150 +39748,65 @@
+ "表示",
+ "決まった向きから見る"
+ ],
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"menu": [
+-"表示",
+-"決まった向きから見る"
+-],
+-"wb": "RobotWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"menu": [
+-"表示",
+-"決まった向きから見る"
+-],
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"menu": [
+-"表示",
+-"決まった向きから見る"
+-],
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"menu": [
+-"表示",
+-"決まった向きから見る"
+-],
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"menu": [
+-"表示",
+-"決まった向きから見る"
+-],
+-"wb": "TechDrawWorkbench"
+-},
+-{
+-"toolbar": "個々のビュー",
+-"wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
++"wb": "ReverseEngineeringWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
++"toolbar": "個々のビュー",
++"wb": "ReverseEngineeringWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
++"menu": [
++"表示",
++"決まった向きから見る"
++],
++"wb": "RobotWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
++"toolbar": "個々のビュー",
++"wb": "RobotWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
++"menu": [
++"表示",
++"決まった向きから見る"
++],
++"wb": "SketcherWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
++"toolbar": "個々のビュー",
++"wb": "SketcherWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
++"menu": [
++"表示",
++"決まった向きから見る"
++],
++"wb": "SpreadsheetWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
++"toolbar": "個々のビュー",
+ "wb": "SpreadsheetWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "SurfaceWorkbench"
+ },
+ {
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
++"toolbar": "個々のビュー",
++"wb": "SurfaceWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
++"wb": "TechDrawWorkbench"
++},
++{
++"toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+ }
+ ],
+@@ -40449,91 +40024,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the right view",
+@@ -41252,91 +40742,6 @@
+ {
+ "toolbar": "個々のビュー",
+ "wb": "TechDrawWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "AssemblyWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "BIMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "CAMWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "DraftWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "InspectionWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MaterialWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "MeshWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "OpenSCADWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartDesignWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PartWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "PointsWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "ReverseEngineeringWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "RobotWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SketcherWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SpreadsheetWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "SurfaceWorkbench"
+-},
+-{
+-"group": "Std_ViewGroup",
+-"toolbar": "ビュー",
+-"wb": "TechDrawWorkbench"
+ }
+ ],
+ "tip_en": "Sets the camera to the top view",
+@@ -45400,6 +44805,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_EditSourceSketch",
++"en": "Edit Its Sketch",
++"en_raw": "Edit Its Sketch",
++"icon": "Sketcher_EditSketch",
++"ja": "元のスケッチを編集",
++"module": "",
++"module_wb": "",
++"name": "Unified_EditSourceSketch",
++"places": [],
++"tip_en": "Open the sketch the picked step was made from, to change its shape or sizes",
++"tip_ja": "選んだ手順の元になったスケッチを開いて、形や寸法を直します",
++"wb": ""
++},
++{
+ "ctx": "Unified_Hole",
+ "en": "Hole",
+ "en_raw": "Hole",
+@@ -45428,6 +44847,76 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_NewAssembly",
++"en": "New Assembly",
++"en_raw": "New Assembly",
++"icon": "Geoassembly",
++"ja": "新しい組立",
++"module": "",
++"module_wb": "",
++"name": "Unified_NewAssembly",
++"places": [],
++"tip_en": "A new file to put parts together in",
++"tip_ja": "部品を組み合わせる新しいファイル",
++"wb": ""
++},
++{
++"ctx": "Unified_NewDrawing",
++"en": "Make Drawing",
++"en_raw": "Make Drawing",
++"icon": "actions/TechDraw_ProjectionGroup",
++"ja": "図面を描く",
++"module": "",
++"module_wb": "",
++"name": "Unified_NewDrawing",
++"places": [],
++"tip_en": "A drawing sheet with the three views of the picked part (of all parts if none is picked)",
++"tip_ja": "選んだ部品（選んでいなければ全部）の三面図の図面を作ります",
++"wb": ""
++},
++{
++"ctx": "Unified_NewPart",
++"en": "New Part",
++"en_raw": "New Part",
++"icon": "PartDesign_Body",
++"ja": "新しい部品",
++"module": "",
++"module_wb": "",
++"name": "Unified_NewPart",
++"places": [],
++"tip_en": "A new file with a part; then click where to draw",
++"tip_ja": "部品の新しいファイル。続けて、描く場所をクリック",
++"wb": ""
++},
++{
++"ctx": "Unified_OtherTools",
++"en": "Other Tools",
++"en_raw": "Other Tools",
++"icon": "/home/shota/freecad-src/build/release/Mod/Unified/OtherTools.svg",
++"ja": "その他の道具",
++"module": "",
++"module_wb": "",
++"name": "Unified_OtherTools",
++"places": [],
++"tip_en": "Every other tool, by kind: shapes, meshes and STL, 2D drafting, drawings, and the specialist toolboxes (CAM, FEM, BIM…), loaded when first used",
++"tip_ja": "ほかの道具を種類ごとに: 形の加工・メッシュと STL・2D の作図・図面と、専門の道具箱（加工・解析・建築…）。はじめて使うときに読み込みます",
++"wb": ""
++},
++{
++"ctx": "Unified_PlacePart",
++"en": "Put Part",
++"en_raw": "Put Part",
++"icon": "Assembly_InsertLink",
++"ja": "部品を置く",
++"module": "",
++"module_wb": "",
++"name": "Unified_PlacePart",
++"places": [],
++"tip_en": "Put a part into the assembly of this file (an assembly is made if there is none)",
++"tip_ja": "このファイルの組立に部品を置きます（組立が無ければ作ります）",
++"wb": ""
++},
++{
+ "ctx": "Unified_PointToFace",
+ "en": "Point onto a face",
+ "en_raw": "Point onto a face",
+@@ -45456,6 +44945,48 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_SearchUsable",
++"en": "All Tools for This",
++"en_raw": "All Tools for This",
++"icon": "edit-find",
++"ja": "これに使える道具",
++"module": "",
++"module_wb": "",
++"name": "Unified_SearchUsable",
++"places": [],
++"tip_en": "Every tool that can be used with what is picked; type to narrow down",
++"tip_ja": "選んだ物に使える道具を全部。打てば絞り込めます",
++"wb": ""
++},
++{
++"ctx": "Unified_SelectParallelEdges",
++"en": "Also the Edges in the Same Direction",
++"en_raw": "Also the Edges in the Same Direction",
++"icon": "Part_SelectFilter",
++"ja": "同じ向きの辺も選ぶ",
++"module": "",
++"module_wb": "",
++"name": "Unified_SelectParallelEdges",
++"places": [],
++"tip_en": "Picks the other straight edges of this shape that run the same way",
++"tip_ja": "この形の、同じ向きのまっすぐな辺も選びます",
++"wb": ""
++},
++{
++"ctx": "Unified_SelectSameCircles",
++"en": "Also the Circles of the Same Size",
++"en_raw": "Also the Circles of the Same Size",
++"icon": "Part_SelectFilter",
++"ja": "同じ大きさの円も選ぶ",
++"module": "",
++"module_wb": "",
++"name": "Unified_SelectSameCircles",
++"places": [],
++"tip_en": "Picks the other circles of this shape with the same radius",
++"tip_ja": "この形の、同じ半径の円も選びます",
++"wb": ""
++},
++{
+ "ctx": "Unified_SnapAxes",
+ "en": "Line up the axes",
+ "en_raw": "Line up the axes",
+-- 
+2.43.0
+

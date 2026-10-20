@@ -1,0 +1,720 @@
+From a5d4d53e11b4f07d5f98dfb3438c0103af74f7ba Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:09:04 +0900
+Subject: [PATCH 253/258] Start page: four ways to start, the search, and first
+ steps for people new to CAD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the integrated environment the start page asks "What do you want to
+make?": a new part, a new assembly, a drawing (of the open part, or of a
+file opened first) or a file to open (STEP, DXF, DWG, Jw_cad, STL …), each
+one click from its first screen. Below them, the tool search. At the right,
+"New to CAD? (5 minutes)": four short walks (a plate with holes, changing
+a size afterwards, putting STEP parts together, a JIS drawing), each with
+its sample made on the spot and its steps at the right of the window,
+ticked off as the user does them (FirstSteps.py). The first-start settings
+and "do not show again" are no longer at the bottom of the page.
+
+The band of a step finds the OK and Cancel of the panel on screen (boxes
+of closed panels may still exist), so the panel's own pair is always hidden.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Start/Gui/StartView.cpp               |  49 +++-
+ src/Mod/Unified/CMakeLists.txt                |   3 +-
+ src/Mod/Unified/FirstSteps.py                 | 218 ++++++++++++++++++
+ .../translations/UnifiedWording_ja.ts         | 143 ++++++++++++
+ src/Mod/Unified/UnifiedChrome.py              | 143 ++++++++++--
+ 5 files changed, 528 insertions(+), 28 deletions(-)
+ create mode 100644 src/Mod/Unified/FirstSteps.py
+
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index c00c912b3..cce82ad52 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -192,6 +192,11 @@ StartView::StartView(QWidget* parent)
+     footerLayout->addWidget(_openFirstStart);
+     footerLayout->addStretch();
+     footerLayout->addWidget(_showOnStartupCheckBox);
++    if (singleWorkbenchMode()) {
++        // In the preferences (General › Screen) instead: the start page is about the work
++        _openFirstStart->hide();
++        _showOnStartupCheckBox->hide();
++    }
+ 
+     setCentralWidget(_contents);
+ 
+@@ -239,15 +244,22 @@ void StartView::configureNewFileButtons(QLayout* layout)
+                               : QStringLiteral(":/icons/PartDesignWorkbench.svg")
+     );
+     _assemblyButton = new NewFileButton(this, QStringLiteral(":/icons/AssemblyWorkbench.svg"));
+-    _draftButton = new NewFileButton(this, QStringLiteral(":/icons/DraftWorkbench.svg"));
++    // In the integrated environment the third button makes a technical drawing of a part
++    _draftButton = new NewFileButton(
++        this,
++        singleWorkbenchMode() ? QStringLiteral(":/icons/actions/TechDraw_ProjectionGroup.svg")
++                              : QStringLiteral(":/icons/DraftWorkbench.svg")
++    );
+     _bimButton = new NewFileButton(this, QStringLiteral(":/icons/BIMWorkbench.svg"));
+ 
+     if (singleWorkbenchMode()) {
+-        // One integrated working environment: only "new part" and "open", no choice of
+-        // workbench-specific documents
++        // One integrated working environment: what to make (a part, an assembly, a drawing)
++        // or a file to open; no choice of workbench-specific documents
+         layout->addWidget(_partDesignButton);
++        layout->addWidget(_assemblyButton);
++        layout->addWidget(_draftButton);
+         layout->addWidget(_openFileButton);
+-        for (auto* unused : {_assemblyButton, _draftButton, _bimButton, _newEmptyFileButton}) {
++        for (auto* unused : {_bimButton, _newEmptyFileButton}) {
+             unused->hide();
+         }
+     }
+@@ -359,6 +371,14 @@ void StartView::newAssemblyFile()
+ 
+ void StartView::newDraftFile()
+ {
++    if (singleWorkbenchMode()) {
++        // A drawing of the part of the open file, or of a file to open first
++        Gui::Command::doCommand(
++            Gui::Command::Gui,
++            "import UnifiedChrome\nUnifiedChrome.drawing_from_start()"
++        );
++        return;
++    }
+     Gui::Application::Instance->commandManager().runCommandByName("Std_New");
+     Gui::Application::Instance->activateWorkbench("DraftWorkbench");
+     Gui::Application::Instance->commandManager().runCommandByName("Std_ViewTop");
+@@ -545,7 +565,9 @@ void StartView::retranslateUi()
+     const QLatin1String h1Start("<h1>");
+     const QLatin1String h1End("</h1>");
+ 
+-    _newFileLabel->setText(h1Start + tr("New File") + h1End);
++    _newFileLabel->setText(
++        h1Start + (singleWorkbenchMode() ? tr("What do you want to make?") : tr("New File")) + h1End
++    );
+     _newEmptyFileButton->setHeadingText(tr("Empty File"));
+     _newEmptyFileButton->setDescriptionText(tr("Creates a new empty FreeCAD file"));
+     _openFileButton->setHeadingText(tr("Open File"));
+@@ -558,10 +580,19 @@ void StartView::retranslateUi()
+         _partDesignButton->setHeadingText(tr("Parametric Body"));
+         _partDesignButton->setDescriptionText(tr("Creates a body with the Part Design workbench"));
+     }
+-    _assemblyButton->setHeadingText(tr("Assembly"));
+-    _assemblyButton->setDescriptionText(tr("Creates an assembly project"));
+-    _draftButton->setHeadingText(tr("2D Draft"));
+-    _draftButton->setDescriptionText(tr("Creates a 2D Draft document"));
++    if (singleWorkbenchMode()) {
++        _assemblyButton->setHeadingText(tr("New Assembly"));
++        _assemblyButton->setDescriptionText(tr("Put parts and STEP files together and check that nothing collides"));
++        _draftButton->setHeadingText(tr("Make a Drawing"));
++        _draftButton->setDescriptionText(tr("A JIS drawing (three views) of a part"));
++        _openFileButton->setDescriptionText(tr("FreeCAD, STEP, DXF, DWG, Jw_cad, STL… (or drop a file here)"));
++    }
++    else {
++        _assemblyButton->setHeadingText(tr("Assembly"));
++        _assemblyButton->setDescriptionText(tr("Creates an assembly project"));
++        _draftButton->setHeadingText(tr("2D Draft"));
++        _draftButton->setDescriptionText(tr("Creates a 2D Draft document"));
++    }
+     _bimButton->setHeadingText(tr("BIM/Architecture"));
+     _bimButton->setDescriptionText(tr("Creates an architectural project"));
+ 
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 5f651b009..d721d5775 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -21,12 +21,13 @@ set(Unified_Scripts
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+         CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
+-        UnifiedChrome.py OtherTools.svg)
++        UnifiedChrome.py OtherTools.svg FirstSteps.py)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+ # "FreeCADCmd -t TestSnapMath") and the tools in the 3D view
+ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
++
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
+ endif(BUILD_GUI)
+diff --git a/src/Mod/Unified/FirstSteps.py b/src/Mod/Unified/FirstSteps.py
+new file mode 100644
+index 000000000..778b1aba2
+--- /dev/null
++++ b/src/Mod/Unified/FirstSteps.py
+@@ -0,0 +1,218 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""For people new to CAD: four short walks (about 5 minutes each) from the start page.
++
++Each walk prepares what it needs (a sample part made here, no files to ship) and shows its steps
++at the right of the window, in the words of the screen. The steps are checked off by what the
++user does (the model is looked at), so the panel says what comes next.
++"""
++
++import os
++import tempfile
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++T = lambda text: QT_TRANSLATE_NOOP("FirstSteps", text)
++
++
++# --------------------------------------------------------------------------- samples
++def sample_plate(name="ベース板"):
++    """An 80 × 50 × 5 plate with four ⌀6 holes, made of a sketch with sizes, as a user would"""
++    import Part
++    import Sketcher
++
++    doc = App.newDocument(name)
++    body = doc.addObject("PartDesign::Body", "Body")
++    sk = body.newObject("Sketcher::SketchObject", "Sketch")
++    sk.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
++    sk.MapMode = "FlatFace"
++    pts = [App.Vector(0, 0, 0), App.Vector(80, 0, 0), App.Vector(80, 50, 0), App.Vector(0, 50, 0)]
++    for i in range(4):
++        sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++    for i in range(4):
++        sk.addConstraint(Sketcher.Constraint("Coincident", i, 2, (i + 1) % 4, 1))
++    sk.addConstraint(Sketcher.Constraint("Horizontal", 0))
++    sk.addConstraint(Sketcher.Constraint("Horizontal", 2))
++    sk.addConstraint(Sketcher.Constraint("Vertical", 1))
++    sk.addConstraint(Sketcher.Constraint("Vertical", 3))
++    sk.addConstraint(Sketcher.Constraint("Coincident", 0, 1, -1, 1))
++    sk.addConstraint(Sketcher.Constraint("DistanceX", 0, 1, 0, 2, 80))
++    sk.addConstraint(Sketcher.Constraint("DistanceY", 1, 1, 1, 2, 50))
++    for x, y in ((8, 8), (72, 8), (72, 42), (8, 42)):
++        g = sk.addGeometry(Part.Circle(App.Vector(x, y, 0), App.Vector(0, 0, 1), 3))
++        sk.addConstraint(Sketcher.Constraint("Diameter", g, 6))
++        sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, g, 3, x))
++        sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, g, 3, y))
++    pad = body.newObject("PartDesign::Pad", "Pad")
++    pad.Profile = sk
++    pad.Length = 5
++    doc.recompute()
++    sk.Visibility = False
++    return doc
++
++
++def sample_step_files():
++    """A base with a hole and a pin, as STEP files (as from a supplier)"""
++    import Part
++
++    folder = os.path.join(tempfile.gettempdir(), "freecad-first-steps")
++    os.makedirs(folder, exist_ok=True)
++    base = Part.makeBox(60, 40, 10).cut(Part.makeCylinder(4, 10, App.Vector(30, 20, 0)))
++    pin = Part.makeCylinder(3.9, 30)
++    paths = []
++    for name, shape in (("base", base), ("pin", pin)):
++        path = os.path.join(folder, name + ".step")
++        shape.exportStep(path)
++        paths.append(path)
++    return paths
++
++
++# --------------------------------------------------------------------------- the walks
++def _has(doc, type_name):
++    return doc is not None and any(o.isDerivedFrom(type_name) for o in doc.Objects)
++
++
++def _count(doc, type_name):
++    return 0 if doc is None else sum(1 for o in doc.Objects if o.isDerivedFrom(type_name))
++
++
++WALKS = [
++    {
++        "key": "plate",
++        "title": T("Make a plate with holes"),
++        "summary": T("draw → extrude → hole → round"),
++        "steps": [
++            (T("Click the floor (XY) to draw on it"), lambda d: _has(d, "Sketcher::SketchObject")),
++            (T("Pick “Rectangle” in the band at the top and click two corners"), lambda d: any(len(o.Geometry) >= 4 for o in d.Objects if o.isDerivedFrom("Sketcher::SketchObject"))),
++            (T("Press “✓ Done”"), lambda d: _has(d, "Sketcher::SketchObject") and Gui.ActiveDocument.getInEdit() is None),
++            (T("Next to the sketch: type 5 in the number field and press Enter"), lambda d: _has(d, "PartDesign::Pad")),
++            (T("Click the top face, then “Hole”, then where the hole goes"), lambda d: _has(d, "PartDesign::Hole") or _has(d, "PartDesign::Pocket")),
++            (T("Click an upright edge, “Same direction”, type 3 and Enter"), lambda d: _has(d, "PartDesign::Fillet")),
++        ],
++        "start": lambda: Gui.runCommand("Unified_NewPart"),
++    },
++    {
++        "key": "change",
++        "title": T("Change a size afterwards"),
++        "summary": T("double-click the shape and type the number"),
++        "steps": [
++            (T("Right-click the plate in the history (left) and choose “Edit Its Sketch”"), lambda d: Gui.ActiveDocument.getInEdit() is not None),
++            (T("Double-click the size 80 and type 100, then Enter"), lambda d: any(abs(c.Value - 100) < 1e-6 for o in d.Objects if o.isDerivedFrom("Sketcher::SketchObject") for c in o.Constraints if c.Type == "DistanceX")),
++            (T("Press “✓ Done”: the plate is longer, the holes stay where their sizes put them"), lambda d: Gui.ActiveDocument.getInEdit() is None and any(abs(o.Shape.BoundBox.XLength - 100) < 1e-6 for o in d.Objects if o.isDerivedFrom("PartDesign::Pad"))),
++        ],
++        "start": lambda: sample_plate(),
++    },
++    {
++        "key": "assembly",
++        "title": T("Put STEP parts together"),
++        "summary": T("put → pick two faces → snap"),
++        "steps": [
++            (T("Press “Put Part” and click “base” in the list (the first part does not move)"), lambda d: _count(d, "App::Link") + _count(d, "Part::Feature") >= 1),
++            (T("Click “pin” in the list too, then “✓ Done”"), lambda d: _count(d, "App::Link") + _count(d, "Part::Feature") >= 2 and not Gui.Control.activeDialog()),
++            (T("Click the round face of the pin, Ctrl+click the hole, then “Line up axes”"), lambda d: False),
++        ],
++        "start": lambda: _start_assembly(),
++    },
++    {
++        "key": "drawing",
++        "title": T("Make a JIS drawing"),
++        "summary": T("make drawing → done → PDF"),
++        "steps": [
++            (T("Press “Make Drawing” in the tool strip"), lambda d: _has(d, "TechDraw::DrawProjGroup")),
++            (T("Press “✓ Done”: front, top and right views on an A4 sheet"), lambda d: _has(d, "TechDraw::DrawProjGroup") and not Gui.Control.activeDialog()),
++            (T("Click the circle of a hole: the bar offers “Diameter”"), lambda d: _has(d, "TechDraw::DrawViewDimension")),
++            (T("Click the sheet and choose “PDF / print”"), lambda d: False),
++        ],
++        "start": lambda: sample_plate(),
++    },
++]
++
++
++def _start_assembly():
++    paths = sample_step_files()
++    import ImportGui
++
++    for p in paths:
++        ImportGui.open(p)
++    Gui.runCommand("Unified_NewAssembly")
++
++
++class GuidePanel(QtWidgets.QDockWidget):
++    """The steps of a walk at the right; the next step is in bold, done steps are ticked"""
++
++    def __init__(self, mw):
++        super().__init__(translate("FirstSteps", "First steps"), mw)
++        self.setObjectName("UnifiedFirstSteps")
++        body = QtWidgets.QWidget(self)
++        self.layout_ = QtWidgets.QVBoxLayout(body)
++        self.title = QtWidgets.QLabel(body)
++        self.title.setWordWrap(True)
++        self.layout_.addWidget(self.title)
++        self.list = QtWidgets.QLabel(body)
++        self.list.setWordWrap(True)
++        self.list.setTextFormat(QtCore.Qt.RichText)
++        self.layout_.addWidget(self.list)
++        self.layout_.addStretch(1)
++        close = QtWidgets.QPushButton(translate("FirstSteps", "Close"), body)
++        close.clicked.connect(self.hide)
++        self.layout_.addWidget(close)
++        self.setWidget(body)
++        mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self)
++        self.walk = None
++        self.doc = None
++        self.timer = QtCore.QTimer(self)
++        self.timer.timeout.connect(self.update_steps)
++
++    def start(self, walk):
++        self.walk = walk
++        self.title.setText("<h3>{}</h3>".format(translate("FirstSteps", walk["title"])))
++        walk["start"]()
++        self.doc = App.ActiveDocument
++        self.show()
++        self.raise_()
++        self.timer.start(500)
++        self.update_steps()
++
++    def update_steps(self):
++        if self.walk is None or not self.isVisible():
++            self.timer.stop()
++            return
++        doc = App.ActiveDocument
++        lines = []
++        current = True
++        for text, done in self.walk["steps"]:
++            try:
++                ok = bool(doc) and done(doc)
++            except Exception:
++                ok = False
++            text = translate("FirstSteps", text)
++            if ok:
++                lines.append("<p style='color:#1a7f37'>✓ {}</p>".format(text))
++            elif current:
++                lines.append("<p><b>→ {}</b></p>".format(text))
++                current = False
++            else:
++                lines.append("<p style='color:#7b8594'>・ {}</p>".format(text))
++        if current:
++            lines.append("<p><b>{}</b></p>".format(translate("FirstSteps", "Done! Every tool can also be found with Ctrl+K.")))
++        self.list.setText("".join(lines))
++
++
++_panel = None
++
++
++def start(key):
++    global _panel
++    if _panel is None:
++        _panel = GuidePanel(Gui.getMainWindow())
++    for walk in WALKS:
++        if walk["key"] == key:
++            _panel.start(walk)
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 9e06c5429..b8117c841 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -6566,6 +6566,30 @@ Select the method to attach this sketch to selected objects.</source>
+         <source>Parametric Body</source>
+         <translation>パラメトリック部品</translation>
+     </message>
++    <message>
++        <source>What do you want to make?</source>
++        <translation>何をつくりますか</translation>
++    </message>
++    <message>
++        <source>New Assembly</source>
++        <translation>新しい組立</translation>
++    </message>
++    <message>
++        <source>Put parts and STEP files together and check that nothing collides</source>
++        <translation>部品や STEP を並べて、くっつけて、ぶつかりを調べます</translation>
++    </message>
++    <message>
++        <source>Make a Drawing</source>
++        <translation>図面を描く</translation>
++    </message>
++    <message>
++        <source>A JIS drawing (three views) of a part</source>
++        <translation>部品の JIS の図面（三面図・寸法）を作ります</translation>
++    </message>
++    <message>
++        <source>FreeCAD, STEP, DXF, DWG, Jw_cad, STL… (or drop a file here)</source>
++        <translation>FreeCAD・STEP・DXF・DWG・Jw_cad・STL…（ここへドラッグしても開けます）</translation>
++    </message>
+ </context>
+ <context>
+     <name>StdCmdAlignToSelection</name>
+@@ -10015,6 +10039,14 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Back to how it was before this step</source>
+         <translation>この手順を始める前に戻します</translation>
+     </message>
++    <message>
++        <source>🔍 What do you want to do? e.g. “export for 3D printing”, “DXF to solid”</source>
++        <translation>🔍 やりたいことを入力 ―「3D プリント用に書き出す」「DXF を立体にする」</translation>
++    </message>
++    <message>
++        <source>New to CAD? (5 minutes)</source>
++        <translation>はじめての人へ（5 分）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CommandSearch</name>
+@@ -10375,4 +10407,115 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>この形の、同じ半径の円も選びます</translation>
+     </message>
+ </context>
++<context>
++    <name>FirstSteps</name>
++    <message>
++        <source>First steps</source>
++        <translation>はじめての人へ</translation>
++    </message>
++    <message>
++        <source>Close</source>
++        <translation>閉じる</translation>
++    </message>
++    <message>
++        <source>Done! Every tool can also be found with Ctrl+K.</source>
++        <translation>できました。どの道具も Ctrl+K で探せます。</translation>
++    </message>
++    <message>
++        <source>Make a plate with holes</source>
++        <translation>穴あきの板を作る</translation>
++    </message>
++    <message>
++        <source>draw → extrude → hole → round</source>
++        <translation>描く → 押し出す → 穴 → 丸め</translation>
++    </message>
++    <message>
++        <source>Click the floor (XY) to draw on it</source>
++        <translation>床（XY）をクリックして、そこに描く</translation>
++    </message>
++    <message>
++        <source>Pick “Rectangle” in the band at the top and click two corners</source>
++        <translation>上の帯の「四角形」を押して、2 つの角をクリック</translation>
++    </message>
++    <message>
++        <source>Press “✓ Done”</source>
++        <translation>「✓ 終わる」を押す</translation>
++    </message>
++    <message>
++        <source>Next to the sketch: type 5 in the number field and press Enter</source>
++        <translation>スケッチの横の数値欄に 5 と打って Enter</translation>
++    </message>
++    <message>
++        <source>Click the top face, then “Hole”, then where the hole goes</source>
++        <translation>上の面をクリック →「穴」→ 穴の位置をクリック</translation>
++    </message>
++    <message>
++        <source>Click an upright edge, “Same direction”, type 3 and Enter</source>
++        <translation>縦の辺をクリック →「同じ向きの辺も」→ 3 と打って Enter</translation>
++    </message>
++    <message>
++        <source>Change a size afterwards</source>
++        <translation>寸法をあとから変える</translation>
++    </message>
++    <message>
++        <source>double-click the shape and type the number</source>
++        <translation>スケッチを開いて数字を打ち直す</translation>
++    </message>
++    <message>
++        <source>Right-click the plate in the history (left) and choose “Edit Its Sketch”</source>
++        <translation>左の作った順で押し出しを右クリック →「元のスケッチを編集」</translation>
++    </message>
++    <message>
++        <source>Double-click the size 80 and type 100, then Enter</source>
++        <translation>寸法 80 をダブルクリックして 100 と打ち、Enter</translation>
++    </message>
++    <message>
++        <source>Press “✓ Done”: the plate is longer, the holes stay where their sizes put them</source>
++        <translation>「✓ 終わる」: 板が長くなり、穴は寸法どおりの位置のまま</translation>
++    </message>
++    <message>
++        <source>Put STEP parts together</source>
++        <translation>STEP を組み立てる</translation>
++    </message>
++    <message>
++        <source>put → pick two faces → snap</source>
++        <translation>置く → 面を 2 つ選ぶ → くっつける</translation>
++    </message>
++    <message>
++        <source>Press “Put Part” and click “base” in the list (the first part does not move)</source>
++        <translation>「部品を置く」→ 一覧の「base」をクリック（最初の部品は動かない）</translation>
++    </message>
++    <message>
++        <source>Click “pin” in the list too, then “✓ Done”</source>
++        <translation>「pin」もクリック →「✓ 終わる」</translation>
++    </message>
++    <message>
++        <source>Click the round face of the pin, Ctrl+click the hole, then “Line up axes”</source>
++        <translation>ピンの丸い面 → Ctrl を押しながら穴の面 →「軸をそろえる」</translation>
++    </message>
++    <message>
++        <source>Make a JIS drawing</source>
++        <translation>JIS の図面を出す</translation>
++    </message>
++    <message>
++        <source>make drawing → done → PDF</source>
++        <translation>図面を描く → 終わる → PDF</translation>
++    </message>
++    <message>
++        <source>Press “Make Drawing” in the tool strip</source>
++        <translation>道具の列の「図面を描く」を押す</translation>
++    </message>
++    <message>
++        <source>Press “✓ Done”: front, top and right views on an A4 sheet</source>
++        <translation>「✓ 終わる」: A4 に正面図・平面図・右側面図</translation>
++    </message>
++    <message>
++        <source>Click the circle of a hole: the bar offers “Diameter”</source>
++        <translation>穴の円をクリック: 横に「直径」</translation>
++    </message>
++    <message>
++        <source>Click the sheet and choose “PDF / print”</source>
++        <translation>用紙をクリック →「PDF・印刷」</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 45c3b4042..71cb715c2 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -641,21 +641,40 @@ def command_action(command, parent):
+ 
+ 
+ def task_buttons():
+-    """The OK and Cancel buttons of the open task panel"""
++    """The OK and Cancel buttons of the open task panel (the box that is shown, or was shown
++    and hidden by the band; boxes of closed panels may still exist)"""
++    found = []
+     for box in QtWidgets.QApplication.allWidgets():
+-        if isinstance(box, QtWidgets.QDialogButtonBox) and box.parent() is not None:
+-            names = []
+-            w = box
++        if not isinstance(box, QtWidgets.QDialogButtonBox) or box.parent() is None:
++            continue
++        names = []
++        w = box
++        while w is not None:
++            names.append(w.objectName())
++            w = w.parentWidget()
++        if "Tasks" not in names and not any("Task" in n for n in names):
++            continue
++        ok = box.button(QtWidgets.QDialogButtonBox.Ok) or box.button(QtWidgets.QDialogButtonBox.Close)
++        cancel = box.button(QtWidgets.QDialogButtonBox.Cancel)
++        if ok or cancel:
++            # The one whose panel is on screen comes first
++            on_screen = box.parentWidget() is not None and box.parentWidget().isVisible()
++            found.append((not box.isVisible(), not on_screen, box, ok, cancel))
++    if not found:
++        return None, None, None
++    found.sort(key=lambda t: (t[0], t[1]))
++    return found[0][2], found[0][3], found[0][4]
++
++
++def hide_task_buttons():
++    for box in QtWidgets.QApplication.allWidgets():
++        if isinstance(box, QtWidgets.QDialogButtonBox) and box.isVisible():
++            w, names = box, []
+             while w is not None:
+-                names.append(type(w).__name__ + ":" + w.objectName())
++                names.append(w.objectName())
+                 w = w.parentWidget()
+-            if not any("TaskView" in n or "Task" in n.split(":")[1] for n in names):
+-                continue
+-            ok = box.button(QtWidgets.QDialogButtonBox.Ok) or box.button(QtWidgets.QDialogButtonBox.Close)
+-            cancel = box.button(QtWidgets.QDialogButtonBox.Cancel)
+-            if ok or cancel:
+-                return box, ok, cancel
+-    return None, None, None
++            if "Tasks" in names:
++                box.hide()
+ 
+ 
+ class StepBand(QtWidgets.QToolBar):
+@@ -700,9 +719,7 @@ class StepBand(QtWidgets.QToolBar):
+             self.rebuild()
+         if key:
+             # The panel's own OK / Cancel (shown again by the panel when it changes): the band has them
+-            box, ok, cancel = task_buttons()
+-            if box is not None and box.isVisible():
+-                box.hide()
++            hide_task_buttons()
+         if key and key[0] == "sketch":
+             # Sketcher shows its toolbars on its own: the band has its tools
+             for bar in Gui.getMainWindow().findChildren(QtWidgets.QToolBar):
+@@ -771,9 +788,7 @@ class StepBand(QtWidgets.QToolBar):
+             self.addWidget(cancel)
+         self.show()
+         # The task panel's own OK / Cancel: the band has them (one pair, not two)
+-        box, ok, cncl = task_buttons()
+-        if box is not None:
+-            box.hide()
++        hide_task_buttons()
+ 
+     # -- ending the step
+     def finish(self):
+@@ -846,6 +861,97 @@ def install_band():
+         QtWidgets.QApplication.instance().installEventFilter(_strip_filter)
+ 
+ 
++# --------------------------------------------------------------------------- the start page
++def drawing_from_start():
++    """"Make a drawing" on the start page: of the open part, or of a file opened first"""
++    doc = App.ActiveDocument
++    if doc is None or not _shapes_to_draw():
++        Gui.runCommand("Std_Open")
++        if App.ActiveDocument is None or App.ActiveDocument is doc:
++            return
++    Gui.runCommand("Unified_NewDrawing")
++
++
++def _start_card(parent, title, text, slot):
++    b = QtWidgets.QPushButton(parent)
++    b.setObjectName("UnifiedFirstStepsCard")
++    b.setText(title + "\n" + text)
++    b.setStyleSheet("QPushButton { text-align: left; padding: 10px 14px; }")
++    b.setMinimumHeight(64)
++    b.clicked.connect(slot)
++    return b
++
++
++def decorate_start(view):
++    """The search field under the four ways to start, and "first steps" at the right"""
++    if view is None or view.property("unifiedDecorated"):
++        return
++    row = view.findChild(QtWidgets.QWidget, "CreateNewRow")
++    if row is None:
++        return
++    view.setProperty("unifiedDecorated", True)
++    # Keep the widgets referenced while their layouts are used (PySide drops a layout reached
++    # through a temporary wrapper)
++    page = row.parentWidget()
++    content = page.layout()
++    index = content.indexOf(row)
++    import CommandSearchGui
++
++    field = QtWidgets.QLineEdit(row.parentWidget())
++    field.setObjectName("UnifiedStartSearch")
++    field.setPlaceholderText(
++        translate("Unified", "🔍 What do you want to do? e.g. “export for 3D printing”, “DXF to solid”")
++    )
++    field.setMinimumHeight(34)
++    field.textEdited.connect(lambda text: (field.clear(), CommandSearchGui.popup().open(text)))
++    content.insertWidget(index + 1, field)
++
++    # The scroll area of the page goes into a row with the first steps at its right
++    scroll = row.parentWidget()
++    while scroll is not None and not isinstance(scroll, QtWidgets.QScrollArea):
++        scroll = scroll.parentWidget()
++    if scroll is None:
++        return
++    holder = scroll.parentWidget()
++    outer = holder.layout()
++    i = outer.indexOf(scroll)
++    outer.removeWidget(scroll)
++    box = QtWidgets.QHBoxLayout()
++    box.addWidget(scroll, 3)
++    side = QtWidgets.QWidget(holder)
++    side.setObjectName("UnifiedFirstSteps")
++    side.setMaximumWidth(420)
++    lay = QtWidgets.QVBoxLayout(side)
++    head = QtWidgets.QLabel("<h2>{}</h2>".format(translate("Unified", "New to CAD? (5 minutes)")), side)
++    lay.addWidget(head)
++    import FirstSteps
++
++    for walk in FirstSteps.WALKS:
++        lay.addWidget(_start_card(
++            side,
++            translate("FirstSteps", walk["title"]),
++            translate("FirstSteps", walk["summary"]),
++            lambda checked=False, k=walk["key"]: FirstSteps.start(k),
++        ))
++    lay.addStretch(1)
++    box.addWidget(side, 1)
++    outer.insertLayout(i, box)
++
++
++def _on_subwindow(sub):
++    if sub is not None and sub.widget() is not None and sub.widget().objectName() == "StartView":
++        decorate_start(sub.widget())
++
++
++def install_start():
++    mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
++    if mdi is None:
++        return
++    mdi.subWindowActivated.connect(_on_subwindow)
++    for sub in mdi.subWindowList():
++        _on_subwindow(sub)
++
++
+ def install():
+     if classic():
+         import CommandSearchGui
+@@ -856,4 +962,5 @@ def install():
+     QtCore.QTimer.singleShot(0, install_top)
+     QtCore.QTimer.singleShot(0, strip_tooltips)
+     QtCore.QTimer.singleShot(0, install_band)
++    QtCore.QTimer.singleShot(0, install_start)
+     install_keys()
+-- 
+2.43.0
+

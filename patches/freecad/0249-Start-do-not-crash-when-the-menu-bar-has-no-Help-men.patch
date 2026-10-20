@@ -1,0 +1,50 @@
+From 5e78c6e547721e79b0308d9b06e08e7f17b0d0f7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:36:13 +0900
+Subject: [PATCH 249/258] Start: do not crash when the menu bar has no Help
+ menu at the top
+
+The Start module's manipulator looked up "&Help" in the menu bar and used
+it without checking; a workbench whose Help menu is a submenu (or that has
+none) crashed FreeCAD at startup. Look one level down and give up quietly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Start/Gui/Manipulator.cpp | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Start/Gui/Manipulator.cpp b/src/Mod/Start/Gui/Manipulator.cpp
+index ae84efcf4..98562d62a 100644
+--- a/src/Mod/Start/Gui/Manipulator.cpp
++++ b/src/Mod/Start/Gui/Manipulator.cpp
+@@ -77,12 +77,25 @@ void StartGui::Manipulator::modifyMenuBar(Gui::MenuItem* menuBar)
+         rcCmdMgr.addCommand(newCommand);  // Transfer ownership
+     }
+ 
++    // The Help menu may also be a submenu (the integrated environment has one menu, "☰"), or
++    // missing altogether
+     Gui::MenuItem* helpMenu = menuBar->findItem("&Help");
++    if (!helpMenu) {
++        Gui::MenuItem* parent = menuBar->findParentOf("&Help");
++        helpMenu = parent ? parent->findItem("&Help") : nullptr;
++    }
++    if (!helpMenu) {
++        return;
++    }
+     Gui::MenuItem* loadStart = new Gui::MenuItem();
+     Gui::MenuItem* loadSeparator = new Gui::MenuItem();
+     loadStart->setCommand("Start_Start");
+     loadSeparator->setCommand("Separator");
+     Gui::MenuItem* firstItem = helpMenu->findItem("Std_FreeCADUserHub");
+-    helpMenu->insertItem(firstItem, loadStart);
+-    helpMenu->insertItem(firstItem, loadSeparator);
++    if (!firstItem || !helpMenu->insertItem(firstItem, loadStart)) {
++        helpMenu->appendItem(loadStart);
++    }
++    if (!firstItem || !helpMenu->insertItem(firstItem, loadSeparator)) {
++        helpMenu->appendItem(loadSeparator);
++    }
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,681 @@
+From 93eb3cf545d7ab1af9b5fbad6c700ae2b2b0290b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:14:33 +0900
+Subject: [PATCH 254/258] Unified: applying the network settings never waits
+ (froze for minutes on Windows)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Report: Edit > Preferences > General > Network, manual proxy localhost:8083
+(nothing listening), Apply -> the whole window "not responding" for several
+minutes with no CPU and no connection, then it recovered.
+
+Cause: apply_qt_proxy() put Qt on "system proxy configuration" (the default
+mode and at every start). On Windows every Qt proxy lookup then runs WinHTTP
+auto-detection (WPAD), which takes minutes on a company network, and Qt holds
+its global proxy lock while it does. Apply calls setApplicationProxy() on the
+GUI thread, which waits for that lock. (Checked with Qt 6.11: a slow proxy
+factory in another thread blocks setApplicationProxy on the main thread.)
+Apply also waited up to 3 s for the AI chat helper to stop, and opening the
+preferences waited up to 60 s for the key-store check.
+
+What changed (network/AI files only):
+- NetworkSettings: system_proxy() reads only environment variables and, on
+  Windows, the manual Internet Options in the registry (the
+  WinHttpGetIEProxyConfigForCurrentUser values); no getproxies(), no WPAD,
+  no PAC. New check(): connects to the proxy (or directly) with a 5 s timeout
+  and asks for CONNECT api.anthropic.com:443; answers in plain Japanese
+  (refused / no answer in 5 s / name not found / 407 / OK).
+- UnifiedPreferences: apply_qt_proxy() never turns on Qt's system
+  configuration; it uses the proxy NetworkSettings.apply() decided. The page
+  runs check() in a thread after Apply and shows the result under the proxy
+  settings (e.g. "プロキシ localhost:8083 に接続できません（接続を拒否されました…）").
+  A Windows PAC-only setup is reported instead of being evaluated.
+  The AI chat page checks for a stored key without waiting.
+- AIChatGui: restart() closes the helper's input and kills it 3 s later from
+  a timer instead of waitForFinished on the GUI thread; has_key_async().
+- TestNetworkSettings (FreeCADCmd -t TestNetworkSettings): apply with a
+  closed port, a black hole (10.255.255.1:8080), system and no proxy returns
+  in < 1 s with no socket/DNS/getproxies call on the main thread and Qt not
+  on system configuration; check() messages; a 20 ms heartbeat timer keeps
+  running while the check waits on the black hole.
+
+Measured in the GUI (offscreen, AI helper replaced by a process that does not
+exit): before, Apply took 3.0 s and Qt was left on system configuration;
+after, 0.002 s, longest heartbeat gap 0.07 s, results shown after 0.0 s
+(refused) and 5.0 s (black hole).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIChatGui.py           |  63 +++++++-
+ src/Mod/Unified/CMakeLists.txt         |   3 +
+ src/Mod/Unified/NetworkSettings.py     | 106 +++++++++++-
+ src/Mod/Unified/TestNetworkSettings.py | 213 +++++++++++++++++++++++++
+ src/Mod/Unified/UnifiedPreferences.py  | 111 ++++++++++---
+ 5 files changed, 469 insertions(+), 27 deletions(-)
+ create mode 100644 src/Mod/Unified/TestNetworkSettings.py
+
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index f58e5d93f..486817d77 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -126,6 +126,43 @@ def has_key():
+     return out.splitlines()[-1] == "yes"
+ 
+ 
++def has_key_async(callback, parent=None, timeout=60000):
++    """has_key を待たずに。終わったら callback(True/False/None) を画面のスレッドで呼ぶ（設定の画面を開くときに使う）"""
++    py = find_python()
++    if py is None:
++        callback(None)
++        return None
++    p = QtCore.QProcess(parent)
++    p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
++    p.setProcessEnvironment(ai_environment())
++    state = {"called": False}
++
++    def finish(result):
++        if not state["called"]:
++            state["called"] = True
++            try:
++                callback(result)
++            except RuntimeError:
++                pass  # 画面はもう閉じた
++
++    def done(*_args):
++        out = bytes(p.readAll()).decode("utf-8", "replace").strip()
++        finish(None if p.exitCode() != 0 or not out else out.splitlines()[-1] == "yes")
++        p.deleteLater()
++
++    def failed(err):
++        if err == QtCore.QProcess.FailedToStart:
++            finish(None)
++            p.deleteLater()
++
++    p.finished.connect(done)
++    p.errorOccurred.connect(failed)
++    p.start(py, [os.path.join(HERE, "AIAgentBridge.py"), "--has-key", "--datadir", _datadir()])
++    p.closeWriteChannel()
++    QtCore.QTimer.singleShot(timeout, p, lambda: p.kill() if p.state() != QtCore.QProcess.NotRunning else None)
++    return p
++
++
+ def find_claude():
+     """claude の実行ファイル。見つからなければ空（SDK に同梱のものを使う）"""
+     p = _params().GetString("ClaudePath", "")
+@@ -169,6 +206,7 @@ class ChatPanel(QtWidgets.QWidget):
+     def __init__(self, parent=None):
+         super().__init__(parent)
+         self.proc = None
++        self.stopping = []   # 止めている途中の仲介役（restart）
+         self.buffer = b""
+         self.ready = False
+         self.busy = False
+@@ -520,10 +558,29 @@ class ChatPanel(QtWidgets.QWidget):
+ 
+     # ---------------------------------------------------------------- API キー
+     def restart(self):
+-        """仲介役を止める（次に送ったときに新しいキー・設定で始まる）"""
+-        self.shutdown()
+-        self.proc = None
++        """仲介役を止める（次に送ったときに新しいキー・設定で始まる）。止まるのを画面のスレッドで待たない"""
++        old, self.proc = self.proc, None
+         self.ready = False
++        if old is not None and old.state() != QtCore.QProcess.NotRunning:
++            for sig, slot in ((old.readyReadStandardOutput, self.on_stdout),
++                              (old.readyReadStandardError, self.on_stderr), (old.finished, self.on_finished)):
++                try:
++                    sig.disconnect(slot)
++                except Exception:
++                    pass
++            old.closeWriteChannel()   # 入力が終われば仲介役は自分で終わる
++            self.stopping.append(old)
++
++            def reap():
++                # 走ったままの QProcess を消すと、消すところで終わるのを待ってしまう。終わってから消す
++                if old in self.stopping:
++                    self.stopping.remove(old)
++                if old.state() != QtCore.QProcess.NotRunning:
++                    old.finished.connect(old.deleteLater)
++                    old.kill()
++                else:
++                    old.deleteLater()
++            QtCore.QTimer.singleShot(3000, reap)
+         if self.queue:
+             self.ensure_started()
+ 
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index d721d5775..6be71c93e 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -28,6 +28,9 @@ endif(BUILD_GUI)
+ # "FreeCADCmd -t TestSnapMath") and the tools in the 3D view
+ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
+ 
++# Network settings and the AI key: applying never waits on the network ("FreeCADCmd -t TestNetworkSettings")
++list(APPEND Unified_Scripts TestNetworkSettings.py)
++
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
+ endif(BUILD_GUI)
+diff --git a/src/Mod/Unified/NetworkSettings.py b/src/Mod/Unified/NetworkSettings.py
+index dad53b342..21f9824b7 100644
+--- a/src/Mod/Unified/NetworkSettings.py
++++ b/src/Mod/Unified/NetworkSettings.py
+@@ -13,6 +13,7 @@ claude、そのほか FreeCAD から起動するものが、これを使う。
+ """
+ 
+ import os
++import sys
+ 
+ # FreeCAD は使うときに読む（AI チャットの仲介役は FreeCAD の外の Python で、describe_error だけを使う）
+ 
+@@ -65,10 +66,18 @@ def _windows_no_proxy():
+ 
+ 
+ def system_proxy():
+-    """システムのプロキシ（Windows はインターネット オプション、ほかは環境変数）。(url, no_proxy)。無ければ ("", "")"""
++    """システムのプロキシ（Windows はインターネット オプション、ほかは環境変数）。(url, no_proxy)。無ければ ("", "")
++
++    画面の中からも呼ぶので、通信も名前の問い合わせもしない。Windows ではレジストリの「インターネット オプション」の
++    手動の設定（ProxyEnable・ProxyServer、WinHttpGetIEProxyConfigForCurrentUser と同じもの）だけを読み、
++    自動検出（WPAD）や自動構成スクリプト（PAC）は使わない。会社のネットワークでは自動検出が数分かかることがある"""
+     try:
+         import urllib.request
+-        proxies = urllib.request.getproxies()
++        proxies = urllib.request.getproxies_environment()
++        if not proxies and os.name == "nt":
++            proxies = urllib.request.getproxies_registry()
++        elif not proxies and sys.platform == "darwin":
++            proxies = urllib.request.getproxies_macosx_sysconf()  # 設定を読むだけ（PAC は評価しない）
+     except Exception:
+         return "", ""
+     url = proxies.get("https") or proxies.get("http") or ""
+@@ -132,6 +141,99 @@ def apply():
+         FreeCAD.Console.PrintWarning("Network settings: %s\n" % e)
+ 
+ 
++def windows_pac_only():
++    """Windows のプロキシが自動構成スクリプト（PAC）だけで、手動のプロキシが無いか（FreeCAD は PAC を読まない）"""
++    if os.name != "nt":
++        return False
++    try:
++        import winreg
++        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
++                            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as k:
++            try:
++                pac = winreg.QueryValueEx(k, "AutoConfigURL")[0]
++            except OSError:
++                pac = ""
++            try:
++                enabled = winreg.QueryValueEx(k, "ProxyEnable")[0]
++            except OSError:
++                enabled = 0
++        return bool(pac) and not enabled
++    except Exception:
++        return False
++
++
++def current_proxy():
++    """いま当たっているプロキシ（apply() の後の環境変数）。無ければ空"""
++    return os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or \
++        os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or ""
++
++
++CHECK_HOST = ("api.anthropic.com", 443)
++CHECK_TIMEOUT = 5.0
++
++
++def _reason(e, timeout):
++    import socket
++    if isinstance(e, ConnectionRefusedError):
++        return "接続を拒否されました。そのポートで動いているプロキシがありません"
++    if isinstance(e, (socket.timeout, TimeoutError)):
++        return "%d 秒待っても応答がありません" % timeout
++    if isinstance(e, socket.gaierror):
++        return "名前が見つかりません"
++    if isinstance(e, ConnectionResetError):
++        return "接続を切られました"
++    return str(e) or type(e).__name__
++
++
++def check(proxy=None, timeout=CHECK_TIMEOUT, target=CHECK_HOST):
++    """つながるかを確かめる（通信するので、画面の外のスレッドで呼ぶこと）。(つながったか, 日本語の説明)
++
++    proxy を省くと、いま当たっている設定（環境変数）で確かめる。プロキシがあれば、そこへつないで
++    target への CONNECT を頼む。無ければ target へ直接つなぐ"""
++    import socket
++    from urllib.parse import urlsplit
++    if proxy is None:
++        proxy = current_proxy()
++    host, port = target
++    if not proxy:
++        try:
++            socket.create_connection((host, port), timeout).close()
++            return True, "%s に直接つながります" % host
++        except Exception as e:
++            return False, "%s に直接つながりません（%s）" % (host, _reason(e, timeout))
++    u = urlsplit(proxy if "://" in proxy else "http://" + proxy)
++    try:
++        phost, pport = u.hostname or "", u.port or 8080
++    except ValueError:
++        return False, "プロキシの書き方が正しくありません: %s" % proxy
++    name = "%s:%d" % (phost, pport)
++    try:
++        sock = socket.create_connection((phost, pport), timeout)
++    except Exception as e:
++        return False, "プロキシ %s に接続できません（%s）" % (name, _reason(e, timeout))
++    try:
++        sock.settimeout(timeout)
++        req = "CONNECT %s:%d HTTP/1.1\r\nHost: %s:%d\r\n" % (host, port, host, port)
++        if u.username:
++            import base64
++            from urllib.parse import unquote
++            cred = "%s:%s" % (unquote(u.username), unquote(u.password or ""))
++            req += "Proxy-Authorization: Basic %s\r\n" % base64.b64encode(cred.encode()).decode()
++        sock.sendall((req + "\r\n").encode("ascii"))
++        line = sock.recv(1024).split(b"\r\n", 1)[0].decode("latin-1")
++    except Exception as e:
++        return False, "プロキシ %s につながりましたが、%s へ取り次いでもらえません（%s）" % (name, host, _reason(e, timeout))
++    finally:
++        sock.close()
++    parts = line.split()
++    code = parts[1] if len(parts) > 1 else ""
++    if code == "200":
++        return True, "プロキシ %s 経由で %s につながります" % (name, host)
++    if code == "407":
++        return False, "プロキシ %s はユーザー名とパスワードを求めています（http://名前:パスワード@%s の形で書けます）" % (name, name)
++    return False, "プロキシ %s が %s への接続を断りました（%s）" % (name, host, line or "応答なし")
++
++
+ def describe_error(text):
+     """接続の失敗の説明（プロキシ・証明書）を日本語で。当てはまらなければ None"""
+     t = (text or "").lower()
+diff --git a/src/Mod/Unified/TestNetworkSettings.py b/src/Mod/Unified/TestNetworkSettings.py
+new file mode 100644
+index 000000000..6536fc760
+--- /dev/null
++++ b/src/Mod/Unified/TestNetworkSettings.py
+@@ -0,0 +1,213 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""ネットワークの設定と AI チャットのキーの試験（FreeCADCmd -t TestNetworkSettings、画面なしで動く）
++
++- 設定を当てる（設定の画面の「適用」と同じ道筋）は通信も名前の問い合わせもせず、すぐ戻る。
++  プロキシが閉じたポート（接続拒否）でも、応答の無いアドレス（10.255.255.1、黙って捨てられる）でも
++- つながるかの確認は別のスレッドで走り、その間も画面のスレッドのタイマーが遅れない（心拍で測る）。結果は日本語
++- Qt に「システムの設定」（Windows では WPAD の自動検出が走る）を使わせない
++"""
++
++import os
++import socket
++import threading
++import time
++import unittest
++
++import FreeCAD
++
++import NetworkSettings
++
++BLACK_HOLE = "10.255.255.1:8080"
++
++
++def closed_port():
++    """何も待ち受けていないポート"""
++    s = socket.socket()
++    s.bind(("127.0.0.1", 0))
++    port = s.getsockname()[1]
++    s.close()
++    return port
++
++
++class _Params:
++    """試験の間だけ設定を変え、終わったら戻す"""
++
++    def __enter__(self):
++        p = NetworkSettings.params()
++        self.saved = (p.GetInt("ProxyMode", 0), p.GetString("ProxyURL", ""), p.GetString("NoProxy", ""),
++                      p.GetString("CACertFile", ""))
++        self.env = dict(os.environ)
++        return self
++
++    def set(self, mode, url=""):
++        p = NetworkSettings.params()
++        p.SetInt("ProxyMode", mode)
++        p.SetString("ProxyURL", url)
++
++    def __exit__(self, *exc):
++        p = NetworkSettings.params()
++        p.SetInt("ProxyMode", self.saved[0])
++        p.SetString("ProxyURL", self.saved[1])
++        p.SetString("NoProxy", self.saved[2])
++        p.SetString("CACertFile", self.saved[3])
++        os.environ.clear()
++        os.environ.update(self.env)
++        NetworkSettings.apply()
++
++
++class _NoNetworkHere:
++    """このスレッドで通信・名前の問い合わせ・OS のプロキシの自動検出をしたら記録する"""
++
++    def __enter__(self):
++        import urllib.request
++        self.calls = []
++        self.thread = threading.get_ident()
++        self.saved = [(socket, "create_connection"), (socket, "getaddrinfo"), (socket, "gethostbyname"),
++                      (urllib.request, "getproxies"), (urllib.request, "urlopen")]
++        self.saved = [(m, n, getattr(m, n)) for m, n in self.saved]
++        for m, n, f in self.saved:
++            setattr(m, n, self._wrap(n, f))
++        return self
++
++    def _wrap(self, name, f):
++        def wrapped(*a, **k):
++            if threading.get_ident() == self.thread:
++                self.calls.append(name)
++            return f(*a, **k)
++        return wrapped
++
++    def __exit__(self, *exc):
++        for m, n, f in self.saved:
++            setattr(m, n, f)
++
++
++def _qt():
++    try:
++        from PySide import QtCore, QtNetwork
++    except ImportError:
++        return None, None
++    if QtCore.QCoreApplication.instance() is None:
++        _qt.app = QtCore.QCoreApplication([])
++    return QtCore, QtNetwork
++
++
++class TestApplyDoesNotBlock(unittest.TestCase):
++    def _apply(self, mode, url):
++        import UnifiedPreferences
++        with _Params() as p, _NoNetworkHere() as guard:
++            p.set(mode, url)
++            t = time.monotonic()
++            UnifiedPreferences.apply_all()
++            took = time.monotonic() - t
++            proxy = NetworkSettings.current_proxy()
++            QtCore, QtNetwork = _qt()
++            uses_system = QtNetwork.QNetworkProxyFactory.usesSystemConfiguration() if QtNetwork else False
++            app_proxy = QtNetwork.QNetworkProxy.applicationProxy() if QtNetwork else None
++        return took, guard.calls, proxy, uses_system, app_proxy
++
++    def test_manual_closed_port(self):
++        url = "localhost:%d" % closed_port()
++        took, calls, proxy, uses_system, app_proxy = self._apply(NetworkSettings.MANUAL, url)
++        self.assertLess(took, 1.0)
++        self.assertEqual(calls, [])
++        self.assertEqual(proxy, "http://" + url)
++        self.assertFalse(uses_system)
++        if app_proxy is not None:
++            self.assertEqual((app_proxy.hostName(), app_proxy.port()), ("localhost", int(url.split(":")[1])))
++
++    def test_manual_black_hole(self):
++        took, calls, proxy, uses_system, _ = self._apply(NetworkSettings.MANUAL, BLACK_HOLE)
++        self.assertLess(took, 1.0)
++        self.assertEqual(calls, [])
++        self.assertFalse(uses_system)
++
++    def test_system_and_none(self):
++        for mode in (NetworkSettings.SYSTEM, NetworkSettings.NONE):
++            took, calls, _proxy, uses_system, _ = self._apply(mode, "")
++            self.assertLess(took, 1.0)
++            self.assertEqual(calls, [])
++            # Qt のシステムの設定は Windows では WPAD の自動検出になり、全体の錠を持ったまま数分止まる
++            self.assertFalse(uses_system)
++
++
++class TestCheck(unittest.TestCase):
++    def test_refused(self):
++        port = closed_port()
++        t = time.monotonic()
++        ok, text = NetworkSettings.check("localhost:%d" % port, timeout=5)
++        self.assertFalse(ok)
++        self.assertIn("プロキシ localhost:%d に接続できません（接続を拒否されました" % port, text)
++        self.assertLess(time.monotonic() - t, 5.5)
++
++    def test_black_hole(self):
++        t = time.monotonic()
++        ok, text = NetworkSettings.check(BLACK_HOLE, timeout=2)
++        took = time.monotonic() - t
++        self.assertFalse(ok)
++        self.assertIn("プロキシ 10.255.255.1:8080 に接続できません", text)
++        self.assertLess(took, 3.0)
++
++    def test_working_proxy(self):
++        """CONNECT に 200・407 を返すだけのプロキシ"""
++        for status, want in ((b"200 Connection established", "経由で api.anthropic.com につながります"),
++                             (b"407 Proxy Authentication Required", "ユーザー名とパスワード")):
++            srv = socket.socket()
++            srv.bind(("127.0.0.1", 0))
++            srv.listen(1)
++
++            def serve():
++                c, _ = srv.accept()
++                c.recv(4096)
++                c.sendall(b"HTTP/1.1 " + status + b"\r\n\r\n")
++                c.close()
++            th = threading.Thread(target=serve, daemon=True)
++            th.start()
++            ok, text = NetworkSettings.check("http://127.0.0.1:%d" % srv.getsockname()[1], timeout=5)
++            th.join(5)
++            srv.close()
++            self.assertEqual(ok, status.startswith(b"200"))
++            self.assertIn(want, text)
++
++    def test_heartbeat_while_checking(self):
++        """画面のスレッドのタイマー（心拍）が、確認の間も遅れない。結果は画面のスレッドに届く"""
++        QtCore, _ = _qt()
++        if QtCore is None:
++            self.skipTest("no Qt")
++        import UnifiedPreferences
++        checker = UnifiedPreferences._Checker()
++        got = []
++        beats = []
++        loop = QtCore.QEventLoop()
++        checker.done.connect(lambda ok, text: (got.append((ok, text, threading.get_ident())), loop.quit()))
++        timer = QtCore.QTimer()
++        timer.setInterval(20)
++        timer.timeout.connect(lambda: beats.append(time.monotonic()))
++        timer.start()
++        old = NetworkSettings.CHECK_TIMEOUT
++        NetworkSettings.CHECK_TIMEOUT = 2.0
++        try:
++            # 既定の引数を固定した関数で、応答の無いプロキシを確かめる
++            orig = NetworkSettings.check
++            NetworkSettings.check = lambda proxy=None: orig(BLACK_HOLE, timeout=2.0)
++            t = time.monotonic()
++            checker.start()
++            started = time.monotonic() - t
++            QtCore.QTimer.singleShot(8000, loop.quit)
++            loop.exec()
++        finally:
++            NetworkSettings.check = orig
++            NetworkSettings.CHECK_TIMEOUT = old
++            timer.stop()
++        self.assertLess(started, 0.1)
++        self.assertTrue(got, "結果が届かない")
++        ok, text, tid = got[0]
++        self.assertFalse(ok)
++        self.assertIn("応答がありません", text)
++        self.assertEqual(tid, threading.get_ident())
++        gaps = [b - a for a, b in zip(beats, beats[1:])]
++        self.assertGreater(len(beats), 20)
++        self.assertLess(max(gaps), 0.3, "心拍が %.2f 秒止まった" % max(gaps))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedPreferences.py b/src/Mod/Unified/UnifiedPreferences.py
+index 60cb9c67b..9cadcf5e6 100644
+--- a/src/Mod/Unified/UnifiedPreferences.py
++++ b/src/Mod/Unified/UnifiedPreferences.py
+@@ -2,9 +2,11 @@
+ """設定の画面（編集 → 設定 → 標準）: 「ネットワーク」（プロキシと会社の証明書）と「AI チャット」（API キー）"""
+ 
+ import os
++import threading
++import time
+ 
+ import FreeCAD as App
+-from PySide import QtWidgets
++from PySide import QtCore, QtWidgets
+ 
+ import NetworkSettings
+ 
+@@ -37,6 +39,13 @@ class NetworkPage:
+         self.detected = QtWidgets.QLabel()
+         self.detected.setWordWrap(True)
+         g.addWidget(self.detected, 4, 0, 1, 2)
++        # つながるかを確かめた結果（確かめるのは別のスレッド。画面は待たない）
++        self.result = QtWidgets.QLabel()
++        self.result.setWordWrap(True)
++        self.result.hide()
++        g.addWidget(self.result, 5, 0, 1, 2)
++        self._checker = _Checker(self.form)
++        self._checker.done.connect(self._show_result)
+         for b in (self.system, self.none, self.manual):
+             b.toggled.connect(self._update)
+         lay.addWidget(box)
+@@ -94,14 +103,61 @@ class NetworkPage:
+         p.SetString("ProxyURL", self.url.text().strip())
+         p.SetString("NoProxy", self.no_proxy.text().strip())
+         p.SetString("CACertFile", self.ca.text().strip())
+-        NetworkSettings.apply()
+-        apply_qt_proxy()
++        apply_all()
++        # つながるかは別のスレッドで確かめ、結果だけをこのページに出す（適用は待たない）
++        if mode == NetworkSettings.SYSTEM and NetworkSettings.windows_pac_only():
++            self._show_result(False, "Windows のプロキシは自動構成スクリプト（PAC）です。FreeCAD は PAC を読まないので、"
++                                     "「このプロキシを使う」にプロキシのアドレスを入れてください")
++            return
++        self.result.setText("つながるかを確かめています…")
++        self.result.show()
++        self._checker.start()
++
++    def _show_result(self, ok, text):
+         try:
+-            import AIChatGui
+-            if AIChatGui.chat.panel is not None:
+-                AIChatGui.chat.panel.restart()  # 次に送るときに新しい設定で始まる
+-        except Exception:
+-            pass
++            self.result.setText(("✔ " if ok else "✖ ") + text)
++            self.result.show()
++        except RuntimeError:
++            pass  # ページはもう閉じた
++
++
++class _Checker(QtCore.QObject):
++    """つながるかを別のスレッドで確かめ、結果を done で画面のスレッドへ返す"""
++
++    done = QtCore.Signal(bool, str)
++
++    def __init__(self, parent=None):
++        super().__init__(parent)
++        self.serial = 0
++
++    def start(self, proxy=None):
++        self.serial += 1
++        serial = self.serial
++
++        def run():
++            try:
++                ok, text = NetworkSettings.check(proxy)
++            except Exception as e:
++                ok, text = False, "確かめられませんでした: %s" % e
++            if serial == self.serial:  # 古い確認の結果は捨てる
++                try:
++                    self.done.emit(ok, text)
++                except RuntimeError:
++                    pass
++        threading.Thread(target=run, name="NetworkCheck", daemon=True).start()
++
++
++def apply_all():
++    """設定を当てる（環境変数・Qt の通信・AI チャットの仲介役）。通信はせず、何も待たない"""
++    NetworkSettings.apply()
++    apply_qt_proxy()
++    try:
++        import sys
++        AIChatGui = sys.modules.get("AIChatGui")  # まだ使っていなければ、始めるときに新しい設定を読む
++        if AIChatGui is not None and AIChatGui.chat.panel is not None:
++            AIChatGui.chat.panel.restart()  # 次に送るときに新しい設定で始まる（止まるのは待たない）
++    except Exception:
++        pass
+ 
+ 
+ class AIChatPage:
+@@ -138,11 +194,16 @@ class AIChatPage:
+             self.change.setEnabled(False)
+             self.remove.setEnabled(False)
+             return
+-        has = AIChatGui.has_key()
++        # 鍵保管庫を見るのは別のプロセス。設定の画面を開くときに待たない
++        self.state.setText("…")
++        self.change.setEnabled(True)
++        self.remove.setEnabled(False)
++        AIChatGui.has_key_async(self._show_has, self.form)
++
++    def _show_has(self, has):
+         self.state.setText(translate("AIChat", "A key is stored.") if has
+                            else translate("AIChat", "No key is stored.") if has is False
+                            else translate("AIChat", "Could not check the stored key."))
+-        self.change.setEnabled(True)
+         self.remove.setEnabled(has is not False)
+ 
+     def _change(self):
+@@ -169,7 +230,12 @@ class AIChatPage:
+ 
+ 
+ def apply_qt_proxy():
+-    """Qt の通信（画面の中のダウンロードなど）にも同じプロキシを使う"""
++    """Qt の通信（画面の中のダウンロードなど）にも同じプロキシを使う
++
++    Qt の「システムの設定」（setUseSystemConfiguration(True)）は使わない。Windows では問い合わせのたびに
++    WinHTTP の自動検出（WPAD）が走り、会社のネットワークでは数分かかる。その間 Qt は全体のプロキシの錠を
++    持ったままなので、画面のスレッドで setApplicationProxy を呼ぶと、そこで数分止まる（0.5.7/0.5.8 の「適用」で固まった件）。
++    代わりに NetworkSettings.apply() が決めたプロキシ（環境変数。システムの設定のときもレジストリの手動の値）をそのまま使う"""
+     try:
+         from PySide import QtNetwork
+     except ImportError:
+@@ -177,19 +243,20 @@ def apply_qt_proxy():
+             from PySide6 import QtNetwork
+         except ImportError:
+             return
+-    s = NetworkSettings.settings()
+-    if s["mode"] == NetworkSettings.MANUAL and s["url"]:
+-        from urllib.parse import urlsplit
+-        u = urlsplit(s["url"] if "://" in s["url"] else "http://" + s["url"])
+-        proxy = QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.HttpProxy, u.hostname or "", u.port or 8080,
+-                                        u.username or "", u.password or "")
+-        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(False)
++    url = NetworkSettings.current_proxy()
++    QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(False)
++    if url:
++        from urllib.parse import unquote, urlsplit
++        u = urlsplit(url if "://" in url else "http://" + url)
++        try:
++            port = u.port or 8080
++        except ValueError:
++            port = 8080
++        proxy = QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.HttpProxy, u.hostname or "", port,
++                                        unquote(u.username or ""), unquote(u.password or ""))
+         QtNetwork.QNetworkProxy.setApplicationProxy(proxy)
+-    elif s["mode"] == NetworkSettings.NONE:
+-        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(False)
+-        QtNetwork.QNetworkProxy.setApplicationProxy(QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.NoProxy))
+     else:
+-        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(True)
++        QtNetwork.QNetworkProxy.setApplicationProxy(QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.NoProxy))
+ 
+ 
+ class ScreenPage:
+-- 
+2.43.0
+

@@ -1,0 +1,49 @@
+{
+ "sketch_cancel_goes_back": {
+  "ok": true,
+  "band_visible": true,
+  "geometry_after_cancel": 0,
+  "before": {
+   "strip": [
+    0,
+    27,
+    1600
+   ],
+   "search": [
+    1267,
+    1,
+    240
+   ],
+   "strip_visible": true
+  },
+  "during": {
+   "strip": [
+    0,
+    27,
+    1600
+   ],
+   "search": [
+    1267,
+    1,
+    240
+   ],
+   "strip_visible": true
+  }
+ },
+ "strip_during_sketch_finishes_it": {
+  "ok": true,
+  "sketch_kept": 4,
+  "editing": "Pad",
+  "band_title": [
+   "「押し出し」を作っています"
+  ],
+  "panel_buttons_hidden": true,
+  "pads_after_cancel": []
+ },
+ "pad_done": {
+  "ok": true,
+  "pads": [
+   "Pad"
+  ]
+ }
+}

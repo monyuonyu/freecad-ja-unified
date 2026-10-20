@@ -1,0 +1,114 @@
+{
+ "menubar_is_one_menu": {
+  "ok": true,
+  "menus": [
+   "☰ メニュー"
+  ]
+ },
+ "main_menu": {
+  "ok": true,
+  "items": [
+   "新しい部品",
+   "新しい組立",
+   "図面を描く",
+   "開く(&O)…",
+   "最近使用したものを開く(&R)",
+   "保存(&S)",
+   "名前を付けて保存(&A)…",
+   "コピーを保存(&Y)…",
+   "閉じる(&C)",
+   "読み込み・書き出し・印刷",
+   "道具を探す…",
+   "その他の道具",
+   "編集(&E)",
+   "表示(&V)",
+   "ツール(&T)",
+   "マクロ(&M)",
+   "ウィンドウ(&W)",
+   "ヘルプ(&H)",
+   "設定(&N)",
+   "終了(&X)"
+  ]
+ },
+ "one_key": {
+  "ok": true,
+  "typed_in_field": "e",
+  "panel_after_text": false,
+  "panel_after_view_key": true
+ },
+ "context_menu": {
+  "ok": true,
+  "menu": [
+   "元のスケッチを編集",
+   "抑制状態を切り替え",
+   "表示/非表示を切り替え(&V)",
+   "選択したものを表示(&W)",
+   "選択したものを非表示(&H)",
+   "マテリアル(&M)",
+   "外観(&A)",
+   "ランダムな色(&C)",
+   "透明度を切り替え(&Y)",
+   "切り取り(&T)",
+   "&コピー",
+   "&貼り付け"
+  ],
+  "want": [
+   "元のスケッチを編集",
+   "ここに差し込む（ここまで有効に）"
+  ]
+ },
+ "same_strip": {
+  "ok": true,
+  "strip": [
+   "PartDesign_NewSketch",
+   "PartDesign_Pad",
+   "PartDesign_Pocket",
+   "PartDesign_Revolution",
+   "Unified_Hole",
+   "PartDesign_Fillet",
+   "PartDesign_Chamfer",
+   "PartDesign_Thickness",
+   "PartDesign_Mirrored",
+   "PartDesign_LinearPattern",
+   "PartDesign_PolarPattern",
+   "Std_TransformManip",
+   "Unified_SnapFaces",
+   "Std_Measure",
+   "Unified_NewDrawing",
+   "Unified_PlacePart",
+   "Unified_OtherTools"
+  ],
+  "sketch_extra_bars": [
+   "UnifiedStepBand"
+  ]
+ },
+ "other_tools": {
+  "ok": true,
+  "kinds": [
+   "部品づくり",
+   "形の加工",
+   "スケッチ",
+   "メッシュ・STL",
+   "2D の作図",
+   "図面",
+   "組立",
+   "表",
+   "曲面",
+   "材料",
+   "専門の道具箱",
+   "建築（BIM）",
+   "加工（CAM）",
+   "解析（FEM）",
+   "ロボット",
+   "OpenSCAD",
+   "点群",
+   "リバースエンジニアリング",
+   "検査"
+  ]
+ },
+ "missing_operations_reachable": {
+  "ok": true,
+  "commands": 639,
+  "not_reachable": []
+ }
+}

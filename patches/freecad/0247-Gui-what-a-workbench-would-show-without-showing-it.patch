@@ -1,0 +1,148 @@
+From 871cc73660b5eec0f69873169cd933b9f18aaf8f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:26:51 +0900
+Subject: [PATCH 247/258] Gui: what a workbench would show, without showing it
+
+Workbench.getMenuItems() returns the menus a workbench sets up, with their
+commands and submenus. Command.getInfo() also gives the class name, the
+translation context of the texts. In single workbench mode, a workbench
+loaded on request also gets its workbench object (__Workbench__), so that
+its menus and toolbars can be asked for. Used for the catalog of all
+commands of the integrated environment's tool search.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Application.cpp    | 11 ++++++++
+ src/Gui/CommandPyImp.cpp   |  4 +++
+ src/Gui/Workbench.pyi      |  8 ++++++
+ src/Gui/WorkbenchPyImp.cpp | 51 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 74 insertions(+)
+
+diff --git a/src/Gui/Application.cpp b/src/Gui/Application.cpp
+index 62d3b38c9..5fae2f512 100644
+--- a/src/Gui/Application.cpp
++++ b/src/Gui/Application.cpp
+@@ -1924,6 +1924,17 @@ bool Application::activateWorkbench(const char* name)
+                         initialized.erase(name);
+                         throw Base::TypeError("'" + type + "' not a workbench type");
+                     }
++                    // The workbench object itself, not shown: what it would put in the menus and
++                    // toolbars can be asked (Workbench.getMenuItems(), e.g. for the catalog of
++                    // all commands of the integrated environment's tool search)
++                    if (!type.empty() && !handler.hasAttr(std::string("__Workbench__"))) {
++                        if (Workbench* wb = WorkbenchManager::instance()->createWorkbench(name, type)) {
++                            handler.setAttr(
++                                std::string("__Workbench__"),
++                                Py::Object(wb->getPyObject(), true)
++                            );
++                        }
++                    }
+                 }
+                 catch (Py::Exception&) {
+                     // Failed as when activated: report it to the caller, and try again next time
+diff --git a/src/Gui/CommandPyImp.cpp b/src/Gui/CommandPyImp.cpp
+index a80a1d8db..5a8faef6f 100644
+--- a/src/Gui/CommandPyImp.cpp
++++ b/src/Gui/CommandPyImp.cpp
+@@ -267,6 +267,10 @@ PyObject* CommandPy::getInfo(PyObject* args)
+         PyDict_SetItemString(pyDict, "statusTip", strStatustipTxt);
+         PyDict_SetItemString(pyDict, "pixmap", strPixMapTxt);
+         PyDict_SetItemString(pyDict, "shortcut", strShortcutTxt);
++        // The context of the translations of the texts above
++        PyObject* strClassName = PyUnicode_FromString(cmd->className());
++        PyDict_SetItemString(pyDict, "className", strClassName);
++        Py_DECREF(strClassName);
+         return pyDict;
+     }
+     else {
+diff --git a/src/Gui/Workbench.pyi b/src/Gui/Workbench.pyi
+index b51272ffb..072260826 100644
+--- a/src/Gui/Workbench.pyi
++++ b/src/Gui/Workbench.pyi
+@@ -53,6 +53,14 @@ class Workbench(BaseClass):
+         """
+         ...
+ 
++    def getMenuItems(self) -> List[Any]:
++        """
++        The menus of the workbench with their commands, as they would be set up: a list of
++        [title, items], where an item is a command name or a submenu [title, items].
++        Titles are the untranslated ones (translation context "Workbench").
++        """
++        ...
++
+     @staticmethod
+     def reloadActive() -> None:
+         """
+diff --git a/src/Gui/WorkbenchPyImp.cpp b/src/Gui/WorkbenchPyImp.cpp
+index 7e8c167fc..cc6c9a2ab 100644
+--- a/src/Gui/WorkbenchPyImp.cpp
++++ b/src/Gui/WorkbenchPyImp.cpp
+@@ -20,6 +20,7 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include "MenuManager.h"
+ #include "Workbench.h"
+ #include "WorkbenchManager.h"
+ 
+@@ -141,6 +142,56 @@ PyObject* WorkbenchPy::getToolbarItems(PyObject* args)
+     PY_CATCH;
+ }
+ 
++namespace
++{
++// setupMenuBar() is protected: reach it through a member pointer of a derived class
++struct MenuBarAccess: Gui::Workbench
++{
++    using Gui::Workbench::setupMenuBar;
++};
++
++Py::List menuItemsToList(const Gui::MenuItem* menu)
++{
++    Py::List items;
++    for (const Gui::MenuItem* item : menu->getItems()) {
++        if (item->hasItems()) {
++            Py::List sub;
++            sub.append(Py::String(item->command()));
++            sub.append(menuItemsToList(item));
++            items.append(sub);
++        }
++        else {
++            items.append(Py::String(item->command()));
++        }
++    }
++    return items;
++}
++}  // namespace
++
++/** The menus of the workbench with their commands, as set up by the workbench */
++PyObject* WorkbenchPy::getMenuItems(PyObject* args)
++{
++    PY_TRY
++    {
++        if (!PyArg_ParseTuple(args, "")) {
++            return nullptr;
++        }
++        auto setup = &MenuBarAccess::setupMenuBar;
++        std::unique_ptr<MenuItem> menuBar((getWorkbenchPtr()->*setup)());
++        Py::List menus;
++        if (menuBar) {
++            for (const MenuItem* menu : menuBar->getItems()) {
++                Py::List entry;
++                entry.append(Py::String(menu->command()));
++                entry.append(menuItemsToList(menu));
++                menus.append(entry);
++            }
++        }
++        return Py::new_reference_to(menus);
++    }
++    PY_CATCH;
++}
++
+ /** Shows a list of all command bars */
+ PyObject* WorkbenchPy::listCommandbars(PyObject* args)
+ {
+-- 
+2.43.0
+

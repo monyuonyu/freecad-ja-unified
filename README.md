@@ -298,6 +298,24 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.1
+
+UI rebuild phases P1–P4, P7 and P8 ([design](docs/ui-redesign/00-design.md)): one window without modes.
+Acceptance screenshots in [docs/ui-redesign/accept](docs/ui-redesign/accept).
+
+- Tool search (Ctrl+K, the field at the top right): every command of every module (1158, also of modules not loaded yet),
+  by Japanese/English name, aliases and description; loads the module when picked; "Ask AI" when nothing fits.
+  The catalog is made at build time by the built FreeCAD without a screen
+- FreeCAD's menu bar and toolbars are replaced by one "☰" menu and one tool strip that never changes (also while
+  sketching, on drawing pages, in assemblies); one-key shortcuts that never fire while typing or composing Japanese;
+  Preferences › General › Screen brings the stock chrome back
+- "Other tools": every tool by kind, specialist toolboxes (BIM, CAM, FEM, …) loaded on first use
+- A step (sketch, tool panel) is a band in the same window with ✓ Done / ✕ Cancel (Cancel undoes the step)
+- The bar next to a pick follows a rules table, with a number field (pick a face, type 12, Enter: extruded 12 mm)
+- Start page: four ways to start, the search, and four guided first steps with samples
+- "Make Drawing": three views on an A4 JIS sheet with center lines, hole callout ("4×⌀6 キリ"), sizes and title block
+- Fixes: Start crashed without a top-level Help menu; applying network proxy settings froze the GUI; AI chat key handling
+
 ## Changes in 0.6.0
 
 First stage (P0, "no dead ends") of the UI rebuild designed in [docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)

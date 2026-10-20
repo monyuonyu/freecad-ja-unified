@@ -1,0 +1,1059 @@
+From 0f5001068d2bf61e7bd554ebf69bb313aea5566c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:36:13 +0900
+Subject: [PATCH 250/258] Unified: one window without modes instead of
+ FreeCAD's menus and toolbars
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The menu bar is one menu, "☰": new part / assembly / drawing, files,
+import and export, the tool search, other tools, and FreeCAD's Edit, View,
+Tools, Macro, Window and Help menus as submenus (their shortcuts keep
+working). At its right: undo, redo, the search, the AI and the preferences.
+One tool strip with names under the icons stays the same whatever is
+picked or open (a sketch, a drawing page, an assembly); FreeCAD's toolbars
+are gone. One-key shortcuts for the strip (S sketch, E extrude, C cut out,
+H hole, F fillet, M move, D measure) never fire while text is typed (a
+text field has the focus or the input method composes) or while a sketch
+is edited (its own keys then); other commands lose these keys.
+
+"Other tools" lists every tool of every module by kind, as their modules
+put them in menus, the specialist toolboxes (BIM, CAM, FEM, robot, ...)
+last; a module is loaded when one of its tools is first used. New commands:
+new part, new assembly, make drawing (the three views of the picked part
+on a new sheet), put part (into the file's assembly, made if needed), and
+in the right-click menu of a step: edit its sketch, insert after it (set
+tip), move it. Preferences › General › Screen brings FreeCAD's menus and
+toolbars back.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   3 +-
+ .../translations/UnifiedWording_ja.ts         | 121 ++++
+ src/Mod/Unified/Gui/Workbench.cpp             | 174 +++++-
+ src/Mod/Unified/Gui/Workbench.h               |   5 +
+ src/Mod/Unified/InitGui.py                    |   6 +-
+ src/Mod/Unified/OtherTools.svg                |  11 +
+ src/Mod/Unified/UnifiedChrome.py              | 544 ++++++++++++++++++
+ src/Mod/Unified/UnifiedPreferences.py         |  26 +
+ 8 files changed, 886 insertions(+), 4 deletions(-)
+ create mode 100644 src/Mod/Unified/OtherTools.svg
+ create mode 100644 src/Mod/Unified/UnifiedChrome.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 8a29710ff..bd0df90e9 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -18,7 +18,8 @@ set(Unified_Scripts
+ 
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+-        CommandAliases.py CommandSearchGui.py CommandCatalogGen.py)
++        CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
++        UnifiedChrome.py OtherTools.svg)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index a53338ebe..87694de1c 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -7761,6 +7761,18 @@ for ProjectionGroups</source>
+         <source>Datums</source>
+         <translation>基準</translation>
+     </message>
++    <message>
++        <source>Unified Main Menu</source>
++        <translation>☰ メニュー</translation>
++    </message>
++    <message>
++        <source>Unified Import Export</source>
++        <translation>読み込み・書き出し・印刷</translation>
++    </message>
++    <message>
++        <source>Unified Tools</source>
++        <translation>道具</translation>
++    </message>
+ </context>
+ <context>
+     <name>UnifiedErrors</name>
+@@ -9939,6 +9951,34 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Part from drawing lines</source>
+         <translation>図面の線から部品</translation>
+     </message>
++    <message>
++        <source>Make a part first: there is nothing to draw yet</source>
++        <translation>まだ図面にする部品がありません。先に部品を作ってください</translation>
++    </message>
++    <message>
++        <source>Other tools</source>
++        <translation>その他の道具</translation>
++    </message>
++    <message>
++        <source>Narrow down, e.g. mesh, text, gear</source>
++        <translation>絞り込む（例: メッシュ、文字、歯車）</translation>
++    </message>
++    <message>
++        <source>Specialist toolboxes</source>
++        <translation>専門の道具箱</translation>
++    </message>
++    <message>
++        <source>Not in a menu</source>
++        <translation>メニューに無い道具</translation>
++    </message>
++    <message>
++        <source>The tools of this kind are loaded when one of them is first used (a second or two).</source>
++        <translation>この種類の道具は、どれかをはじめて使うときに読み込みます（1〜2 秒）。</translation>
++    </message>
++    <message>
++        <source>(key {})</source>
++        <translation>（キー {}）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CommandSearch</name>
+@@ -10002,4 +10042,85 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>やりたいことを日本語か英語で打つと、どの道具でも探せます</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_NewPart</name>
++    <message>
++        <source>New Part</source>
++        <translation>新しい部品</translation>
++    </message>
++    <message>
++        <source>A new file with a part; then click where to draw</source>
++        <translation>部品の新しいファイル。続けて、描く場所をクリック</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_NewAssembly</name>
++    <message>
++        <source>New Assembly</source>
++        <translation>新しい組立</translation>
++    </message>
++    <message>
++        <source>A new file to put parts together in</source>
++        <translation>部品を組み合わせる新しいファイル</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_NewDrawing</name>
++    <message>
++        <source>Make Drawing</source>
++        <translation>図面を描く</translation>
++    </message>
++    <message>
++        <source>A drawing sheet with the three views of the picked part (of all parts if none is picked)</source>
++        <translation>選んだ部品（選んでいなければ全部）の三面図の図面を作ります</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_PlacePart</name>
++    <message>
++        <source>Put Part</source>
++        <translation>部品を置く</translation>
++    </message>
++    <message>
++        <source>Put a part into the assembly of this file (an assembly is made if there is none)</source>
++        <translation>このファイルの組立に部品を置きます（組立が無ければ作ります）</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_EditSourceSketch</name>
++    <message>
++        <source>Edit Its Sketch</source>
++        <translation>元のスケッチを編集</translation>
++    </message>
++    <message>
++        <source>Open the sketch the picked step was made from, to change its shape or sizes</source>
++        <translation>選んだ手順の元になったスケッチを開いて、形や寸法を直します</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_OtherTools</name>
++    <message>
++        <source>Other Tools</source>
++        <translation>その他の道具</translation>
++    </message>
++    <message>
++        <source>Every other tool, by kind: shapes, meshes and STL, 2D drafting, drawings, and the specialist toolboxes (CAM, FEM, BIM…), loaded when first used</source>
++        <translation>ほかの道具を種類ごとに: 形の加工・メッシュと STL・2D の作図・図面と、専門の道具箱（加工・解析・建築…）。はじめて使うときに読み込みます</translation>
++    </message>
++</context>
++<context>
++    <name>UnifiedScreen</name>
++    <message>
++        <source>Screen</source>
++        <translation>画面</translation>
++    </message>
++    <message>
++        <source>Show FreeCAD's menus and toolbars instead of ☰ and the tool strip</source>
++        <translation>☰ と道具の列の代わりに、FreeCAD 本家のメニューとツールバーを出す</translation>
++    </message>
++    <message>
++        <source>Takes effect the next time FreeCAD starts. Every tool can also be found with Ctrl+K.</source>
++        <translation>次に FreeCAD を起動したときから。どの道具も Ctrl+K で探せます。</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 79abc6c5b..3dcb1b61b 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -9,6 +9,8 @@
+ #include <Gui/Command.h>
+ #include <Gui/MenuManager.h>
+ #include <Gui/ToolBarManager.h>
++#include <Gui/Selection/Selection.h>
++#include <App/Application.h>
+ #include <Mod/Sketcher/Gui/Workbench.h>
+ 
+ #include "Workbench.h"
+@@ -71,7 +73,7 @@ void insertMenu(Gui::MenuItem* root, Gui::MenuItem* before, Gui::MenuItem* item)
+ }
+ }  // namespace
+ 
+-Gui::MenuItem* Workbench::setupMenuBar() const
++Gui::MenuItem* Workbench::classicMenuBar() const
+ {
+     Gui::MenuItem* root = StdWorkbench::setupMenuBar();
+     Gui::MenuItem* windows = root->findItem("&Windows");
+@@ -296,7 +298,7 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+     return root;
+ }
+ 
+-Gui::ToolBarItem* Workbench::setupToolBars() const
++Gui::ToolBarItem* Workbench::classicToolBars() const
+ {
+     Gui::ToolBarItem* root = StdWorkbench::setupToolBars();
+ 
+@@ -381,6 +383,157 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     return root;
+ }
+ 
++namespace
++{
++// The stock menus and toolbars instead of the integrated environment's own (Preferences ›
++// Unified › "Show FreeCAD's menus and toolbars"), for those who miss them
++bool classicChrome()
++{
++    return App::GetApplication()
++        .GetParameterGroupByPath("User parameter:BaseApp/Preferences/Mod/Unified")
++        ->GetBool("ClassicChrome", false);
++}
++
++// Take a menu out of the menu bar (to put it into another one)
++Gui::MenuItem* takeMenu(Gui::MenuItem* root, const char* name)
++{
++    Gui::MenuItem* menu = root->findItem(name);
++    if (menu) {
++        root->removeItem(menu);
++    }
++    return menu;
++}
++
++// The tools of the tool strip: the same whatever is picked or open (no modes). The rest is
++// reached through the search (Ctrl+K), "Other tools", the bar next to what is picked and the
++// right-click menu.
++void addToolStrip(Gui::ToolBarItem& strip)
++{
++    strip << "PartDesign_NewSketch"
++          << "Separator"
++          << "PartDesign_Pad"
++          << "PartDesign_Pocket"
++          << "PartDesign_Revolution"
++          << "Unified_Hole"
++          << "Separator"
++          << "PartDesign_Fillet"
++          << "PartDesign_Chamfer"
++          << "PartDesign_Thickness"
++          << "Separator"
++          << "PartDesign_Mirrored"
++          << "PartDesign_LinearPattern"
++          << "PartDesign_PolarPattern"
++          << "Separator"
++          << "Std_TransformManip"
++          << "Unified_SnapFaces"
++          << "Std_Measure"
++          << "Separator"
++          << "Unified_NewDrawing"
++          << "Unified_PlacePart"
++          << "Separator"
++          << "Unified_OtherTools";
++}
++}  // namespace
++
++Gui::MenuItem* Workbench::setupMenuBar() const
++{
++    if (classicChrome()) {
++        return classicMenuBar();
++    }
++    // One menu ("☰") instead of a menu bar: files, the window and help. Tools are not in
++    // menus: the tool strip, the search, "Other tools", the bar next to what is picked.
++    // FreeCAD's own menus stay inside it as submenus, so that their shortcuts keep working.
++    Gui::MenuItem* stock = StdWorkbench::setupMenuBar();
++    auto root = new Gui::MenuItem;
++    auto main = new Gui::MenuItem(root);
++    main->setCommand("Unified Main Menu");
++    auto exportMenu = new Gui::MenuItem;
++    exportMenu->setCommand("Unified Import Export");
++    *exportMenu << "Std_Import" << "Std_Export" << "Separator" << "Std_Print" << "Std_PrintPreview"
++                << "Std_PrintPdf";
++    *main << "Unified_NewPart"
++          << "Unified_NewAssembly"
++          << "Unified_NewDrawing"
++          << "Separator"
++          << "Std_Open"
++          << "Std_RecentFiles"
++          << "Separator"
++          << "Std_Save"
++          << "Std_SaveAs"
++          << "Std_SaveCopy"
++          << "Std_CloseActiveWindow"
++          << "Separator" << exportMenu
++          << "Separator"
++          << "Unified_Search"
++          << "Unified_OtherTools"
++          << "Separator";
++    for (const char* name : {"&Edit", "&View", "&Tools", "&Macro", "&Windows", "&Help"}) {
++        if (Gui::MenuItem* menu = takeMenu(stock, name)) {
++            main->appendItem(menu);
++        }
++    }
++    // The tools for add-ons are not in the integrated environment, the Python console is a
++    // developer's tool: in the Tools submenu as before
++    if (Gui::MenuItem* tools = main->findItem("&Tools")) {
++        for (const char* name : {"Std_AddonMgr", "Std_AddonMgrPip"}) {
++            if (Gui::MenuItem* found = tools->findItem(name)) {
++                tools->removeItem(found);
++                delete found;
++            }
++        }
++        tidySeparators(tools);
++    }
++    if (Gui::MenuItem* help = main->findItem("&Help")) {
++        *help << "Separator" << "Unified_About";
++    }
++    // Replace "Duplicate selection" with the variant that understands bodies, as PartDesign does
++    Gui::MenuItem* edit = main->findItem("&Edit");
++    if (Gui::MenuItem* dup = edit ? edit->findItem("Std_DuplicateSelection") : nullptr) {
++        dup->setCommand("PartDesign_DuplicateSelection");
++    }
++    *main << "Separator"
++          << "Std_DlgPreferences"
++          << "Std_Quit";
++    // No duplicates: preferences and quit were in the Edit and File menus
++    if (edit) {
++        if (Gui::MenuItem* prefs = edit->findItem("Std_DlgPreferences")) {
++            edit->removeItem(prefs);
++            delete prefs;
++        }
++        tidySeparators(edit);
++    }
++    delete stock;
++    return root;
++}
++
++Gui::ToolBarItem* Workbench::setupToolBars() const
++{
++    if (classicChrome()) {
++        return classicToolBars();
++    }
++    auto root = new Gui::ToolBarItem;
++    auto strip = new Gui::ToolBarItem(root);
++    strip->textUnderIcons = true;  // names under the icons: "Extrude" is found without hovering
++    strip->setCommand("Unified Tools");
++    addToolStrip(*strip);
++
++    // Sketch tools: the toolbars of Sketcher, while a sketch is edited
++    using Vis = Gui::ToolBarItem::DefaultVisibility;
++    auto editMode = new Gui::ToolBarItem(root, Vis::Unavailable);
++    editMode->setCommand("Edit Mode");
++    SketcherGui::addSketcherWorkbenchSketchEditModeActions(*editMode);
++    auto geom = new Gui::ToolBarItem(root, Vis::Unavailable);
++    geom->setCommand("Geometries");
++    SketcherGui::addSketcherWorkbenchGeometries(*geom);
++    auto cons = new Gui::ToolBarItem(root, Vis::Unavailable);
++    cons->setCommand("Constraints");
++    SketcherGui::addSketcherWorkbenchConstraints(*cons);
++    auto tools = new Gui::ToolBarItem(root, Vis::Unavailable);
++    tools->setCommand("Sketcher Tools");
++    SketcherGui::addSketcherWorkbenchTools(*tools);
++    return root;
++}
++
+ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) const
+ {
+     StdWorkbench::setupContextMenu(recipient, item);
+@@ -404,6 +557,23 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
+         }
+     }
+     tidySeparators(item);
++
++    // A step of a part: change it where it came from, put the next step after it, move it
++    // (the commands are only active when they apply)
++    if (!classicChrome()) {
++        auto steps = Gui::Selection().getObjectsOfType(Base::Type::fromName("PartDesign::Feature"));
++        if (!steps.empty()) {
++            auto first = new Gui::MenuItem;
++            first->setCommand("Unified_EditSourceSketch");
++            QList<Gui::MenuItem*> items = item->getItems();
++            if (items.isEmpty() || !item->insertItem(items.front(), first)) {
++                item->appendItem(first);
++            }
++            *item << "Separator"
++                  << "PartDesign_MoveTip"
++                  << "PartDesign_MoveFeatureInTree";
++        }
++    }
+ }
+ 
+ Gui::ToolBarItem* Workbench::setupCommandBars() const
+diff --git a/src/Mod/Unified/Gui/Workbench.h b/src/Mod/Unified/Gui/Workbench.h
+index f75f7dde0..57fa1e8d7 100644
+--- a/src/Mod/Unified/Gui/Workbench.h
++++ b/src/Mod/Unified/Gui/Workbench.h
+@@ -26,6 +26,11 @@ protected:
+     Gui::ToolBarItem* setupToolBars() const override;
+     Gui::ToolBarItem* setupCommandBars() const override;
+     void setupContextMenu(const char* recipient, Gui::MenuItem* item) const override;
++
++private:
++    // FreeCAD's menus and toolbars, rearranged (before the integrated environment had its own)
++    Gui::MenuItem* classicMenuBar() const;
++    Gui::ToolBarItem* classicToolBars() const;
+ };
+ 
+ }  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index bba959cdc..a798d35c9 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -62,8 +62,11 @@ class UnifiedWorkbench(Workbench):
+         # 道具の検索（Ctrl+K と右上の欄）。読み込んでいないモジュールの道具も目録から探せる
+         import CommandSearchGui
+ 
+-        CommandSearchGui.install_field()
+         CommandSearchGui.free_ctrl_k()
++        # モードの無い画面: ☰ の右に元に戻す・検索・AI・設定、道具の列の 1 文字の近道、その他の道具
++        import UnifiedChrome
++
++        UnifiedChrome.install()
+ 
+         # 設計の検査の結果をステータスバーに常に出す（計算し直すたびに更新）
+         DesignCheckGui.indicator.install()
+@@ -107,6 +110,7 @@ try:
+ 
+     Gui.addPreferencePage(UnifiedPreferences.NetworkPage, "General")
+     Gui.addPreferencePage(UnifiedPreferences.AIChatPage, "General")
++    Gui.addPreferencePage(UnifiedPreferences.ScreenPage, "General")
+     UnifiedPreferences.apply_qt_proxy()
+ except Exception as e:
+     FreeCAD.Console.PrintWarning("Unified preferences: %s\n" % e)
+diff --git a/src/Mod/Unified/OtherTools.svg b/src/Mod/Unified/OtherTools.svg
+new file mode 100644
+index 000000000..37d5e1dc3
+--- /dev/null
++++ b/src/Mod/Unified/OtherTools.svg
+@@ -0,0 +1,11 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++ <g fill="#5b8fd6" stroke="#2c5a9c" stroke-width="2">
++  <rect x="6" y="6" width="22" height="22" rx="4"/>
++  <rect x="36" y="6" width="22" height="22" rx="4"/>
++  <rect x="6" y="36" width="22" height="22" rx="4"/>
++ </g>
++ <g fill="none" stroke="#2c5a9c" stroke-width="5" stroke-linecap="round">
++  <line x1="47" y1="38" x2="47" y2="56"/>
++  <line x1="38" y1="47" x2="56" y2="47"/>
++ </g>
++</svg>
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+new file mode 100644
+index 000000000..30c6a27fc
+--- /dev/null
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -0,0 +1,544 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""The window of the integrated environment without modes (docs/ui-redesign/00-design.md, 0.2).
++
++- The top: "☰" (files, the window, help; the menus come from Workbench.cpp) and, at the right,
++  undo / redo, the tool search, the AI and the preferences
++- One tool strip that is the same whatever is picked or open (Workbench.cpp)
++- One-key shortcuts for the tools of the strip, which never fire while text is typed (a text field
++  has the focus, or the Japanese input method composes) or while a sketch is edited (its own
++  keys then)
++- "Other tools": every tool of every module by kind, loaded when first used
++- Commands: new part / assembly / drawing, put a part into an assembly, edit the sketch of a step
++"""
++
++import os
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import CommandSearchCore as core
++
++translate = App.Qt.translate
++HERE = os.path.dirname(os.path.abspath(__file__))
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def params():
++    return App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified")
++
++
++def classic():
++    return params().GetBool("ClassicChrome", False)
++
++
++# --------------------------------------------------------------------------- commands
++def _new_document():
++    Gui.runCommand("Std_New")
++    return App.ActiveDocument
++
++
++class NewPartCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "PartDesign_Body",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_NewPart", "New Part"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_NewPart", "A new file with a part; then click where to draw"),
++            "Accel": "Ctrl+N",
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        _new_document()
++        Gui.runCommand("PartDesign_Body")
++        if not Gui.Control.activeDialog():
++            Gui.runCommand("PartDesign_NewSketch")
++
++
++class NewAssemblyCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Geoassembly",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_NewAssembly", "New Assembly"),
++            "ToolTip": QT_TRANSLATE_NOOP("Unified_NewAssembly", "A new file to put parts together in"),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        _new_document()
++        Gui.runCommand("Assembly_CreateAssembly")
++
++
++def _shapes_to_draw():
++    """The parts to draw: the picked ones, else the visible parts of the document"""
++    doc = App.ActiveDocument
++    picked = [s.Object for s in Gui.Selection.getSelectionEx()]
++    if picked:
++        return picked
++    if not doc:
++        return []
++    out = []
++    for obj in doc.RootObjects:
++        if obj.isDerivedFrom("TechDraw::DrawPage"):
++            continue
++        if obj.isDerivedFrom("App::Part") or obj.isDerivedFrom("Part::Feature") or obj.isDerivedFrom("App::Link"):
++            if getattr(obj, "Visibility", True):
++                out.append(obj)
++    return out
++
++
++class NewDrawingCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "actions/TechDraw_ProjectionGroup",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_NewDrawing", "Make Drawing"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_NewDrawing",
++                "A drawing sheet with the three views of the picked part (of all parts if none is picked)",
++            ),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None
++
++    def Activated(self):
++        shapes = _shapes_to_draw()
++        if not shapes:
++            Gui.getMainWindow().statusBar().showMessage(
++                translate("Unified", "Make a part first: there is nothing to draw yet"), 6000
++            )
++            return
++        doc = App.ActiveDocument
++        before = {o.Name for o in doc.Objects}
++        Gui.runCommand("TechDraw_PageDefault")
++        pages = [o for o in doc.Objects if o.Name not in before and o.isDerivedFrom("TechDraw::DrawPage")]
++        if not pages:
++            return
++        page = pages[0]
++        Gui.Selection.clearSelection()
++        for s in shapes:
++            Gui.Selection.addSelection(doc.Name, s.Name)
++        Gui.Selection.addSelection(doc.Name, page.Name)
++        Gui.runCommand("TechDraw_ProjectionGroup")
++
++
++class PlacePartCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Assembly_InsertLink",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_PlacePart", "Put Part"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_PlacePart",
++                "Put a part into the assembly of this file (an assembly is made if there is none)",
++            ),
++        }
++
++    def IsActive(self):
++        return App.ActiveDocument is not None
++
++    def Activated(self):
++        doc = App.ActiveDocument
++        if not any(o.isDerivedFrom("Assembly::AssemblyObject") for o in doc.Objects):
++            Gui.runCommand("Assembly_CreateAssembly")
++        Gui.runCommand("Assembly_InsertLink")
++
++
++class EditSourceSketchCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Sketcher_EditSketch",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_EditSourceSketch", "Edit Its Sketch"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_EditSourceSketch", "Open the sketch the picked step was made from, to change its shape or sizes"
++            ),
++        }
++
++    def sketch(self):
++        sel = Gui.Selection.getSelection()
++        if len(sel) != 1:
++            return None
++        profile = getattr(sel[0], "Profile", None)
++        obj = profile[0] if isinstance(profile, tuple) else profile
++        if obj is not None and obj.isDerivedFrom("Sketcher::SketchObject"):
++            return obj
++        return None
++
++    def IsActive(self):
++        return self.sketch() is not None
++
++    def Activated(self):
++        sk = self.sketch()
++        if sk:
++            Gui.ActiveDocument.setEdit(sk.Name)
++
++
++class OtherToolsCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "OtherTools.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_OtherTools", "Other Tools"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_OtherTools",
++                "Every other tool, by kind: shapes, meshes and STL, 2D drafting, drawings, and the "
++                "specialist toolboxes (CAM, FEM, BIM…), loaded when first used",
++            ),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        other_tools().show_window()
++
++
++for _name, _cmd in (
++    ("Unified_NewPart", NewPartCommand()),
++    ("Unified_NewAssembly", NewAssemblyCommand()),
++    ("Unified_NewDrawing", NewDrawingCommand()),
++    ("Unified_PlacePart", PlacePartCommand()),
++    ("Unified_EditSourceSketch", EditSourceSketchCommand()),
++    ("Unified_OtherTools", OtherToolsCommand()),
++):
++    Gui.addCommand(_name, _cmd)
++
++
++# --------------------------------------------------------------------------- other tools
++# The kinds of "Other tools", in this order; the specialist toolboxes last
++KINDS = [
++    ("PartDesignWorkbench", False),
++    ("PartWorkbench", False),
++    ("SketcherWorkbench", False),
++    ("MeshWorkbench", False),
++    ("DraftWorkbench", False),
++    ("TechDrawWorkbench", False),
++    ("AssemblyWorkbench", False),
++    ("SpreadsheetWorkbench", False),
++    ("SurfaceWorkbench", False),
++    ("MaterialWorkbench", False),
++    ("BIMWorkbench", True),
++    ("CAMWorkbench", True),
++    ("FemWorkbench", True),
++    ("RobotWorkbench", True),
++    ("OpenSCADWorkbench", True),
++    ("PointsWorkbench", True),
++    ("ReverseEngineeringWorkbench", True),
++    ("InspectionWorkbench", True),
++]
++
++
++def module_of(entry):
++    return entry.get("module_wb") or entry.get("wb") or ""
++
++
++class OtherTools(QtWidgets.QWidget):
++    """Every tool by kind (module) and by the menu its module put it in"""
++
++    def __init__(self, parent):
++        super().__init__(parent, QtCore.Qt.Tool)
++        self.setObjectName("UnifiedOtherTools")
++        self.setWindowTitle(translate("Unified", "Other tools"))
++        self.resize(900, 620)
++        lay = QtWidgets.QVBoxLayout(self)
++        self.filter = QtWidgets.QLineEdit(self)
++        self.filter.setPlaceholderText(translate("Unified", "Narrow down, e.g. mesh, text, gear"))
++        self.filter.setClearButtonEnabled(True)
++        lay.addWidget(self.filter)
++        split = QtWidgets.QSplitter(self)
++        self.kinds = QtWidgets.QListWidget(split)
++        self.kinds.setObjectName("UnifiedOtherToolsKinds")
++        self.kinds.setMaximumWidth(260)
++        self.tools = QtWidgets.QTreeWidget(split)
++        self.tools.setObjectName("UnifiedOtherToolsList")
++        self.tools.setHeaderHidden(True)
++        self.tools.setIconSize(QtCore.QSize(20, 20))
++        split.setStretchFactor(1, 1)
++        lay.addWidget(split, 1)
++        self.note = QtWidgets.QLabel(self)
++        self.note.setWordWrap(True)
++        lay.addWidget(self.note)
++        self.kinds.currentRowChanged.connect(self.show_kind)
++        self.tools.itemActivated.connect(self.run_item)
++        self.tools.itemClicked.connect(self.run_item)
++        self.filter.textChanged.connect(lambda _t: self.show_kind(self.kinds.currentRow()))
++        self.entries = []
++
++    def show_window(self):
++        import CommandSearchGui
++
++        self.entries = CommandSearchGui.entries()
++        self.kinds.blockSignals(True)
++        self.kinds.clear()
++        specialist_started = False
++        for wb, specialist in KINDS:
++            if not any(module_of(e) == wb and not core.hidden(e) for e in self.entries):
++                continue
++            if specialist and not specialist_started:
++                head = QtWidgets.QListWidgetItem(translate("Unified", "Specialist toolboxes"))
++                head.setFlags(QtCore.Qt.NoItemFlags)
++                f = head.font()
++                f.setBold(True)
++                head.setFont(f)
++                self.kinds.addItem(head)
++                specialist_started = True
++            item = QtWidgets.QListWidgetItem(core.MODULE_JA.get(wb, wb))
++            item.setData(QtCore.Qt.UserRole, wb)
++            self.kinds.addItem(item)
++        self.kinds.blockSignals(False)
++        self.kinds.setCurrentRow(0)
++        self.show_kind(0)
++        mw = Gui.getMainWindow()
++        geo = mw.geometry()
++        self.move(geo.x() + (geo.width() - self.width()) // 2, geo.y() + 90)
++        self.show()
++        self.raise_()
++        self.activateWindow()
++        self.filter.setFocus()
++
++    def show_kind(self, row):
++        import CommandSearchGui
++
++        item = self.kinds.item(row)
++        wb = item.data(QtCore.Qt.UserRole) if item else None
++        self.tools.clear()
++        if not wb:
++            return
++        text = self.filter.text().strip()
++        if text:
++            shown = core.search(text, [e for e in self.entries if module_of(e) == wb], limit=500)
++        else:
++            shown = [e for e in self.entries if module_of(e) == wb and not core.hidden(e)]
++        groups = {}
++        for e in shown:
++            path = ""
++            for place in e.get("places", []):
++                if place.get("wb") == wb and place.get("menu"):
++                    # Below the module's own menu; its tools at the top of that menu go first
++                    path = " › ".join(place["menu"][1:]) or core.MODULE_JA.get(wb, place["menu"][0])
++                    break
++            groups.setdefault(path, []).append(e)
++        loaded = set(Gui.listCommands())
++        top = core.MODULE_JA.get(wb, "")
++        for path in sorted(groups, key=lambda p: (p == "", p != top, p)):
++            parent = QtWidgets.QTreeWidgetItem([path or translate("Unified", "Not in a menu")])
++            parent.setFlags(QtCore.Qt.ItemIsEnabled)
++            self.tools.addTopLevelItem(parent)
++            for e in sorted(groups[path], key=lambda x: x.get("ja") or x.get("en") or x["name"]) if not text else groups[path]:
++                CommandSearchGui.refresh_texts(e)
++                name = e.get("ja") or e.get("en") or e["name"]
++                child = QtWidgets.QTreeWidgetItem([name])
++                child.setData(0, QtCore.Qt.UserRole, e["name"])
++                child.setToolTip(0, CommandSearchGui.strip_tags(e.get("tip_ja") or e.get("tip_en")))
++                if e["name"] in loaded and e.get("icon"):
++                    child.setIcon(0, Gui.getIcon(e["icon"]))
++                parent.addChild(child)
++            parent.setExpanded(True)
++        not_loaded = any(e["name"] not in loaded for e in shown)
++        self.note.setText(
++            translate("Unified", "The tools of this kind are loaded when one of them is first used (a second or two).")
++            if not_loaded else ""
++        )
++
++    def run_item(self, item, _column=0):
++        import CommandSearchGui
++
++        name = item.data(0, QtCore.Qt.UserRole)
++        entry = CommandSearchGui._by_name.get(name)
++        if not entry:
++            return
++        self.hide()
++        QtCore.QTimer.singleShot(0, lambda: CommandSearchGui.run(entry))
++
++
++_other = None
++
++
++def other_tools():
++    global _other
++    if _other is None:
++        _other = OtherTools(Gui.getMainWindow())
++    return _other
++
++
++# --------------------------------------------------------------------------- one-key shortcuts
++KEYS = {
++    "S": "PartDesign_NewSketch",
++    "E": "PartDesign_Pad",
++    "C": "PartDesign_Pocket",
++    "H": "Unified_Hole",
++    "F": "PartDesign_Fillet",
++    "M": "Std_TransformManip",
++    "D": "Std_Measure",
++}
++
++TEXT_WIDGETS = (
++    QtWidgets.QLineEdit,
++    QtWidgets.QTextEdit,
++    QtWidgets.QPlainTextEdit,
++    QtWidgets.QAbstractSpinBox,
++)
++
++
++def typing_text(widget):
++    """True when keys go into text: a text field has the focus, or an input method composes"""
++    if widget is None:
++        return False
++    if isinstance(widget, TEXT_WIDGETS):
++        return True
++    if isinstance(widget, QtWidgets.QComboBox) and widget.isEditable():
++        return True
++    if isinstance(widget, QtWidgets.QAbstractItemView) and widget.state() == QtWidgets.QAbstractItemView.EditingState:
++        return True
++    # Any other widget that takes text through the input method (e.g. the Japanese IME)
++    if widget.testAttribute(QtCore.Qt.WA_InputMethodEnabled):
++        try:
++            if widget.inputMethodQuery(QtCore.Qt.ImEnabled):
++                return True
++        except Exception:
++            pass
++    return False
++
++
++def one_key_command(event):
++    """The command a key press runs, or None"""
++    if event.modifiers() & ~QtCore.Qt.KeypadModifier:
++        return None
++    text = event.text().upper()
++    if len(text) != 1 or text not in KEYS:
++        return None
++    app = QtWidgets.QApplication.instance()
++    if app.activePopupWidget() or app.activeModalWidget():
++        return None
++    if typing_text(app.focusWidget()):
++        return None
++    # While a sketch is edited, its own keys (dimension D, coincident C …)
++    gdoc = Gui.ActiveDocument
++    if gdoc is not None and gdoc.getInEdit() is not None:
++        return None
++    window = app.activeWindow()
++    if window is not Gui.getMainWindow():
++        return None
++    return KEYS[text]
++
++
++class KeyFilter(QtCore.QObject):
++    def eventFilter(self, obj, event):
++        if event.type() == QtCore.QEvent.ShortcutOverride and isinstance(obj, QtWidgets.QWidget):
++            name = one_key_command(event)
++            if name:
++                event.accept()
++                QtCore.QTimer.singleShot(0, lambda: Gui.runCommand(name))
++                return True
++        return False
++
++
++_key_filter = None
++
++
++def install_keys():
++    """One-key shortcuts for the tool strip. Commands that had one of these keys lose it
++    (the integrated environment's keys win: the assembly joints are on the bar next to the
++    picked faces); the sketch keys stay, as they only act while a sketch is edited."""
++    global _key_filter
++    if _key_filter is None:
++        _key_filter = KeyFilter()
++        QtWidgets.QApplication.instance().installEventFilter(_key_filter)
++    ours = set(KEYS.values())
++    for name in Gui.listCommands():
++        if name in ours or name.startswith("Sketcher_"):
++            continue
++        try:
++            cmd = Gui.Command.get(name)
++            first = cmd.getShortcut().replace(" ", "").split(",")[0].upper()
++        except Exception:
++            continue
++        if first in KEYS:
++            cmd.setShortcut("")
++
++
++# --------------------------------------------------------------------------- the top of the window
++def _tool_button(parent, command, text_too=False):
++    if command not in Gui.listCommands():
++        return None
++    actions = Gui.Command.get(command).getAction()
++    if actions:
++        action = actions[0]
++    else:
++        # A command in no menu or toolbar has no action yet: one that runs it
++        info = Gui.Command.get(command).getInfo()
++        ctx = command if info.get("className") in ("PythonCommand", "PythonGroupCommand") else info.get("className")
++        pixmap = info.get("pixmap") or ""
++        icon = QtGui.QIcon(pixmap) if os.path.isfile(pixmap) else Gui.getIcon(pixmap) if pixmap else QtGui.QIcon()
++        action = QtGui.QAction(icon, core.plain(QtCore.QCoreApplication.translate(ctx, info.get("menuText") or "")), parent)
++        action.setToolTip(QtCore.QCoreApplication.translate(ctx, info.get("toolTip") or ""))
++        action.triggered.connect(lambda checked=False, c=command: Gui.runCommand(c))
++    b = QtWidgets.QToolButton(parent)
++    b.setDefaultAction(action)
++    b.setAutoRaise(True)
++    b.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon if text_too else QtCore.Qt.ToolButtonIconOnly)
++    b.setObjectName("UnifiedTop_" + command)
++    return b
++
++
++def install_top():
++    """Undo, redo, the search, the AI and the preferences at the right of "☰" """
++    import CommandSearchGui
++
++    mw = Gui.getMainWindow()
++    bar = mw.menuBar()
++    if mw.findChild(QtWidgets.QWidget, "UnifiedTopRight"):
++        return
++    holder = QtWidgets.QWidget(bar)
++    holder.setObjectName("UnifiedTopRight")
++    lay = QtWidgets.QHBoxLayout(holder)
++    lay.setContentsMargins(4, 0, 6, 0)
++    lay.setSpacing(2)
++    for command in ("Std_Undo", "Std_Redo"):
++        b = _tool_button(holder, command)
++        if b:
++            lay.addWidget(b)
++    lay.addSpacing(12)
++    lay.addWidget(CommandSearchGui.SearchField(holder))
++    lay.addSpacing(12)
++    for command, text in (("Unified_AIChat", True), ("Std_DlgPreferences", False)):
++        b = _tool_button(holder, command, text)
++        if b:
++            lay.addWidget(b)
++    corner = bar.cornerWidget(QtCore.Qt.TopRightCorner)
++    if corner is not None and corner.layout() is not None:
++        corner.layout().insertWidget(0, holder)
++    else:
++        bar.setCornerWidget(holder, QtCore.Qt.TopRightCorner)
++    holder.show()
++    bar.adjustSize()
++
++
++def strip_tooltips():
++    """The key of each tool of the strip in its tooltip"""
++    for key, name in KEYS.items():
++        try:
++            for action in Gui.Command.get(name).getAction():
++                tip = action.toolTip()
++                mark = translate("Unified", "(key {})").format(key)
++                if mark not in tip:
++                    action.setToolTip(tip + " " + mark)
++        except Exception:
++            pass
++
++
++def install():
++    if classic():
++        import CommandSearchGui
++
++        CommandSearchGui.install_field()
++        return
++    # After the menus and toolbars are set up (the actions of the commands exist then)
++    QtCore.QTimer.singleShot(0, install_top)
++    QtCore.QTimer.singleShot(0, strip_tooltips)
++    install_keys()
+diff --git a/src/Mod/Unified/UnifiedPreferences.py b/src/Mod/Unified/UnifiedPreferences.py
+index 633baab59..60cb9c67b 100644
+--- a/src/Mod/Unified/UnifiedPreferences.py
++++ b/src/Mod/Unified/UnifiedPreferences.py
+@@ -190,3 +190,29 @@ def apply_qt_proxy():
+         QtNetwork.QNetworkProxy.setApplicationProxy(QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.NoProxy))
+     else:
+         QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(True)
++
++
++class ScreenPage:
++    """画面の形。既定はモードの無い統合版の画面（☰・いつも同じ道具の列・検索）"""
++
++    def __init__(self, parent=None):
++        self.form = QtWidgets.QWidget(parent)
++        self.form.setWindowTitle(translate("UnifiedScreen", "Screen"))
++        lay = QtWidgets.QVBoxLayout(self.form)
++        self.classic = QtWidgets.QCheckBox(
++            translate("UnifiedScreen", "Show FreeCAD's menus and toolbars instead of ☰ and the tool strip"))
++        lay.addWidget(self.classic)
++        note = QtWidgets.QLabel(translate(
++            "UnifiedScreen",
++            "Takes effect the next time FreeCAD starts. Every tool can also be found with Ctrl+K."))
++        note.setWordWrap(True)
++        lay.addWidget(note)
++        lay.addStretch(1)
++
++    def loadSettings(self):
++        p = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified")
++        self.classic.setChecked(p.GetBool("ClassicChrome", False))
++
++    def saveSettings(self):
++        p = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified")
++        p.SetBool("ClassicChrome", self.classic.isChecked())
+-- 
+2.43.0
+

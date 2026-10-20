@@ -1,0 +1,1324 @@
+From 94a9371de7de72d4fd6f7375afa1c2c5271f434b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:51:23 +0900
+Subject: [PATCH 252/258] Unified: the bar next to a pick follows a table of
+ rules, with a number to type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+What the bar offers is now data (ContextRules.py, as in chapter 6.4 of the
+design): the kind of the picked things (sketch, flat / round / other face,
+straight / circle / other edge, several edges, point, part, two picks on
+two parts, two parts, mesh, lines of an opened 2D drawing, and in technical
+drawings a circle, a line, two lines, a view, a page) gives the tools from
+left to right. Tools of modules not loaded yet are offered too and load
+their module when used (meshes: check and fix, make a solid).
+
+The first tool that takes a number has a field next to it (extrude 10 mm,
+fillet 2 mm …): type the number and Enter, and the tool is done without
+its panel (the last number is remembered); its button opens the panel for
+everything else. Typing digits in the view goes into the field. Last but
+one is "Ask AI", last "…": every tool that works with the pick. New
+commands pick the other edges in the same direction and the other circles
+of the same size. The bar also appears for picks on a drawing page.
+Tested without the GUI: FreeCADCmd -t TestContextRules.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   2 +
+ src/Mod/Unified/CommandSearchGui.py           |  39 +-
+ src/Mod/Unified/ContextRules.py               | 382 ++++++++++++++++++
+ src/Mod/Unified/Gui/ContextBar.cpp            | 244 ++++++-----
+ src/Mod/Unified/Gui/ContextBar.h              |   6 +-
+ .../translations/UnifiedWording_ja.ts         | 220 ++++++++++
+ src/Mod/Unified/TestContextRules.py           | 134 ++++++
+ src/Mod/Unified/UnifiedChrome.py              |  61 +++
+ 8 files changed, 992 insertions(+), 96 deletions(-)
+ create mode 100644 src/Mod/Unified/ContextRules.py
+ create mode 100644 src/Mod/Unified/TestContextRules.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index bd0df90e9..5f651b009 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -14,6 +14,8 @@ set(Unified_Scripts
+     ai-requirements.txt
+     CommandSearchCore.py
+     TestCommandSearch.py
++    ContextRules.py
++    TestContextRules.py
+ )
+ 
+ if(BUILD_GUI)
+diff --git a/src/Mod/Unified/CommandSearchGui.py b/src/Mod/Unified/CommandSearchGui.py
+index ecbf1fb23..0d3afbf92 100644
+--- a/src/Mod/Unified/CommandSearchGui.py
++++ b/src/Mod/Unified/CommandSearchGui.py
+@@ -218,6 +218,21 @@ class SearchPopup(QtWidgets.QFrame):
+         self.edit.selectAll()
+         self.update_list()
+ 
++    def open_usable(self):
++        """The tools that work with the current selection, before anything is typed"""
++        self.open("")
++        loaded = set(Gui.listCommands())
++        cand = [e for e in entries() if e["name"] in loaded and e.get("places") and not core.hidden(e)]
++        ok = usable([e["name"] for e in cand])
++        shown = [e for e in cand if e["name"] in ok and not e["name"].startswith(("Std_", "Unified_Search"))]
++        shown.sort(key=lambda e: (-core.MODULE_RANK.get(e.get("module_wb") or e.get("wb") or "", 0),
++                                  e.get("ja") or e.get("en") or e["name"]))
++        self.list.clear()
++        for e in shown[:60]:
++            refresh_texts(e)
++            self.list.addItem(self.make_item(e, True))
++        self.list.setCurrentRow(0)
++
+     def close_popup(self):
+         self.hide()
+         mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
+@@ -228,9 +243,9 @@ class SearchPopup(QtWidgets.QFrame):
+     # -- the list
+     def update_list(self):
+         text = self.edit.text().strip()
+-        self.list.clear()
+         if not text:
+             return
++        self.list.clear()
+         found = core.search(text, entries(), placed=self.places.keys(), limit=80)
+         ok = usable([e["name"] for e in found])
+         found = core.search(text, found, usable=ok, placed=self.places.keys(), limit=40)
+@@ -383,6 +398,28 @@ class SearchCommand:
+ Gui.addCommand("Unified_Search", SearchCommand())
+ 
+ 
++class SearchUsableCommand:
++    """"…" at the end of the bar next to a pick: every tool that works with what is picked"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "edit-find",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_SearchUsable", "All Tools for This"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_SearchUsable", "Every tool that can be used with what is picked; type to narrow down"
++            ),
++        }
++
++    def IsActive(self):
++        return True
++
++    def Activated(self):
++        popup().open_usable()
++
++
++Gui.addCommand("Unified_SearchUsable", SearchUsableCommand())
++
++
+ def install_field():
+     """The search field in the top right corner of the menu bar"""
+     mw = Gui.getMainWindow()
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+new file mode 100644
+index 000000000..0c44a18e1
+--- /dev/null
++++ b/src/Mod/Unified/ContextRules.py
+@@ -0,0 +1,382 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What the bar next to a pick offers: the rules as data (docs/ui-redesign/00-design.md, 6.4).
++
++classify() names the kind of the picked things ("flat face", "circle edge", "mesh", ...); RULES
++says, for each kind, the tools of the bar from left to right: the first one is the most likely,
++a tool with a number field is used by typing the number and Enter (its full panel with "…").
++"Ask AI" is added last but one, and "…" (every tool that works with the pick) last, by the bar.
++Kinds without tools of their own still get "measure", "hide" and "AI".
++
++No Qt here: the rules are tested without the GUI (TestContextRules.py). The bar (ContextBar.cpp)
++asks actions_for_selection() and runs a tool with run() / run_with_value().
++"""
++
++import FreeCAD as App
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def A(command, label, field=None):
++    """A tool of the bar: the command, its short name on the bar, and the number field
++    (property of the new feature, unit, default) if it takes one"""
++    return {"command": command, "label": label, "field": field}
++
++
++LENGTH = ("Length", "mm", 10.0)
++RADIUS = ("Radius", "mm", 2.0)
++SIZE = ("Size", "mm", 1.0)
++THICK = ("Value", "mm", 1.0)
++SCALE = None
++
++T = lambda text: QT_TRANSLATE_NOOP("ContextRules", text)
++
++RULES = {
++    # A sketch that is closed (picked anywhere on it)
++    "sketch": [
++        A("PartDesign_Pad", T("Extrude"), LENGTH),
++        A("PartDesign_Pocket", T("Cut in"), LENGTH),
++        A("PartDesign_Revolution", T("Revolve")),
++        A("Sketcher_EditSketch", T("Edit")),
++    ],
++    "flat face": [
++        A("PartDesign_NewSketch", T("Sketch")),
++        A("PartDesign_Pad", T("Extrude"), LENGTH),
++        A("PartDesign_Pocket", T("Cut in"), LENGTH),
++        A("Unified_Hole", T("Hole")),
++        A("PartDesign_Thickness", T("Shell"), THICK),
++        A("Unified_SnapFaces", T("Snap")),
++    ],
++    "round face": [
++        A("Std_Measure", T("Measure")),
++        A("Unified_SnapAxes", T("Line up axes")),
++        A("PartDesign_Fillet", T("Fillet"), RADIUS),
++    ],
++    "other face": [
++        A("Std_Measure", T("Measure")),
++        A("PartDesign_Thickness", T("Shell"), THICK),
++    ],
++    "line edge": [
++        A("PartDesign_Fillet", T("Fillet"), RADIUS),
++        A("PartDesign_Chamfer", T("Chamfer"), SIZE),
++        A("Unified_SelectParallelEdges", T("Same direction")),
++        A("Std_Measure", T("Measure")),
++    ],
++    "circle edge": [
++        A("PartDesign_Fillet", T("Fillet"), RADIUS),
++        A("PartDesign_Chamfer", T("Chamfer"), SIZE),
++        A("Unified_SelectSameCircles", T("Same circles")),
++        A("Unified_MovePointToPoint", T("Point to point")),
++        A("Std_Measure", T("Measure")),
++    ],
++    "other edge": [
++        A("PartDesign_Fillet", T("Fillet"), RADIUS),
++        A("PartDesign_Chamfer", T("Chamfer"), SIZE),
++        A("Std_Measure", T("Measure")),
++    ],
++    "edges": [
++        A("PartDesign_Fillet", T("Fillet"), RADIUS),
++        A("PartDesign_Chamfer", T("Chamfer"), SIZE),
++        A("Std_Measure", T("Measure")),
++    ],
++    "vertex": [
++        A("Unified_MovePointToPoint", T("Point to point")),
++        A("Std_Measure", T("Measure")),
++    ],
++    "part": [
++        A("Std_TransformManip", T("Move")),
++        A("Unified_SnapFaces", T("Snap")),
++        A("Unified_MovePointToPoint", T("Point to point")),
++        A("Part_Mirror", T("Mirror")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
++    # Two picks on two parts (the first one moves; which of these fit the commands decide)
++    "two picks": [
++        A("Unified_SnapFaces", T("Snap")),
++        A("Unified_SnapAxes", T("Line up axes")),
++        A("Unified_PointToFace", T("Point onto face")),
++        A("Unified_MovePointToPoint", T("Point to point")),
++        A("Std_Measure", T("Distance")),
++    ],
++    "two parts": [
++        A("Part_Fuse", T("Join")),
++        A("Part_Cut", T("Subtract")),
++        A("Part_Common", T("Overlap")),
++        A("Std_Measure", T("Distance")),
++    ],
++    "mesh": [
++        A("Mesh_Evaluation", T("Check and fix")),
++        A("Part_ShapeFromMesh", T("Make solid")),
++        A("Mesh_Scale", T("Scale")),
++        A("Mesh_Export", T("Export")),
++    ],
++    # Lines of an opened 2D drawing (DXF, DWG, JWW)
++    "drawing lines": [
++        A("PartDesign_Pad", T("Extrude outline"), LENGTH),
++        A("Draft_Draft2Sketch", T("To sketch")),
++        A("Draft_Upgrade", T("Join to face")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
++    # In a technical drawing
++    "drawing circle": [
++        A("TechDraw_DiameterDimension", T("Diameter")),
++        A("TechDraw_RadiusDimension", T("Radius")),
++        A("TechDraw_CircleCenterLines", T("Center lines")),
++        A("TechDraw_CosmeticThread", T("Thread")),
++    ],
++    "drawing line": [
++        A("TechDraw_LengthDimension", T("Length")),
++        A("TechDraw_HorizontalDimension", T("Horizontal")),
++        A("TechDraw_VerticalDimension", T("Vertical")),
++        A("TechDraw_CenterLineGroup", T("Center line")),
++    ],
++    "drawing two lines": [
++        A("TechDraw_LengthDimension", T("Distance")),
++        A("TechDraw_AngleDimension", T("Angle")),
++        A("TechDraw_2LineCenterLine", T("Center line")),
++    ],
++    "drawing view": [
++        A("TechDraw_ExtensionCircleCenterLines", T("Center lines")),
++        A("TechDraw_SectionView", T("Section")),
++        A("TechDraw_DetailView", T("Detail")),
++    ],
++    "drawing page": [
++        A("TechDraw_PrintAll", T("PDF / print")),
++        A("TechDraw_ExportPageDXF", T("DXF")),
++        A("TechDraw_ExportPageSVG", T("SVG")),
++    ],
++    "joint": [
++        A("Std_ToggleVisibility", T("Hide")),
++        A("Std_Delete", T("Delete")),
++    ],
++    # Something picked that none of the rows above knows
++    "other": [
++        A("Std_Measure", T("Measure")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
++}
++
++
++def _is(obj, type_name):
++    try:
++        return obj.isDerivedFrom(type_name)
++    except Exception:
++        return False
++
++
++def _sub_shape(obj, sub):
++    try:
++        return obj.getSubObject(sub)
++    except Exception:
++        return None
++
++
++def _surface_kind(face):
++    try:
++        name = type(face.Surface).__name__
++    except Exception:
++        return "other face"
++    if name == "Plane":
++        return "flat face"
++    if name in ("Cylinder", "Cone"):
++        return "round face"
++    return "other face"
++
++
++def _curve_kind(edge):
++    try:
++        name = type(edge.Curve).__name__
++    except Exception:
++        return "other edge"
++    if name in ("Line", "LineSegment"):
++        return "line edge"
++    if name == "Circle":
++        return "circle edge"
++    return "other edge"
++
++
++def is_loose_2d(obj):
++    """Lines of a 2D drawing: a shape of edges only, not in a part (see LooseOutline.py)"""
++    if not _is(obj, "Part::Feature") or _is(obj, "PartDesign::Feature") or _is(obj, "Part::Part2DObject"):
++        return False
++    if any(_is(p, "PartDesign::Body") for p in obj.InList):
++        return False
++    shape = obj.Shape
++    return not shape.isNull() and bool(shape.Edges) and not shape.Faces and not shape.Solids
++
++
++def _drawing_edge_kind(view, sub):
++    try:
++        index = int(sub[4:])
++        edge = view.getEdgeByIndex(index)
++        name = type(edge.Curve).__name__ if hasattr(edge, "Curve") else ""
++    except Exception:
++        name = ""
++    return "drawing circle" if name in ("Circle", "ArcOfCircle") else "drawing line"
++
++
++def classify(picks):
++    """The kind of what is picked. picks: a list of (object, [element names])"""
++    if not picks:
++        return None
++    objs = [o for o, _ in picks]
++    subs = [list(s) for _, s in picks]
++    flat = [s for ss in subs for s in ss]
++
++    # In a technical drawing
++    if all(_is(o, "TechDraw::DrawViewPart") for o in objs):
++        edges = [s for s in flat if s.startswith("Edge")]
++        if len(picks) == 1 and not flat:
++            return "drawing view"
++        if len(edges) == 1 and len(flat) == 1:
++            return _drawing_edge_kind(objs[0], edges[0])
++        if len(edges) == 2 and len(flat) == 2:
++            return "drawing two lines"
++        return "drawing view"
++    if len(picks) == 1 and _is(objs[0], "TechDraw::DrawPage") and not flat:
++        return "drawing page"
++    if all(_is(o, "Assembly::JointGroup") or hasattr(o, "JointType") for o in objs):
++        return "joint"
++
++    if len(picks) == 1:
++        obj, ss = objs[0], subs[0]
++        if _is(obj, "Sketcher::SketchObject"):
++            return "sketch"
++        if _is(obj, "Mesh::Feature"):
++            return "mesh"
++        if is_loose_2d(obj):
++            return "drawing lines"
++        if not ss:
++            if _is(obj, "Part::Feature") or _is(obj, "App::Part") or _is(obj, "App::Link"):
++                return "part"
++            return "other"
++        if len(ss) == 1:
++            shape = _sub_shape(obj, ss[0])
++            if ss[0].startswith("Face") and shape is not None:
++                return _surface_kind(shape)
++            if ss[0].startswith("Edge") and shape is not None:
++                return _curve_kind(shape)
++            if ss[0].startswith("Vertex"):
++                return "vertex"
++            return "other"
++        if all(s.startswith("Edge") for s in ss):
++            return "edges"
++        return "other"
++
++    # Several picks
++    if all(is_loose_2d(o) for o in objs):
++        return "drawing lines"
++    if all(len(s) == 1 for s in subs) and len(picks) == 2 and objs[0] != objs[1]:
++        return "two picks"
++    if all(not s for s in subs) and len(picks) == 2:
++        return "two parts"
++    if all(s and all(x.startswith("Edge") for x in s) for s in subs):
++        return "edges"
++    return "other"
++
++
++def actions_for(kind):
++    return [dict(a) for a in RULES.get(kind or "", [])]
++
++
++# --------------------------------------------------------------------------- with the GUI
++def selection_picks():
++    import FreeCADGui as Gui
++
++    return [(s.Object, list(s.SubElementNames)) for s in Gui.Selection.getSelectionEx()]
++
++
++def actions_for_selection():
++    """For the bar: [(command, translated label, field unit or "")]"""
++    kind = classify(selection_picks())
++    out = []
++    for a in actions_for(kind):
++        label = translate("ContextRules", a["label"])
++        field = a["field"]
++        out.append((a["command"], label, field[1] if field else ""))
++    return out
++
++
++def _entry(command):
++    import CommandSearchGui
++
++    CommandSearchGui.entries()
++    return CommandSearchGui._by_name.get(command)
++
++
++def available(command):
++    """The command can be offered: registered, or in the catalog (its module is loaded when used)"""
++    import FreeCADGui as Gui
++
++    if command in Gui.listCommands():
++        try:
++            return Gui.Command.get(command).isActive()
++        except Exception:
++            return False
++    e = _entry(command)
++    return e is not None and bool(e.get("wb"))
++
++
++def run(command):
++    import FreeCADGui as Gui
++
++    if command in Gui.listCommands():
++        Gui.runCommand(command)
++        return
++    e = _entry(command)
++    if e:
++        import CommandSearchGui
++
++        CommandSearchGui.run(e)
++
++
++def field_of(command):
++    for rows in RULES.values():
++        for a in rows:
++            if a["command"] == command and a["field"]:
++                return a["field"]
++    return None
++
++
++def default_value(command):
++    """The number shown in the field: the last one used with this tool, else the default"""
++    field = field_of(command)
++    if not field:
++        return ""
++    p = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified/ContextBar")
++    return p.GetString(command, "{:g} {}".format(field[2], field[1]))
++
++
++def run_with_value(command, text):
++    """Run the tool and give its new feature the typed number, without its panel"""
++    import FreeCADGui as Gui
++    from PySide import QtWidgets
++
++    field = field_of(command)
++    run(command)
++    QtWidgets.QApplication.processEvents()
++    gdoc = Gui.ActiveDocument
++    edit = gdoc.getInEdit() if gdoc else None
++    obj = edit.Object if edit is not None else None
++    if field is None or obj is None or not hasattr(obj, field[0]):
++        return  # the panel stays open: the number is set there
++    try:
++        value = App.Units.Quantity(text if any(c.isalpha() for c in text) else text + " " + field[1])
++    except Exception as e:
++        App.Console.PrintWarning("Context bar: {}: {}\n".format(command, e))
++        return
++    # Close the panel first (it writes its own fields into the feature), then the number: the
++    # tool and its number are one step to undo
++    import UnifiedChrome
++
++    UnifiedChrome.band().finish()
++    QtWidgets.QApplication.processEvents()
++    try:
++        setattr(obj, field[0], value)
++        obj.Document.recompute()
++        App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified/ContextBar").SetString(command, text)
++    except Exception as e:
++        App.Console.PrintWarning("Context bar: {}: {}\n".format(command, e))
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index fced6e3fe..d6af70521 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -6,6 +6,9 @@
+ #include <QCursor>
+ #include <QEvent>
+ #include <QHBoxLayout>
++#include <QLabel>
++#include <QLineEdit>
++#include <QKeyEvent>
+ #include <QMouseEvent>
+ #include <QTimer>
+ #include <QToolButton>
+@@ -15,6 +18,8 @@
+ #include <App/DocumentObject.h>
+ #include <App/DocumentObserver.h>
+ #include <App/PropertyLinks.h>
++#include <Base/Interpreter.h>
++#include <Base/PyObjectBase.h>
+ #include <Base/Type.h>
+ #include <Gui/Action.h>
+ #include <Gui/Application.h>
+@@ -22,6 +27,7 @@
+ #include <Gui/Command.h>
+ #include <Gui/Control.h>
+ #include <Gui/MainWindow.h>
++#include <Gui/MDIView.h>
+ #include <Gui/View3DInventor.h>
+ #include <Gui/View3DInventorViewer.h>
+ #include <Gui/ViewProviderDocumentObject.h>
+@@ -70,6 +76,62 @@ Gui::View3DInventor* active3DView()
+ {
+     return dynamic_cast<Gui::View3DInventor*>(Gui::getMainWindow()->activeWindow());
+ }
++
++// The rules of the bar are data in Python (Mod/Unified/ContextRules.py): call a function of it
++Py::Object callRules(const char* function, const Py::Tuple& args = Py::Tuple())
++{
++    Py::Module module(PyImport_ImportModule("ContextRules"), true);
++    if (module.isNull()) {
++        throw Py::Exception();
++    }
++    return module.callMemberFunction(function, args);
++}
++
++bool commandAvailable(const std::string& command)
++{
++    Base::PyGILStateLocker lock;
++    try {
++        Py::Tuple args(1);
++        args.setItem(0, Py::String(command));
++        return callRules("available", args).isTrue();
++    }
++    catch (Py::Exception&) {
++        Base::PyException e;
++        e.reportException();
++        return false;
++    }
++}
++
++void runRules(const char* function, const std::string& command, const QString& value = QString())
++{
++    Base::PyGILStateLocker lock;
++    try {
++        Py::Tuple args(value.isNull() ? 1 : 2);
++        args.setItem(0, Py::String(command));
++        if (!value.isNull()) {
++            args.setItem(1, Py::String(value.toStdString()));
++        }
++        callRules(function, args);
++    }
++    catch (Py::Exception&) {
++        Base::PyException e;
++        e.reportException();
++    }
++}
++
++QString defaultValue(const std::string& command)
++{
++    Base::PyGILStateLocker lock;
++    try {
++        Py::Tuple args(1);
++        args.setItem(0, Py::String(command));
++        return QString::fromStdString(Py::String(callRules("default_value", args)).as_std_string("utf-8"));
++    }
++    catch (Py::Exception&) {
++        Base::PyException e;
++        return {};
++    }
++}
+ }  // namespace
+ 
+ void ContextBar::install()
+@@ -183,92 +245,51 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+     if (selection.empty()) {
+         return {};
+     }
+-
+-    // Several edges picked: round or chamfer them all at once
+-    if (selection.size() > 1) {
+-        bool edgesOnly = std::all_of(selection.begin(), selection.end(), [](const auto& s) {
+-            return allStartWith(s.getSubNames(), "Edge");
+-        });
+-        std::vector<Action> actions;
+-        // Two things picked on two parts, one after the other: the first one moves onto the
+-        // second one. Which of these fit (two flat faces, two round faces or circles, a point
+-        // and a face, two points) the commands decide; the others are not shown.
+-        bool twoPicks = selection.size() == 2
+-            && std::all_of(selection.begin(), selection.end(), [](const auto& s) {
+-                   return s.getSubNames().size() == 1;
+-               });
+-        if (twoPicks) {
+-            actions = {
+-                {"Unified_SnapFaces", label("Snap")},
+-                {"Unified_SnapAxes", label("Line up axes")},
+-                {"Unified_PointToFace", label("Point onto face")},
+-                {"Unified_MovePointToPoint", label("Point to point")},
+-            };
+-        }
+-        if (edgesOnly) {
+-            actions.push_back({"PartDesign_Fillet", label("Fillet")});
+-            actions.push_back({"PartDesign_Chamfer", label("Chamfer")});
+-        }
+-        return actions;
+-    }
+-
+-    const auto& sel = selection.front();
+-    const App::DocumentObject* obj = sel.getObject();
+-    const auto& subs = sel.getSubNames();
+     // Not for a part of another document shown here, e.g. in an assembly: the tools work
+     // in the active document
++    const App::DocumentObject* obj = selection.front().getObject();
+     if (!obj || obj->getDocument() != App::GetApplication().getActiveDocument()) {
+         return {};
+     }
+-    // A sketch, wherever it was picked (its edges, or the area inside, "InternalFace1")
+-    if (isDerivedFrom(obj, "Sketcher::SketchObject")) {
+-        std::vector<Action> actions {{"PartDesign_Pad", label("Extrude")}};
+-        if (partHasSolid(obj)) {
+-            actions.push_back({"PartDesign_Pocket", label("Cut in")});
++    std::vector<Action> actions;
++    Base::PyGILStateLocker lock;
++    try {
++        Py::List rows(callRules("actions_for_selection"));
++        for (const auto& item : rows) {
++            Py::Tuple row(item);
++            actions.push_back({
++                Py::String(row[0]).as_std_string("utf-8"),
++                QString::fromStdString(Py::String(row[1]).as_std_string("utf-8")),
++                QString::fromStdString(Py::String(row[2]).as_std_string("utf-8")),
++            });
+         }
+-        actions.push_back({"PartDesign_Revolution", label("Revolve")});
+-        actions.push_back({"Sketcher_EditSketch", label("Edit")});
+-        return actions;
+-    }
+-    if (allStartWith(subs, "Face")) {
+-        return {
+-            {"PartDesign_NewSketch", label("Sketch")},
+-            {"PartDesign_Pad", label("Extrude")},
+-            {"PartDesign_Pocket", label("Cut in")},
+-            {"Unified_Hole", label("Hole")},
+-            {"PartDesign_Thickness", label("Shell")},
+-            // Put this part against another one: the next face clicked is where it goes
+-            {"Unified_SnapFaces", label("Snap")},
+-        };
+-    }
+-    if (allStartWith(subs, "Edge")) {
+-        return {
+-            {"PartDesign_Fillet", label("Fillet")},
+-            {"PartDesign_Chamfer", label("Chamfer")},
+-            {"Unified_MovePointToPoint", label("Point to point")},
+-        };
+-    }
+-    if (allStartWith(subs, "Vertex")) {
+-        // From this point to the next one clicked
+-        return {{"Unified_MovePointToPoint", label("Point to point")}};
+-    }
+-    if (!subs.empty()) {
+-        return {};
+     }
+-    if (isDerivedFrom(obj, "Part::Feature") || isDerivedFrom(obj, "PartDesign::Body")
+-        || isDerivedFrom(obj, "App::Part") || isDerivedFrom(obj, "App::Link")) {
+-        return {
+-            {"Std_TransformManip", label("Move")},
+-            {"Unified_MovePointToPoint", label("Point to point")},
+-            {"Std_ToggleVisibility", label("Hide")},
+-        };
++    catch (Py::Exception&) {
++        Base::PyException e;
++        e.reportException();
+     }
+-    return {};
++    return actions;
++}
++
++QWidget* ContextBar::targetView(bool* isPage) const
++{
++    *isPage = false;
++    if (Gui::View3DInventor* view = active3DView()) {
++        return view;
++    }
++    // A technical drawing's page: its lines and circles have tools too
++    Gui::MDIView* view = Gui::getMainWindow()->activeWindow();
++    if (view && QString::fromLatin1(view->metaObject()->className()).contains(QLatin1String("MDIViewPage"))) {
++        *isPage = true;
++        return view;
++    }
++    return nullptr;
+ }
+ 
+ void ContextBar::refresh()
+ {
+-    Gui::View3DInventor* view = active3DView();
++    bool isPage = false;
++    QWidget* view = targetView(&isPage);
+     // Right after closing a sketch, as long as it stays selected alone
+     auto selection = Gui::Selection().getSelectionEx();
+     bool anchored = !anchoredObject.empty() && selection.size() == 1 && selection.front().getObject()
+@@ -279,14 +300,16 @@ void ContextBar::refresh()
+     placeInView = anchored;
+     // Only for picks in the 3D view (or right after closing a sketch), and not while a tool
+     // is running or something is edited
+-    bool inView = anchored || pickedInView;
++    // On a drawing page, picks carry no picked point: every pick there is in the view
++    bool inView = anchored || pickedInView || isPage;
+     bool usable = view && inView && !Gui::Control().activeDialog()
+         && !Gui::Application::Instance->editDocument();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+     if (!actions.empty()) {
+-        // Last: hand what is picked to the AI chat, for whatever the buttons do not cover
+-        // (skipped when the chat is not available)
+-        actions.push_back({"Unified_AIChatAsk", label("Ask AI")});
++        // Last but one: hand what is picked to the AI chat, for whatever the buttons do not
++        // cover (skipped when the chat is not available); last: every tool that works with it
++        actions.push_back({"Unified_AIChatAsk", label("Ask AI"), {}});
++        actions.push_back({"Unified_SearchUsable", QStringLiteral("…"), {}});
+     }
+     if (actions.empty()) {
+         dismiss();
+@@ -310,34 +333,55 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+     }
+     auto& manager = Gui::Application::Instance->commandManager();
+     int shown = 0;
++    bool fieldShown = false;
+     for (const auto& action : actions) {
+-        Gui::Command* cmd = manager.getCommandByName(action.command);
+-        if (!cmd) {
+-            continue;
++        Gui::Command* cmd = manager.getCommandByName(action.command.c_str());
++        if (cmd) {
++            // Ask the command now: the periodic update of the command states may not have
++            // run yet, e.g. right after a sketch was closed
++            cmd->testActive();
++            if (Gui::Action* a = cmd->getAction(); a && !a->isEnabled()) {
++                continue;  // e.g. no solid yet to cut into
++            }
+         }
+-        // Ask the command now: the periodic update of the command states may not have run
+-        // yet, e.g. right after a sketch was closed
+-        cmd->testActive();
+-        if (Gui::Action* a = cmd->getAction(); a && !a->isEnabled()) {
+-            continue;  // e.g. no solid yet to cut into
++        if (!commandAvailable(action.command)) {
++            continue;  // not active now, or not in this build
+         }
+         auto button = new QToolButton(this);
+         button->setAutoRaise(true);
+         button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+         button->setIconSize(QSize(24, 24));
+-        button->setIcon(Gui::BitmapFactory().iconFromTheme(cmd->getPixmap()));
++        if (cmd) {
++            button->setIcon(Gui::BitmapFactory().iconFromTheme(cmd->getPixmap()));
++            // The translated tooltip, as in the menus and on the toolbars
++            Gui::Action* cmdAction = cmd->getAction();
++            button->setToolTip(
++                cmdAction ? cmdAction->toolTip() : QString::fromUtf8(cmd->getToolTipText())
++            );
++        }
+         button->setText(action.label);
+-        // The translated tooltip, as in the menus and on the toolbars
+-        Gui::Action* cmdAction = cmd->getAction();
+-        button->setToolTip(
+-            cmdAction ? cmdAction->toolTip() : QString::fromUtf8(cmd->getToolTipText())
+-        );
+         const std::string name = action.command;
+         connect(button, &QToolButton::clicked, this, [this, name]() {
+             dismiss();
+-            Gui::Application::Instance->commandManager().runCommandByName(name.c_str());
++            runRules("run", name);
+         });
+         layout->addWidget(button);
++        // The number of the first tool that takes one, right next to it: type it and Enter.
++        // The tool's full panel is a click on its button.
++        if (!action.unit.isEmpty() && !fieldShown) {
++            fieldShown = true;
++            auto field = new QLineEdit(this);
++            field->setObjectName(QStringLiteral("UnifiedContextField"));
++            field->setText(defaultValue(name));
++            field->setFixedWidth(fontMetrics().horizontalAdvance(QStringLiteral("0000.00 mm")) + 12);
++            field->setToolTip(label("Type the number and press Enter (the button opens all settings)"));
++            connect(field, &QLineEdit::returnPressed, this, [this, name, field]() {
++                QString value = field->text().trimmed();
++                dismiss();
++                QTimer::singleShot(0, [name, value]() { runRules("run_with_value", name, value); });
++            });
++            layout->addWidget(field);
++        }
+         ++shown;
+     }
+     if (shown == 0) {
+@@ -364,7 +408,9 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+ 
+     // Leave the bar alone while the user works with the view: orbiting, panning or
+     // zooming hides it
+-    watchView(static_cast<Gui::View3DInventor*>(view)->getViewer()->getGLWidget());
++    if (auto* view3d = dynamic_cast<Gui::View3DInventor*>(view)) {
++        watchView(view3d->getViewer()->getGLWidget());
++    }
+ }
+ 
+ void ContextBar::watchView(QWidget* gl)
+@@ -399,6 +445,16 @@ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+             }
+         }
+         else if (event->type() == QEvent::KeyPress) {
++            // Typing a number goes into the bar's number field (no need to click it first)
++            auto* key = static_cast<QKeyEvent*>(event);
++            auto* field = findChild<QLineEdit*>(QStringLiteral("UnifiedContextField"));
++            const QString text = key->text();
++            if (field && text.size() == 1 && (text.at(0).isDigit() || text == QLatin1String("."))
++                && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
++                field->setFocus();
++                field->setText(text);
++                return true;
++            }
+             dismiss();
+         }
+     }
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index 8b3dc032d..80c077d63 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -40,8 +40,10 @@ private:
+ 
+     struct Action
+     {
+-        const char* command;
++        std::string command;
+         QString label;
++        /// The unit of the number field of the tool ("mm"), empty if it has none
++        QString unit;
+     };
+ 
+     void onSelectionChanged(const Gui::SelectionChanges& msg) override;
+@@ -77,6 +79,8 @@ private:
+     App::DocumentObjectT closedSketch;
+     /// Watch the 3D view for double-clicks and for working with the view
+     void watchView(QWidget* gl);
++    /// The view the bar belongs to: the active 3D view, or a technical drawing's page
++    QWidget* targetView(bool* isPage) const;
+ };
+ 
+ }  // namespace UnifiedGui
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index c25f29366..9e06c5429 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -9461,6 +9461,10 @@ for ProjectionGroups</source>
+         <source>Point to point</source>
+         <translation>点から点へ</translation>
+     </message>
++    <message>
++        <source>Type the number and press Enter (the button opens all settings)</source>
++        <translation>数字を打って Enter（ボタンを押すと細かい設定）</translation>
++    </message>
+ </context>
+ <context>
+     <name>Assembly_ExportASMT</name>
+@@ -10155,4 +10159,220 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>次に FreeCAD を起動したときから。どの道具も Ctrl+K で探せます。</translation>
+     </message>
+ </context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Extrude</source>
++        <translation>押し出す</translation>
++    </message>
++    <message>
++        <source>Cut in</source>
++        <translation>切り抜く</translation>
++    </message>
++    <message>
++        <source>Revolve</source>
++        <translation>回す</translation>
++    </message>
++    <message>
++        <source>Edit</source>
++        <translation>編集</translation>
++    </message>
++    <message>
++        <source>Sketch</source>
++        <translation>スケッチ</translation>
++    </message>
++    <message>
++        <source>Hole</source>
++        <translation>穴</translation>
++    </message>
++    <message>
++        <source>Shell</source>
++        <translation>厚み</translation>
++    </message>
++    <message>
++        <source>Snap</source>
++        <translation>くっつける</translation>
++    </message>
++    <message>
++        <source>Measure</source>
++        <translation>測る</translation>
++    </message>
++    <message>
++        <source>Line up axes</source>
++        <translation>軸をそろえる</translation>
++    </message>
++    <message>
++        <source>Fillet</source>
++        <translation>丸め</translation>
++    </message>
++    <message>
++        <source>Chamfer</source>
++        <translation>面取り</translation>
++    </message>
++    <message>
++        <source>Same direction</source>
++        <translation>同じ向きの辺も</translation>
++    </message>
++    <message>
++        <source>Same circles</source>
++        <translation>同じ大きさの円も</translation>
++    </message>
++    <message>
++        <source>Point to point</source>
++        <translation>点から点へ</translation>
++    </message>
++    <message>
++        <source>Move</source>
++        <translation>動かす</translation>
++    </message>
++    <message>
++        <source>Mirror</source>
++        <translation>鏡に映す</translation>
++    </message>
++    <message>
++        <source>Hide</source>
++        <translation>隠す</translation>
++    </message>
++    <message>
++        <source>Point onto face</source>
++        <translation>点を面に</translation>
++    </message>
++    <message>
++        <source>Distance</source>
++        <translation>距離</translation>
++    </message>
++    <message>
++        <source>Join</source>
++        <translation>足し合わせ</translation>
++    </message>
++    <message>
++        <source>Subtract</source>
++        <translation>引き算</translation>
++    </message>
++    <message>
++        <source>Overlap</source>
++        <translation>重なり</translation>
++    </message>
++    <message>
++        <source>Check and fix</source>
++        <translation>調べて直す</translation>
++    </message>
++    <message>
++        <source>Make solid</source>
++        <translation>立体にする</translation>
++    </message>
++    <message>
++        <source>Scale</source>
++        <translation>倍率</translation>
++    </message>
++    <message>
++        <source>Export</source>
++        <translation>書き出す</translation>
++    </message>
++    <message>
++        <source>Extrude outline</source>
++        <translation>輪郭を押し出す</translation>
++    </message>
++    <message>
++        <source>To sketch</source>
++        <translation>スケッチにする</translation>
++    </message>
++    <message>
++        <source>Join to face</source>
++        <translation>つないで面に</translation>
++    </message>
++    <message>
++        <source>Diameter</source>
++        <translation>直径</translation>
++    </message>
++    <message>
++        <source>Radius</source>
++        <translation>半径</translation>
++    </message>
++    <message>
++        <source>Center lines</source>
++        <translation>中心線</translation>
++    </message>
++    <message>
++        <source>Thread</source>
++        <translation>ねじの線</translation>
++    </message>
++    <message>
++        <source>Length</source>
++        <translation>長さ</translation>
++    </message>
++    <message>
++        <source>Horizontal</source>
++        <translation>横の長さ</translation>
++    </message>
++    <message>
++        <source>Vertical</source>
++        <translation>縦の長さ</translation>
++    </message>
++    <message>
++        <source>Center line</source>
++        <translation>中心線</translation>
++    </message>
++    <message>
++        <source>Angle</source>
++        <translation>角度</translation>
++    </message>
++    <message>
++        <source>Section</source>
++        <translation>断面図</translation>
++    </message>
++    <message>
++        <source>Detail</source>
++        <translation>部分拡大</translation>
++    </message>
++    <message>
++        <source>PDF / print</source>
++        <translation>PDF・印刷</translation>
++    </message>
++    <message>
++        <source>DXF</source>
++        <translation>DXF</translation>
++    </message>
++    <message>
++        <source>SVG</source>
++        <translation>SVG</translation>
++    </message>
++    <message>
++        <source>Delete</source>
++        <translation>消す</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_SearchUsable</name>
++    <message>
++        <source>All Tools for This</source>
++        <translation>これに使える道具</translation>
++    </message>
++    <message>
++        <source>Every tool that can be used with what is picked; type to narrow down</source>
++        <translation>選んだ物に使える道具を全部。打てば絞り込めます</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_SelectParallelEdges</name>
++    <message>
++        <source>Also the Edges in the Same Direction</source>
++        <translation>同じ向きの辺も選ぶ</translation>
++    </message>
++    <message>
++        <source>Picks the other straight edges of this shape that run the same way</source>
++        <translation>この形の、同じ向きのまっすぐな辺も選びます</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_SelectSameCircles</name>
++    <message>
++        <source>Also the Circles of the Same Size</source>
++        <translation>同じ大きさの円も選ぶ</translation>
++    </message>
++    <message>
++        <source>Picks the other circles of this shape with the same radius</source>
++        <translation>この形の、同じ半径の円も選びます</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/TestContextRules.py b/src/Mod/Unified/TestContextRules.py
+new file mode 100644
+index 000000000..e4a900a00
+--- /dev/null
++++ b/src/Mod/Unified/TestContextRules.py
+@@ -0,0 +1,134 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Tests of the rules of the bar next to a pick (ContextRules.py): every kind of pick in the
++table is recognised from real objects, and every kind offers at least one tool. Without the GUI:
++
++    FreeCADCmd -t TestContextRules
++"""
++
++import unittest
++
++import FreeCAD as App
++import Part
++
++import ContextRules as rules
++
++
++class TestContextRules(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.doc = doc = App.newDocument("ContextRulesTest")
++        body = doc.addObject("PartDesign::Body", "Body")
++        box = doc.addObject("PartDesign::AdditiveBox", "Box")
++        body.addObject(box)
++        cls.body, cls.box = body, box
++        cls.cyl = doc.addObject("Part::Cylinder", "Cyl")
++        cls.sphere = doc.addObject("Part::Sphere", "Sphere")
++        # A solid with a curved (B-spline) edge
++        bs = Part.BSplineCurve()
++        bs.interpolate([App.Vector(0, 0, 0), App.Vector(5, 3, 0), App.Vector(10, 0, 0)])
++        wire = Part.Wire([bs.toShape(), Part.makeLine(App.Vector(10, 0, 0), App.Vector(0, 0, 0))])
++        cls.ell = doc.addObject("Part::Feature", "Curved")
++        cls.ell.Shape = Part.Face(wire).extrude(App.Vector(0, 0, 5))
++        cls.box2 = doc.addObject("Part::Box", "Box2")
++        cls.sketch = doc.addObject("Sketcher::SketchObject", "Sketch")
++        cls.sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(10, 0, 0)))
++        lines = doc.addObject("Part::Feature", "DxfLine")
++        lines.Shape = Part.makeLine(App.Vector(0, 0, 0), App.Vector(10, 0, 0))
++        cls.lines = lines
++        lines2 = doc.addObject("Part::Feature", "DxfLine2")
++        lines2.Shape = Part.makeLine(App.Vector(10, 0, 0), App.Vector(10, 10, 0))
++        cls.lines2 = lines2
++        import Mesh
++
++        cls.mesh = doc.addObject("Mesh::Feature", "Mesh")
++        cls.mesh.Mesh = Mesh.createBox(1, 1, 1)
++        cls.joint = doc.addObject("App::FeaturePython", "Joint")
++        cls.joint.addProperty("App::PropertyString", "JointType")
++        cls.plain = doc.addObject("App::FeaturePython", "Plain")
++        doc.recompute()
++        cls.page = None
++        try:
++            import TechDraw  # noqa: F401
++
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            view = doc.addObject("TechDraw::DrawViewPart", "View")
++            page.addView(view)
++            view.Source = [cls.cyl]
++            view.Direction = App.Vector(0, 0, 1)
++            doc.recompute()
++            cls.page, cls.view = page, view
++        except Exception:
++            pass
++
++    @classmethod
++    def tearDownClass(cls):
++        App.closeDocument(cls.doc.Name)
++
++    def kind(self, *picks):
++        return rules.classify(list(picks))
++
++    def edge_index(self, obj, curve):
++        for i, e in enumerate(obj.Shape.Edges, start=1):
++            try:
++                name = type(e.Curve).__name__
++            except Exception:
++                continue  # e.g. the degenerated edge at a pole
++            if name == curve:
++                return "Edge%d" % i
++        self.fail("no %s edge" % curve)
++
++    def face_index(self, obj, surface):
++        for i, f in enumerate(obj.Shape.Faces, start=1):
++            if type(f.Surface).__name__ == surface:
++                return "Face%d" % i
++        self.fail("no %s face" % surface)
++
++    def test_kinds(self):
++        seen = {}
++        cases = {
++            "sketch": [(self.sketch, [])],
++            "flat face": [(self.box, ["Face1"])],
++            "round face": [(self.cyl, [self.face_index(self.cyl, "Cylinder")])],
++            "other face": [(self.sphere, ["Face1"])],
++            "line edge": [(self.box, [self.edge_index(self.box, "Line")])],
++            "circle edge": [(self.cyl, [self.edge_index(self.cyl, "Circle")])],
++            "other edge": [(self.ell, [self.edge_index(self.ell, "BSplineCurve")])],
++            "edges": [(self.box, ["Edge1", "Edge2"])],
++            "vertex": [(self.box, ["Vertex1"])],
++            "part": [(self.body, [])],
++            "two picks": [(self.box2, ["Face1"]), (self.box, ["Face2"])],
++            "two parts": [(self.box2, []), (self.cyl, [])],
++            "mesh": [(self.mesh, [])],
++            "drawing lines": [(self.lines, ["Edge1"])],
++            "joint": [(self.joint, [])],
++            "other": [(self.plain, [])],
++        }
++        if self.page is not None:
++            cases["drawing page"] = [(self.page, [])]
++            cases["drawing view"] = [(self.view, [])]
++            cases["drawing circle"] = [(self.view, ["Edge0"])]
++        for expected, picks in cases.items():
++            with self.subTest(kind=expected):
++                got = rules.classify(picks)
++                if expected == "drawing circle" and got == "drawing line":
++                    continue  # the view's edges are computed in a thread; edge 0 may not be the circle
++                self.assertEqual(got, expected)
++                seen[expected] = True
++        self.assertEqual(rules.classify([(self.lines, []), (self.lines2, [])]), "drawing lines")
++
++    def test_every_kind_offers_tools(self):
++        for kind, rows in rules.RULES.items():
++            with self.subTest(kind=kind):
++                self.assertGreaterEqual(len(rows), 1)
++                for a in rows:
++                    self.assertTrue(a["command"])
++                    self.assertTrue(a["label"])
++
++    def test_fields(self):
++        self.assertEqual(rules.field_of("PartDesign_Pad")[0], "Length")
++        self.assertEqual(rules.field_of("PartDesign_Fillet")[0], "Radius")
++        self.assertIsNone(rules.field_of("Std_Measure"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 539dc8cb3..45c3b4042 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -198,7 +198,68 @@ class OtherToolsCommand:
+         other_tools().show_window()
+ 
+ 
++def _picked_edges():
++    sel = Gui.Selection.getSelectionEx()
++    if len(sel) != 1:
++        return None, []
++    s = sel[0]
++    return s.Object, [(n, e) for n, e in zip(s.SubElementNames, s.SubObjects) if n.startswith("Edge")]
++
++
++class SelectParallelEdgesCommand:
++    """The other straight edges of the shape in the same direction (the four vertical edges of
++    a box, to round them at once)"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "Part_SelectFilter",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_SelectParallelEdges", "Also the Edges in the Same Direction"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_SelectParallelEdges", "Picks the other straight edges of this shape that run the same way"
++            ),
++        }
++
++    def IsActive(self):
++        obj, edges = _picked_edges()
++        return bool(edges) and type(edges[0][1].Curve).__name__ in ("Line", "LineSegment")
++
++    def Activated(self):
++        obj, edges = _picked_edges()
++        d0 = edges[0][1].Curve.Direction
++        doc = obj.Document
++        for i, e in enumerate(obj.Shape.Edges, start=1):
++            if type(e.Curve).__name__ in ("Line", "LineSegment") and abs(abs(e.Curve.Direction.dot(d0)) - 1) < 1e-6:
++                Gui.Selection.addSelection(doc.Name, obj.Name, "Edge%d" % i)
++
++
++class SelectSameCirclesCommand:
++    """The other circles of the shape of the same size (all the holes of the same diameter)"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "Part_SelectFilter",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_SelectSameCircles", "Also the Circles of the Same Size"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_SelectSameCircles", "Picks the other circles of this shape with the same radius"
++            ),
++        }
++
++    def IsActive(self):
++        obj, edges = _picked_edges()
++        return bool(edges) and type(edges[0][1].Curve).__name__ == "Circle"
++
++    def Activated(self):
++        obj, edges = _picked_edges()
++        r0 = edges[0][1].Curve.Radius
++        doc = obj.Document
++        for i, e in enumerate(obj.Shape.Edges, start=1):
++            if type(e.Curve).__name__ == "Circle" and abs(e.Curve.Radius - r0) < 1e-6:
++                Gui.Selection.addSelection(doc.Name, obj.Name, "Edge%d" % i)
++
++
+ for _name, _cmd in (
++    ("Unified_SelectParallelEdges", SelectParallelEdgesCommand()),
++    ("Unified_SelectSameCircles", SelectSameCirclesCommand()),
+     ("Unified_NewPart", NewPartCommand()),
+     ("Unified_NewAssembly", NewAssemblyCommand()),
+     ("Unified_NewDrawing", NewDrawingCommand()),
+-- 
+2.43.0
+

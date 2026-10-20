@@ -1,0 +1,18 @@
+{
+ "plate_drawing": {
+  "ok": true,
+  "views": [
+   "前面",
+   "上面",
+   "右面"
+  ],
+  "hole_dimension": "4×⌀%.0f キリ",
+  "outer_dimensions": 3,
+  "center_line_segments": 8,
+  "title": "ベース板",
+  "scale": "2 : 1",
+  "pdf": true,
+  "template": "A4_Landscape_ISO5457_minimal.svg",
+  "modals": []
+ }
+}

@@ -1,0 +1,421 @@
+From 6795a2adb56b84e3958723bf3690fe5d2adc9e28 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:15:27 +0900
+Subject: [PATCH 257/258] Make Drawing: a JIS sheet with the views, center
+ lines, sizes and title block at once
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"Make Drawing" (tool strip, start page) now goes straight to a finished
+first drawing of the picked part (all parts if none is picked): the three
+views (front at the largest flat face, standard scale) on an A4 sheet with
+a title block (ISO 5457, the default template when the drawing standard is
+JIS), placed clear of the title block; a dash-dot cross through each hole;
+the holes' size once for holes of the same size ("4×⌀6 キリ"); the overall
+width and height of the front view and the depth on the right view; the
+title block filled in from the model (name of the file, scale, date, sheet,
+general tolerances JIS B 0405-m). The views can still be turned afterwards.
+Tested without the GUI: FreeCADCmd -t TestDrawingAuto.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/Preferences.cpp          |   9 +
+ src/Mod/Unified/CMakeLists.txt                |   5 +-
+ src/Mod/Unified/DrawingAuto.py                | 232 ++++++++++++++++++
+ .../translations/UnifiedWording_ja.ts         |  11 +
+ src/Mod/Unified/TestDrawingAuto.py            |  51 ++++
+ src/Mod/Unified/UnifiedChrome.py              |  18 ++
+ 6 files changed, 325 insertions(+), 1 deletion(-)
+ create mode 100644 src/Mod/Unified/DrawingAuto.py
+ create mode 100644 src/Mod/Unified/TestDrawingAuto.py
+
+diff --git a/src/Mod/TechDraw/App/Preferences.cpp b/src/Mod/TechDraw/App/Preferences.cpp
+index 68c390b1f..e9fb9114e 100644
+--- a/src/Mod/TechDraw/App/Preferences.cpp
++++ b/src/Mod/TechDraw/App/Preferences.cpp
+@@ -204,6 +204,15 @@ QString Preferences::defaultTemplate()
+ {
+     std::string defaultDir = App::Application::getResourceDir() + "Mod/TechDraw/Templates/";
+     std::string defaultFileName = defaultDir + "Default_Template_A4_Landscape.svg";
++    // Drawings to JIS (B 0001, Z 8311 sheets as ISO 5457): an A4 sheet with a title block
++    const auto& cfg = App::Application::Config();
++    auto standard = cfg.find("DrawingStandard");
++    if (standard != cfg.end() && standard->second == "JIS") {
++        std::string jis = defaultDir + "ISO/A4_Landscape_ISO5457_minimal.svg";
++        if (Base::FileInfo(jis).isReadable()) {
++            defaultFileName = jis;
++        }
++    }
+     std::string prefFileName = getPreferenceGroup("Files")->GetASCII("TemplateFile", defaultFileName.c_str());
+     if (prefFileName.empty()) {
+         prefFileName = defaultFileName;
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 6be71c93e..61f61aefd 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -16,12 +16,15 @@ set(Unified_Scripts
+     TestCommandSearch.py
+     ContextRules.py
+     TestContextRules.py
++    DrawingAuto.py
++    TestDrawingAuto.py
++    FirstSteps.py
+ )
+ 
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+         CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
+-        UnifiedChrome.py OtherTools.svg FirstSteps.py)
++        UnifiedChrome.py OtherTools.svg)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+diff --git a/src/Mod/Unified/DrawingAuto.py b/src/Mod/Unified/DrawingAuto.py
+new file mode 100644
+index 000000000..28c198313
+--- /dev/null
++++ b/src/Mod/Unified/DrawingAuto.py
+@@ -0,0 +1,232 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What a new drawing gets from the start (design 6.11): center lines of the holes, the outer
++sizes, the holes' size (same holes together, "4×⌀6 キリ"), and the title block filled in from
++the model (name, scale, date). Works without the GUI (tested by TestDrawingAuto.py).
++"""
++
++import datetime
++import time
++
++import FreeCAD as App
++
++translate = App.Qt.translate
++
++CENTER_LINE_STYLE = 4  # dash-dot
++THIN = 0.18
++
++
++def wait_for_geometry(view, seconds=20.0):
++    """The views compute their lines in a thread: wait until they have them"""
++    end = time.time() + seconds
++    while time.time() < end:
++        try:
++            if view.getVisibleEdges():
++                return True
++        except Exception:
++            pass
++        try:
++            from PySide import QtWidgets
++
++            QtWidgets.QApplication.processEvents()
++        except Exception:
++            pass
++        time.sleep(0.05)
++        view.Document.recompute()
++    return False
++
++
++def edges_of(view):
++    out = []
++    i = 0
++    while True:
++        try:
++            e = view.getEdgeByIndex(i)
++        except Exception:
++            break
++        if e is None:
++            break
++        out.append((i, e))
++        i += 1
++    return out
++
++
++def curve_name(edge):
++    try:
++        return type(edge.Curve).__name__
++    except Exception:
++        return ""
++
++
++def add_dimension(page, view, kind, refs, spec=None):
++    doc = page.Document
++    dim = doc.addObject("TechDraw::DrawViewDimension", "Dimension")
++    dim.Type = kind
++    dim.References2D = [(view, r) for r in refs]
++    if spec:
++        dim.FormatSpec = spec
++    page.addView(dim)
++    return dim
++
++
++def hole_groups(view):
++    """Circles of the view by diameter: {diameter: [(index, edge)]}"""
++    groups = {}
++    for i, e in edges_of(view):
++        if curve_name(e) == "Circle":
++            # The view's edges are in model sizes (not scaled)
++            d = round(e.Curve.Radius * 2, 3)
++            groups.setdefault(d, []).append((i, e))
++    return groups
++
++
++def center_lines(view, circles):
++    """A cross of thin dash-dot lines through each circle, a little longer than the circle"""
++    made = 0
++    for _, e in circles:
++        c = e.Curve.Location
++        # The view's edges and cosmetic lines are both in model sizes (not scaled)
++        cx, cy, er = c.x, c.y, e.Curve.Radius * 1.3
++        try:
++            view.makeCosmeticLine(App.Vector(cx - er, cy, 0), App.Vector(cx + er, cy, 0), CENTER_LINE_STYLE, THIN)
++            view.makeCosmeticLine(App.Vector(cx, cy - er, 0), App.Vector(cx, cy + er, 0), CENTER_LINE_STYLE, THIN)
++            made += 1
++        except Exception as e:
++            App.Console.PrintLog("Drawing: center line: {}\n".format(e))
++    return made
++
++
++def vertices_of(view):
++    out = []
++    i = 0
++    while True:
++        try:
++            v = view.getVertexByIndex(i)
++        except Exception:
++            break
++        if v is None:
++            break
++        out.append((i, v.Point if hasattr(v, "Point") else App.Vector(v.X, v.Y, v.Z)))
++        i += 1
++    return out
++
++
++def extent(view):
++    """The bounding box of the view's lines (model sizes): (xmin, ymin, xmax, ymax)"""
++    pts = [p for _, p in vertices_of(view)]
++    for _, e in edges_of(view):
++        bb = e.BoundBox
++        pts += [App.Vector(bb.XMin, bb.YMin, 0), App.Vector(bb.XMax, bb.YMax, 0)]
++    if not pts:
++        return None
++    return (min(p.x for p in pts), min(p.y for p in pts), max(p.x for p in pts), max(p.y for p in pts))
++
++
++def outer_sizes(page, view, horizontal=True, vertical=True):
++    """The overall width and height, between the outermost points of the view, placed below
++    and at the left of the view"""
++    verts = vertices_of(view)
++    if len(verts) < 2:
++        return []
++    box = extent(view)
++    scale = view.getScale() if hasattr(view, "getScale") else 1.0
++    made = []
++    if horizontal:
++        left = min(verts, key=lambda t: (t[1].x, t[1].y))
++        right = min(verts, key=lambda t: (-t[1].x, t[1].y))
++        if abs(right[1].x - left[1].x) > 1e-6:
++            d = add_dimension(page, view, "DistanceX", ["Vertex%d" % left[0], "Vertex%d" % right[0]])
++            d.X, d.Y = 0, box[1] * scale - 8
++            made.append(d)
++    if vertical:
++        low = min(verts, key=lambda t: (t[1].y, t[1].x))
++        high = min(verts, key=lambda t: (-t[1].y, t[1].x))
++        if abs(high[1].y - low[1].y) > 1e-6:
++            d = add_dimension(page, view, "DistanceY", ["Vertex%d" % low[0], "Vertex%d" % high[0]])
++            d.X, d.Y = box[0] * scale - 8, 0
++            made.append(d)
++    return made
++
++
++def place_clear_of_title_block(page, group):
++    """The front view above the title block (bottom right) and a little to the left"""
++    front = group.Anchor
++    box = extent(front)
++    if box is None:
++        return
++    scale = group.Scale
++    width = page.PageWidth if hasattr(page, "PageWidth") else 297.0
++    h = (box[3] - box[1]) * scale
++    group.X = width * 0.42
++    group.Y = 76 + h / 2  # the title block and the width below the view
++
++
++def scale_text(scale):
++    if scale >= 1:
++        return "{:g} : 1".format(scale)
++    return "1 : {:g}".format(1 / scale)
++
++
++def fill_title_block(page, name, scale):
++    tpl = page.Template
++    if tpl is None or not hasattr(tpl, "EditableTexts"):
++        return
++    texts = dict(tpl.EditableTexts)
++    values = {
++        "title": name, "FC-Title": name,
++        "scale": scale_text(scale), "FC-SC": scale_text(scale),
++        "date_of_issue": datetime.date.today().isoformat(), "FC-Date": datetime.date.today().isoformat(),
++        "sheet_number": "1 / 1", "FC-SH": "1 / 1",
++        "language_code": "JA",
++        "general_tolerances": "JIS B 0405-m",
++        "document_type": translate("DrawingAuto", "Part drawing"),
++        "creator": "", "approval_person": "", "part_material": "", "drawing_number": "", "revision_index": "",
++        "Designed_by_Name": "", "Subtitle": "", "Weight": "", "Drawing_number": "",
++    }
++    for key in texts:
++        if key in values:
++            texts[key] = values[key]
++    tpl.EditableTexts = texts
++
++
++def complete(page, group, name=None):
++    """Add the center lines, sizes and title block to a new three-view drawing.
++    Returns what was added: {"center_lines": n, "dimensions": n}"""
++    doc = page.Document
++    views = list(group.Views) if group is not None else []
++    front = group.Anchor if group is not None else None
++    added = {"center_lines": 0, "dimensions": 0}
++    if front is None:
++        return added
++    for v in views:
++        wait_for_geometry(v)
++    place_clear_of_title_block(page, group)
++    doc.recompute()
++    for v in views:
++        wait_for_geometry(v)
++    groups = hole_groups(front)
++    for diameter, circles in sorted(groups.items()):
++        added["center_lines"] += center_lines(front, circles)
++        n = len(circles)
++        spec = ("{}×⌀%.0f".format(n) if n > 1 else "⌀%.0f") + (translate("DrawingAuto", " drill") if n > 1 else "")
++        # On the hole at the top right, its text outside the part up and to the right
++        index, edge = max(circles, key=lambda t: t[1].Curve.Location.x + t[1].Curve.Location.y)
++        d = add_dimension(page, front, "Diameter", ["Edge%d" % index], spec)
++        box = extent(front)
++        sc = front.getScale() if hasattr(front, "getScale") else 1.0
++        if box:
++            d.X = box[2] * sc + 6
++            d.Y = box[3] * sc + 8
++        added["dimensions"] += 1
++    added["dimensions"] += len(outer_sizes(page, front))
++    # The depth: the width of the right view
++    for v in views:
++        if v is not front and getattr(v, "Type", "") == "Right":
++            added["dimensions"] += len(outer_sizes(page, v, horizontal=True, vertical=False))
++    # The name of the part is the name of its file
++    title = name or doc.Label
++    fill_title_block(page, title, group.Scale)
++    doc.recompute()
++    for v in views:
++        v.touch()
++    doc.recompute()
++    return added
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index b8117c841..ece91ed5f 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10518,4 +10518,15 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>用紙をクリック →「PDF・印刷」</translation>
+     </message>
+ </context>
++<context>
++    <name>DrawingAuto</name>
++    <message>
++        <source>Part drawing</source>
++        <translation>部品図</translation>
++    </message>
++    <message>
++        <source> drill</source>
++        <translation> キリ</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/TestDrawingAuto.py b/src/Mod/Unified/TestDrawingAuto.py
+new file mode 100644
+index 000000000..3ed3e5c31
+--- /dev/null
++++ b/src/Mod/Unified/TestDrawingAuto.py
+@@ -0,0 +1,51 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Tests of what a new drawing gets (DrawingAuto.py), without the GUI:
++
++    FreeCADCmd -t TestDrawingAuto
++"""
++
++import unittest
++
++import FreeCAD as App
++
++import DrawingAuto
++import FirstSteps
++
++
++class TestDrawingAuto(unittest.TestCase):
++    def test_plate(self):
++        doc = FirstSteps.sample_plate("DrawingAutoTest")
++        try:
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            tpl = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            tpl.Template = App.getResourceDir() + "Mod/TechDraw/Templates/ISO/A4_Landscape_ISO5457_minimal.svg"
++            page.Template = tpl
++            g = doc.addObject("TechDraw::DrawProjGroup", "ProjGroup")
++            page.addView(g)
++            g.Source = [doc.getObject("Body")]
++            g.addProjection("Front")
++            g.Anchor.Direction = App.Vector(0, 0, 1)
++            g.Anchor.XDirection = App.Vector(1, 0, 0)
++            g.addProjection("Top")
++            g.addProjection("Right")
++            g.ScaleType = "Custom"
++            g.Scale = 2
++            doc.recompute()
++            added = DrawingAuto.complete(page, g)
++            self.assertEqual(added["center_lines"], 4)
++            dims = {(d.Type, round(d.getRawValue(), 3)) for d in doc.Objects if d.isDerivedFrom("TechDraw::DrawViewDimension")}
++            self.assertIn(("Diameter", 6.0), dims)
++            self.assertIn(("DistanceX", 80.0), dims)
++            self.assertIn(("DistanceY", 50.0), dims)
++            self.assertIn(("DistanceX", 5.0), dims)
++            hole = [d for d in doc.Objects if d.isDerivedFrom("TechDraw::DrawViewDimension") and d.Type == "Diameter"][0]
++            self.assertTrue(hole.FormatSpec.startswith("4×⌀"))
++            texts = dict(tpl.EditableTexts)
++            self.assertEqual(texts["title"], doc.Label)
++            self.assertEqual(texts["scale"], "2 : 1")
++        finally:
++            App.closeDocument(doc.Name)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 71cb715c2..462d44169 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -126,7 +126,25 @@ class NewDrawingCommand:
+         for s in shapes:
+             Gui.Selection.addSelection(doc.Name, s.Name)
+         Gui.Selection.addSelection(doc.Name, page.Name)
++        groups_before = {o.Name for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawProjGroup")}
+         Gui.runCommand("TechDraw_ProjectionGroup")
++        groups = [o for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawProjGroup") and o.Name not in groups_before]
++        if not groups:
++            return
++        # Right at once (front at the largest flat face, standard scale): no panel to go through.
++        # The views can be turned afterwards by double-clicking the drawing.
++        band().finish()
++        QtWidgets.QApplication.processEvents()
++        if Gui.Control.activeDialog():
++            Gui.Control.closeDialog()
++        import DrawingAuto
++
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        try:
++            DrawingAuto.complete(page, groups[0])
++        finally:
++            QtWidgets.QApplication.restoreOverrideCursor()
++        Gui.Selection.clearSelection()
+ 
+ 
+ class PlacePartCommand:
+-- 
+2.43.0
+

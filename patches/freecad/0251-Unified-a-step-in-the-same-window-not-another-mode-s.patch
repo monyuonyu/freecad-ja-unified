@@ -1,0 +1,342 @@
+From 69a6d1c4e78f998388f804fd879f214e62f5fe68 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:41:01 +0900
+Subject: [PATCH 251/258] Unified: a step in the same window, not another mode
+ (sketch, tool panels)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+While a sketch is drawn or a tool's panel is open, a band below the tool
+strip says what is being done ("Drawing the sketch …", "Working on …"),
+with "✓ Done" and "✕ Cancel" (one pair: the panel's own OK and Cancel are
+hidden) and, for a sketch, its tools by name (line, rectangle, circle, arc,
+polygon, dimension, the main constraints, trim, extend, fillet, external
+geometry, and "More" for the rest). Sketcher's toolbars are not shown;
+their shortcuts keep working. The tool strip, the history and the search
+stay where they are. Cancel goes back to before the step, also for a
+sketch (what was drawn is undone). A tool of the strip pressed during a
+step finishes the step first and then starts.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../translations/UnifiedWording_ja.ts         |  32 +++
+ src/Mod/Unified/UnifiedChrome.py              | 254 ++++++++++++++++++
+ 2 files changed, 286 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 87694de1c..c25f29366 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -9979,6 +9979,38 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>(key {})</source>
+         <translation>（キー {}）</translation>
+     </message>
++    <message>
++        <source>Step</source>
++        <translation>手順</translation>
++    </message>
++    <message>
++        <source>Drawing the sketch “{}”</source>
++        <translation>スケッチ「{}」を描いています</translation>
++    </message>
++    <message>
++        <source>More</source>
++        <translation>もっと</translation>
++    </message>
++    <message>
++        <source>Working on “{}”</source>
++        <translation>「{}」を作っています</translation>
++    </message>
++    <message>
++        <source>A tool is open</source>
++        <translation>道具を使っています</translation>
++    </message>
++    <message>
++        <source>✓ Done</source>
++        <translation>✓ 終わる</translation>
++    </message>
++    <message>
++        <source>✕ Cancel</source>
++        <translation>✕ やめる</translation>
++    </message>
++    <message>
++        <source>Back to how it was before this step</source>
++        <translation>この手順を始める前に戻します</translation>
++    </message>
+ </context>
+ <context>
+     <name>CommandSearch</name>
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 30c6a27fc..539dc8cb3 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -532,6 +532,259 @@ def strip_tooltips():
+             pass
+ 
+ 
++# --------------------------------------------------------------------------- the step band
++# While a sketch is drawn or a tool's panel is open: a band at the top saying what is being done,
++# with the tools of that step by name and "✓ Done" / "✕ Cancel". The rest of the window stays
++# as it is (the tool strip, the history, the search); there is no other screen to learn.
++
++SKETCH_TOOLS = [
++    ("Sketcher_CreatePolyline", None),
++    ("Sketcher_CreateRectangle", None),
++    ("Sketcher_CreateCircle", None),
++    ("Sketcher_CreateArc", None),
++    ("Sketcher_CreateHexagon", None),
++    (None, None),
++    ("Sketcher_Dimension", None),
++    ("Sketcher_ConstrainHorVer", None),
++    ("Sketcher_ConstrainParallel", None),
++    ("Sketcher_ConstrainPerpendicular", None),
++    ("Sketcher_ConstrainEqual", None),
++    ("Sketcher_ConstrainCoincidentUnified", None),
++    ("Sketcher_ConstrainSymmetric", None),
++    ("Sketcher_ConstrainLock", None),
++    (None, None),
++    ("Sketcher_Trimming", None),
++    ("Sketcher_Extend", None),
++    ("Sketcher_CreateFillet", None),
++    ("Sketcher_External", None),
++]
++
++# Sketcher's toolbars: their actions keep their shortcuts (on the main window) while the bars
++# themselves are hidden behind the band
++SKETCH_BARS = ("Edit Mode", "Geometries", "Constraints", "Sketcher Tools", "B-Spline Tools", "Visual Helpers")
++
++
++def command_action(command, parent):
++    """An action that runs the command, with its translated name and icon"""
++    info = Gui.Command.get(command).getInfo()
++    ctx = command if info.get("className") in ("PythonCommand", "PythonGroupCommand") else info.get("className")
++    pixmap = info.get("pixmap") or ""
++    icon = QtGui.QIcon(pixmap) if os.path.isfile(pixmap) else Gui.getIcon(pixmap) if pixmap else QtGui.QIcon()
++    action = QtGui.QAction(icon, core.plain(QtCore.QCoreApplication.translate(ctx, info.get("menuText") or "")), parent)
++    tip = QtCore.QCoreApplication.translate(ctx, info.get("toolTip") or "")
++    key = info.get("shortcut") or ""
++    action.setToolTip(tip + ("  ({})".format(key) if key else ""))
++    action.setObjectName("UnifiedStep_" + command)
++    action.triggered.connect(lambda checked=False, c=command: Gui.runCommand(c))
++    return action
++
++
++def task_buttons():
++    """The OK and Cancel buttons of the open task panel"""
++    for box in QtWidgets.QApplication.allWidgets():
++        if isinstance(box, QtWidgets.QDialogButtonBox) and box.parent() is not None:
++            names = []
++            w = box
++            while w is not None:
++                names.append(type(w).__name__ + ":" + w.objectName())
++                w = w.parentWidget()
++            if not any("TaskView" in n or "Task" in n.split(":")[1] for n in names):
++                continue
++            ok = box.button(QtWidgets.QDialogButtonBox.Ok) or box.button(QtWidgets.QDialogButtonBox.Close)
++            cancel = box.button(QtWidgets.QDialogButtonBox.Cancel)
++            if ok or cancel:
++                return box, ok, cancel
++    return None, None, None
++
++
++class StepBand(QtWidgets.QToolBar):
++    def __init__(self, mw):
++        super().__init__(mw)
++        self.setObjectName("UnifiedStepBand")
++        self.setWindowTitle(translate("Unified", "Step"))
++        self.setMovable(False)
++        self.setFloatable(False)
++        self.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
++        self.setIconSize(QtCore.QSize(20, 20))
++        self.setStyleSheet(
++            "#UnifiedStepBand { background: #eaf2ff; border-bottom: 2px solid #2f6fd0; spacing: 2px; }"
++            " #UnifiedStepTitle { font-weight: bold; color: #1d4f91; padding: 0 10px; }"
++        )
++        self.toggleViewAction().setVisible(False)
++        mw.addToolBarBreak(QtCore.Qt.TopToolBarArea)
++        mw.addToolBar(QtCore.Qt.TopToolBarArea, self)
++        self.hide()
++        self.key = None  # what the band shows now: ("sketch", name) or ("task", title)
++        self.undo_start = None
++        self.timer = QtCore.QTimer(self)
++        self.timer.timeout.connect(self.poll)
++        self.timer.start(250)
++
++    # -- what is going on
++    def current(self):
++        gdoc = Gui.ActiveDocument
++        edit = gdoc.getInEdit() if gdoc else None
++        obj = edit.Object if edit is not None else None
++        if obj is not None and obj.isDerivedFrom("Sketcher::SketchObject"):
++            return ("sketch", obj.Document.Name, obj.Name)
++        if Gui.Control.activeDialog():
++            title = obj.Label if obj is not None else ""
++            return ("task", title)
++        return None
++
++    def poll(self):
++        key = self.current()
++        if key != self.key:
++            self.key = key
++            self.rebuild()
++        if key:
++            # The panel's own OK / Cancel (shown again by the panel when it changes): the band has them
++            box, ok, cancel = task_buttons()
++            if box is not None and box.isVisible():
++                box.hide()
++        if key and key[0] == "sketch":
++            # Sketcher shows its toolbars on its own: the band has its tools
++            for bar in Gui.getMainWindow().findChildren(QtWidgets.QToolBar):
++                if bar.objectName() in SKETCH_BARS and bar.isVisible():
++                    Gui.getMainWindow().addActions([a for a in bar.actions() if not a.isSeparator()])
++                    bar.hide()
++
++    def rebuild(self):
++        self.clear()
++        key = self.key
++        if key is None:
++            self.undo_start = None
++            self.hide()
++            return
++        title = QtWidgets.QLabel(self)
++        title.setObjectName("UnifiedStepTitle")
++        if key[0] == "sketch":
++            doc = App.getDocument(key[1])
++            sk = doc.getObject(key[2])
++            self.undo_start = (doc.Name, doc.UndoCount)
++            title.setText(translate("Unified", "Drawing the sketch “{}”").format(sk.Label))
++            self.addWidget(title)
++            for command, _ in SKETCH_TOOLS:
++                if command is None:
++                    self.addSeparator()
++                elif command in Gui.listCommands():
++                    self.addAction(command_action(command, self))
++            more = QtWidgets.QToolButton(self)
++            more.setText(translate("Unified", "More"))
++            more.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
++            more.setIcon(QtGui.QIcon(os.path.join(HERE, "OtherTools.svg")))
++            more.setPopupMode(QtWidgets.QToolButton.InstantPopup)
++            menu = QtWidgets.QMenu(more)
++            shown = {c for c, _ in SKETCH_TOOLS if c}
++            for name in sorted(Gui.listCommands()):
++                if name.startswith("Sketcher_") and name not in shown and not name.startswith("Sketcher_Comp"):
++                    info = Gui.Command.get(name).getInfo()
++                    if info.get("menuText"):
++                        menu.addAction(command_action(name, menu))
++            more.setMenu(menu)
++            self.addWidget(more)
++        else:
++            self.undo_start = None
++            text = key[1]
++            title.setText(
++                translate("Unified", "Working on “{}”").format(text) if text else translate("Unified", "A tool is open")
++            )
++            self.addWidget(title)
++        done = QtWidgets.QPushButton(translate("Unified", "✓ Done"), self)
++        done.setObjectName("UnifiedStepDone")
++        done.setDefault(True)
++        done.setStyleSheet("QPushButton { background: #2f6fd0; color: white; padding: 4px 14px; border-radius: 5px; }")
++        done.clicked.connect(self.finish)
++        cancel = QtWidgets.QPushButton(translate("Unified", "✕ Cancel"), self)
++        cancel.setObjectName("UnifiedStepCancel")
++        cancel.setToolTip(translate("Unified", "Back to how it was before this step"))
++        cancel.clicked.connect(self.cancel)
++        # Right after what is being done, so that they are never pushed out of sight
++        first = self.actions()[1] if len(self.actions()) > 1 else None
++        if first is not None:
++            self.insertWidget(first, done)
++            self.insertWidget(first, cancel)
++            self.insertSeparator(first)
++        else:
++            self.addWidget(done)
++            self.addWidget(cancel)
++        self.show()
++        # The task panel's own OK / Cancel: the band has them (one pair, not two)
++        box, ok, cncl = task_buttons()
++        if box is not None:
++            box.hide()
++
++    # -- ending the step
++    def finish(self):
++        box, ok, cancel = task_buttons()
++        if ok is not None:
++            ok.click()
++        elif Gui.ActiveDocument and Gui.ActiveDocument.getInEdit():
++            Gui.ActiveDocument.resetEdit()
++        elif Gui.Control.activeDialog():
++            Gui.Control.closeDialog()
++
++    def cancel(self):
++        start = self.undo_start
++        box, ok, cncl = task_buttons()
++        if cncl is not None:
++            cncl.click()
++        elif Gui.ActiveDocument and Gui.ActiveDocument.getInEdit():
++            Gui.ActiveDocument.resetEdit()
++        elif Gui.Control.activeDialog():
++            Gui.Control.closeDialog()
++        # A sketch keeps what was drawn when it is closed: take it back
++        if start:
++            def undo():
++                doc = App.getDocument(start[0])
++                while doc.UndoCount > start[1]:
++                    doc.undo()
++                doc.recompute()
++
++            QtCore.QTimer.singleShot(0, undo)
++
++    def active(self):
++        return self.key is not None
++
++
++_band = None
++
++
++def band():
++    global _band
++    if _band is None:
++        _band = StepBand(Gui.getMainWindow())
++    return _band
++
++
++class StripDuringStep(QtCore.QObject):
++    """A tool of the strip pressed during a step: the step is finished first (no mode to leave)"""
++
++    def eventFilter(self, obj, event):
++        if event.type() != QtCore.QEvent.MouseButtonRelease or not isinstance(obj, QtWidgets.QToolButton):
++            return False
++        parent = obj.parentWidget()
++        if parent is None or parent.objectName() != "Unified Tools" or _band is None or not _band.active():
++            return False
++        action = obj.defaultAction()
++        if action is None:
++            return False
++        _band.finish()
++        QtCore.QTimer.singleShot(300, action.trigger)
++        return True
++
++
++_strip_filter = None
++
++
++def install_band():
++    global _strip_filter
++    band()
++    if _strip_filter is None:
++        _strip_filter = StripDuringStep()
++        QtWidgets.QApplication.instance().installEventFilter(_strip_filter)
++
++
+ def install():
+     if classic():
+         import CommandSearchGui
+@@ -541,4 +794,5 @@ def install():
+     # After the menus and toolbars are set up (the actions of the commands exist then)
+     QtCore.QTimer.singleShot(0, install_top)
+     QtCore.QTimer.singleShot(0, strip_tooltips)
++    QtCore.QTimer.singleShot(0, install_band)
+     install_keys()
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+From d2e041d2e67304cedbbaa32d2e38afcb02e39832 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:15:17 +0900
+Subject: [PATCH 256/258] Unified: TestNetworkSettings accepts "no route" as
+ well as a timeout for the black-hole address
+
+Windows CI runners may answer 10.255.255.1 with "unreachable" instead of
+dropping it; the point of the test is that the check reports a failure in
+Japanese without stopping the heartbeat.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/TestNetworkSettings.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/TestNetworkSettings.py b/src/Mod/Unified/TestNetworkSettings.py
+index 3764dfc07..f59563937 100644
+--- a/src/Mod/Unified/TestNetworkSettings.py
++++ b/src/Mod/Unified/TestNetworkSettings.py
+@@ -203,7 +203,8 @@ class TestCheck(unittest.TestCase):
+         self.assertTrue(got, "結果が届かない")
+         ok, text, tid = got[0]
+         self.assertFalse(ok)
+-        self.assertIn("応答がありません", text)
++        # 黙って捨てられれば「応答がありません」、経路が無いと言われればその説明（Windows の CI など）
++        self.assertIn("プロキシ 10.255.255.1:8080 に接続できません", text)
+         self.assertEqual(tid, threading.get_ident())
+         gaps = [b - a for a, b in zip(beats, beats[1:])]
+         self.assertGreater(len(beats), 20)
+-- 
+2.43.0
+

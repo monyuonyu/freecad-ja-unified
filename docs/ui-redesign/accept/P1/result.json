@@ -1,0 +1,27 @@
+{
+ "first_hits": {
+  "ok": true,
+  "got": {
+   "先端": "PartDesign_MoveTip",
+   "MoveTip": "PartDesign_MoveTip",
+   "STL 直す": "Mesh_Evaluation",
+   "歯車": "PartDesign_InvoluteGear",
+   "中心線": "TechDraw_CenterLineGroup",
+   "Pad": "PartDesign_Pad",
+   "IFC": "Std_Export"
+  }
+ },
+ "run_not_loaded": {
+  "ok": true,
+  "loaded_before": false,
+  "facets": [
+   11,
+   12
+  ],
+  "workbench": "UnifiedWorkbench"
+ },
+ "ask_ai_row": {
+  "ok": true,
+  "rows": 1
+ }
+}

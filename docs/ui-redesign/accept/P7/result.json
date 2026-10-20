@@ -1,0 +1,21 @@
+{
+ "four_ways": {
+  "ok": true
+ },
+ "new_part": {
+  "ok": true
+ },
+ "new_assembly": {
+  "ok": true
+ },
+ "open_file": {
+  "ok": true,
+  "dialog": "ドキュメントを開く"
+ },
+ "drawing": {
+  "ok": true
+ },
+ "guide": {
+  "ok": true
+ }
+}

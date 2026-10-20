@@ -1,0 +1,280 @@
+From ccbd9d1068a9f2b2265a94981ac129a5dcec6398 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 18:14:47 +0900
+Subject: [PATCH 255/258] Unified: AI chat says why a key is rejected, and
+ accepts a login token or a pasted key with stray characters
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Report (Windows): after entering a key, every message answered
+"AI: Invalid API key · Fix external API key" (claude's message when
+ANTHROPIC_API_KEY is rejected), with nothing to say what to fix.
+
+What changed (AIAgentBridge.py, AIChatGui.py):
+- normalize_key(): when storing and loading, remove spaces, line breaks,
+  zero-width characters, full-width spaces, quotes around the key and a
+  leading "ANTHROPIC_API_KEY=" / "Bearer"; anything else outside ASCII is
+  refused with a Japanese message instead of being stored.
+- key_kind(): sk-ant-oat… (claude setup-token) is passed to claude as
+  CLAUDE_CODE_OAUTH_TOKEN, sk-ant-api… as ANTHROPIC_API_KEY; anything else is
+  stored with a warning that it does not look like a Claude key.
+- ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN
+  inherited from the user's environment are removed before claude starts
+  (the SDK adds os.environ to what we pass).
+- "Invalid API key" / 401 now ends the turn with
+  「API キーが受け付けられませんでした。console.anthropic.com で作った sk-ant-api… のキーか
+  確かめて、設定 → AI チャット で入れ直してください（コピーのときの空白や改行にも注意）」
+  plus what was used (API キー / ログインのトークン, first 10 characters and
+  the length only, never the key).
+- TestNetworkSettings.TestKeys: normalisation, kinds, messages hide the key.
+
+Checked against the real claude CLI with fake keys: a quoted sk-ant-api key
+with CRLF is stored clean and gives the message above (with
+ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN set to junk in the environment); an
+sk-ant-oat key goes in as an OAuth token (claude: "401 OAuth access token is
+invalid") and gives the login-token message; a full-width key is refused.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AIAgentBridge.py       | 110 ++++++++++++++++++++++---
+ src/Mod/Unified/AIChatGui.py           |   4 +
+ src/Mod/Unified/TestNetworkSettings.py |  34 ++++++++
+ 3 files changed, 136 insertions(+), 12 deletions(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index a23c620c3..822a3abde 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -33,6 +33,76 @@ KEY_USER = "anthropic-api-key"
+ TOKEN_ENV = "JA_CLAUDE_OAUTH_TOKEN"
+ 
+ 
++# claude（CLI）が認証に使う環境変数。利用者の環境から受け継いだものは使わない（SDK は os.environ を足して claude を起こすので、
++# 受け継いだ古いキーが、こちらで渡したものより先に使われたり、混ざったりする）
++AUTH_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
++
++# コピーのときに紛れ込みやすい、見えない文字・全角の空白・引用符
++_INVISIBLE = "\u200b\u200c\u200d\u2060\ufeff\u00a0\u3000\t\r\n "
++_QUOTES = "\"'`\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f"
++
++
++def normalize_key(raw):
++    """貼り付けたキーを整える。(キー, 問題の説明)。問題が無ければ説明は None
++
++    前後と中の空白・改行・見えない文字・全角の空白、前後の引用符、「ANTHROPIC_API_KEY=」「Bearer 」を外す。
++    残りに半角英数字と記号以外があれば問題とする（全角の文字などはキーに含まれない）"""
++    key = raw or ""
++    for c in _INVISIBLE:
++        key = key.replace(c, "")
++    for _ in range(2):
++        key = key.strip(_QUOTES)
++        for prefix in ("ANTHROPIC_API_KEY=", "CLAUDE_CODE_OAUTH_TOKEN=", "Bearer"):
++            if key.startswith(prefix):
++                key = key[len(prefix):]
++    if not key:
++        return "", "キーが空です"
++    bad = sorted({c for c in key if not (33 <= ord(c) < 127)})
++    if bad:
++        return key, "キーに使えない文字（%s）が含まれています。全角の文字が混ざっていないか確かめて、" \
++                    "console.anthropic.com からもう一度コピーしてください" % "".join(bad[:5])
++    return key, None
++
++
++def key_kind(key):
++    """種類: "api"（API キー sk-ant-api…）・"oauth"（claude setup-token のログインのトークン sk-ant-oat…）・"unknown"。"""
++    if key.startswith("sk-ant-oat"):
++        return "oauth"
++    if key.startswith("sk-ant-api"):
++        return "api"
++    return "unknown"
++
++
++def mask(key):
++    """キーを表示するときの形（先頭 10 文字と長さだけ。キーそのものは出さない）"""
++    return "%s…（%d 文字）" % (key[:10], len(key))
++
++
++def kind_name(kind):
++    return {"api": "API キー", "oauth": "ログインのトークン"}.get(kind, "Claude のキーの形ではないもの")
++
++
++AUTH_HINT = ("API キーが受け付けられませんでした。console.anthropic.com で作った sk-ant-api… のキーか確かめて、"
++             "設定 → AI チャット で入れ直してください（コピーのときの空白や改行にも注意）")
++
++
++def is_auth_error(texts):
++    t = "\n".join(x for x in texts if x).lower()
++    return any(k in t for k in ("invalid api key", "fix external api key", "401", "authenticate",
++                                "invalid bearer token", "oauth token has expired", "invalid x-api-key"))
++
++
++def auth_message(kind, key):
++    """認証の失敗の説明（使ったものの種類と、先頭だけ）"""
++    used = "（使ったもの: %s %s）" % (kind_name(kind), mask(key)) if key else ""
++    if kind == "oauth":
++        return ("ログインのトークンが受け付けられませんでした。claude setup-token で発行し直すか、"
++                "console.anthropic.com で作った sk-ant-api… の API キーを 設定 → AI チャット で入れてください" + used)
++    if kind == "unknown":
++        return AUTH_HINT + "。しまってあるものは Claude のキー（sk-ant-api…）の形ではありません" + used
++    return AUTH_HINT + used
++
++
+ def _key_file(datadir):
+     return os.path.join(datadir, "ai-api-key")
+ 
+@@ -56,12 +126,12 @@ def load_key(datadir):
+         import keyring
+         k = keyring.get_password(KEY_SERVICE, KEY_USER)
+         if k:
+-            return k
++            return normalize_key(k)[0] or None
+     except Exception:
+         pass
+     try:
+         with open(_key_file(datadir)) as f:
+-            return f.read().strip() or None
++            return normalize_key(f.read())[0] or None
+     except OSError:
+         return None
+ 
+@@ -154,6 +224,7 @@ class Bridge:
+ 
+     def options(self):
+         env = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
++        # 受け継いだ認証の環境変数は main() で消してある。ここで渡すものだけが使われる
+         if self.oauth_token:
+             env["CLAUDE_CODE_OAUTH_TOKEN"] = self.oauth_token
+         elif self.api_key:
+@@ -235,13 +306,16 @@ class Bridge:
+             error = "%s: %s" % (type(e).__name__, e)
+         finally:
+             self.busy = False
+-        # 認証の失敗（401）: API キーなら入れ直してもらう。長期トークンなら発行し直してもらう
+-        if error is not None and any("401" in t or "authenticate" in t.lower() for t in said + [error]):
+-            if self.oauth_token:
++        # 認証の失敗（401・claude の "Invalid API key · Fix external API key"）: 何を使ったかを添えて、入れ直してもらう
++        cli_says_invalid = any("invalid api key" in t.lower() for t in said)  # 失敗の印が付かないことがある
++        if (error is not None and is_auth_error(said + [error])) or cli_says_invalid:
++            if self.oauth_token and self.key_kind is None:
+                 error = "長期トークン（%s）が正しくないか、期限が切れています。claude setup-token で発行し直してください" % TOKEN_ENV
++            elif self.args.local_login:
++                error = "この PC の claude のログインが使えません。claude でログインし直してください"
+             else:
++                error = auth_message(self.key_kind, self.oauth_token or self.api_key or "")
+                 self.send(type="need_key")
+-                error = None
+         elif error is not None and (describe_error(error) or describe_error("\n".join(said))):
+             # プロキシ・証明書の問題: 何を確かめればよいかを添える
+             error = describe_error(error) or describe_error("\n".join(said))
+@@ -251,13 +325,20 @@ class Bridge:
+ 
+     async def main(self):
+         # 認証: 利用者自身の API キー。本人用に、長期トークン（環境変数）か、この PC の claude のログイン（--local-login）も使える
+-        self.oauth_token = os.environ.pop(TOKEN_ENV, "").strip() or None
++        self.oauth_token = normalize_key(os.environ.pop(TOKEN_ENV, ""))[0] or None
++        self.key_kind = None   # しまってあるものの種類（"api"・"oauth"・"unknown"）。長期トークンの環境変数なら None
++        # 利用者の環境から受け継いだ認証の環境変数は使わない（--local-login のときも、ログインの方を使わせる）
++        for k in AUTH_VARS:
++            os.environ.pop(k, None)
+         if self.oauth_token or self.args.local_login:
+-            # API キーがあると claude はそちらを使うので、環境からも外す
+-            os.environ.pop("ANTHROPIC_API_KEY", None)
+             self.api_key = None
+         else:
+             self.api_key = load_key(self.args.datadir)
++            if self.api_key:
++                self.key_kind = key_kind(self.api_key)
++                if self.key_kind == "oauth":
++                    # claude setup-token のトークンを API キーの欄に入れた: ログインのトークンとして渡す
++                    self.oauth_token, self.api_key = self.api_key, None
+         if not self.oauth_token and not self.args.local_login and not self.api_key:
+             self.send(type="need_key")
+             return
+@@ -314,9 +395,14 @@ def main():
+     ap.add_argument("--workdir", default=os.path.join(os.path.expanduser("~"), ".cache", "freecad-ai"))
+     args = ap.parse_args()
+     if args.store_key:
+-        key = sys.stdin.read().strip()
+-        if not key:
+-            sys.exit("キーが空")
++        key, problem = normalize_key(sys.stdin.read())
++        if problem:
++            sys.exit(problem)
++        if key_kind(key) == "unknown":
++            print("warn:Claude のキー（sk-ant-api…）の形ではありません（%s）。このまましまいますが、"
++                  "使えないときは console.anthropic.com で作ったキーを入れ直してください" % mask(key))
++        elif key_kind(key) == "oauth":
++            print("note:ログインのトークン（claude setup-token）として使います")
+         print(store_key(key, args.datadir))
+         return
+     if args.delete_key:
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index 486817d77..b6cc58d0a 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -112,6 +112,10 @@ def store_key(key):
+         msg = translate("AIChat", "Stored (no key store on this system: in a file only you can read).")
+     else:
+         msg = translate("AIChat", "Stored in the key store of the system.")
++    # 仲介役の知らせ（キーの形が Claude のものでない・ログインのトークンとして使う）。日本語のまま添える
++    notes = [line.split(":", 1)[1] for line in out.splitlines() if line.startswith(("warn:", "note:"))]
++    if notes:
++        msg += "\n" + "\n".join(notes)
+     # 新しいキーで始め直す
+     if chat.panel is not None:
+         chat.panel.restart()
+diff --git a/src/Mod/Unified/TestNetworkSettings.py b/src/Mod/Unified/TestNetworkSettings.py
+index 6536fc760..3764dfc07 100644
+--- a/src/Mod/Unified/TestNetworkSettings.py
++++ b/src/Mod/Unified/TestNetworkSettings.py
+@@ -5,6 +5,7 @@
+   プロキシが閉じたポート（接続拒否）でも、応答の無いアドレス（10.255.255.1、黙って捨てられる）でも
+ - つながるかの確認は別のスレッドで走り、その間も画面のスレッドのタイマーが遅れない（心拍で測る）。結果は日本語
+ - Qt に「システムの設定」（Windows では WPAD の自動検出が走る）を使わせない
++- 貼り付けた API キーの整え方と種類の見分け、認証の失敗の説明
+ """
+ 
+ import os
+@@ -209,5 +210,38 @@ class TestCheck(unittest.TestCase):
+         self.assertLess(max(gaps), 0.3, "心拍が %.2f 秒止まった" % max(gaps))
+ 
+ 
++class TestKeys(unittest.TestCase):
++    def setUp(self):
++        import AIAgentBridge
++        self.b = AIAgentBridge
++
++    def test_normalize(self):
++        n = self.b.normalize_key
++        key = "sk-ant-api03-abcDEF_123-xyz"
++        for raw in (key, " %s \n" % key, "\"%s\"" % key, "「%s」" % key, "　%s​" % key,
++                    "﻿%s\r\n" % key, "sk-ant-api03-abc\nDEF_123-xyz", "ANTHROPIC_API_KEY=%s" % key,
++                    "'%s'" % key, "Bearer %s" % key):
++            self.assertEqual(n(raw), (key, None), repr(raw))
++        got, problem = n("sk-ant-api03-ａｂｃ")
++        self.assertIsNotNone(problem)
++        self.assertIn("使えない文字", problem)
++        self.assertEqual(n("  \n")[1], "キーが空です")
++
++    def test_kind(self):
++        self.assertEqual(self.b.key_kind("sk-ant-api03-x"), "api")
++        self.assertEqual(self.b.key_kind("sk-ant-oat01-x"), "oauth")
++        self.assertEqual(self.b.key_kind("sk-proj-x"), "unknown")
++
++    def test_messages_hide_the_key(self):
++        secret = "sk-ant-api03-" + "s" * 80
++        m = self.b.auth_message("api", secret)
++        self.assertIn("API キーが受け付けられませんでした", m)
++        self.assertIn("sk-ant-api…（93 文字）", m)
++        self.assertNotIn(secret, m)
++        self.assertIn("ログインのトークン", self.b.auth_message("oauth", "sk-ant-oat01-" + "t" * 80))
++        self.assertTrue(self.b.is_auth_error(["Invalid API key · Fix external API key"]))
++        self.assertFalse(self.b.is_auth_error(["箱を作りました"]))
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+
