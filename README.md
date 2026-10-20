@@ -76,6 +76,37 @@ Double-clicking a face opens the editor of the feature that created it (Pad, Fil
 
 ![What is shown under the cursor](docs/images/08b_hover.png)
 
+### Snap parts together, move point to point
+
+Putting parts flush against each other no longer needs the Placement dialog, attachment or
+assembly joints. Click a face of the part to move, Ctrl+click a face of the other part, and
+"くっつける" (Snap together) appears next to it: the faces end up touching, facing each other.
+**The first pick moves** (the panel says which moves where; "入れ替え" swaps them).
+
+![Two faces picked: "Snap together" appears](docs/images/15_snap_pick.png)
+
+The part moves as soon as you press it. Flip (same direction instead of facing), gap, turn
+(90° steps or any angle) and what lines up (the clicked points, the centers, or keep the
+position along the face) apply right away. OK keeps it (one undo step), Cancel or Esc puts it back.
+
+![The panel after snapping](docs/images/16_snap_panel.png)
+
+Two round faces offer "軸をそろえる" (line up the axes, e.g. a shaft into a hole), a point and a
+face "点を面に合わせる" (point onto a face), two points "点から点へ" (point to point).
+
+![A shaft lined up with a hole](docs/images/18_shaft_in_hole.png)
+
+"点から点へ動かす" (Move point to point) moves without turning: click the base point, then the
+destination. The cursor snaps to vertices, middles of edges, centers of circles and faces, with
+a marker and its name; a see-through copy follows the cursor; Ctrl makes a copy.
+
+![Move point to point](docs/images/17_point_to_point.png)
+
+The tools also start from the Model menu, the toolbar, `J` (snap) and `Shift+M` (point to point).
+What moves is the part the picked element belongs to (a Body, a shape, an imported STEP, a link),
+or a container around it chosen in the panel; nested and rotated containers are handled in global
+coordinates. An attached part keeps its attachment with a new offset, or is detached, as you choose.
+
 ### Design check and "直す" (Fix)
 
 Like DRC in PCB CAD, it lists the mistakes in the whole model: failed features, interference between parts, conflicting sketch constraints,
@@ -127,6 +158,7 @@ and clicking near an edge or corner of a face turns the view to that edge or cor
 | Sketch snapping | Off by default | Snaps near grid points (round dimensions even when drawing with the mouse) |
 | What is shown under the cursor | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6` ("Face 6 of Pad") |
 | Double-click a face | Nothing happens | Opens the editor of the feature that created it (Pad, Fillet, …) |
+| Put parts face to face, move point to point | Type numbers into the Placement dialog, set up attachment, make assembly joints, or use Draft Move (needs a workbench switch) | Pick two faces → "Snap together" (facing / same direction, gap, 90° turns, centers). Round faces → "Line up the axes", point + face → "Point onto a face", two points → "Point to point" (snaps to vertices, edge middles, circle and face centers; Ctrl copies). Live preview, OK keeps, Esc reverts |
 | Select a face and press "Hole" | Fails with "no axis found" (you must draw a point in a sketch first) | A hole at the point you clicked |
 | Drawing projection views | Appear at the bottom-left of the page until the file is reopened (an upstream bug). First-angle projection by default | Appear at the center of the page. Third-angle projection (JIS) by default |
 | Modifying an imported solid (STEP etc.) | A dialog saying an active body is required | Sketch, fillet and pad work directly (it is turned into a part automatically) |

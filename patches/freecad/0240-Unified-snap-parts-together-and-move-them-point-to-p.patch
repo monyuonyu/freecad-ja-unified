@@ -1,0 +1,2592 @@
+From e28739c827d274e07b191ef2175aade400ea5a55 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 16:19:31 +0900
+Subject: [PATCH 240/240] Unified: snap parts together and move them point to
+ point, with clicks only
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Putting a part against another one needed the Placement dialog, attachment
+or assembly joints. Four tools now do it with clicks, with the part moving
+right away (preview), Esc/Cancel putting it back and OK one undo step:
+
+- Snap together (くっつける, J): a face of the part to move, then a face of
+  the other part: the faces touch, facing each other. Options: flip (same
+  direction, e.g. top faces flush), gap, turn in 90 degree steps or any
+  angle, and which points go together (the clicked points, the centers, or
+  keep the position along the face).
+- Line up the axes (軸をそろえる): round faces or circles on one axis (a
+  shaft into a hole).
+- Point onto a face (点を面に合わせる): a point straight onto a face.
+- Move point to point (点から点へ動かす, Shift+M): snaps to vertices, middles
+  of edges, centers of circles and faces, with markers and a see-through
+  copy following the cursor; Ctrl or a check box for a copy.
+
+Two picks made with Ctrl put the matching tool on the context bar; the
+first pick moves onto the second, the panel says which moves where and can
+swap them. What moves is the part the element belongs to (a Body, a shape,
+a link), or a container around it, chosen in the panel; nothing inside a
+link. Everything is computed in global coordinates, so nested App::Part
+and rotated parents work. An attached part keeps its attachment with a new
+offset, or is detached, as chosen in the panel.
+
+The geometry is in SnapMath.py, tested headless: FreeCADCmd -t TestSnapMath.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |    7 +
+ src/Mod/Unified/Gui/ContextBar.cpp            |   42 +-
+ .../translations/UnifiedWording_ja.ts         |  294 +++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   14 +-
+ src/Mod/Unified/MovePointToPoint.svg          |    8 +
+ src/Mod/Unified/PointToFace.svg               |    7 +
+ src/Mod/Unified/SnapAxes.svg                  |    7 +
+ src/Mod/Unified/SnapFaces.svg                 |   10 +
+ src/Mod/Unified/SnapMath.py                   |  499 ++++++++
+ src/Mod/Unified/SnapToolsGui.py               | 1105 +++++++++++++++++
+ src/Mod/Unified/TestSnapMath.py               |  411 ++++++
+ src/Mod/Unified/UnifiedCommands.py            |    4 +
+ 12 files changed, 2402 insertions(+), 6 deletions(-)
+ create mode 100644 src/Mod/Unified/MovePointToPoint.svg
+ create mode 100644 src/Mod/Unified/PointToFace.svg
+ create mode 100644 src/Mod/Unified/SnapAxes.svg
+ create mode 100644 src/Mod/Unified/SnapFaces.svg
+ create mode 100644 src/Mod/Unified/SnapMath.py
+ create mode 100644 src/Mod/Unified/SnapToolsGui.py
+ create mode 100644 src/Mod/Unified/TestSnapMath.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 4ed793ee6..8a6ae8d77 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -18,6 +18,13 @@ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg)
+ endif(BUILD_GUI)
+ 
++# Snap together / move point to point: the geometry (SnapMath, tested headless by
++# "FreeCADCmd -t TestSnapMath") and the tools in the 3D view
++list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
++endif(BUILD_GUI)
++
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+ fc_copy_sources(UnifiedScripts "${CMAKE_BINARY_DIR}/Mod/Unified" ${Unified_Scripts})
+ 
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 7934f9883..fced6e3fe 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -189,10 +189,27 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+         bool edgesOnly = std::all_of(selection.begin(), selection.end(), [](const auto& s) {
+             return allStartWith(s.getSubNames(), "Edge");
+         });
++        std::vector<Action> actions;
++        // Two things picked on two parts, one after the other: the first one moves onto the
++        // second one. Which of these fit (two flat faces, two round faces or circles, a point
++        // and a face, two points) the commands decide; the others are not shown.
++        bool twoPicks = selection.size() == 2
++            && std::all_of(selection.begin(), selection.end(), [](const auto& s) {
++                   return s.getSubNames().size() == 1;
++               });
++        if (twoPicks) {
++            actions = {
++                {"Unified_SnapFaces", label("Snap")},
++                {"Unified_SnapAxes", label("Line up axes")},
++                {"Unified_PointToFace", label("Point onto face")},
++                {"Unified_MovePointToPoint", label("Point to point")},
++            };
++        }
+         if (edgesOnly) {
+-            return {{"PartDesign_Fillet", label("Fillet")}, {"PartDesign_Chamfer", label("Chamfer")}};
++            actions.push_back({"PartDesign_Fillet", label("Fillet")});
++            actions.push_back({"PartDesign_Chamfer", label("Chamfer")});
+         }
+-        return {};
++        return actions;
+     }
+ 
+     const auto& sel = selection.front();
+@@ -220,16 +237,31 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+             {"PartDesign_Pocket", label("Cut in")},
+             {"Unified_Hole", label("Hole")},
+             {"PartDesign_Thickness", label("Shell")},
++            // Put this part against another one: the next face clicked is where it goes
++            {"Unified_SnapFaces", label("Snap")},
+         };
+     }
+     if (allStartWith(subs, "Edge")) {
+-        return {{"PartDesign_Fillet", label("Fillet")}, {"PartDesign_Chamfer", label("Chamfer")}};
++        return {
++            {"PartDesign_Fillet", label("Fillet")},
++            {"PartDesign_Chamfer", label("Chamfer")},
++            {"Unified_MovePointToPoint", label("Point to point")},
++        };
++    }
++    if (allStartWith(subs, "Vertex")) {
++        // From this point to the next one clicked
++        return {{"Unified_MovePointToPoint", label("Point to point")}};
+     }
+     if (!subs.empty()) {
+         return {};
+     }
+-    if (isDerivedFrom(obj, "Part::Feature") || isDerivedFrom(obj, "PartDesign::Body")) {
+-        return {{"Std_TransformManip", label("Move")}, {"Std_ToggleVisibility", label("Hide")}};
++    if (isDerivedFrom(obj, "Part::Feature") || isDerivedFrom(obj, "PartDesign::Body")
++        || isDerivedFrom(obj, "App::Part") || isDerivedFrom(obj, "App::Link")) {
++        return {
++            {"Std_TransformManip", label("Move")},
++            {"Unified_MovePointToPoint", label("Point to point")},
++            {"Std_ToggleVisibility", label("Hide")},
++        };
+     }
+     return {};
+ }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index e853db582..7e62742f4 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -7531,6 +7531,10 @@ Each unit is approximately 0.1mm wide</source>
+ </context>
+ <context>
+     <name>Workbench</name>
++    <message>
++        <source>Unified Place</source>
++        <translation>くっつける・動かす</translation>
++    </message>
+     <message>
+         <source>Additive Features</source>
+         <translation>加算形</translation>
+@@ -8962,4 +8966,294 @@ Each unit is approximately 0.1mm wide</source>
+         <translation>ほかの向きと設定</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_Snap</name>
++    <message>
++        <source>Move point to point</source>
++        <translation>点から点へ動かす</translation>
++    </message>
++    <message>
++        <source>Snap together</source>
++        <translation>くっつける</translation>
++    </message>
++    <message>
++        <source>Swap</source>
++        <translation>入れ替え</translation>
++    </message>
++    <message>
++        <source>Move the other one instead</source>
++        <translation>動かす側と合わせ先を入れ替える</translation>
++    </message>
++    <message>
++        <source>What moves:</source>
++        <translation>動かすもの:</translation>
++    </message>
++    <message>
++        <source>The part itself, or a group (container) it is in, moved as a whole</source>
++        <translation>部品だけを動かすか、その部品が入っているまとまり（入れ物）ごと動かすか</translation>
++    </message>
++    <message>
++        <source>Flip (same direction)</source>
++        <translation>向きを反転（同じ向きにそろえる）</translation>
++    </message>
++    <message>
++        <source>Turn the part over: the faces point the same way (e.g. two top faces flush) instead of facing each other</source>
++        <translation>部品を裏返す。面どうしを向かい合わせる代わりに、同じ向きにそろえる（例: 上の面どうしを同じ高さに）</translation>
++    </message>
++    <message>
++        <source>Gap:</source>
++        <translation>すき間:</translation>
++    </message>
++    <message>
++        <source>Distance between the faces (0: touching)</source>
++        <translation>面と面のあいだの距離（0 でぴったり）</translation>
++    </message>
++    <message>
++        <source>Turn:</source>
++        <translation>回転:</translation>
++    </message>
++    <message>
++        <source>Turn a quarter to the left around the face</source>
++        <translation>面を軸に左へ 90° 回す</translation>
++    </message>
++    <message>
++        <source>Turn a quarter to the right around the face</source>
++        <translation>面を軸に右へ 90° 回す</translation>
++    </message>
++    <message>
++        <source>Any angle around the face (or the axis)</source>
++        <translation>面（または軸）のまわりに好きな角度で回す</translation>
++    </message>
++    <message>
++        <source>Line up:</source>
++        <translation>合わせる位置:</translation>
++    </message>
++    <message>
++        <source>The clicked points</source>
++        <translation>クリックした点どうし</translation>
++    </message>
++    <message>
++        <source>The centers</source>
++        <translation>面の中心どうし</translation>
++    </message>
++    <message>
++        <source>Keep the position along the face</source>
++        <translation>今の位置のまま（面に沿っては動かさない）</translation>
++    </message>
++    <message>
++        <source>Which points of the two faces go together. &quot;Keep&quot; only moves the part straight onto the face</source>
++        <translation>2 つの面のどこを合わせるか。「今の位置のまま」は、面にまっすぐ寄せるだけ</translation>
++    </message>
++    <message>
++        <source>Make a copy (the original stays)</source>
++        <translation>コピーを作る（元の部品は残す）</translation>
++    </message>
++    <message>
++        <source>Or hold Ctrl when clicking the destination</source>
++        <translation>行き先をクリックするときに Ctrl を押していても、コピーになる</translation>
++    </message>
++    <message>
++        <source>This part is attached to another one (it follows it when that one changes).</source>
++        <translation>この部品は別の物に取り付けられています（相手が変わるとついていきます）。</translation>
++    </message>
++    <message>
++        <source>Keep the attachment, change its offset</source>
++        <translation>取り付けはそのまま、ずれ（オフセット）を変えて動かす</translation>
++    </message>
++    <message>
++        <source>Detach it and move it freely</source>
++        <translation>取り付けを外して、自由に動かす</translation>
++    </message>
++    <message>
++        <source>Pick again</source>
++        <translation>選び直す</translation>
++    </message>
++    <message>
++        <source>Forget the picks and start over</source>
++        <translation>選んだものを忘れて、最初からやり直す</translation>
++    </message>
++    <message>
++        <source>Click the base point (the point that is moved)</source>
++        <translation>動かす元の点をクリックしてください</translation>
++    </message>
++    <message>
++        <source>Click the point on the part to move (a vertex, the middle of an edge, the center of a circle...)</source>
++        <translation>動かす部品の点をクリックしてください（角・辺の真ん中・円の中心など）</translation>
++    </message>
++    <message>
++        <source>Click where the point goes (hold Ctrl for a copy)</source>
++        <translation>行き先の点をクリックしてください（Ctrl を押しながらでコピー）</translation>
++    </message>
++    <message>
++        <source>If it is right, OK. Clicking another point changes where it goes</source>
++        <translation>よければ OK。別の点をクリックすると、行き先が変わります</translation>
++    </message>
++    <message>
++        <source>Click the point on the part to move</source>
++        <translation>動かす部品の点をクリックしてください</translation>
++    </message>
++    <message>
++        <source>Click the face of the part to move (a flat face, or a round one for an axis)</source>
++        <translation>動かす部品の面をクリックしてください（平らな面。丸い面なら軸をそろえます）</translation>
++    </message>
++    <message>
++        <source>Click the round face or circle to line it up with</source>
++        <translation>軸を合わせる相手の丸い面か円をクリックしてください</translation>
++    </message>
++    <message>
++        <source>Click the face to put the point on</source>
++        <translation>点を乗せる面をクリックしてください</translation>
++    </message>
++    <message>
++        <source>Click the face to put it against</source>
++        <translation>くっつける相手の面をクリックしてください</translation>
++    </message>
++    <message>
++        <source>Adjust below, then OK. Clicking another face changes where it goes</source>
++        <translation>下で調整して OK。別の面をクリックすると、合わせ先が変わります</translation>
++    </message>
++    <message>
++        <source>This cannot be moved</source>
++        <translation>これは動かせません</translation>
++    </message>
++    <message>
++        <source>That is part of what moves. Click something else</source>
++        <translation>それは動かす部品の一部です。ほかの部品をクリックしてください</translation>
++    </message>
++    <message>
++        <source>These two do not go together: pick two flat faces, two round faces (or circles), or a point and a face</source>
++        <translation>この 2 つは合わせられません。平らな面どうし、丸い面（円）どうし、または点と面を選んでください</translation>
++    </message>
++    <message>
++        <source>{} (the whole group)</source>
++        <translation>{}（まとまりごと）</translation>
++    </message>
++    <message>
++        <source>{} cannot be moved here: its placement is set by a formula or locked</source>
++        <translation>{} はここでは動かせません（位置が式で決まっているか、固定されています）</translation>
++    </message>
++    <message>
++        <source>The target is inside {}: choose a smaller part to move</source>
++        <translation>合わせ先が {} の中にあります。動かすものを小さい単位にしてください</translation>
++    </message>
++    <message>
++        <source>Moves: &lt;b&gt;{}&lt;/b&gt;</source>
++        <translation>動かす: &lt;b&gt;{}&lt;/b&gt;</translation>
++    </message>
++    <message>
++        <source>onto: &lt;b&gt;{}&lt;/b&gt;</source>
++        <translation>合わせ先: &lt;b&gt;{}&lt;/b&gt;</translation>
++    </message>
++    <message>
++        <source>Line up the axes</source>
++        <translation>軸をそろえる</translation>
++    </message>
++    <message>
++        <source>Point onto a face</source>
++        <translation>点を面に合わせる</translation>
++    </message>
++    <message>
++        <source>Pick a flat face or a round (cylindrical) face</source>
++        <translation>平らな面か、丸い（円筒の）面を選んでください</translation>
++    </message>
++    <message>
++        <source>Pick a point, an edge or a face</source>
++        <translation>点・辺・面のどれかを選んでください</translation>
++    </message>
++    <message>
++        <source>Pick a face, an edge or a point of the part</source>
++        <translation>部品の面・辺・点のどれかを選んでください</translation>
++    </message>
++    <message>
++        <source>These two cannot be snapped together: pick two flat faces, two round faces, or two points</source>
++        <translation>この 2 つはくっつけられません。平らな面どうし、丸い面どうし、または点どうしを選んでください</translation>
++    </message>
++    <message>
++        <source>Vertex</source>
++        <translation>角（頂点）</translation>
++    </message>
++    <message>
++        <source>Middle of the edge</source>
++        <translation>辺の真ん中</translation>
++    </message>
++    <message>
++        <source>Center of the circle</source>
++        <translation>円の中心</translation>
++    </message>
++    <message>
++        <source>Center of the face</source>
++        <translation>面の中心</translation>
++    </message>
++    <message>
++        <source>On the face</source>
++        <translation>面の上</translation>
++    </message>
++    <message>
++        <source>On the edge</source>
++        <translation>辺の上</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_SnapFaces</name>
++    <message>
++        <source>Snap together</source>
++        <translation>くっつける</translation>
++    </message>
++    <message>
++        <source>Puts one part against another, face to face. Click a face of the part to move, then a face of the other part (or pick both with Ctrl and press this). The first one moves</source>
++        <translation>部品を別の部品に面と面でくっつける。動かす部品の面をクリックし、次に相手の面をクリックする（Ctrl で 2 つ選んでから押してもよい）。先に選んだほうが動く</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_SnapAxes</name>
++    <message>
++        <source>Line up the axes</source>
++        <translation>軸をそろえる</translation>
++    </message>
++    <message>
++        <source>Puts a round part on the axis of another, e.g. a shaft into a hole. Click a round face or a circle of the part to move, then one of the other part</source>
++        <translation>丸い部品の軸を相手の軸にそろえる（例: 軸を穴に通す）。動かす部品の丸い面か円をクリックし、次に相手の丸い面か円をクリックする</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_PointToFace</name>
++    <message>
++        <source>Point onto a face</source>
++        <translation>点を面に合わせる</translation>
++    </message>
++    <message>
++        <source>Moves a part straight (without turning it) until the picked point lies on the picked face. Pick the point first, then the face</source>
++        <translation>部品を回さずにまっすぐ動かして、選んだ点を選んだ面の上に乗せる。先に点、次に面を選ぶ</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_MovePointToPoint</name>
++    <message>
++        <source>Move point to point</source>
++        <translation>点から点へ動かす</translation>
++    </message>
++    <message>
++        <source>Moves parts without turning them: click the point to move (it snaps to vertices, middles of edges, centers of circles and faces), then where it goes. Hold Ctrl for a copy</source>
++        <translation>部品を回さずに動かす。動かす元の点をクリックし（角・辺の真ん中・円や面の中心に吸い付く）、次に行き先をクリックする。Ctrl を押しながらでコピー</translation>
++    </message>
++</context>
++<context>
++    <name>UnifiedGui::ContextBar</name>
++    <message>
++        <source>Snap</source>
++        <translation>くっつける</translation>
++    </message>
++    <message>
++        <source>Line up axes</source>
++        <translation>軸をそろえる</translation>
++    </message>
++    <message>
++        <source>Point onto face</source>
++        <translation>点を面に</translation>
++    </message>
++    <message>
++        <source>Point to point</source>
++        <translation>点から点へ</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 340e9bc54..73cd95e71 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -139,8 +139,18 @@ Gui::MenuItem* Workbench::setupMenuBar() const
+                      << "PartDesign_LinearPattern"
+                      << "PartDesign_PolarPattern"
+                      << "PartDesign_MultiTransform";
++    // Putting parts against each other, with clicks only
++    auto place = new Gui::MenuItem;
++    place->setCommand("Unified Place");
++    *place << "Unified_SnapFaces"
++           << "Unified_SnapAxes"
++           << "Unified_PointToFace"
++           << "Unified_MovePointToPoint"
++           << "Separator"
++           << "Std_TransformManip"
++           << "Std_Placement";
+     *part << "PartDesign_Body" << "Separator" << additives << subtractives << dressups
+-          << transformations << "Separator"
++          << transformations << place << "Separator"
+           << "PartDesign_Boolean"
+           << "PartDesign_ShapeBinder"
+           << "PartDesign_SubShapeBinder"
+@@ -332,6 +342,8 @@ Gui::ToolBarItem* Workbench::setupToolBars() const
+     parts->setCommand("Unified Parts");
+     *parts << "PartDesign_Body"
+            << "Std_TransformManip"
++           << "Unified_SnapFaces"
++           << "Unified_MovePointToPoint"
+            << "PartDesign_Boolean";
+ 
+     auto check = new Gui::ToolBarItem(root);
+diff --git a/src/Mod/Unified/MovePointToPoint.svg b/src/Mod/Unified/MovePointToPoint.svg
+new file mode 100644
+index 000000000..f8179c1c9
+--- /dev/null
++++ b/src/Mod/Unified/MovePointToPoint.svg
+@@ -0,0 +1,8 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M6 36h18v18H6z" fill="#f5a623" fill-opacity="0.35" stroke="#b36b00" stroke-width="2" stroke-dasharray="4 3"/>
++  <path d="M40 10h18v18H40z" fill="#f5a623" stroke="#b36b00" stroke-width="2"/>
++  <circle cx="24" cy="36" r="4" fill="#1a7f37"/>
++  <circle cx="58" cy="10" r="4" fill="#d33"/>
++  <path d="M27 33l24-18" stroke="#1a7f37" stroke-width="3" stroke-linecap="round"/>
++  <path d="M42 14l10 0-3 9" fill="none" stroke="#1a7f37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
++</svg>
+diff --git a/src/Mod/Unified/PointToFace.svg b/src/Mod/Unified/PointToFace.svg
+new file mode 100644
+index 000000000..ed549c34b
+--- /dev/null
++++ b/src/Mod/Unified/PointToFace.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M4 50l16-10h40L44 50z" fill="#9ec5f8" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M24 6h16v16H24z" fill="#f5a623" stroke="#b36b00" stroke-width="2"/>
++  <circle cx="32" cy="22" r="3.5" fill="#1a7f37"/>
++  <path d="M32 27v15" stroke="#1a7f37" stroke-width="3" stroke-linecap="round"/>
++  <path d="M26 36l6 7 6-7" fill="none" stroke="#1a7f37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
++</svg>
+diff --git a/src/Mod/Unified/SnapAxes.svg b/src/Mod/Unified/SnapAxes.svg
+new file mode 100644
+index 000000000..80de22d44
+--- /dev/null
++++ b/src/Mod/Unified/SnapAxes.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M4 40h56v14H4z" fill="#5b8def" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <ellipse cx="32" cy="40" rx="10" ry="3.5" fill="#1d3f80"/>
++  <path d="M24 8h16v26H24z" fill="#f5a623" stroke="#b36b00" stroke-width="2"/>
++  <ellipse cx="32" cy="8" rx="8" ry="3" fill="#ffd28a" stroke="#b36b00" stroke-width="2"/>
++  <path d="M32 2v60" stroke="#1a7f37" stroke-width="2" stroke-dasharray="5 3"/>
++</svg>
+diff --git a/src/Mod/Unified/SnapFaces.svg b/src/Mod/Unified/SnapFaces.svg
+new file mode 100644
+index 000000000..c61e58671
+--- /dev/null
++++ b/src/Mod/Unified/SnapFaces.svg
+@@ -0,0 +1,10 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M6 34l14-8h16l-14 8z" fill="#9ec5f8" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M6 34h16v20H6z" fill="#5b8def" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M22 34l14-8v20l-14 8z" fill="#3f6fc9" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M30 14l14-8h14l-14 8z" fill="#ffd28a" stroke="#b36b00" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M30 14h14v14H30z" fill="#f5a623" stroke="#b36b00" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M44 14l14-8v14l-14 8z" fill="#d4870f" stroke="#b36b00" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M28 30l-4 3" stroke="#1a7f37" stroke-width="3" stroke-linecap="round"/>
++  <path d="M34 34l-8 1 3-7" fill="none" stroke="#1a7f37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
++</svg>
+diff --git a/src/Mod/Unified/SnapMath.py b/src/Mod/Unified/SnapMath.py
+new file mode 100644
+index 000000000..97641a742
+--- /dev/null
++++ b/src/Mod/Unified/SnapMath.py
+@@ -0,0 +1,499 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# The geometry behind "snap together" (くっつける) and "move point to point" (点から点へ動かす).
++#
++# No GUI here: what moves, where it goes, and how its Placement changes, all in global
++# coordinates. SnapToolsGui.py does the clicking; TestSnapMath.py tests this file headless.
++#
++# A pick is what the 3D view gives (and Gui.Selection.getSelectionEx("", 0)): the top-level
++# object, the path of names below it down to the element ("Part.Body.Pad.Face3") and the
++# picked point in global coordinates.
++
++import math
++
++import FreeCAD as App
++
++TOL = 1e-7
++
++
++class SnapError(Exception):
++    """A pick or a pair of picks that cannot be snapped; the message is for the user."""
++
++
++def _tr(text):
++    return App.Qt.translate("Unified_Snap", text)
++
++
++# --- picks and what they mean ------------------------------------------------------------
++
++
++class Pick:
++    """One pick: root object, path below it, and the picked point (global)."""
++
++    def __init__(self, root, sub, point=None):
++        self.root = root
++        self.sub = sub or ""
++        self.point = App.Vector(point) if point is not None else None
++
++    @property
++    def tokens(self):
++        # "Body.Pad.Face3" → ["Body", "Pad"] (objects) and "Face3" (element)
++        return self.sub.split(".")[:-1]
++
++    @property
++    def element(self):
++        return self.sub.split(".")[-1]
++
++    def objects(self):
++        """[root, ..., the object that owns the element]."""
++        objs = self.root.getSubObjectList(self.sub)
++        return list(objs) if objs else [self.root]
++
++    def shape(self):
++        """The picked element in global coordinates (None for a whole object)."""
++        if not self.element:
++            return None
++        try:
++            shape = self.root.getSubObject(self.sub)
++        except Exception:
++            return None
++        if shape is None or shape.isNull():
++            return None
++        return shape
++
++    def owner(self):
++        return self.objects()[-1]
++
++    def __repr__(self):
++        return "Pick({}, {!r})".format(self.root.Name, self.sub)
++
++
++class Feature:
++    """What a picked element means for snapping.
++
++    kind "plane": a flat face; direction is its outward normal.
++    kind "axis": a round face or a circle; direction is the axis (its sign means nothing).
++    kind "point": a point (a vertex, the middle of an edge, the center of a circle).
++    """
++
++    def __init__(self, kind, direction=None, pick=None, center=None, label=""):
++        self.kind = kind
++        self.direction = App.Vector(direction) if direction is not None else None
++        if self.direction is not None:
++            self.direction.normalize()
++        self.pick = App.Vector(pick) if pick is not None else None
++        self.center = App.Vector(center) if center is not None else self.pick
++        if self.pick is None:
++            self.pick = self.center
++        self.label = label
++
++    def transformed(self, placement):
++        """The same feature after the part moved by the global placement."""
++        direction = placement.Rotation.multVec(self.direction) if self.direction is not None else None
++        return Feature(self.kind, direction, placement.multVec(self.pick), placement.multVec(self.center), self.label)
++
++    def __repr__(self):
++        return "Feature({}, dir={}, pick={}, center={})".format(
++            self.kind, self.direction, self.pick, self.center
++        )
++
++
++def _on_axis(point, origin, direction):
++    return origin + direction * (point - origin).dot(direction)
++
++
++def _is_plane(surface):
++    import Part
++
++    return isinstance(surface, Part.Plane)
++
++
++def _is_cylinder(surface):
++    import Part
++
++    return isinstance(surface, Part.Cylinder)
++
++
++def _circle_of(edge):
++    import Part
++
++    curve = edge.Curve
++    if isinstance(curve, (Part.Circle, Part.ArcOfCircle)):
++        return curve
++    return None
++
++
++def face_feature(face, point=None):
++    """The meaning of a face for "snap together": flat → plane, cylindrical → axis."""
++    surface = face.Surface
++    center = face.CenterOfMass
++    if _is_plane(surface):
++        at = point if point is not None else center
++        try:
++            u, v = face.Surface.parameter(at)
++            normal = face.normalAt(u, v)
++        except Exception:
++            normal = surface.Axis
++            if face.Orientation == "Reversed":
++                normal = -normal
++        # The point on the face's plane (a picked point lies on it up to the pick's accuracy)
++        pick = at - normal * (at - center).dot(normal)
++        return Feature("plane", normal, pick, center, "plane")
++    if _is_cylinder(surface):
++        axis = App.Vector(surface.Axis)
++        axis.normalize()
++        origin = App.Vector(surface.Center)
++        on_axis_center = _on_axis(center, origin, axis)
++        pick = _on_axis(point, origin, axis) if point is not None else on_axis_center
++        return Feature("axis", axis, pick, on_axis_center, "cylinder")
++    raise SnapError(_tr("Pick a flat face or a round (cylindrical) face"))
++
++
++def point_of(shape, point=None):
++    """A point for "move point to point" from a picked vertex, edge or face.
++
++    A vertex is the point. A circle (or arc) is its center. Another edge gives the end or the
++    middle nearest to where it was clicked. A face gives the clicked point (or its center).
++    """
++    if shape.ShapeType == "Vertex":
++        return App.Vector(shape.Point), "vertex"
++    if shape.ShapeType == "Edge":
++        circle = _circle_of(shape)
++        if circle is not None:
++            return App.Vector(circle.Center), "center"
++        candidates = [(App.Vector(v.Point), "vertex") for v in shape.Vertexes]
++        first, last = shape.ParameterRange
++        candidates.append((shape.valueAt((first + last) / 2), "midpoint"))
++        if point is None:
++            return candidates[-1]
++        return min(candidates, key=lambda c: (c[0] - point).Length)
++    if shape.ShapeType == "Face":
++        if point is not None:
++            return App.Vector(point), "face"
++        return App.Vector(shape.CenterOfMass), "face center"
++    raise SnapError(_tr("Pick a point, an edge or a face"))
++
++
++def feature_of(pick, want=None):
++    """The Feature of a pick. want: "point" to read it as a point, else plane/axis/point."""
++    shape = pick.shape()
++    if shape is None:
++        raise SnapError(_tr("Pick a face, an edge or a point of the part"))
++    if shape.ShapeType == "Face" and want != "point":
++        return face_feature(shape, pick.point)
++    if shape.ShapeType == "Edge" and want != "point":
++        circle = _circle_of(shape)
++        if circle is not None:
++            axis = App.Vector(circle.Axis)
++            return Feature("axis", axis, circle.Center, circle.Center, "circle")
++    p, label = point_of(shape, pick.point)
++    return Feature("point", None, p, p, label)
++
++
++# --- what moves ----------------------------------------------------------------------------
++
++
++def _is_link(obj):
++    try:
++        return obj.getLinkedObject(True) != obj
++    except Exception:
++        return False
++
++
++def _in_body(obj):
++    parent = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
++    return parent is not None and parent.isDerivedFrom("PartDesign::Body")
++
++
++def _placeable(obj):
++    if not hasattr(obj, "Placement") or obj.isDerivedFrom("App::Origin"):
++        return False
++    if obj.isDerivedFrom("App::DatumElement") or obj.isDerivedFrom("App::OriginFeature"):
++        return False
++    # A step of a PartDesign body moves with its body, not on its own
++    if obj.isDerivedFrom("PartDesign::Feature") or (_in_body(obj) and not obj.isDerivedFrom("PartDesign::Body")):
++        return False
++    return True
++
++
++class Movable:
++    """An object to move, with the placement of what contains it (global), remembered as it
++    was when the tool started, so that each preview starts from the same place."""
++
++    def __init__(self, obj, parent_placement, depth=0):
++        self.obj = obj
++        self.parent = App.Placement(parent_placement)
++        self.depth = depth  # 0: top-level
++        self.placement = App.Placement(obj.Placement)
++        self.offset = App.Placement(obj.AttachmentOffset) if hasattr(obj, "AttachmentOffset") else None
++
++    def global_placement(self):
++        return self.parent.multiply(self.placement)
++
++    def local_for(self, move):
++        """The object's own Placement after the global move `move`."""
++        return self.parent.inverse().multiply(move).multiply(self.parent).multiply(self.placement)
++
++    def __repr__(self):
++        return "Movable({})".format(self.obj.Name)
++
++
++def _global_of_path(root, tokens):
++    """Global placement of the object at the end of `tokens` below root (including its own)."""
++    if not tokens:
++        placement = root.getSubObject("", 3)
++        if placement is None:
++            placement = App.Placement(root.Placement) if hasattr(root, "Placement") else App.Placement()
++        parent = root.getParentGeoFeatureGroup() if hasattr(root, "getParentGeoFeatureGroup") else None
++        if parent is not None:
++            placement = parent.getGlobalPlacement().multiply(placement)
++        return placement
++    root_parent = root.getParentGeoFeatureGroup() if hasattr(root, "getParentGeoFeatureGroup") else None
++    placement = root.getSubObject(".".join(tokens) + ".", 3)
++    if root_parent is not None:
++        placement = root_parent.getGlobalPlacement().multiply(placement)
++    return placement
++
++
++def movable_candidates(pick):
++    """What can be moved for this pick, innermost first: the part the element belongs to
++    (a Body, a shape, a link), then the containers around it (App::Part, groups of an
++    import). Nothing inside a link: that belongs to the linked object."""
++    objs = pick.objects()
++    tokens = pick.tokens
++    # Only down to the first link: what is below it is shared with the linked object
++    last = len(objs) - 1
++    for i, obj in enumerate(objs):
++        if i < len(objs) - 1 and _is_link(obj):
++            last = i
++            break
++    # The owner of the element may be a step of a body picked on its own: add the body
++    owner = objs[-1]
++    extra = []
++    if last == len(objs) - 1 and _in_body(owner):
++        body = owner.getParentGeoFeatureGroup()
++        if body not in objs:
++            extra.append(body)
++    result = []
++    for body in extra:
++        result.append(Movable(body, body.getGlobalPlacement().multiply(body.Placement.inverse()), len(objs)))
++    for i in range(last, -1, -1):
++        obj = objs[i]
++        if not _placeable(obj):
++            continue
++        parent = _global_of_path(pick.root, tokens[: i - 1]) if i >= 1 else None
++        if i == 0:
++            g = _global_of_path(pick.root, [])
++            parent = g.multiply(App.Placement(obj.Placement).inverse())
++        result.append(Movable(obj, parent, i))
++    return result
++
++
++def check_movable(movable):
++    """None if the object can be moved freely; else "attached" or "expression" or "readonly"."""
++    obj = movable.obj
++    for path, _ in getattr(obj, "ExpressionEngine", []):
++        if path.lstrip(".").startswith("Placement"):
++            return "expression"
++    # An attached object's Placement is read-only: it is moved through its offset
++    if is_attached(obj):
++        return "attached"
++    if "ReadOnly" in obj.getPropertyStatus("Placement"):
++        return "readonly"
++    return None
++
++
++def is_attached(obj):
++    return (
++        hasattr(obj, "MapMode")
++        and obj.MapMode != "Deactivated"
++        and bool(getattr(obj, "AttachmentSupport", None))
++    )
++
++
++def contains(movable, pick):
++    """Whether the picked element moves with `movable` (then it cannot be the target)."""
++    return movable.obj in pick.objects() or (
++        _in_body(pick.owner()) and pick.owner().getParentGeoFeatureGroup() == movable.obj
++    )
++
++
++# --- the moves ----------------------------------------------------------------------------
++
++
++def _rotation_between(a, b):
++    """The smallest rotation turning direction a into b; for opposite directions a half turn
++    about an axis across a (the one nearest to the global Z, X or Y: the same every time)."""
++    a = App.Vector(a).normalize()
++    b = App.Vector(b).normalize()
++    if a.dot(b) < -1 + 1e-12:
++        for helper in (App.Vector(0, 0, 1), App.Vector(1, 0, 0), App.Vector(0, 1, 0)):
++            axis = a.cross(helper)
++            if axis.Length > 1e-6:
++                return App.Rotation(axis.normalize(), 180)
++    return App.Rotation(a, b)
++
++
++def _move(rotation, source, target):
++    """The global placement that turns by `rotation` about `source` and puts it at `target`."""
++    return App.Placement(target - rotation.multVec(source), rotation)
++
++
++ALIGN_PICKED = "picked"
++ALIGN_CENTER = "center"
++ALIGN_KEEP = "keep"
++
++
++def snap_move(a, b, flip=False, gap=0.0, spin=0.0, align=ALIGN_PICKED):
++    """The global move that puts feature a (on the moving part) onto feature b.
++
++    plane on plane: the faces touch, facing each other (flip: same direction, e.g. two top
++    faces flush); gap keeps them apart; spin turns about the normal (degrees); align puts the
++    picked points or the centers together, or keeps the position along the face.
++    axis on axis (round faces, circles): the axes become one (a shaft in a hole); the turn
++    is the smaller one unless flip; gap moves along the axis; spin turns about the axis.
++    point on plane: the point goes straight onto the plane (orientation kept).
++    point on point: a plain move.
++    """
++    kinds = (a.kind, b.kind)
++    if kinds == ("plane", "plane"):
++        target = b.direction if flip else -b.direction
++        rotation = App.Rotation(b.direction, spin).multiply(_rotation_between(a.direction, target))
++        source = a.center if align == ALIGN_CENTER else a.pick
++        if align == ALIGN_CENTER:
++            dest = b.center
++        elif align == ALIGN_KEEP:
++            dest = source + b.direction * (b.pick - source).dot(b.direction)
++        else:
++            dest = b.pick
++        return _move(rotation, source, dest + b.direction * gap)
++    if kinds == ("axis", "axis"):
++        same = a.direction.dot(b.direction) >= 0
++        target = b.direction if same != flip else -b.direction
++        rotation = App.Rotation(b.direction, spin).multiply(_rotation_between(a.direction, target))
++        source = a.center if align == ALIGN_CENTER else a.pick
++        if align == ALIGN_CENTER:
++            dest = b.center
++        elif align == ALIGN_KEEP:
++            dest = _on_axis(source, b.pick, b.direction)
++        else:
++            dest = b.pick
++        return _move(rotation, source, dest + target * gap)
++    if kinds == ("point", "plane"):
++        n = b.direction
++        return App.Placement(n * ((b.pick - a.pick).dot(n) + gap), App.Rotation())
++    if kinds == ("point", "point"):
++        return App.Placement(b.pick - a.pick, App.Rotation())
++    if a.kind == "point" and b.kind == "axis":
++        dest = _on_axis(a.pick, b.pick, b.direction)
++        return App.Placement(dest - a.pick, App.Rotation())
++    raise SnapError(_tr("These two cannot be snapped together: pick two flat faces, two round faces, or two points"))
++
++
++def pair_kind(a, b):
++    """What the tool does with features a (moving) and b (target), for the labels."""
++    return {
++        ("plane", "plane"): "faces",
++        ("axis", "axis"): "axes",
++        ("point", "plane"): "point-face",
++        ("point", "point"): "points",
++        ("point", "axis"): "point-axis",
++    }.get((a.kind, b.kind))
++
++
++def _point_like(shape):
++    return shape is not None and shape.ShapeType in ("Vertex", "Edge")
++
++
++def both_points(picks):
++    """Two picks read as points (vertices, edges), the second not on what the first moves."""
++    if len(picks) != 2:
++        return False
++    a, b = picks
++    if not (_point_like(a.shape()) and _point_like(b.shape())):
++        return False
++    candidates = movable_candidates(a)
++    return bool(candidates) and not contains(candidates[0], b)
++
++
++def classify(picks):
++    """What two picks (first moves onto second) are for: "faces" (flat on flat), "axes"
++    (round faces or circles), "point-face", "points", or None."""
++    if len(picks) != 2:
++        return None
++    a, b = picks
++    sa, sb = a.shape(), b.shape()
++    if sa is None or sb is None:
++        return None
++    candidates = movable_candidates(a)
++    if not candidates or contains(candidates[0], b):
++        return None
++    ta, tb = sa.ShapeType, sb.ShapeType
++    try:
++        if ta == "Face" and tb == "Face":
++            return pair_kind(face_feature(sa, a.point), face_feature(sb, b.point))
++        if ta == "Edge" and tb == "Edge" and _circle_of(sa) is not None and _circle_of(sb) is not None:
++            return "axes"
++        if _point_like(sa) and _point_like(sb):
++            return "points"
++        if _point_like(sa) and tb == "Face":
++            kind = face_feature(sb, b.point).kind
++            return "point-face" if kind == "plane" else None
++    except SnapError:
++        return None
++    return None
++
++
++def apply(movable, move, attachment="offset"):
++    """Move the object by the global placement `move` (from where it was when the tool
++    started). An attached object keeps its attachment and gets a new offset
++    (attachment="offset"), or is detached first ("detach")."""
++    obj = movable.obj
++    local = movable.local_for(move)
++    if is_attached(obj):
++        if attachment == "detach":
++            obj.MapMode = "Deactivated"
++        else:
++            # Placement = (where the attachment puts it) * offset: keep the first, change the second
++            obj.AttachmentOffset = movable.offset.multiply(movable.placement.inverse()).multiply(local)
++    obj.Placement = local
++
++
++def restore(movable):
++    obj = movable.obj
++    obj.Placement = movable.placement
++    if movable.offset is not None and hasattr(obj, "AttachmentOffset"):
++        obj.AttachmentOffset = movable.offset
++
++
++def copy_of(movable, pick=None):
++    """A copy of the object, in the same container, at the same place (for "move a copy")."""
++    obj = movable.obj
++    doc = obj.Document
++    deep = obj.isDerivedFrom("PartDesign::Body") or obj.isDerivedFrom("App::Part")
++    new = doc.copyObject(obj, deep)
++    container = None
++    if pick is not None and movable.depth >= 1:
++        objs = pick.objects()
++        if movable.depth - 1 < len(objs):
++            container = objs[movable.depth - 1]
++    elif hasattr(obj, "getParentGeoFeatureGroup"):
++        container = obj.getParentGeoFeatureGroup()
++    if container is None:
++        for parent in obj.InList:
++            if parent.isDerivedFrom("App::DocumentObjectGroup") and obj in parent.Group:
++                container = parent
++    if container is not None and container.Document == doc and hasattr(container, "addObject"):
++        container.addObject(new)
++    copy = Movable(new, movable.parent, movable.depth)
++    copy.placement = App.Placement(movable.placement)
++    copy.offset = App.Placement(movable.offset) if movable.offset is not None else None
++    return copy
++
++
++def describe(movable):
++    return movable.obj.Label
++
++
++def angle_between(a, b):
++    """Degrees between two directions (for messages and tests)."""
++    return math.degrees(App.Vector(a).getAngle(App.Vector(b)))
+diff --git a/src/Mod/Unified/SnapToolsGui.py b/src/Mod/Unified/SnapToolsGui.py
+new file mode 100644
+index 000000000..13b8d5299
+--- /dev/null
++++ b/src/Mod/Unified/SnapToolsGui.py
+@@ -0,0 +1,1105 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# "Snap together" (くっつける), "line up the axes" (軸をそろえる), "point onto a face"
++# (点を面に合わせる) and "move point to point" (点から点へ動かす): putting parts against each
++# other with clicks only, without the Placement dialog, attachment or assembly joints.
++#
++# Two ways in:
++#  - pick two things (Ctrl+click) and press the button on the context bar: the first one moves
++#    onto the second one;
++#  - or start the tool and click in the view: it says what to click next.
++# The part moves right away (preview); the task panel changes how it sits; OK keeps it (one
++# undo step), Cancel or Esc puts it back. The geometry is in SnapMath.py.
++
++import os
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import SnapMath as S
++
++translate = App.Qt.translate
++QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
++CTX = "Unified_Snap"
++HERE = os.path.dirname(os.path.abspath(__file__))
++
++
++def tr(text):
++    return translate(CTX, text)
++
++
++SNAP_RADIUS = 18  # pixels: how near the cursor a point has to be to snap to it
++
++
++# --- picks --------------------------------------------------------------------------------
++
++
++def _valid_point(root, sub, point):
++    """The picked point, or None when it was not picked in the view (from the tree the point
++    is zero) or is not on the element."""
++    if point is None:
++        return None
++    try:
++        shape = root.getSubObject(sub) if sub.split(".")[-1] else None
++        if shape is None:
++            return None
++        tol = max(1e-3, shape.BoundBox.DiagonalLength * 1e-3)
++        if shape.distToShape(__import__("Part").Vertex(point))[0] > tol:
++            return None
++    except Exception:
++        return None
++    return App.Vector(point)
++
++
++def selection_picks():
++    """The picks in the order they were made (Gui.Selection keeps it)."""
++    picks = []
++    for sel in Gui.Selection.getSelectionEx("", 0):
++        names = list(sel.SubElementNames) or [""]
++        points = list(sel.PickedPoints)
++        for i, name in enumerate(names):
++            point = points[i] if i < len(points) else None
++            picks.append(S.Pick(sel.Object, name, _valid_point(sel.Object, name, point)))
++    return picks
++
++
++_classify_cache = {}
++
++
++def classify_selection():
++    """What two picked things are for: "faces", "axes", "point-face", "points" or None."""
++    key = tuple(
++        (s.Object.Name, s.Object.Document.Name, tuple(s.SubElementNames))
++        for s in Gui.Selection.getSelectionEx("", 0)
++    )
++    if key in _classify_cache:
++        return _classify_cache[key]
++    try:
++        result = S.classify(selection_picks())
++    except Exception:
++        result = None
++    if len(_classify_cache) > 50:
++        _classify_cache.clear()
++    _classify_cache[key] = result
++    return result
++
++
++def _cached(name, compute):
++    key = (name,) + tuple(
++        (s.Object.Name, s.Object.Document.Name, tuple(s.SubElementNames))
++        for s in Gui.Selection.getSelectionEx("", 0)
++    )
++    if key not in _classify_cache:
++        try:
++            _classify_cache[key] = compute()
++        except Exception:
++            _classify_cache[key] = None
++    return _classify_cache[key]
++
++
++def _active_view():
++    doc = Gui.ActiveDocument
++    view = doc.ActiveView if doc else None
++    if view is None or not hasattr(view, "getObjectInfo"):
++        return None
++    return view
++
++
++# --- what is shown in the view ------------------------------------------------------------
++
++
++def _coin():
++    from pivy import coin
++
++    return coin
++
++
++def _set_transform(node, placement):
++    node.translation.setValue(tuple(placement.Base))
++    node.rotation.setValue(placement.Rotation.Q)
++
++
++class Overlay:
++    """Markers, the rubber band and the ghost of the part that moves, drawn over the view."""
++
++    COLORS = {
++        "snap": (1.0, 0.45, 0.0),
++        "base": (0.1, 0.65, 0.2),
++    }
++    MARKERS = {
++        "vertex": "SQUARE_LINE",
++        "midpoint": "DIAMOND_FILLED",
++        "center": "CIRCLE_LINE",
++        "face center": "CIRCLE_FILLED",
++        "face": "CROSS",
++        "edge": "CROSS",
++    }
++
++    def __init__(self, view):
++        coin = _coin()
++        self.view = view
++        self.root = coin.SoSeparator()
++        style = coin.SoPickStyle()
++        style.style = coin.SoPickStyle.UNPICKABLE
++        self.root.addChild(style)
++        # Hidden with a switch, not moved far away: that would spoil the depth of the view
++        self.ghost_switch = coin.SoSwitch()
++        self.ghosts = coin.SoSeparator()
++        self.ghost_switch.addChild(self.ghosts)
++        self.ghost_switch.whichChild = -1
++        self.root.addChild(self.ghost_switch)
++        top = coin.SoAnnotation()
++        self.root.addChild(top)
++        self.points = {}
++        for name, color in self.COLORS.items():
++            sep = coin.SoSeparator()
++            mat = coin.SoBaseColor()
++            mat.rgb = color
++            coords = coin.SoCoordinate3()
++            marker = coin.SoMarkerSet()
++            switch = coin.SoSwitch()
++            sep.addChild(mat)
++            sep.addChild(coords)
++            sep.addChild(marker)
++            switch.addChild(sep)
++            switch.whichChild = -1
++            top.addChild(switch)
++            self.points[name] = (switch, coords, marker)
++        # The rubber band from the base point to the cursor
++        self.line_switch = coin.SoSwitch()
++        line = coin.SoSeparator()
++        color = coin.SoBaseColor()
++        color.rgb = self.COLORS["base"]
++        draw = coin.SoDrawStyle()
++        draw.lineWidth = 2
++        draw.linePattern = 0x0F0F
++        self.line_coords = coin.SoCoordinate3()
++        line.addChild(color)
++        line.addChild(draw)
++        line.addChild(self.line_coords)
++        line.addChild(coin.SoLineSet())
++        self.line_switch.addChild(line)
++        self.line_switch.whichChild = -1
++        top.addChild(self.line_switch)
++        self.ghost_transforms = []
++        view.getSceneGraph().addChild(self.root)
++
++    def show_point(self, name, point, kind="vertex"):
++        switch, coords, marker = self.points[name]
++        if point is None:
++            switch.whichChild = -1
++            return
++        coords.point.setValue(tuple(point))
++        marker.markerIndex = Gui.getMarkerIndex(self.MARKERS.get(kind, "CROSS"), 11)
++        switch.whichChild = 0
++
++    def show_line(self, a, b):
++        if a is None or b is None:
++            self.line_switch.whichChild = -1
++            return
++        self.line_coords.point.setValues(0, 2, [tuple(a), tuple(b)])
++        self.line_switch.whichChild = 0
++
++    def set_ghosts(self, movables):
++        """Copies of the parts that move, drawn where they would go (see move_ghosts)."""
++        coin = _coin()
++        self.ghosts.removeAllChildren()
++        self.ghost_transforms = []
++        for m in movables:
++            vo = getattr(m.obj, "ViewObject", None)
++            if vo is None:
++                continue
++            sep = coin.SoSeparator()
++            move = coin.SoTransform()
++            sep.addChild(move)
++            try:
++                node = vo.RootNode.copy()
++            except Exception:
++                continue
++            # The copy has the part's own placement; the containers around it are added in
++            # front of it (move_ghosts). No search actions here: paths kept from them are freed
++            # twice. One see-through color, overriding the copy's materials.
++            look = coin.SoMaterial()
++            look.diffuseColor.setValue(1.0, 0.6, 0.1)
++            look.transparency.setValue(0.55)
++            look.setOverride(True)
++            sep.addChild(look)
++            sep.addChild(node)
++            self.ghosts.addChild(sep)
++            self.ghost_transforms.append((move, m))
++
++    def move_ghosts(self, move):
++        if move is None:
++            self.ghost_switch.whichChild = -1
++            return
++        self.ghost_switch.whichChild = 0
++        for node, m in self.ghost_transforms:
++            _set_transform(node, move.multiply(m.parent))
++
++    def clear_ghosts(self):
++        self.ghost_switch.whichChild = -1
++        self.ghosts.removeAllChildren()
++        self.ghost_transforms = []
++
++    def hide_all(self):
++        for name in self.points:
++            self.show_point(name, None)
++        self.show_line(None, None)
++        self.clear_ghosts()
++
++    def remove(self):
++        try:
++            self.view.getSceneGraph().removeChild(self.root)
++        except Exception:
++            pass
++
++
++def snap_points(shape, picked):
++    """The points to snap to on a picked element, with their kind."""
++    import Part
++
++    out = []
++    if shape.ShapeType == "Vertex":
++        return [(App.Vector(shape.Point), "vertex")]
++    edges = [shape] if shape.ShapeType == "Edge" else shape.Edges
++    for edge in edges:
++        for v in edge.Vertexes:
++            out.append((App.Vector(v.Point), "vertex"))
++        circle = S._circle_of(edge)
++        if circle is not None:
++            out.append((App.Vector(circle.Center), "center"))
++        elif not edge.isClosed():
++            first, last = edge.ParameterRange
++            out.append((edge.valueAt((first + last) / 2), "midpoint"))
++    if shape.ShapeType == "Face":
++        out.append((App.Vector(shape.CenterOfMass), "face center"))
++    if shape.ShapeType == "Edge" and picked is not None:
++        try:
++            nearest = shape.distToShape(Part.Vertex(picked))[1][0][0]
++            out.append((App.Vector(nearest), "edge"))
++        except Exception:
++            pass
++    return out
++
++
++SNAP_NAMES = {
++    "vertex": QT_TRANSLATE_NOOP("Unified_Snap", "Vertex"),
++    "midpoint": QT_TRANSLATE_NOOP("Unified_Snap", "Middle of the edge"),
++    "center": QT_TRANSLATE_NOOP("Unified_Snap", "Center of the circle"),
++    "face center": QT_TRANSLATE_NOOP("Unified_Snap", "Center of the face"),
++    "face": QT_TRANSLATE_NOOP("Unified_Snap", "On the face"),
++    "edge": QT_TRANSLATE_NOOP("Unified_Snap", "On the edge"),
++}
++
++
++class Picker:
++    """Clicks and the cursor in the 3D view while a tool runs. Left clicks go to the tool and
++    do not change the selection; Esc cancels. With snapping on, the point under the cursor
++    snaps to vertices, middles of edges, centers of circles and faces."""
++
++    def __init__(self, view, on_click, on_escape, on_hover=None):
++        coin = _coin()
++        self.view = view
++        self.on_click = on_click
++        self.on_escape = on_escape
++        self.on_hover = on_hover
++        self.snapping = False
++        self.overlay = Overlay(view)
++        self._cache = {}
++        self._callbacks = [
++            (coin.SoMouseButtonEvent.getClassTypeId(), view.addEventCallbackPivy(coin.SoMouseButtonEvent.getClassTypeId(), self._button)),
++            (coin.SoLocation2Event.getClassTypeId(), view.addEventCallbackPivy(coin.SoLocation2Event.getClassTypeId(), self._moved)),
++            (coin.SoKeyboardEvent.getClassTypeId(), view.addEventCallbackPivy(coin.SoKeyboardEvent.getClassTypeId(), self._key)),
++        ]
++        self.last = None  # (pick, point, kind) under the cursor
++
++    def remove(self):
++        for type_id, cb in self._callbacks:
++            try:
++                self.view.removeEventCallbackPivy(type_id, cb)
++            except Exception:
++                pass
++        self._callbacks = []
++        self.overlay.remove()
++        QtWidgets.QToolTip.hideText()
++
++    def element_at(self, pos):
++        """(Pick, picked point) under the cursor, or None."""
++        info = self.view.getObjectInfo(pos)
++        if not info:
++            return None
++        # Inside a container (App::Part, Body, link): the top-level object and the path below
++        # it. A top-level object: the object and the element.
++        root = info.get("ParentObject")
++        sub = info.get("SubName")
++        if root is None or not sub:
++            try:
++                root = App.getDocument(info["Document"]).getObject(info["Object"])
++            except Exception:
++                return None
++            sub = info.get("Component")
++        if root is None or not sub:
++            return None
++        point = App.Vector(info["x"], info["y"], info["z"])
++        return S.Pick(root, sub, point)
++
++    def snapped(self, pos):
++        """(Pick, snapped point, kind) under the cursor."""
++        pick = self.element_at(pos)
++        if pick is None:
++            return None
++        key = (pick.root.Document.Name, pick.root.Name, pick.sub)
++        points = self._cache.get(key)
++        if points is None:
++            shape = pick.shape()
++            if shape is None:
++                return None
++            points = snap_points(shape, None) if shape.ShapeType != "Edge" else None
++            if points is not None:
++                if len(self._cache) > 200:
++                    self._cache.clear()
++                self._cache[key] = points
++        if points is None:  # an edge: the nearest point on it depends on the cursor
++            points = snap_points(pick.shape(), pick.point)
++        best, best_d = None, SNAP_RADIUS
++        for p, kind in points:
++            if kind == "edge":
++                continue
++            x, y = self.view.getPointOnScreen(p)
++            d = ((x - pos[0]) ** 2 + (y - pos[1]) ** 2) ** 0.5
++            if d < best_d:
++                best, best_d = (p, kind), d
++        if best is None:
++            shape_type = pick.element[:4]
++            best = (pick.point, "edge" if shape_type == "Edge" else "face")
++        return pick, best[0], best[1]
++
++    def _moved(self, cb):
++        ev = cb.getEvent()
++        pos = tuple(ev.getPosition().getValue())
++        if not self.snapping:
++            if self.on_hover:
++                self.on_hover(None)
++            return
++        hit = self.snapped(pos)
++        self.last = hit
++        if hit is None:
++            self.overlay.show_point("snap", None)
++            QtWidgets.QToolTip.hideText()
++        else:
++            self.overlay.show_point("snap", hit[1], hit[2])
++            QtWidgets.QToolTip.showText(
++                QtGui.QCursor.pos() + QtCore.QPoint(16, 8), translate("Unified_Snap", SNAP_NAMES[hit[2]])
++            )
++        if self.on_hover:
++            self.on_hover(hit)
++
++    def _button(self, cb):
++        coin = _coin()
++        ev = cb.getEvent()
++        if ev.getButton() != coin.SoMouseButtonEvent.BUTTON1:
++            return
++        # The tool takes the left clicks: no selection, no box selection
++        cb.setHandled()
++        if ev.getState() != coin.SoButtonEvent.DOWN:
++            return
++        pos = tuple(ev.getPosition().getValue())
++        ctrl = ev.wasCtrlDown()
++        if self.snapping:
++            hit = self.snapped(pos)
++            if hit is None:
++                return
++            pick, point, kind = hit
++            QtCore.QTimer.singleShot(0, lambda: self.on_click(pick, point, kind, ctrl))
++        else:
++            pick = self.element_at(pos)
++            if pick is None:
++                return
++            QtCore.QTimer.singleShot(0, lambda: self.on_click(pick, pick.point, None, ctrl))
++
++    def _key(self, cb):
++        coin = _coin()
++        ev = cb.getEvent()
++        if ev.getKey() == coin.SoKeyboardEvent.ESCAPE:
++            cb.setHandled()
++            if ev.getState() == coin.SoButtonEvent.DOWN:
++                QtCore.QTimer.singleShot(0, self.on_escape)
++
++
++# --- the task panel ---------------------------------------------------------------------
++
++
++class _Transaction:
++    """The preview is made in an open transaction: Cancel aborts it, OK commits it (one undo
++    step). Each change of an option aborts and redoes the move from the start."""
++
++    def __init__(self, doc, name):
++        self.doc = doc
++        self.name = name
++        self.open = False
++
++    def restart(self):
++        self.abort()
++        self.doc.openTransaction(self.name)
++        self.open = True
++
++    def abort(self):
++        if self.open:
++            self.open = False
++            self.doc.abortTransaction()
++
++    def commit(self):
++        if self.open:
++            self.open = False
++            self.doc.recompute()
++            self.doc.commitTransaction()
++
++
++def _bold(label):
++    font = label.font()
++    font.setBold(True)
++    label.setFont(font)
++    return label
++
++
++class SnapPanel:
++    """Task panel for both tools.
++
++    mode "snap": the first pick (a face, a round face or a circle; a point for "point onto
++    face") moves its part onto the second pick.
++    mode "point": the moving parts go from the base point to the destination point.
++    """
++
++    def __init__(self, mode, picks=(), point_first=False, objects=()):
++        self.mode = mode
++        self.point_first = point_first or mode == "point"
++        self.doc = App.ActiveDocument
++        self.view = _active_view()
++        self.a = None  # (Pick, Feature) of what moves
++        self.b = None  # (Pick, Feature) of where it goes
++        self.candidates = []  # what can be moved for pick a (innermost first)
++        self.objects = list(objects)  # mode "point": whole objects picked before the tool
++        self.move = None
++        self.closed = False
++        self.transaction = _Transaction(self.doc, self._title())
++        self._build()
++        self.picker = Picker(self.view, self._clicked, self._escape, self._hover) if self.view else None
++        Gui.Selection.clearSelection()
++        # Picks made before the tool: use them
++        for pick in picks:
++            self._take(pick, pick.point, None, False, from_selection=True)
++        self._update()
++
++    # ------------------------------------------------------------------------- the widgets
++
++    def _title(self):
++        if self.mode == "point":
++            return tr("Move point to point")
++        return tr("Snap together")
++
++    def _kind_title(self):
++        """The name of what the tool does with the picks, for the panel and the undo list."""
++        if self.mode == "point":
++            return tr("Move point to point")
++        kind = self.a[1].kind if self.a is not None else ("point" if self.point_first else None)
++        if kind == "axis":
++            return tr("Line up the axes")
++        if kind == "point":
++            return tr("Point onto a face")
++        return tr("Snap together")
++
++    def _build(self):
++        w = QtWidgets.QWidget()
++        w.setWindowTitle(self._title())
++        self.form = w
++        layout = QtWidgets.QVBoxLayout(w)
++
++        self.step = _bold(QtWidgets.QLabel())
++        self.step.setWordWrap(True)
++        layout.addWidget(self.step)
++
++        self.who_row = QtWidgets.QWidget()
++        who = QtWidgets.QHBoxLayout(self.who_row)
++        who.setContentsMargins(0, 0, 0, 0)
++        self.who = QtWidgets.QLabel()
++        self.who.setWordWrap(True)
++        self.who.setTextFormat(QtCore.Qt.RichText)
++        who.addWidget(self.who, 1)
++        self.swap_button = QtWidgets.QPushButton(tr("Swap"))
++        self.swap_button.setToolTip(tr("Move the other one instead"))
++        self.swap_button.clicked.connect(self._swap)
++        who.addWidget(self.swap_button)
++        layout.addWidget(self.who_row)
++
++        self.moving_row = QtWidgets.QWidget()
++        moving = QtWidgets.QHBoxLayout(self.moving_row)
++        moving.setContentsMargins(0, 0, 0, 0)
++        moving.addWidget(QtWidgets.QLabel(tr("What moves:")))
++        self.which = QtWidgets.QComboBox()
++        self.which.setToolTip(tr("The part itself, or a group (container) it is in, moved as a whole"))
++        self.which.currentIndexChanged.connect(self._apply)
++        moving.addWidget(self.which, 1)
++        layout.addWidget(self.moving_row)
++
++        self.options = QtWidgets.QWidget()
++        grid = QtWidgets.QGridLayout(self.options)
++        grid.setContentsMargins(0, 0, 0, 0)
++        row = 0
++        if self.mode == "snap":
++            self.flip = QtWidgets.QCheckBox(tr("Flip (same direction)"))
++            self.flip.setToolTip(
++                tr("Turn the part over: the faces point the same way (e.g. two top faces flush) instead of facing each other")
++            )
++            self.flip.toggled.connect(self._apply)
++            grid.addWidget(self.flip, row, 0, 1, 3)
++            row += 1
++
++            grid.addWidget(QtWidgets.QLabel(tr("Gap:")), row, 0)
++            self.gap = QtWidgets.QDoubleSpinBox()
++            self.gap.setRange(-10000, 10000)
++            self.gap.setDecimals(2)
++            self.gap.setSuffix(" mm")
++            self.gap.setToolTip(tr("Distance between the faces (0: touching)"))
++            self.gap.valueChanged.connect(self._apply)
++            grid.addWidget(self.gap, row, 1, 1, 2)
++            row += 1
++
++            grid.addWidget(QtWidgets.QLabel(tr("Turn:")), row, 0)
++            turn = QtWidgets.QHBoxLayout()
++            self.turn_left = left = QtWidgets.QPushButton("⟲ 90°")
++            left.setToolTip(tr("Turn a quarter to the left around the face"))
++            left.clicked.connect(lambda: self._turn(90))
++            self.turn_right = right = QtWidgets.QPushButton("⟳ 90°")
++            right.setToolTip(tr("Turn a quarter to the right around the face"))
++            right.clicked.connect(lambda: self._turn(-90))
++            self.angle = QtWidgets.QDoubleSpinBox()
++            self.angle.setRange(-360, 360)
++            self.angle.setDecimals(1)
++            self.angle.setSuffix(" °")
++            self.angle.setWrapping(True)
++            self.angle.setToolTip(tr("Any angle around the face (or the axis)"))
++            self.angle.valueChanged.connect(self._apply)
++            turn.addWidget(left)
++            turn.addWidget(right)
++            turn.addWidget(self.angle, 1)
++            grid.addLayout(turn, row, 1, 1, 2)
++            row += 1
++
++            grid.addWidget(QtWidgets.QLabel(tr("Line up:")), row, 0)
++            self.align = QtWidgets.QComboBox()
++            self.align.addItem(tr("The clicked points"), S.ALIGN_PICKED)
++            self.align.addItem(tr("The centers"), S.ALIGN_CENTER)
++            self.align.addItem(tr("Keep the position along the face"), S.ALIGN_KEEP)
++            self.align.setToolTip(
++                tr("Which points of the two faces go together. \"Keep\" only moves the part straight onto the face")
++            )
++            self.align.currentIndexChanged.connect(self._apply)
++            grid.addWidget(self.align, row, 1, 1, 2)
++            row += 1
++        else:
++            self.copy = QtWidgets.QCheckBox(tr("Make a copy (the original stays)"))
++            self.copy.setToolTip(tr("Or hold Ctrl when clicking the destination"))
++            self.copy.toggled.connect(self._apply)
++            grid.addWidget(self.copy, row, 0, 1, 3)
++            row += 1
++        layout.addWidget(self.options)
++
++        # Attached parts: keep the attachment and change its offset, or detach
++        self.attach_box = QtWidgets.QFrame()
++        self.attach_box.setFrameShape(QtWidgets.QFrame.StyledPanel)
++        attach = QtWidgets.QVBoxLayout(self.attach_box)
++        note = QtWidgets.QLabel(
++            tr("This part is attached to another one (it follows it when that one changes).")
++        )
++        note.setWordWrap(True)
++        attach.addWidget(note)
++        self.attach_mode = QtWidgets.QComboBox()
++        self.attach_mode.addItem(tr("Keep the attachment, change its offset"), "offset")
++        self.attach_mode.addItem(tr("Detach it and move it freely"), "detach")
++        self.attach_mode.currentIndexChanged.connect(self._apply)
++        attach.addWidget(self.attach_mode)
++        layout.addWidget(self.attach_box)
++        self.attach_box.hide()
++
++        self.message = QtWidgets.QLabel()
++        self.message.setWordWrap(True)
++        self.message.setStyleSheet("color: #b00020;")
++        layout.addWidget(self.message)
++
++        again = QtWidgets.QPushButton(tr("Pick again"))
++        again.setToolTip(tr("Forget the picks and start over"))
++        again.clicked.connect(self._again)
++        layout.addWidget(again)
++        layout.addStretch(1)
++
++    def getStandardButtons(self):
++        return QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
++
++    def isAllowedAlterSelection(self):
++        return True
++
++    def isAllowedAlterView(self):
++        return True
++
++    # ------------------------------------------------------------------------- the picks
++
++    def _hint(self):
++        if self.mode == "point":
++            if self.a is None:
++                if self.objects:
++                    return tr("Click the base point (the point that is moved)")
++                return tr("Click the point on the part to move (a vertex, the middle of an edge, the center of a circle...)")
++            if self.b is None:
++                return tr("Click where the point goes (hold Ctrl for a copy)")
++            return tr("If it is right, OK. Clicking another point changes where it goes")
++        if self.a is None:
++            if self.point_first:
++                return tr("Click the point on the part to move")
++            return tr("Click the face of the part to move (a flat face, or a round one for an axis)")
++        if self.b is None:
++            if self.a[1].kind == "axis":
++                return tr("Click the round face or circle to line it up with")
++            if self.a[1].kind == "point":
++                return tr("Click the face to put the point on")
++            return tr("Click the face to put it against")
++        return tr("Adjust below, then OK. Clicking another face changes where it goes")
++
++    def _feature(self, pick, first):
++        want = "point" if (first and self.point_first) or self.mode == "point" else None
++        return S.feature_of(pick, want)
++
++    def _unmoved(self, pick, feature):
++        """A pick made on the part while it is shown moved: back to where it was."""
++        if self.move is not None and self.candidates:
++            m = self._movable()
++            if m is not None and S.contains(m, pick):
++                return feature.transformed(self.move.inverse())
++        return feature
++
++    def _take(self, pick, point, kind, ctrl, from_selection=False):
++        self.message.setText("")
++        if point is not None:
++            pick = S.Pick(pick.root, pick.sub, point)
++        try:
++            # A click on the part that moves picks it again; for "point to point" a point on
++            # it can also be the destination (e.g. move it by its own length)
++            if self.a is None or (self.mode == "snap" and self._picked_moving(pick)):
++                feature = self._unmoved(pick, self._feature(pick, True))
++                candidates = S.movable_candidates(pick)
++                if self.mode == "point" and self.objects:
++                    candidates = self.objects
++                if not candidates:
++                    raise S.SnapError(tr("This cannot be moved"))
++                self.transaction.abort()
++                self.move = None
++                self.a = (pick, feature)
++                self.b = None
++                self._set_candidates(candidates)
++            else:
++                feature = self._feature(pick, False)
++                for m in self._movables():
++                    if self.mode == "snap" and S.contains(m, pick):
++                        raise S.SnapError(tr("That is part of what moves. Click something else"))
++                if self.mode == "snap" and S.pair_kind(self.a[1], feature) is None:
++                    raise S.SnapError(
++                        tr("These two do not go together: pick two flat faces, two round faces (or circles), or a point and a face")
++                    )
++                self.b = (pick, feature)
++                if ctrl and self.mode == "point":
++                    self.copy.blockSignals(True)
++                    self.copy.setChecked(True)
++                    self.copy.blockSignals(False)
++        except S.SnapError as err:
++            self.message.setText(str(err))
++            return
++        self._show_picks()
++        self._apply()
++
++    def _picked_moving(self, pick):
++        m = self._movable()
++        return m is not None and S.contains(m, pick)
++
++    def _clicked(self, pick, point, kind, ctrl):
++        if self.closed:
++            return
++        self._take(pick, point, kind, ctrl)
++
++    def _hover(self, hit):
++        if self.closed or self.picker is None:
++            return
++        overlay = self.picker.overlay
++        if self.mode == "point" and self.a is not None and self.b is None:
++            # The parts follow the cursor from the base point
++            if hit is None:
++                overlay.show_line(None, None)
++                overlay.move_ghosts(None)
++                return
++            base = self.a[1].pick
++            overlay.show_line(base, hit[1])
++            overlay.move_ghosts(App.Placement(hit[1] - base, App.Rotation()))
++
++    def _show_picks(self):
++        """The picked elements stay highlighted."""
++        Gui.Selection.clearSelection()
++        for item in (self.a, self.b):
++            if item is None:
++                continue
++            pick = item[0]
++            try:
++                if pick.point is not None:
++                    Gui.Selection.addSelection(
++                        pick.root.Document.Name, pick.root.Name, pick.sub, pick.point.x, pick.point.y, pick.point.z
++                    )
++                else:
++                    Gui.Selection.addSelection(pick.root.Document.Name, pick.root.Name, pick.sub)
++            except Exception:
++                pass
++
++    def _set_candidates(self, candidates):
++        self.candidates = candidates
++        self.which.blockSignals(True)
++        self.which.clear()
++        if self.mode == "point" and self.objects:
++            names = ", ".join(m.obj.Label for m in candidates)
++            self.which.addItem(names)
++        else:
++            for i, m in enumerate(candidates):
++                text = m.obj.Label
++                if i > 0:
++                    text = tr("{} (the whole group)").format(text)
++                self.which.addItem(text)
++        self.which.setCurrentIndex(0)
++        self.which.setEnabled(len(candidates) > 1 and not (self.mode == "point" and self.objects))
++        self.which.blockSignals(False)
++
++    def _movable(self):
++        if not self.candidates:
++            return None
++        if self.mode == "point" and self.objects:
++            return self.candidates[0]
++        return self.candidates[max(0, self.which.currentIndex())]
++
++    def _movables(self):
++        if self.mode == "point" and self.objects:
++            return list(self.candidates)
++        m = self._movable()
++        return [m] if m is not None else []
++
++    # ------------------------------------------------------------------------- the move
++
++    def _apply(self, *args):
++        """Put the part where the picks and options say (from where it was, each time)."""
++        if self.closed:
++            return
++        self.transaction.abort()
++        self.move = None
++        self.message.setText("")
++        movables = self._movables()
++        attached = any(S.check_movable(m) == "attached" for m in movables)
++        self.attach_box.setVisible(attached)
++        if self.a is not None and self.b is not None and movables:
++            for m in movables:
++                problem = S.check_movable(m)
++                if problem in ("expression", "readonly"):
++                    self.message.setText(
++                        tr("{} cannot be moved here: its placement is set by a formula or locked").format(m.obj.Label)
++                    )
++                    self._update()
++                    return
++                if self.mode == "snap" and S.contains(m, self.b[0]):
++                    self.message.setText(
++                        tr("The target is inside {}: choose a smaller part to move").format(m.obj.Label)
++                    )
++                    self._update()
++                    return
++            try:
++                if self.mode == "snap":
++                    move = S.snap_move(
++                        self.a[1],
++                        self.b[1],
++                        flip=self.flip.isChecked(),
++                        gap=self.gap.value(),
++                        spin=self.angle.value(),
++                        align=self.align.currentData(),
++                    )
++                else:
++                    move = S.snap_move(self.a[1], self.b[1])
++            except S.SnapError as err:
++                self.message.setText(str(err))
++                self._update()
++                return
++            self.transaction.name = self._kind_title()
++            self.transaction.restart()
++            try:
++                targets = movables
++                if self.mode == "point" and self.copy.isChecked():
++                    targets = [S.copy_of(m, self.a[0] if not self.objects else None) for m in movables]
++                for m in targets:
++                    S.apply(m, move, self.attach_mode.currentData())
++                if self.mode == "point" and self.copy.isChecked():
++                    self.doc.recompute()
++            except Exception as err:
++                self.transaction.abort()
++                self.message.setText(str(err))
++                self._update()
++                return
++            self.move = move
++        self._update()
++
++    def _update(self):
++        self.step.setText(self._hint())
++        labels = []
++        if self.a is not None:
++            movables = self._movables()
++            moving = ", ".join(m.obj.Label for m in movables) or "-"
++            labels.append(tr("Moves: <b>{}</b>").format(moving))
++        if self.b is not None:
++            target = S.movable_candidates(self.b[0])
++            labels.append(tr("onto: <b>{}</b>").format(target[0].obj.Label if target else self.b[0].root.Label))
++        self.who.setText(" → ".join(labels))
++        self.swap_button.setEnabled(self.a is not None and self.b is not None and not self.objects)
++        self.who_row.setVisible(self.a is not None)
++        self.moving_row.setVisible(bool(self.candidates))
++        self.attach_box.setVisible(any(S.check_movable(m) == "attached" for m in self._movables()))
++        ready = self.a is not None and self.b is not None
++        if self.mode == "snap":
++            point = self.a is not None and self.a[1].kind == "point"
++            self.flip.setEnabled(ready and not point)
++            self.angle.setEnabled(ready and not point)
++            self.turn_left.setEnabled(ready and not point)
++            self.turn_right.setEnabled(ready and not point)
++            self.align.setEnabled(ready and not point)
++            self.gap.setEnabled(ready)
++            self.form.setWindowTitle(self._kind_title())
++        if self.picker is not None:
++            self.picker.snapping = self.mode == "point" or (self.point_first and self.a is None)
++            overlay = self.picker.overlay
++            if self.mode == "point":
++                overlay.show_point("base", self.a[1].pick if self.a and not self.b else None, "vertex")
++                if self.a is not None and self.b is None:
++                    if not overlay.ghost_transforms:
++                        overlay.set_ghosts(self._movables())
++                        overlay.move_ghosts(None)
++                else:
++                    overlay.clear_ghosts()
++                    overlay.show_line(None, None)
++                    if self.b is not None:
++                        overlay.show_point("snap", self.b[1].pick, "vertex")
++
++    def _turn(self, degrees):
++        value = self.angle.value() + degrees
++        while value > 180:
++            value -= 360
++        while value <= -180:
++            value += 360
++        self.angle.setValue(value)
++
++    def _swap(self):
++        if self.a is None or self.b is None:
++            return
++        self.transaction.abort()
++        self.move = None
++        a, b = self.b, self.a
++        try:
++            fa = self._feature(a[0], True)
++            fb = self._feature(b[0], False)
++        except S.SnapError as err:
++            self.message.setText(str(err))
++            return
++        self.a, self.b = (a[0], fa), (b[0], fb)
++        self._set_candidates(S.movable_candidates(a[0]))
++        self._show_picks()
++        self._apply()
++
++    def _again(self):
++        self.transaction.abort()
++        self.move = None
++        self.a = self.b = None
++        self.candidates = []
++        if self.objects:
++            self.candidates = self.objects
++        self.which.clear()
++        if self.picker:
++            self.picker.overlay.hide_all()
++        Gui.Selection.clearSelection()
++        self._update()
++
++    # ------------------------------------------------------------------------- closing
++
++    def _finish(self):
++        self.closed = True
++        if self.picker is not None:
++            self.picker.remove()
++            self.picker = None
++        Gui.Selection.clearSelection()
++
++    def accept(self):
++        if self.move is None:
++            if self.a is None or self.b is None:
++                self.message.setText(self._hint())
++            return False
++        self.transaction.commit()
++        self._finish()
++        Gui.Control.closeDialog()
++        return True
++
++    def reject(self):
++        self.transaction.abort()
++        self._finish()
++        Gui.Control.closeDialog()
++        return True
++
++    def _escape(self):
++        if not self.closed:
++            self.reject()
++
++
++def _show(panel):
++    if Gui.Control.activeDialog():
++        Gui.Control.closeDialog()
++    Gui.Control.showDialog(panel)
++
++
++# --- commands -----------------------------------------------------------------------------
++
++
++class _Command:
++    def IsActive(self):
++        return App.ActiveDocument is not None and _active_view() is not None and not Gui.Control.activeDialog()
++
++
++class SnapFacesCommand(_Command):
++    """くっつける: a face of one part against a face of another."""
++
++    kinds = ("faces",)
++    menu = QT_TRANSLATE_NOOP("Unified_SnapFaces", "Snap together")
++    tip = QT_TRANSLATE_NOOP(
++        "Unified_SnapFaces",
++        "Puts one part against another, face to face. Click a face of the part to move, then a face "
++        "of the other part (or pick both with Ctrl and press this). The first one moves",
++    )
++    context = "Unified_SnapFaces"
++    pixmap = "SnapFaces.svg"
++    accel = "J"
++
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, self.pixmap),
++            "MenuText": self.menu,
++            "ToolTip": self.tip,
++            "Accel": self.accel,
++        }
++
++    def IsActive(self):
++        if not _Command.IsActive(self):
++            return False
++        picks = Gui.Selection.getSelectionEx("", 0)
++        count = sum(max(1, len(s.SubElementNames)) for s in picks)
++        if count < 2:
++            return True  # starts the tool; the panel asks for the picks
++        return classify_selection() in self.kinds
++
++    def Activated(self):
++        picks = selection_picks()
++        usable = []
++        if classify_selection() in self.kinds:
++            usable = picks
++        elif len(picks) == 1 and picks[0].element and not picks[0].element.startswith("Vertex"):
++            usable = picks
++        _show(SnapPanel("snap", usable, point_first=False))
++
++
++class SnapAxesCommand(SnapFacesCommand):
++    """軸をそろえる: round faces (a shaft and a hole) or circles on one axis."""
++
++    kinds = ("axes",)
++    menu = QT_TRANSLATE_NOOP("Unified_SnapAxes", "Line up the axes")
++    tip = QT_TRANSLATE_NOOP(
++        "Unified_SnapAxes",
++        "Puts a round part on the axis of another, e.g. a shaft into a hole. Click a round face or a "
++        "circle of the part to move, then one of the other part",
++    )
++    pixmap = "SnapAxes.svg"
++    accel = ""
++
++    def IsActive(self):
++        if not _Command.IsActive(self):
++            return False
++        count = sum(max(1, len(s.SubElementNames)) for s in Gui.Selection.getSelectionEx("", 0))
++        if count < 2:
++            return True
++        return classify_selection() in self.kinds
++
++
++class PointToFaceCommand(SnapFacesCommand):
++    """点を面に合わせる: a point of one part straight onto a face of another."""
++
++    kinds = ("point-face",)
++    menu = QT_TRANSLATE_NOOP("Unified_PointToFace", "Point onto a face")
++    tip = QT_TRANSLATE_NOOP(
++        "Unified_PointToFace",
++        "Moves a part straight (without turning it) until the picked point lies on the picked face. "
++        "Pick the point first, then the face",
++    )
++    pixmap = "PointToFace.svg"
++    accel = ""
++
++    def IsActive(self):
++        if not _Command.IsActive(self):
++            return False
++        count = sum(max(1, len(s.SubElementNames)) for s in Gui.Selection.getSelectionEx("", 0))
++        if count < 2:
++            return True
++        return classify_selection() in self.kinds
++
++    def Activated(self):
++        picks = selection_picks()
++        usable = picks if classify_selection() in self.kinds else []
++        _show(SnapPanel("snap", usable, point_first=True))
++
++
++class MovePointToPointCommand(_Command):
++    """点から点へ動かす: like Draft's move, with snapping, for parts and groups."""
++
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "MovePointToPoint.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_MovePointToPoint", "Move point to point"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_MovePointToPoint",
++                "Moves parts without turning them: click the point to move (it snaps to vertices, middles "
++                "of edges, centers of circles and faces), then where it goes. Hold Ctrl for a copy",
++            ),
++            "Accel": "Shift+M",
++        }
++
++    def IsActive(self):
++        if not _Command.IsActive(self):
++            return False
++        sel = Gui.Selection.getSelectionEx("", 0)
++        elements = [n for s in sel for n in s.SubElementNames]
++        if len(elements) == 2 and all(s.SubElementNames for s in sel):
++            return _cached("points", lambda: S.both_points(selection_picks()))
++        return True
++
++    def Activated(self):
++        picks = selection_picks()
++        objects = []
++        usable = []
++        if len(picks) == 2 and S.both_points(picks):
++            usable = picks
++        elif picks and all(not p.element for p in picks):
++            # Whole parts picked (in the tree, or as objects): they move together
++            for p in picks:
++                cands = S.movable_candidates(p)
++                if cands and all(c.obj != cands[0].obj for c in objects):
++                    objects.append(cands[0])
++        elif len(picks) == 1 and picks[0].element:
++            usable = picks
++        _show(SnapPanel("point", usable, objects=objects))
++
++
++Gui.addCommand("Unified_SnapFaces", SnapFacesCommand())
++Gui.addCommand("Unified_SnapAxes", SnapAxesCommand())
++Gui.addCommand("Unified_PointToFace", PointToFaceCommand())
++Gui.addCommand("Unified_MovePointToPoint", MovePointToPointCommand())
+diff --git a/src/Mod/Unified/TestSnapMath.py b/src/Mod/Unified/TestSnapMath.py
+new file mode 100644
+index 000000000..09c5eeabf
+--- /dev/null
++++ b/src/Mod/Unified/TestSnapMath.py
+@@ -0,0 +1,411 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of SnapMath (snap together / move point to point), headless:
++#   FreeCADCmd -t TestSnapMath
++
++import os
++import tempfile
++import unittest
++
++import FreeCAD as App
++import Part
++
++import SnapMath as S
++
++
++def _point_on(root, sub, fu=0.3, fv=0.6):
++    """A point on the picked face (global), away from its center."""
++    face = root.getSubObject(sub)
++    u0, u1, v0, v1 = face.ParameterRange
++    return face.valueAt(u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv)
++
++
++def _pick(root, sub, point=None, fu=0.3, fv=0.6):
++    if point is None and sub.split(".")[-1].startswith("Face"):
++        point = _point_on(root, sub, fu, fv)
++    return S.Pick(root, sub, point)
++
++
++class SnapMathTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("SnapMathTest")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    # helpers -----------------------------------------------------------------------------
++
++    def box(self, name, size=(10, 20, 30), placement=None, container=None):
++        b = self.doc.addObject("Part::Box", name)
++        b.Length, b.Width, b.Height = size
++        if placement is not None:
++            b.Placement = placement
++        if container is not None:
++            container.addObject(b)
++        return b
++
++    def snap(self, a, b, **opts):
++        """Move the part of pick a so that a lands on b; returns (movable, move)."""
++        fa = S.feature_of(a)
++        fb = S.feature_of(b)
++        movable = S.movable_candidates(a)[0]
++        move = S.snap_move(fa, fb, **opts)
++        S.apply(movable, move)
++        self.doc.recompute()
++        return movable, move, fa, fb
++
++    def assertVec(self, a, b, tol=1e-6, msg=None):
++        self.assertLess((App.Vector(a) - App.Vector(b)).Length, tol, msg or "{} != {}".format(a, b))
++
++    def assertFacesTouch(self, a, b, facing=True, gap=0.0):
++        """Faces of picks a and b (re-read after the move) are coplanar and face each other."""
++        fa = S.feature_of(S.Pick(a.root, a.sub, None))
++        fb = S.feature_of(S.Pick(b.root, b.sub, None))
++        dot = fa.direction.dot(fb.direction)
++        self.assertAlmostEqual(dot, -1.0 if facing else 1.0, places=6)
++        # The plane of a lies at `gap` from the plane of b, on its outer side
++        self.assertAlmostEqual((fa.center - fb.center).dot(fb.direction), gap, places=6)
++
++    # plane on plane -----------------------------------------------------------------------
++
++    def test_boxes_face_to_face(self):
++        a = self.box("A")
++        b = self.box("B", placement=App.Placement(App.Vector(100, 50, 0), App.Rotation()))
++        self.doc.recompute()
++        pa = _pick(a, "Face6")  # top of A (+Z)
++        pb = _pick(b, "Face2")  # +X side of B
++        moved_point = App.Vector(pa.point)
++        movable, move, fa, fb = self.snap(pa, pb)
++        self.assertIs(movable.obj, a)
++        self.assertFacesTouch(pa, pb)
++        # The picked point of A went onto the picked point of B
++        self.assertVec(move.multVec(moved_point), pb.point)
++        # Touching, not overlapping
++        self.assertLess(a.Shape.common(b.Shape).Volume, 1e-6)
++        self.assertAlmostEqual(a.Shape.distToShape(b.Shape)[0], 0.0, places=6)
++
++    def test_flip_gap_spin_center(self):
++        a = self.box("A")
++        b = self.box("B", placement=App.Placement(App.Vector(0, 0, 50), App.Rotation()))
++        self.doc.recompute()
++        pa, pb = _pick(a, "Face6"), _pick(b, "Face6")
++        self.snap(pa, pb, flip=True, gap=5, align=S.ALIGN_CENTER)
++        self.assertFacesTouch(pa, pb, facing=False, gap=5)
++        fa = S.feature_of(S.Pick(a, "Face6"))
++        fb = S.feature_of(S.Pick(b, "Face6"))
++        self.assertVec(fa.center, fb.center + App.Vector(0, 0, 5))
++        # A quarter turn about the normal: A's long side (Y, 20) now lies along X
++        self.snap(pa, pb, flip=True, spin=90, align=S.ALIGN_CENTER)
++        bb = a.Shape.BoundBox
++        self.assertAlmostEqual(bb.XLength, 20, places=6)
++        self.assertAlmostEqual(bb.YLength, 10, places=6)
++
++    def test_snap_is_from_start_each_time(self):
++        """Changing an option recomputes from where the part was, not from the last preview."""
++        a = self.box("A")
++        b = self.box("B", placement=App.Placement(App.Vector(40, 0, 0), App.Rotation(App.Vector(1, 1, 0), 30)))
++        self.doc.recompute()
++        pa, pb = _pick(a, "Face1"), _pick(b, "Face5")
++        fa, fb = S.feature_of(pa), S.feature_of(pb)
++        movable = S.movable_candidates(pa)[0]
++        for gap in (3, 0, 7):
++            S.apply(movable, S.snap_move(fa, fb, gap=gap))
++        self.doc.recompute()
++        self.assertFacesTouch(pa, pb, gap=7)
++
++    def test_keep_position(self):
++        a = self.box("A", placement=App.Placement(App.Vector(3, 4, -20), App.Rotation()))
++        b = self.box("B", placement=App.Placement(App.Vector(0, 0, 50), App.Rotation()))
++        self.doc.recompute()
++        pa, pb = _pick(a, "Face5"), _pick(b, "Face6")
++        self.snap(pa, pb, align=S.ALIGN_KEEP)
++        # Bottom of A is now at the height of the top of B; X and Y did not change
++        self.assertVec(a.Placement.Base, App.Vector(3, 4, 80))
++
++    def test_rotated_parts(self):
++        ra = App.Rotation(App.Vector(1, 2, 3), 37)
++        rb = App.Rotation(App.Vector(-2, 1, 0.5), 113)
++        a = self.box("A", placement=App.Placement(App.Vector(5, -7, 2), ra))
++        b = self.box("B", (15, 15, 15), App.Placement(App.Vector(-30, 20, 11), rb))
++        self.doc.recompute()
++        for sa, sb in (("Face3", "Face4"), ("Face1", "Face6"), ("Face6", "Face6")):
++            pa, pb = _pick(a, sa), _pick(b, sb, fu=0.5, fv=0.5)
++            p = App.Vector(pa.point)
++            _, move, _, _ = self.snap(pa, pb)
++            self.assertFacesTouch(pa, pb)
++            self.assertVec(move.multVec(p), pb.point)
++
++    # nesting -------------------------------------------------------------------------------
++
++    def test_nested_app_part_and_body(self):
++        outer = self.doc.addObject("App::Part", "Outer")
++        outer.Placement = App.Placement(App.Vector(10, 0, 0), App.Rotation(App.Vector(0, 0, 1), 90))
++        inner = self.doc.addObject("App::Part", "Inner")
++        outer.addObject(inner)
++        inner.Placement = App.Placement(App.Vector(0, 5, 3), App.Rotation(App.Vector(1, 0, 0), 30))
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        inner.addObject(body)
++        body.Placement = App.Placement(App.Vector(1, 2, 3), App.Rotation(App.Vector(0, 1, 0), 45))
++        body.newObject("PartDesign::AdditiveBox", "Box")
++        other = self.doc.addObject("App::Part", "Other")
++        other.Placement = App.Placement(App.Vector(-50, 0, 0), App.Rotation(App.Vector(1, 1, 1), 60))
++        self.box("B", container=other, placement=App.Placement(App.Vector(0, 0, 7), App.Rotation()))
++        self.doc.recompute()
++
++        pa = _pick(outer, "Inner.Body.Box.Face6")
++        pb = _pick(other, "B.Face2")
++        cands = S.movable_candidates(pa)
++        self.assertEqual([c.obj.Name for c in cands], ["Body", "Inner", "Outer"])
++        # The candidates' global placements are where FreeCAD puts them
++        self.assertTrue(cands[0].global_placement().isSame(body.getGlobalPlacement(), 1e-9))
++        self.assertTrue(cands[1].global_placement().isSame(inner.getGlobalPlacement(), 1e-9))
++        p = App.Vector(pa.point)
++        movable, move, _, _ = self.snap(pa, pb)
++        self.assertIs(movable.obj, body)
++        self.assertFacesTouch(pa, pb)
++        self.assertVec(move.multVec(p), pb.point)
++        # The containers did not move
++        self.assertVec(inner.Placement.Base, App.Vector(0, 5, 3))
++        # Moving the outer container instead gives the same result for the picked face
++        S.restore(movable)
++        self.doc.recompute()
++        S.apply(cands[2], move)
++        self.doc.recompute()
++        self.assertFacesTouch(pa, pb)
++        self.assertVec(body.Placement.Base, App.Vector(1, 2, 3))
++
++    def test_pick_on_body_feature_moves_body(self):
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        body.newObject("PartDesign::AdditiveBox", "Box")
++        b = self.box("B", placement=App.Placement(App.Vector(30, 0, 0), App.Rotation()))
++        self.doc.recompute()
++        # Picked through the body, or on the step itself (e.g. from the tree): the body moves
++        for root, sub in ((body, "Box.Face2"), (body.Group[-1], "Face2")):
++            self.assertIs(S.movable_candidates(_pick(root, sub))[0].obj, body)
++        pa = _pick(body, "Box.Face2")
++        pb = _pick(b, "Face1")
++        self.snap(pa, pb)
++        self.assertFacesTouch(pa, pb)
++        self.assertTrue(body.Group[-1].Placement.isIdentity())  # the step itself did not move
++
++    def test_link_moves_link(self):
++        src = self.doc.addObject("App::Part", "Src")
++        src.Placement = App.Placement(App.Vector(0, 0, 9), App.Rotation())
++        self.box("A", container=src)
++        link = self.doc.addObject("App::Link", "Link")
++        link.LinkedObject = src
++        link.Placement = App.Placement(App.Vector(50, 0, 0), App.Rotation(App.Vector(0, 0, 1), 45))
++        b = self.box("B", placement=App.Placement(App.Vector(-40, 0, 0), App.Rotation()))
++        self.doc.recompute()
++        pa = _pick(link, "A.Face5")
++        pb = _pick(b, "Face6")
++        cands = S.movable_candidates(pa)
++        self.assertEqual([c.obj.Name for c in cands], ["Link"])
++        self.snap(pa, pb)
++        self.assertFacesTouch(pa, pb)
++        # The linked part itself stays
++        self.assertVec(src.Placement.Base, App.Vector(0, 0, 9))
++
++    def test_imported_step(self):
++        import Import
++
++        a = self.box("Src", (8, 8, 8))
++        self.doc.recompute()
++        path = os.path.join(tempfile.mkdtemp(), "box.step")
++        Import.export([a], path)
++        before = set(o.Name for o in self.doc.Objects)
++        Import.insert(path, self.doc.Name)
++        self.doc.recompute()
++        new = [o for o in self.doc.Objects if o.Name not in before]
++        shapes = [o for o in new if hasattr(o, "Shape") and o.Shape.Faces and not o.isDerivedFrom("App::Part")]
++        self.assertTrue(shapes)
++        imported = shapes[0]
++        root = imported
++        sub = "Face6"
++        parent = imported.getParentGeoFeatureGroup()
++        if parent is not None:
++            root, sub = parent, imported.Name + ".Face6"
++        b = self.box("B", placement=App.Placement(App.Vector(0, 40, 0), App.Rotation(App.Vector(0, 1, 0), 20)))
++        self.doc.recompute()
++        top = max(range(len(imported.Shape.Faces)), key=lambda i: imported.Shape.Faces[i].CenterOfMass.z)
++        sub = sub.replace("Face6", "Face%d" % (top + 1))
++        pa, pb = _pick(root, sub), _pick(b, "Face3")
++        self.snap(pa, pb)
++        self.assertFacesTouch(pa, pb)
++
++    # round faces ---------------------------------------------------------------------------
++
++    def test_shaft_into_hole(self):
++        plate = self.doc.addObject("Part::Box", "Plate")
++        plate.Length, plate.Width, plate.Height = 40, 40, 10
++        hole = self.doc.addObject("Part::Cylinder", "HoleTool")
++        hole.Radius, hole.Height = 5, 10
++        hole.Placement.Base = App.Vector(20, 20, 0)
++        cut = self.doc.addObject("Part::Cut", "Cut")
++        cut.Base, cut.Tool = plate, hole
++        cut.Placement = App.Placement(App.Vector(0, 0, 100), App.Rotation(App.Vector(1, 0, 0), 30))
++        shaft = self.doc.addObject("Part::Cylinder", "Shaft")
++        shaft.Radius, shaft.Height = 5, 30
++        shaft.Placement = App.Placement(App.Vector(-60, 3, 0), App.Rotation(App.Vector(0, 1, 0), 70))
++        self.doc.recompute()
++        hole_face = next(
++            "Face%d" % (i + 1) for i, f in enumerate(cut.Shape.Faces) if isinstance(f.Surface, Part.Cylinder)
++        )
++        pa = _pick(shaft, "Face1")
++        pb = _pick(cut, hole_face)
++        fa, fb = S.feature_of(pa), S.feature_of(pb)
++        self.assertEqual((fa.kind, fb.kind), ("axis", "axis"))
++        self.snap(pa, pb, align=S.ALIGN_CENTER)
++        fa = S.feature_of(S.Pick(shaft, "Face1"))
++        fb = S.feature_of(S.Pick(cut, hole_face))
++        self.assertAlmostEqual(abs(fa.direction.dot(fb.direction)), 1.0, places=6)
++        self.assertVec(fa.center, fb.center)
++        # The shaft is in the hole: it overlaps the plate in nothing
++        self.assertLess(shaft.Shape.common(cut.Shape).Volume, 1e-4)
++
++    def test_circle_edges(self):
++        a = self.doc.addObject("Part::Cylinder", "A")
++        a.Radius, a.Height = 3, 8
++        a.Placement = App.Placement(App.Vector(20, 0, 0), App.Rotation(App.Vector(1, 0, 0), 90))
++        b = self.doc.addObject("Part::Cylinder", "B")
++        b.Radius, b.Height = 6, 2
++        self.doc.recompute()
++        # Edge2 and Edge3 of a Part cylinder are its bottom and top circles
++        pa = S.Pick(a, "Edge3")
++        pb = S.Pick(b, "Edge3")
++        fa, fb = S.feature_of(pa), S.feature_of(pb)
++        self.assertEqual((fa.kind, fb.kind), ("axis", "axis"))
++        self.snap(pa, pb, align=S.ALIGN_CENTER)
++        self.assertVec(S.feature_of(S.Pick(a, "Edge3")).center, fb.center)
++
++    # points ------------------------------------------------------------------------------
++
++    def test_point_to_point_nested_and_copy(self):
++        part = self.doc.addObject("App::Part", "Asm")
++        part.Placement = App.Placement(App.Vector(0, 0, 10), App.Rotation(App.Vector(0, 0, 1), 30))
++        a = self.box("A", container=part)
++        b = self.box("B", placement=App.Placement(App.Vector(70, 0, 0), App.Rotation(App.Vector(0, 1, 0), 15)))
++        self.doc.recompute()
++        pa = S.Pick(part, "A.Vertex8")
++        pb = S.Pick(b, "Vertex1")
++        fa = S.feature_of(pa, "point")
++        fb = S.feature_of(pb, "point")
++        self.assertEqual(S.pair_kind(fa, fb), "points")
++        movable = S.movable_candidates(pa)[0]
++        self.assertIs(movable.obj, a)
++        move = S.snap_move(fa, fb)
++        self.assertTrue(move.Rotation.isIdentity())
++        copy = S.copy_of(movable, pa)
++        S.apply(copy, move)
++        self.doc.recompute()
++        self.assertIn(copy.obj, part.Group)
++        self.assertVec(part.getSubObject(copy.obj.Name + ".Vertex8").Point, b.getSubObject("Vertex1").Point)
++        # The original stays
++        self.assertTrue(a.Placement.isIdentity())
++
++    def test_edge_points(self):
++        a = self.box("A")
++        c = self.doc.addObject("Part::Cylinder", "C")
++        self.doc.recompute()
++        edge = a.getSubObject("Edge1")
++        mid = edge.valueAt(sum(edge.ParameterRange) / 2)
++        p, kind = S.point_of(edge, mid + App.Vector(0.1, 0, 0))
++        self.assertEqual(kind, "midpoint")
++        self.assertVec(p, mid)
++        p, kind = S.point_of(c.getSubObject("Edge3"), None)
++        self.assertEqual(kind, "center")
++        self.assertVec(p, App.Vector(0, 0, c.Height.Value))
++
++    def test_point_to_face(self):
++        a = self.box("A", placement=App.Placement(App.Vector(5, 5, 5), App.Rotation()))
++        b = self.box("B", placement=App.Placement(App.Vector(0, 0, 100), App.Rotation(App.Vector(1, 0, 0), 20)))
++        self.doc.recompute()
++        pa = S.Pick(a, "Vertex1")
++        pb = _pick(b, "Face5")
++        fa, fb = S.feature_of(pa, "point"), S.feature_of(pb)
++        self.assertEqual(S.pair_kind(fa, fb), "point-face")
++        movable = S.movable_candidates(pa)[0]
++        S.apply(movable, S.snap_move(fa, fb))
++        self.doc.recompute()
++        v = a.getSubObject("Vertex1").Point
++        self.assertAlmostEqual((v - fb.pick).dot(fb.direction), 0.0, places=6)
++        self.assertTrue(a.Placement.Rotation.isIdentity())
++
++    def test_mixed_pair_refused(self):
++        a = self.doc.addObject("Part::Cylinder", "A")
++        b = self.box("B")
++        self.doc.recompute()
++        with self.assertRaises(S.SnapError):
++            S.snap_move(S.feature_of(_pick(a, "Face1")), S.feature_of(_pick(b, "Face1")))
++
++    # parametric attachment -----------------------------------------------------------------
++
++    def test_attached_offset_kept_after_recompute(self):
++        base = self.box("Base", placement=App.Placement(App.Vector(0, 0, 0), App.Rotation(App.Vector(0, 0, 1), 20)))
++        a = self.box("A", (4, 4, 4))
++        a.AttachmentSupport = [(base, "Face6")]
++        a.MapMode = "FlatFace"
++        b = self.box("B", placement=App.Placement(App.Vector(60, 0, 0), App.Rotation()))
++        self.doc.recompute()
++        pa, pb = _pick(a, "Face2"), _pick(b, "Face1")
++        movable = S.movable_candidates(pa)[0]
++        self.assertEqual(S.check_movable(movable), "attached")
++        self.snap(pa, pb)
++        self.assertEqual(a.MapMode, "FlatFace")
++        self.doc.recompute()
++        self.assertFacesTouch(pa, pb)
++        # The attachment still works: moving the base carries A along
++        base.Placement.Base = App.Vector(0, 0, 5)
++        self.doc.recompute()
++        self.assertGreater(a.Placement.Base.z, 0)
++
++    def test_attached_detach(self):
++        base = self.box("Base")
++        a = self.box("A", (4, 4, 4))
++        a.AttachmentSupport = [(base, "Face6")]
++        a.MapMode = "FlatFace"
++        b = self.box("B", placement=App.Placement(App.Vector(60, 0, 0), App.Rotation()))
++        self.doc.recompute()
++        pa, pb = _pick(a, "Face2"), _pick(b, "Face1")
++        fa, fb = S.feature_of(pa), S.feature_of(pb)
++        movable = S.movable_candidates(pa)[0]
++        S.apply(movable, S.snap_move(fa, fb), attachment="detach")
++        self.doc.recompute()
++        self.assertEqual(a.MapMode, "Deactivated")
++        self.assertFacesTouch(pa, pb)
++
++    def test_classify_pairs(self):
++        """What the context bar offers for two picks (the first moves onto the second)."""
++        a = self.box("A")
++        b = self.box("B", placement=App.Placement(App.Vector(50, 0, 0), App.Rotation()))
++        c = self.doc.addObject("Part::Cylinder", "C")
++        d = self.doc.addObject("Part::Cylinder", "D")
++        d.Placement.Base = App.Vector(0, 50, 0)
++        self.doc.recompute()
++        cases = [
++            ((a, "Face1"), (b, "Face2"), "faces"),
++            ((c, "Face1"), (d, "Face1"), "axes"),
++            ((c, "Edge3"), (d, "Edge2"), "axes"),
++            ((a, "Vertex1"), (b, "Face6"), "point-face"),
++            ((a, "Vertex1"), (b, "Vertex2"), "points"),
++            ((a, "Edge1"), (c, "Edge2"), "points"),
++            ((a, "Face1"), (c, "Face1"), None),  # flat and round
++            ((a, "Face1"), (a, "Face2"), None),  # the same part
++            ((a, "Face1"), (b, "Vertex1"), None),  # a face onto a point
++        ]
++        for (ra, sa), (rb, sb), kind in cases:
++            self.assertEqual(S.classify([_pick(ra, sa), _pick(rb, sb)]), kind, (sa, sb))
++        self.assertTrue(S.both_points([_pick(a, "Vertex1"), _pick(c, "Edge2")]))
++        self.assertFalse(S.both_points([_pick(a, "Vertex1"), _pick(a, "Vertex2")]))
++        self.assertFalse(S.both_points([_pick(a, "Face1"), _pick(b, "Vertex2")]))
++
++    def test_target_inside_moving_part(self):
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        body.newObject("PartDesign::AdditiveBox", "Box")
++        self.doc.recompute()
++        pa = _pick(body, "Box.Face1")
++        pb = _pick(body, "Box.Face2")
++        self.assertTrue(S.contains(S.movable_candidates(pa)[0], pb))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 623c0256b..d6a2e89c4 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -176,3 +176,7 @@ class AboutCommand:
+ 
+ 
+ FreeCADGui.addCommand("Unified_About", AboutCommand())
++
++
++# Snap together (くっつける), line up the axes, point onto a face, move point to point
++import SnapToolsGui  # noqa: E402,F401
+-- 
+2.43.0
+

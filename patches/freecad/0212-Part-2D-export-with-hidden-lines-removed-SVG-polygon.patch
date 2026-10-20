@@ -1,7 +1,7 @@
 From fa9ccb7c5cc4e11c70000879201613ec7c34a3fe Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 21:31:26 +0900
-Subject: [PATCH 212/239] Part: 2D export with hidden lines removed (SVG,
+Subject: [PATCH 212/240] Part: 2D export with hidden lines removed (SVG,
  polygons JSON, PPTX)
 
   FreeCADCmd model.step --view iso --export-svg v.svg --export-polygons v.json
