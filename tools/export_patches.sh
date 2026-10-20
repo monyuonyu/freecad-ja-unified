@@ -1,12 +1,14 @@
 #!/bin/bash
-# FreeCAD の clone（unified-ui ブランチ）から patches/ を作り直す。使い方: tools/export_patches.sh [FreeCAD の clone]
+# FreeCAD の clone（unified-ui ブランチ）から patches/ を作り直す。使い方: tools/export_patches.sh [FreeCAD の clone] [コミット（既定 unified-ui）]
+# コミットを渡すと、そこまでで書き出す（先に進んだブランチから、前の段階の版を出すとき）
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:-$HOME/freecad-src}
+REF=${2:-unified-ui}
 BASE=b48098efaa2560d0aa989d7f6e61cdb7f831877f
 ONDSEL_BASE=4be80eef02a3486cda0d78f3ccbb308d207a9639
 rm -f "$HERE"/patches/freecad/*.patch "$HERE"/patches/ondselsolver/*.patch
-git -C "$SRC" format-patch -q "$BASE"..unified-ui -o "$HERE/patches/freecad"
+git -C "$SRC" format-patch -q "$BASE".."$REF" -o "$HERE/patches/freecad"
 # サブモジュール（OndselSolver）の参照だけを動かすコミットは除く（中身は patches/ondselsolver にある）
 for p in "$HERE"/patches/freecad/*.patch; do
   files=$(grep '^diff --git ' "$p" | awk '{print $3}' | sort -u)
