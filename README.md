@@ -298,6 +298,12 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.3
+
+- "Make Drawing": a picked face becomes the front view; hole center lines and callouts go on the view that shows the holes as circles
+- The put-part panel of assemblies lists the FreeCAD/STEP/IGES files of the assembly's folder; a click opens one
+- All UI acceptance walkthroughs (P0–P10) passed on the published 0.6.2 Linux AppImage
+
 ## Changes in 0.6.2
 
 UI rebuild phases P5, P6 (part), P9, P10 ([status in chapter 13 of the design](docs/ui-redesign/00-design.md)).

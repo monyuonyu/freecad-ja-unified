@@ -1,0 +1,164 @@
+From a304b0e06bb29fa7fbbb0db9e6bb9e0247e90543 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 23:37:52 +0900
+Subject: [PATCH 271/271] Assembly: the part files of the folder in the panel
+ that puts parts
+
+The panel that puts parts lists, below the open files, the FreeCAD, STEP
+and IGES files of the assembly's folder (of the last folder used while the
+assembly is not saved yet); a click opens one and lists its parts. The
+step band no longer fails on an edited object without a document object
+(an active assembly).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/CommandInsertLink.py         | 74 +++++++++++++++----
+ src/Mod/Unified/ContextRules.py               |  2 +-
+ .../translations/UnifiedWording_ja.ts         |  8 ++
+ src/Mod/Unified/UnifiedChrome.py              |  2 +-
+ 4 files changed, 70 insertions(+), 16 deletions(-)
+
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index 4d3e49a77..6b043f9a8 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -291,8 +291,61 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             else:
+                 self.form.partList.expandToDepth(0)
+ 
++        self.addFolderFiles()
+         self.adjustTreeWidgetSize()
+ 
++    FILE_ROLE = QtCore.Qt.UserRole + 201
++    PART_FILES = (".fcstd", ".step", ".stp", ".iges", ".igs")
++
++    def partsFolder(self):
++        """Where parts to put are looked for: the assembly's folder, else the last folder used"""
++        name = self.doc.FileName
++        if name and "Unsaved" not in os.path.normpath(name).split(os.sep):
++            return os.path.dirname(name)
++        last = App.ParamGet("User parameter:BaseApp/Preferences/General").GetString("FileOpenSavePath", "")
++        return last if last and os.path.isdir(last) else os.path.expanduser("~")
++
++    def addFolderFiles(self):
++        """The part files of the folder that are not open yet: a click opens one and lists its parts"""
++        folder = self.partsFolder()
++        try:
++            names = sorted(n for n in os.listdir(folder) if n.lower().endswith(self.PART_FILES))
++        except OSError:
++            return
++        open_files = {os.path.normcase(os.path.abspath(d.FileName)) for d in App.listDocuments().values() if d.FileName}
++        open_files |= getattr(self, "openedFiles", set())
++        names = [n for n in names if os.path.normcase(os.path.abspath(os.path.join(folder, n))) not in open_files]
++        if not names:
++            return
++        top = QtGui.QTreeWidgetItem()
++        top.setText(0, translate("Assembly", "Part files in {}").format(os.path.basename(folder) or folder))
++        top.setIcon(0, QIcon.fromTheme("folder", QIcon(":/icons/folder.svg")))
++        self.form.partList.addTopLevelItem(top)
++        for n in names[:200]:
++            item = QtGui.QTreeWidgetItem(top)
++            item.setText(0, n)
++            item.setToolTip(0, translate("Assembly", "Click to open it and list its parts"))
++            item.setData(0, self.FILE_ROLE, os.path.join(folder, n))
++        top.setExpanded(True)
++
++    def openPartFile(self, filename):
++        if not hasattr(self, "openedFiles"):
++            self.openedFiles = set()
++        self.openedFiles.add(os.path.normcase(os.path.abspath(filename)))
++        lower = filename.lower()
++        if lower.endswith(".fcstd"):
++            App.openDocument(filename, True)
++        elif lower.endswith((".step", ".stp", ".iges", ".igs")):
++            import ImportGui
++
++            name = os.path.splitext(os.path.basename(filename))[0]
++            imported = App.newDocument("Unnamed", name)
++            ImportGui.insert(filename, imported.Name)
++        else:
++            return
++        App.setActiveDocument(self.doc.Name)
++        self.buildPartList()
++
+     def adjustTreeWidgetSize(self):
+         # Adjust the height of the part list based on item count
+         item_count = 1
+@@ -352,22 +405,15 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             )
+ 
+             if not import_doc_is_open:
+-                if filename.lower().endswith(".fcstd"):
+-                    App.openDocument(filename, True)
+-                elif filename.lower().endswith((".step", ".stp", ".iges", ".igs")):
+-                    # A STEP or IGES file: read into a document of its own (not saved); its
+-                    # parts are copied into the assembly when put
+-                    import ImportGui
+-
+-                    name = os.path.splitext(requested_file)[0]
+-                    imported = App.newDocument("Unnamed", name)
+-                    ImportGui.insert(filename, imported.Name)
+-                else:
+-                    continue
+-                App.setActiveDocument(self.doc.Name)
+-                self.buildPartList()
++                # A STEP or IGES file is read into a document of its own (not saved); its parts
++                # are copied into the assembly when put
++                self.openPartFile(filename)
+ 
+     def onItemClicked(self, item):
++        path = item.data(0, self.FILE_ROLE)
++        if path:
++            self.openPartFile(path)
++            return
+         selectedPart = item.data(0, QtCore.Qt.UserRole)
+         if not selectedPart:
+             # If there's no part associated, toggle the expanded state
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 6f9bd7da9..59581a63b 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -364,7 +364,7 @@ def run_with_value(command, text):
+     QtWidgets.QApplication.processEvents()
+     gdoc = Gui.ActiveDocument
+     edit = gdoc.getInEdit() if gdoc else None
+-    obj = edit.Object if edit is not None else None
++    obj = getattr(edit, "Object", None) if edit is not None else None
+     if field is None or obj is None or not hasattr(obj, field[0]):
+         return  # the panel stays open: the number is set there
+     try:
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index acee4730f..db8a0050d 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -210,6 +210,14 @@ so that self intersection is avoided.</source>
+         <source>Parts (*.FCStd *.fcstd *.step *.stp *.STEP *.STP *.iges *.igs *.IGES *.IGS);;All files (*)</source>
+         <translation>部品 (*.FCStd *.fcstd *.step *.stp *.STEP *.STP *.iges *.igs *.IGES *.IGS);;すべてのファイル (*)</translation>
+     </message>
++    <message>
++        <source>Part files in {}</source>
++        <translation>{} の部品のファイル</translation>
++    </message>
++    <message>
++        <source>Click to open it and list its parts</source>
++        <translation>クリックで開いて、中の部品を一覧に出します</translation>
++    </message>
+ </context>
+ <context>
+     <name>AssemblyGui::ViewProviderAssembly</name>
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index beadffb26..8165200cd 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -761,7 +761,7 @@ class StepBand(QtWidgets.QToolBar):
+     def current(self):
+         gdoc = Gui.ActiveDocument
+         edit = gdoc.getInEdit() if gdoc else None
+-        obj = edit.Object if edit is not None else None
++        obj = getattr(edit, "Object", None) if edit is not None else None
+         if obj is not None and obj.isDerivedFrom("Sketcher::SketchObject"):
+             return ("sketch", obj.Document.Name, obj.Name)
+         if Gui.Control.activeDialog():
+-- 
+2.43.0
+

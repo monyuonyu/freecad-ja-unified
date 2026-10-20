@@ -1,7 +1,7 @@
 From ce34557871cbd3e7ce67e17e24ff055aa0dc8ccd Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 17 Oct 2026 05:28:21 +0900
-Subject: [PATCH 230/269] TechDraw: Draft and Arch views use their own
+Subject: [PATCH 230/271] TechDraw: Draft and Arch views use their own
  document, not the active one
 
 DrawViewDraft::execute and DrawViewArch::execute ran
