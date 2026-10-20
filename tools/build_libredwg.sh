@@ -29,7 +29,8 @@ touch aclocal.m4
 sleep 1
 touch configure src/config.h.in
 sleep 1
-find . -name Makefile.in -exec touch {} +
+# .git は除く（git am の後に裏で走る git gc が消す途中の物を find が読んで落ちることがある）
+find . -path ./.git -prune -o -name Makefile.in -exec touch {} +
 touch src/objects.c
 host=()
 cflags="-O2 -g0"
