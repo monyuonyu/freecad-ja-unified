@@ -197,6 +197,7 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 | 大きな組立の隠れ線（0.5.4） | 1200 部品で 15 分以上終わらないことがあった | 深さバッファで隠す側の候補を絞り、全コアで並列。1200 部品 3.9 秒、STL 由来 1200 部品 5.4 秒（0.5.3 は 72 秒）。`--progress`（標準エラーに進み具合）、`--max-seconds 60`（時間切れなら手前から済んだ分を書いて警告）、`--deflection`（粗くして速く） |
 | 点の内外判定・光線（0.5.4） | `Shape.isInside` を 1 点ずつ（10 万点で約 52 秒） | `Part.pointsInside(shape, 点の列)`（10 万点 0.16 秒、結果は isInside と同じ）、`Part.rayCast(shapes, 原点, 向き, all=False)`（距離・何番目の形・面・点・法線） |
 | STL から作った立体（0.5.4） | `makeShapeFromMesh`＋`makeSolid` は三角形だらけで、閉じていない・裏返り・重複があるとブール演算が不安定 | `Part.solidFromMesh(mesh, 0.01, report=True)`（直して縫い、同じ平面の三角形を 1 つの面に。直したこと・残った問題を返す）。ブール演算は許容差つきで `a.common(b, 0.01)`。角の丸めは `Part.filletMeshSolid(mesh, 1.0)`（平らな面どうしの角だけ。曲面部分は丸めない） |
+| Jw_cad の図面（0.5.6） | 開けない | 「開く」「インポート」で `.jww`（Jw_cad の図面）と `.jws`（図形登録）を開く。同梱の [jww2dxf](https://github.com/monyuonyu/jww-tools) で DXF にしてから読む（データの版 220〜700、Jw_cad 2.x〜10.x）。Jw_cad 自身の DXF 出力と 307 図面で図形ごとに突き合わせて全部一致。単体でも `jww2dxf 図面.jww` で DXF を作れる |
 | DWG/DXF の 3D ソリッド（0.5.4） | 3DSOLID・REGION・BODY は読み捨て | Part の形として読み込む（平面・円柱・円錐・球・トーラス・B スプライン。試験図面 81 個中 80 個が閉じた立体）。ブロックの中のソリッドと、AutoCAD 2013 以降が書いた DXF（ACDSDATA に入っている）はまだ読めない |
 | スクリプトに引数を渡す | — | `FreeCADCmd a.py -- x y`（`--` の後ろが `sys.argv`）。`FreeCADCmd a.py x` で `x` がファイルでないときは「`script.py -- x` で渡す」と案内する |
 | `Mesh.addFacets(shape.tessellate(d))` | 接した箱どうしの面を**黙って捨てる**（52 個の箱で 624 → 12 面） | 全部入れる（`check=True` のときだけ捨て、数を警告） |
@@ -270,6 +271,14 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.5.6 の変更
+
+- **Jw_cad の図面（`.jww`・`.jws`）を開けるようにした**。「開く」「インポート」で選ぶだけ。新しく作った変換器 [jww-tools](https://github.com/monyuonyu/jww-tools) の `jww2dxf` を同梱し、DXF にしてから読み込む
+  - 線・円・円弧・楕円・点・文字・寸法・ソリッド・ブロック・画像、レイヤグループとレイヤ（名前付きの画層に）、線種・線色・線幅
+  - Jw_cad 10.03.7 自身の DXF 出力（`JWW2DXFConv.dll`）と 307 図面（データの版 220〜700）で図形ごとに突き合わせ、線 152,625・円弧 10,001・点 2,313・文字 22,116・ソリッド 1,085・画像 16 がすべて一致
+  - 座標は Jw_cad の DXF 出力と同じ（用紙の左下が原点、書込レイヤグループの縮尺で実寸）
+  - DOS 版の `.jwc` はまだ読めない
 
 ## 0.5.5 の変更
 
@@ -393,6 +402,11 @@ FreeCAD 自身の試験（`FreeCADCmd -t 0`、C++ の Base/App/Part/Gui の試�
 
 `tools/build_libredwg.sh <出力先> [linux|win64]` で、本家の LibreDWG 0.14.8601 に `patches/libredwg` を当てて
 `dwg2dxf` / `dxf2dwg` を作る（Windows 用は MinGW-w64 のクロスビルド、DLL 不要）。リリースの手順もこれを使う。
+
+## jww-tools（Jw_cad の変換器）
+
+`tools/build_jww2dxf.sh <出力先> [linux|win64]` で、[jww-tools](https://github.com/monyuonyu/jww-tools) の決まった版（タグとコミットを確かめる）から
+`jww2dxf` を作る（静的リンク。Windows 用は MinGW-w64 のクロスビルド、DLL 不要）。リリースの手順もこれを使い、LibreDWG と同じ所に置いて同梱する。
 
 ## リリースの作り方
 

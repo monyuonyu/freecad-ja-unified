@@ -1,4 +1,4 @@
-日本語で迷わず使える一つの画面にした FreeCAD の改良版。DWG（AutoCAD の図面）を R2018 まで読み書きできる LibreDWG を同梱。**元にした FreeCAD: {BASE_VERSION}（main のコミット [`{BASE_SHORT}`](https://github.com/FreeCAD/FreeCAD/commit/{BASE_SHA})）＋ このリポジトリのパッチ {TAG}**
+日本語で迷わず使える一つの画面にした FreeCAD の改良版。DWG（AutoCAD の図面）を R2018 まで読み書きできる LibreDWG と、Jw_cad の図面（JWW）を開ける jww2dxf を同梱。**元にした FreeCAD: {BASE_VERSION}（main のコミット [`{BASE_SHORT}`](https://github.com/FreeCAD/FreeCAD/commit/{BASE_SHA})）＋ このリポジトリのパッチ {TAG}**
 
 **ダウンロード**
 
@@ -14,4 +14,4 @@
 AI チャットは自分の Anthropic の API キーで使う（AI が実行するコードは毎回表示され、承認したときだけ動く）。
 
 ---
-FreeCAD {BASE_VERSION} (main, {BASE_SHORT}) + patches {TAG}: one Japanese-first working screen, DWG read/write up to R2018 via the bundled LibreDWG, headless rendering/interference/2D export. Windows (installer/7z) and Linux (AppImage); unsigned preview builds. See the [README](https://github.com/monyuonyu/freecad-ja-unified#readme).
+FreeCAD {BASE_VERSION} (main, {BASE_SHORT}) + patches {TAG}: one Japanese-first working screen, DWG read/write up to R2018 via the bundled LibreDWG, Jw_cad (JWW) drawings via the bundled jww2dxf, headless rendering/interference/2D export. Windows (installer/7z) and Linux (AppImage); unsigned preview builds. See the [README](https://github.com/monyuonyu/freecad-ja-unified#readme).

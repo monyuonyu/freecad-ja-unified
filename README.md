@@ -350,6 +350,13 @@ FreeCAD's own tests (`FreeCADCmd -t 0`, and the C++ tests for Base/App/Part/Gui)
 `tools/build_libredwg.sh <output dir> [linux|win64]` applies `patches/libredwg` to upstream LibreDWG 0.14.8601 and
 builds `dwg2dxf` / `dxf2dwg` (the Windows build is a MinGW-w64 cross build, no DLLs needed). The release procedure uses this too.
 
+## jww-tools (the Jw_cad converter)
+
+Since 0.5.6, File → Open / Import also open Jw_cad drawings (`.jww`) and registered symbols (`.jws`), through the bundled
+`jww2dxf` from [jww-tools](https://github.com/monyuonyu/jww-tools) (checked figure by figure against Jw_cad's own DXF export
+on 307 drawings). `tools/build_jww2dxf.sh <output dir> [linux|win64]` builds it from a pinned jww-tools tag (statically
+linked; the Windows build is a MinGW-w64 cross build). The release procedure uses this too.
+
 ## Making a release
 
 Patches are exported with `tools/export_patches.sh` (regenerates patches/ from unified-ui in a FreeCAD clone).

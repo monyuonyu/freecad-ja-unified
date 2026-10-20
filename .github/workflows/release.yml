@@ -40,6 +40,7 @@ jobs:
           || gh release view "$BUILD_TAG" > /dev/null
 
   # DWG の読み書き: LibreDWG（本家の版＋patches/libredwg）の dwg2dxf / dxf2dwg を作る。
+  # あわせて Jw_cad の図面を読む jww2dxf（jww-tools）も作る。
   # Linux 用はこの Ubuntu で、Windows 用は MinGW-w64 でクロスビルドする（どちらも DLL 不要）
   libredwg:
     runs-on: ubuntu-22.04
@@ -49,9 +50,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+          sudo apt-get install -y -qq gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
           tools/build_libredwg.sh out/linux linux
           tools/build_libredwg.sh out/win64 win64
+          # Jw_cad の図面（.jww/.jws）: jww-tools の jww2dxf も同じ所に作る（create_bundle.sh が JWW_BIN から同梱する）
+          tools/build_jww2dxf.sh out/linux linux
+          tools/build_jww2dxf.sh out/win64 win64
       - uses: actions/upload-artifact@v4
         with:
           name: libredwg-bin
@@ -181,5 +185,6 @@ jobs:
           LIBREDWG_BIN="$GITHUB_WORKSPACE/libredwg-bin/${{ matrix.libredwg }}"
           if [ "$RUNNER_OS" = Windows ]; then LIBREDWG_BIN=$(cygpath -u "$LIBREDWG_BIN"); fi
           export LIBREDWG_BIN
+          export JWW_BIN="$LIBREDWG_BIN"
           ls -l "$LIBREDWG_BIN"
           pixi run --locked bash -c "cd ${{ matrix.osfolder }} && bash create_bundle.sh"

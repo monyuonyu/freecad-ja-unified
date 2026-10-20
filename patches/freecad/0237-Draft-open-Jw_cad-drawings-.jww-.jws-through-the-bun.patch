@@ -1,0 +1,191 @@
+From 8206e945675d40820401acbf01057f1ccc9cca3c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 09:04:36 +0900
+Subject: [PATCH 237/237] Draft: open Jw_cad drawings (.jww/.jws) through the
+ bundled jww2dxf
+
+importJWW converts with jww2dxf (github.com/monyuonyu/jww-tools) to a
+UTF-8 DXF and imports it with importDXF, like importDWG does. The
+converter is taken from Mod/Draft/JWWConverter, the bin folder of the
+installation, or the search path. The bundles copy jww2dxf from JWW_BIN.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   |  9 +++
+ package/bundle/windows/create_bundle.sh |  8 ++
+ src/Mod/Draft/CMakeLists.txt            |  1 +
+ src/Mod/Draft/Init.py                   |  1 +
+ src/Mod/Draft/importJWW.py              | 99 +++++++++++++++++++++++++
+ 5 files changed, 118 insertions(+)
+ create mode 100644 src/Mod/Draft/importJWW.py
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 77f7d4550..610adb63e 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -113,6 +113,15 @@ if [ -n "${LIBREDWG_BIN:-}" ]; then
+   case "${dwg_out}" in *dwg2dxf*) ;; *) echo "The bundled dwg2dxf does not start."; exit 1 ;; esac
+ fi
+ 
++# Jw_cad の図面（.jww/.jws）: jww-tools の jww2dxf（静的リンク）を同梱する。Draft/importJWW.py が使う
++if [ -n "${JWW_BIN:-}" ]; then
++  cp "${JWW_BIN}/jww2dxf" "${conda_env}/bin/"
++  chmod +x "${conda_env}/bin/jww2dxf"  # the artifact upload drops the permissions
++  jww_out=$("${conda_env}/bin/jww2dxf" --version 2>&1 | head -1)
++  echo "jww-tools: ${jww_out}"
++  case "${jww_out}" in *jww2dxf*) ;; *) echo "The bundled jww2dxf does not start."; exit 1 ;; esac
++fi
++
+ find . -name "*.h" -type f -delete
+ find . -name "*.cmake" -type f -delete
+ 
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index 0250c47aa..080ac2ee2 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -79,6 +79,14 @@ if [ -n "${LIBREDWG_BIN:-}" ]; then
+   case "${dwg_out}" in *dwg2dxf*) ;; *) echo "The bundled dwg2dxf does not start."; exit 1 ;; esac
+ fi
+ 
++# Jw_cad の図面（.jww/.jws）: jww-tools の jww2dxf（静的リンク）を同梱する。Draft/importJWW.py が使う
++if [ -n "${JWW_BIN:-}" ]; then
++  cp "${JWW_BIN}/jww2dxf.exe" "${copy_dir}/bin/"
++  jww_out=$("${copy_dir}/bin/jww2dxf.exe" --version 2>&1 | head -1)
++  echo "jww-tools: ${jww_out}"
++  case "${jww_out}" in *jww2dxf*) ;; *) echo "The bundled jww2dxf does not start."; exit 1 ;; esac
++fi
++
+ # Turn off the echo before we start actually calling "echo"
+ set +x
+ 
+diff --git a/src/Mod/Draft/CMakeLists.txt b/src/Mod/Draft/CMakeLists.txt
+index b2586b4c4..8b8747d9e 100644
+--- a/src/Mod/Draft/CMakeLists.txt
++++ b/src/Mod/Draft/CMakeLists.txt
+@@ -28,6 +28,7 @@ SET(Draft_import
+     importDXF.py
+     DxfImportDialog.py
+     importDWG.py
++    importJWW.py
+     importOCA.py
+     importSVG.py
+     SVGPath.py
+diff --git a/src/Mod/Draft/Init.py b/src/Mod/Draft/Init.py
+index 731a7036f..abe69c403 100644
+--- a/src/Mod/Draft/Init.py
++++ b/src/Mod/Draft/Init.py
+@@ -36,5 +36,6 @@ App.addTranslatableExportType(translate("FileFormat", "Flattened SVG"), ["svg"],
+ App.addExportType("Open CAD (*.oca)", "importOCA")
+ App.addImportType("Autodesk DWG 2D (*.dwg *.DWG)", "importDWG")
+ App.addExportType("Autodesk DWG 2D (*.dwg)", "importDWG")
++App.addImportType("Jw_cad JWW/JWS (*.jww *.JWW *.jws *.JWS)", "importJWW")
+ 
+ App.__unit_test__ += ["TestDraft"]
+diff --git a/src/Mod/Draft/importJWW.py b/src/Mod/Draft/importJWW.py
+new file mode 100644
+index 000000000..669f5b2d3
+--- /dev/null
++++ b/src/Mod/Draft/importJWW.py
+@@ -0,0 +1,99 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++
++# -*- coding: utf8 -*-
++## @package importJWW
++#  \ingroup DRAFT
++#  \brief Jw_cad (JWW) file importer
++"""
++@package importJWW
++ingroup DRAFT
++\brief Jw_cad (JWW/JWS) file importer
++
++Jw_cad is a Japanese freeware 2D CAD. Its drawings (.jww) and registered
++symbols (.jws) are converted to DXF with the jww2dxf converter
++(https://github.com/monyuonyu/jww-tools), then imported by importDXF,
++like importDWG does with DWG files.
++
++The converter is looked up in the parameter Mod/Draft/JWWConverter, next to
++the FreeCAD executable (bundled) and in the search path.
++"""
++import os
++import sys
++
++import FreeCAD
++from FreeCAD import Console as FCC
++
++if FreeCAD.GuiUp:
++    from draftutils.translate import translate
++else:
++    def translate(context, txt):
++        return txt
++
++
++def get_jww2dxf():
++    """Return the path of the jww2dxf converter, or None."""
++    import shutil
++
++    exe = "jww2dxf.exe" if os.name == "nt" else "jww2dxf"
++    grp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
++    path = grp.GetString("JWWConverter", "")
++    if path and os.path.isfile(path):
++        return path
++    for d in (os.path.join(FreeCAD.getHomePath(), "bin"), os.path.dirname(os.path.abspath(sys.executable))):
++        path = os.path.join(d, exe)
++        if os.path.isfile(path):
++            return path
++    return shutil.which("jww2dxf")
++
++
++def convertToDxf(filename):
++    """Convert a JWW/JWS file to a temporary DXF file and return its path (or None)."""
++    import subprocess
++    import tempfile
++
++    conv = get_jww2dxf()
++    if not conv:
++        FCC.PrintError(translate("draft", "jww2dxf (the Jw_cad converter) was not found.") + "\n")
++        FCC.PrintError(translate("draft", "Install it from https://github.com/monyuonyu/jww-tools and set its path in the parameter Mod/Draft/JWWConverter.") + "\n")
++        return None
++    outdir = tempfile.mkdtemp()
++    base = os.path.splitext(os.path.basename(filename))[0]
++    dxf = os.path.join(outdir, base + ".dxf")
++    FCC.PrintMessage(translate("draft", "Converting:") + " " + filename + "\n")
++    # UTF-8 DXF (R2007): FreeCAD's DXF reader reads it without a code page conversion
++    flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW: no console window flashing
++    proc = subprocess.run([conv, "--utf8", filename, dxf], capture_output=True, creationflags=flags)
++    err = proc.stderr.decode("utf-8", "replace").strip()
++    if err:
++        FCC.PrintWarning(err + "\n")
++    if proc.returncode not in (0, 3) or not os.path.isfile(dxf):
++        FCC.PrintError(translate("draft", "Error during JWW conversion.") + "\n")
++        return None
++    FCC.PrintMessage(translate("draft", "Conversion successful") + "\n")
++    return dxf
++
++
++def open(filename):
++    """Open a Jw_cad drawing as a new document (via importDXF.open())."""
++    dxf = convertToDxf(filename)
++    if dxf:
++        import importDXF
++
++        doc = importDXF.open(dxf)
++        doc = doc or FreeCAD.ActiveDocument
++        if doc:
++            # name the document after the drawing, not the temporary DXF
++            name = os.path.splitext(os.path.basename(filename))[0]
++            doc.Label = name
++        return doc
++    return None
++
++
++def insert(filename, docname):
++    """Import a Jw_cad drawing into the document docname (via importDXF.insert())."""
++    dxf = convertToDxf(filename)
++    if dxf:
++        import importDXF
++
++        return importDXF.insert(dxf, docname)
++    return None
+-- 
+2.43.0
+

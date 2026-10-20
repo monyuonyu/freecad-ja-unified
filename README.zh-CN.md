@@ -345,6 +345,12 @@ XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
 原版 FreeCAD 1.1.3 通过 4/17，打补丁后全部项目（31）通过。
 也确认了 FreeCAD 自身的测试（`FreeCADCmd -t 0`，以及 Base/App/Part/Gui 的 C++ 测试）在打补丁后全部通过。
 
+## jww-tools（Jw_cad 转换器）
+
+从 0.5.6 起，“文件 → 打开／导入”也能打开 Jw_cad 图纸（`.jww`）和图形登录文件（`.jws`），使用随附的
+[jww-tools](https://github.com/monyuonyu/jww-tools) 中的 `jww2dxf`（已在 307 张图纸上与 Jw_cad 自身的 DXF 导出逐个图形比对）。
+`tools/build_jww2dxf.sh <输出目录> [linux|win64]` 从固定版本的 jww-tools 构建它（静态链接；Windows 版为 MinGW-w64 交叉编译）。发布流程也使用它。
+
 ## LibreDWG（DWG 转换器）
 
 `tools/build_libredwg.sh <输出目录> [linux|win64]` 会在上游 LibreDWG 0.14.8601 上应用 `patches/libredwg`，
