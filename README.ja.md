@@ -282,7 +282,7 @@ AI が実行しようとするコードは、既定では毎回表示され、�
   `--` の後ろの引数（`sys.argv`）、開くファイル・スクリプト自体のパス、`-c` のコードのどれに日本語があってもよい。Linux は変わらない
 - コマンドラインのファイルの処理で Python のエラーが起きたとき、「Unknown exception」でなくエラーの中身（とトレースバック）を出す
 - リリースの手順で、作った Windows 版に日本語のパスを PowerShell と cmd から渡す試験（`tests/windows_argv_smoke.ps1`）を通ってから載せるようにした。
-  公開済みの版にも当てられる（Actions の「Windows argv smoke test」）。0.5.6 では 5 項目すべて落ち、0.5.7 で通ることを確かめた
+  公開済みの版にも当てられる（Actions の「Windows argv smoke test」）。`import ssl` も確かめる。0.5.6 では 6 項目すべて落ちる（ssl は RAND_pseudo_bytes のエラー）
 - **Windows: AI チャットが「Claude に接続できない: cannot import name 'RAND_pseudo_bytes' from '_ssl'」で使えなかったのを直した**。
   Windows 版は、本家の手順のまま Python 3.11 用の `ssl.py`（Windows の証明書の不具合の回避策入り）を Python 3.13 に上書きしていて、
   FreeCAD の Python で `import ssl` そのものが失敗していた。上書きをやめた（回避策は Python 3.10 から Python 自身に入っている）。
