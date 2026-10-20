@@ -1,0 +1,63 @@
+From 89947ac070c32bedb2a74954421aacda226eb3bb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 01:41:22 +0900
+Subject: [PATCH 273/273] Unified: perspective view by default
+
+Moving the eye towards what is looked at shows as moving only with a
+perspective camera (things come closer, the near ones faster); with an
+orthographic camera it is only magnification. The integrated environment
+stores Orthographic=false when nothing is stored, so the preferences show it;
+a stored choice is kept. Moving the model clear of the task panel works with
+a perspective camera too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/View3DSettings.cpp       |  7 +++++++
+ src/Mod/Unified/UnifiedChrome.py | 10 ++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/View3DSettings.cpp b/src/Gui/View3DSettings.cpp
+index 62c1c9f20..c95ff63f6 100644
+--- a/src/Gui/View3DSettings.cpp
++++ b/src/Gui/View3DSettings.cpp
+@@ -99,6 +99,13 @@ void View3DSettings::applySettings()
+     OnChange(*hGrp, "UseVBO");
+     OnChange(*hGrp, "RenderCache");
+     OnChange(*hGrp, "MaxFrameRate");
++    // The integrated environment looks with perspective unless chosen otherwise: its mouse moves
++    // the eye towards what is looked at (NavigationStyle::followsLook), which only a
++    // perspective camera shows as moving. Stored, so that the preferences show it.
++    if (App::isSingleWorkbench()
++        && hGrp->GetBool("Orthographic", true) != hGrp->GetBool("Orthographic", false)) {
++        hGrp->SetBool("Orthographic", false);
++    }
+     OnChange(*hGrp, "Orthographic");
+     OnChange(*hGrp, "NavigationStyle");
+     OnChange(*hGrp, "OrbitStyle");
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 8165200cd..8e5868bc0 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -685,11 +685,17 @@ def clear_of_panel():
+     if covered <= 0 or covered >= width:
+         return  # the panel is beside the view, not over it
+     cam = view.getCameraNode()
++    import math
++    from pivy import coin
++
+     try:
+-        h = cam.height.getValue()  # orthographic: the height of the view in model units
++        if isinstance(cam, coin.SoPerspectiveCamera):
++            # perspective: the height of the view at the focal point
++            h = 2.0 * cam.focalDistance.getValue() * math.tan(cam.heightAngle.getValue() / 2.0)
++        else:
++            h = cam.height.getValue()  # orthographic: the height of the view in model units
+     except Exception:
+         return
+-    from pivy import coin
+ 
+     shift = h / height * covered / 2.0
+     right = cam.orientation.getValue().multVec(coin.SbVec3f(1, 0, 0))
+-- 
+2.43.0
+

@@ -1,0 +1,799 @@
+From 89691701aa5417e092e17dd2d6f8c2a6353d2e97 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 01:41:22 +0900
+Subject: [PATCH 272/273] Gui: the view follows what is looked at
+ (TinkerCAD-like and touchpad navigation)
+
+The wheel moves the eye towards the point of the model under the cursor (else
+the point under the cursor at the focal depth) instead of zooming about a fixed
+focal point: steps are proportional to the distance, slow down near the surface
+and never pass it (the smallest distance keeps the point in front of Coin's
+variable near plane); moving away has no limit. An orthographic camera zooms
+about the same point by its height, as far as a perspective eye would come.
+
+Turning is about the point of the model under the cursor; over the empty
+background about the point last looked at while it is in the view, else the
+middle of the model that is seen (a grid of picks), never a far away fixed
+center. Moving grabs the point under the cursor. The wheel, moving and turning
+bring the focal point to that depth, so the navigation cube turns about it;
+fit all looks at the model's center. The pivot marker shows while turning.
+
+Only the TinkerCAD-like (default) and touchpad styles (followsLook()); the
+other styles are unchanged. The arithmetic is in LookNavigation.h with tests.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/CMakeLists.txt                        |   1 +
+ src/Gui/Navigation/LookNavigation.h           |  74 +++++
+ src/Gui/Navigation/NavigationStyle.cpp        | 284 +++++++++++++++++-
+ src/Gui/Navigation/NavigationStyle.h          |  39 +++
+ .../Navigation/TouchpadNavigationStyle.cpp    |  11 +
+ src/Gui/View3DInventorViewer.cpp              |   4 +
+ tests/src/Gui/CMakeLists.txt                  |   1 +
+ tests/src/Gui/LookNavigationTest.cpp          | 159 ++++++++++
+ 8 files changed, 567 insertions(+), 6 deletions(-)
+ create mode 100644 src/Gui/Navigation/LookNavigation.h
+ create mode 100644 tests/src/Gui/LookNavigationTest.cpp
+
+diff --git a/src/Gui/CMakeLists.txt b/src/Gui/CMakeLists.txt
+index ef04a78ec..fd635b254 100644
+--- a/src/Gui/CMakeLists.txt
++++ b/src/Gui/CMakeLists.txt
+@@ -916,6 +916,7 @@ SET(Navigation_SRCS
+     ${Navigation_CPP_SRCS}
+     Navigation/NavigationStateChart.h
+     Navigation/NavigationStyle.h
++    Navigation/LookNavigation.h
+     Navigation/NavigationStyle.pyi
+     Navigation/GestureNavigationStyle.h
+     Navigation/NavigationAnimator.h
+diff --git a/src/Gui/Navigation/LookNavigation.h b/src/Gui/Navigation/LookNavigation.h
+new file mode 100644
+index 000000000..7cb21ecc0
+--- /dev/null
++++ b/src/Gui/Navigation/LookNavigation.h
+@@ -0,0 +1,74 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#pragma once
++
++#include <algorithm>
++#include <cmath>
++#include <limits>
++
++#include <Inventor/SbVec3f.h>
++
++/** The arithmetic of navigating towards what is looked at ("look navigation"): the wheel moves
++ * the eye towards the point under the cursor (a dolly) instead of zooming about a fixed focal
++ * point, it slows down near the surface and never passes it.
++ */
++namespace Gui::LookNavigation
++{
++
++/// Coin's variable near plane (SoRenderManager, near plane value 0.6 of a 32 bit depth range)
++/// is the far distance divided by 2^12
++constexpr float coinNearPlaneRatio = 4096.0F;
++
++/** The distance from the eye to \a distance after one dolly step of \a logFactor (negative
++ * comes closer, as the wheel of NavigationStyle::doZoom). The part of the distance above
++ * \a minDistance shrinks or grows by exp(logFactor): steps are proportional to the distance to
++ * the target, approaching slows down near it and \a minDistance is never reached. Moving away
++ * has no limit. An eye nearer than \a minDistance only moves away.
++ */
++inline float dollyDistance(float distance, float minDistance, float logFactor)
++{
++    if (!(distance > 0.0F) || !std::isfinite(logFactor)) {
++        return distance;
++    }
++    const float factor = std::exp(logFactor);
++    if (distance <= minDistance) {
++        return logFactor > 0.0F ? distance * factor : distance;
++    }
++    const float result = minDistance + (distance - minDistance) * factor;
++    // Stay where floating point arithmetic is safe (as NavigationStyle::zoom)
++    const float maxDistance = std::sqrt(std::numeric_limits<float>::max()) * 1.0e-3F;
++    return std::min(result, std::max(distance, maxDistance));
++}
++
++/** The smallest distance from the eye to a looked at point. \a sceneExtent is the largest
++ * distance from the point to the scene's bounding box: Coin puts the near clipping plane of
++ * a perspective camera at 1/4096 of the far distance, and the point must stay well in front of
++ * it (at the corner of a 45 degree view the depth is 0.85 of the distance, twice as safe).
++ * \a pointMagnitude keeps the steps above the float resolution of the coordinates.
++ */
++inline float minimumDistance(float sceneExtent, float pointMagnitude)
++{
++    constexpr float safety = 2.0F / 0.85F;
++    const float extent = std::max(sceneExtent, 0.0F);
++    // d >= safety * (extent + d) / 4096
++    const float fromClipping = safety * extent / (coinNearPlaneRatio - safety);
++    const float fromPrecision = 1.0e-5F * std::max(pointMagnitude, 1.0e-3F);
++    return std::max(fromClipping, fromPrecision);
++}
++
++/// The eye \a position moved towards (\a scale < 1) or away from \a pivot: the pivot stays at
++/// its place in the image of a perspective camera, and of an orthographic camera whose height
++/// is scaled by \a scale too
++inline SbVec3f scaleAbout(const SbVec3f& position, const SbVec3f& pivot, float scale)
++{
++    return pivot + (position - pivot) * scale;
++}
++
++/// The distance at which a 45 degree perspective camera sees as much as an orthographic camera
++/// of \a height: an orthographic camera dollies by its height
++inline float orthographicDistance(float height)
++{
++    return height / (2.0F * std::tan(0.3926991F));  // tan(22.5 degrees)
++}
++
++}  // namespace Gui::LookNavigation
+diff --git a/src/Gui/Navigation/NavigationStyle.cpp b/src/Gui/Navigation/NavigationStyle.cpp
+index e3af0920e..a1d43a858 100644
+--- a/src/Gui/Navigation/NavigationStyle.cpp
++++ b/src/Gui/Navigation/NavigationStyle.cpp
+@@ -53,6 +53,7 @@
+ #include <App/Application.h>
+ #include <App/DocumentObject.h>
+ 
++#include "Navigation/LookNavigation.h"
+ #include "Navigation/NavigationStyle.h"
+ #include "Navigation/NavigationStylePy.h"
+ #include "Application.h"
+@@ -976,6 +977,246 @@ void NavigationStyle::setupPanningPlane(const SoCamera* camera)
+     }
+ }
+ 
++void NavigationStyle::setLookTarget(const SbVec3f& point)
++{
++    lookTarget = point;
++    lookTargetValid = true;
++    dollyPixel = SbVec2s(-1, -1);
++}
++
++bool NavigationStyle::pickScenePoint(const SbVec2s& pixel, SbVec3f& point) const
++{
++    SoNode* scene = viewer->getSoRenderManager()->getSceneGraph();
++    if (!scene) {
++        return false;
++    }
++    SoRayPickAction rpaction(viewer->getSoRenderManager()->getViewportRegion());
++    rpaction.setPoint(pixel);
++    rpaction.setRadius(viewer->getPickRadius());
++    rpaction.apply(scene);
++    const SoPickedPoint* picked = rpaction.getPickedPoint();
++    if (!picked) {
++        return false;
++    }
++    point = picked->getPoint();
++    return true;
++}
++
++bool NavigationStyle::isInView(const SbVec3f& point) const
++{
++    const SoCamera* camera = getCamera();
++    if (!camera) {
++        return false;
++    }
++    SbVec3f direction;
++    camera->orientation.getValue().multVec(SbVec3f(0, 0, -1), direction);
++    if (camera->isOfType(SoPerspectiveCamera::getClassTypeId())
++        && (point - camera->position.getValue()).dot(direction) <= 0.0F) {
++        return false;
++    }
++    const SbViewportRegion& vp = viewer->getSoRenderManager()->getViewportRegion();
++    const float ratio = vp.getViewportAspectRatio();
++    SbViewVolume vv = camera->getViewVolume(ratio);
++    if (ratio < 1.0F) {
++        vv.scale(1.0F / ratio);
++    }
++    SbVec3f screen;
++    vv.projectToScreen(point, screen);
++    return screen[0] >= 0.0F && screen[0] <= 1.0F && screen[1] >= 0.0F && screen[1] <= 1.0F;
++}
++
++bool NavigationStyle::visibleGeometryCenter(SbVec3f& center) const
++{
++    const SbVec2s size = viewer->getSoRenderManager()->getViewportRegion().getViewportSizePixels();
++    constexpr int grid = 5;
++    SbVec3f sum(0, 0, 0);
++    int count = 0;
++    for (int i = 0; i < grid; ++i) {
++        for (int j = 0; j < grid; ++j) {
++            const SbVec2s pixel(
++                static_cast<short>((i + 0.5F) * size[0] / grid),
++                static_cast<short>((j + 0.5F) * size[1] / grid)
++            );
++            SbVec3f point;
++            if (pickScenePoint(pixel, point)) {
++                sum += point;
++                ++count;
++            }
++        }
++    }
++    if (count == 0) {
++        return false;
++    }
++    center = sum / static_cast<float>(count);
++    return true;
++}
++
++void NavigationStyle::setFocalDepth(SoCamera* camera, const SbVec3f& point) const
++{
++    if (!camera) {
++        return;
++    }
++    SbVec3f direction;
++    camera->orientation.getValue().multVec(SbVec3f(0, 0, -1), direction);
++    const SbVec3f position = camera->position.getValue();
++    const float depth = (point - position).dot(direction);
++    if (camera->isOfType(SoOrthographicCamera::getClassTypeId())) {
++        // Nothing depends on the place of an orthographic eye along the view direction (the
++        // clipping planes follow the scene, also behind the eye): keep the focal distance and
++        // move the eye
++        float focalDistance = camera->focalDistance.getValue();
++        if (!(focalDistance > 0.0F)) {
++            focalDistance = 1.0F;
++            camera->focalDistance = focalDistance;
++        }
++        camera->position = position + (depth - focalDistance) * direction;
++    }
++    else if (depth > 0.0F) {
++        camera->focalDistance = depth;
++    }
++}
++
++void NavigationStyle::setupPanningPlaneAt(SoCamera* camera, const SbVec2f& pos)
++{
++    if (camera) {
++        const SbVec2s size
++            = viewer->getSoRenderManager()->getViewportRegion().getViewportSizePixels();
++        const SbVec2s pixel(
++            static_cast<short>(pos[0] * std::max(size[0] - 1, 1)),
++            static_cast<short>(pos[1] * std::max(size[1] - 1, 1))
++        );
++        // The grabbed point of the model stays under the cursor, and is looked at after moving
++        SbVec3f point;
++        if (pickScenePoint(pixel, point)) {
++            setFocalDepth(camera, point);
++            lookTarget = point;
++            lookTargetValid = true;
++        }
++    }
++    setupPanningPlane(camera);
++}
++
++void NavigationStyle::findLookPivot(const SbVec2s& pixel)
++{
++    SbVec3f pivot;
++    // The point of the model under the cursor
++    if (pickScenePoint(pixel, pivot)) {
++        setRotationCenter(pivot);
++        rotationCenterIsScenePointAtCursor = true;
++    }
++    // Else what was looked at last, while it is in the view
++    else if (lookTargetValid && isInView(lookTarget)) {
++        setRotationCenter(lookTarget);
++        pivot = lookTarget;
++    }
++    // Else the middle of the model that is seen
++    else if (visibleGeometryCenter(pivot)) {
++        setRotationCenter(pivot);
++    }
++    else {
++        pivot = viewer->getFocalPoint();
++        setRotationCenter(pivot);
++    }
++    lookTarget = pivot;
++    lookTargetValid = true;
++    dollyPixel = SbVec2s(-1, -1);
++}
++
++void NavigationStyle::dollyAt(SoCamera* camera, float logfactor, const SbVec2f& pos)
++{
++    if (!camera || logfactor == 0.0F) {
++        return;
++    }
++    animator->stop();
++
++    const SbViewportRegion& vp = viewer->getSoRenderManager()->getViewportRegion();
++    const float ratio = vp.getViewportAspectRatio();
++    const SbVec2s size = vp.getViewportSizePixels();
++    const SbVec2f at = this->zoomAtCursor ? pos : SbVec2f(0.5F, 0.5F);
++    const SbVec2s pixel(
++        static_cast<short>(at[0] * std::max(size[0] - 1, 1)),
++        static_cast<short>(at[1] * std::max(size[1] - 1, 1))
++    );
++
++    // The target: while the cursor and the camera stay as the last step left them, the same
++    // point (it is still under the cursor); else the point of the model under the cursor; else
++    // the point under the cursor at the depth of the focal point
++    SbVec3f target;
++    const bool sameAsLastStep = lookTargetValid && pixel == dollyPixel
++        && camera->position.getValue() == dollyCameraPosition
++        && camera->orientation.getValue() == dollyCameraOrientation;
++    if (sameAsLastStep) {
++        target = lookTarget;
++    }
++    else if (!pickScenePoint(pixel, target)) {
++        SbViewVolume vv = camera->getViewVolume(ratio);
++        if (ratio < 1.0F) {
++            vv.scale(1.0F / ratio);
++        }
++        SbLine line;
++        vv.projectPointToLine(at, line);
++        const SbPlane plane = vv.getPlane(camera->focalDistance.getValue());
++        if (!plane.intersect(line, target)) {
++            return;
++        }
++    }
++
++    // The smallest distance keeps the target in front of the near clipping plane
++    float extent = 0.0F;
++    const SbBox3f box = viewer->getBoundingBox();
++    if (!box.isEmpty()) {
++        const SbVec3f& lo = box.getMin();
++        const SbVec3f& hi = box.getMax();
++        for (int corner = 0; corner < 8; ++corner) {
++            const SbVec3f point(
++                (corner & 1) ? hi[0] : lo[0],
++                (corner & 2) ? hi[1] : lo[1],
++                (corner & 4) ? hi[2] : lo[2]
++            );
++            extent = std::max(extent, (point - target).length());
++        }
++    }
++    const float minDistance = LookNavigation::minimumDistance(extent, target.length());
++
++    const SbVec3f position = camera->position.getValue();
++    float scale = 1.0F;
++    if (camera->isOfType(SoOrthographicCamera::getClassTypeId())) {
++        // No eye to move: zoom about the target by the height of the view, as far as a
++        // perspective eye would come
++        auto ortho = static_cast<SoOrthographicCamera*>(camera);
++        const float height = ortho->height.getValue();
++        const float distance = LookNavigation::orthographicDistance(height);
++        if (!(distance > 0.0F)) {
++            return;
++        }
++        scale = LookNavigation::dollyDistance(distance, minDistance, logfactor) / distance;
++        ortho->height = height * scale;
++    }
++    else {
++        const float distance = (target - position).length();
++        if (!(distance > 0.0F)) {
++            return;
++        }
++        scale = LookNavigation::dollyDistance(distance, minDistance, logfactor) / distance;
++    }
++    if (!(scale > 0.0F) || !std::isfinite(scale)) {
++        return;
++    }
++    camera->position = LookNavigation::scaleAbout(position, target, scale);
++    // The focal point follows (fit all, the navigation cube and turning use it)
++    setFocalDepth(camera, target);
++
++    lookTarget = target;
++    lookTargetValid = true;
++    dollyPixel = pixel;
++    dollyCameraPosition = camera->position.getValue();
++    dollyCameraOrientation = camera->orientation.getValue();
++
++    if (this->currentmode != NavigationStyle::IDLE) {
++        hasZoomed = true;
++    }
++}
++
+ /** Dependent on the camera type this will either shrink or expand the
+  * height of the viewport (orthogonal camera) or move the camera
+  * closer or further away from the focal point in the scene.
+@@ -1074,16 +1315,28 @@ void NavigationStyle::zoomByCursor(const SbVec2f& thispos, const SbVec2f& prevpo
+     if (this->invertZoom) {
+         value = -value;
+     }
++    if (followsLook()) {
++        dollyAt(viewer->getSoRenderManager()->getCamera(), value, SbVec2f(0.5F, 0.5F));
++        return;
++    }
+     zoom(viewer->getSoRenderManager()->getCamera(), value);
+ }
+ 
+ void NavigationStyle::zoomIn()
+ {
++    if (followsLook()) {
++        dollyAt(viewer->getSoRenderManager()->getCamera(), -this->zoomStep, SbVec2f(0.5F, 0.5F));
++        return;
++    }
+     zoom(viewer->getSoRenderManager()->getCamera(), -this->zoomStep);
+ }
+ 
+ void NavigationStyle::zoomOut()
+ {
++    if (followsLook()) {
++        dollyAt(viewer->getSoRenderManager()->getCamera(), this->zoomStep, SbVec2f(0.5F, 0.5F));
++        return;
++    }
+     zoom(viewer->getSoRenderManager()->getCamera(), this->zoomStep);
+ }
+ 
+@@ -1116,6 +1369,10 @@ void NavigationStyle::doZoom(SoCamera* camera, float logfactor, const SbVec2f& p
+     if (fabs(logfactor) > 4.0) {
+         return;
+     }
++    if (followsLook()) {
++        dollyAt(camera, logfactor, pos);
++        return;
++    }
+     SbBool zoomAtCur = this->zoomAtCursor;
+     if (zoomAtCur) {
+         const SbViewportRegion& vp = viewer->getSoRenderManager()->getViewportRegion();
+@@ -1262,8 +1519,8 @@ void NavigationStyle::spinInternal(const SbVec2f& pointerpos, const SbVec2f& las
+     // intersects an object
+     if ((getOrbitStyle() == Trackball || getOrbitStyle() == TrackballClassic
+          || getOrbitStyle() == RoundedArcball)
+-        && rotationCenterMode & RotationCenterMode::ScenePointAtCursor && rotationCenterFound
+-        && rotationCenterIsScenePointAtCursor) {
++        && (followsLook() || rotationCenterMode & RotationCenterMode::ScenePointAtCursor)
++        && rotationCenterFound && rotationCenterIsScenePointAtCursor) {
+         const auto pointOnScreen = viewer->getPointOnViewport(rotationCenter);
+         const auto sphereCenter = 2 * normalizePixelPos(pointOnScreen) - SbVec2f {1, 1};
+ 
+@@ -1299,7 +1556,7 @@ void NavigationStyle::spinInternal(const SbVec2f& pointerpos, const SbVec2f& las
+     }
+     r.invert();
+ 
+-    if (this->rotationCenterMode && this->rotationCenterFound) {
++    if ((this->rotationCenterMode || followsLook()) && this->rotationCenterFound) {
+         this->reorientCamera(viewer->getSoRenderManager()->getCamera(), r, rotationCenter);
+     }
+     else {
+@@ -1448,7 +1705,7 @@ void NavigationStyle::spinSimplifiedInternal(SbVec2f curpos, SbVec2f prevpos, co
+     if (center) {
+         this->reorientCamera(viewer->getSoRenderManager()->getCamera(), r, *center);
+     }
+-    else if (this->rotationCenterMode && this->rotationCenterFound) {
++    else if ((this->rotationCenterMode || followsLook()) && this->rotationCenterFound) {
+         this->reorientCamera(viewer->getSoRenderManager()->getCamera(), r, rotationCenter);
+     }
+     else {
+@@ -1559,6 +1816,11 @@ void NavigationStyle::saveCursorPosition(const SoEvent* const ev)
+     this->localPos = ev->getPosition();
+     rotationCenterIsScenePointAtCursor = false;
+ 
++    if (followsLook()) {
++        findLookPivot(this->localPos);
++        return;
++    }
++
+     // mode is WindowCenter
+     if (!this->rotationCenterMode) {
+         setRotationCenter(viewer->getFocalPoint());
+@@ -2194,7 +2456,12 @@ void NavigationStyle::setViewingMode(const ViewerMode newmode)
+ 
+         case PANNING:
+             animator->stop();
+-            setupPanningPlane(viewer->getSoRenderManager()->getCamera());
++            if (followsLook()) {
++                setupPanningPlaneAt(viewer->getSoRenderManager()->getCamera(), lastmouseposition);
++            }
++            else {
++                setupPanningPlane(viewer->getSoRenderManager()->getCamera());
++            }
+             this->interactiveCountInc();
+             break;
+ 
+@@ -2651,7 +2918,12 @@ SbBool NavigationStyle::processPinchEvent(const SoGesturePinchEvent* const event
+     }
+ 
+     if (event->state == SoGestureEvent::SbGSStart) {
+-        setupPanningPlane(camera);
++        if (followsLook()) {
++            setupPanningPlaneAt(camera, normalizePixelPos(event->curCenter));
++        }
++        else {
++            setupPanningPlane(camera);
++        }
+         return true;
+     }
+ 
+diff --git a/src/Gui/Navigation/NavigationStyle.h b/src/Gui/Navigation/NavigationStyle.h
+index 896ae90fc..83ad6f865 100644
+--- a/src/Gui/Navigation/NavigationStyle.h
++++ b/src/Gui/Navigation/NavigationStyle.h
+@@ -225,6 +225,15 @@ public:
+     void setRotationCenterMode(RotationCenterModes);
+     RotationCenterModes getRotationCenterMode() const;
+     void setRotationCenter(const SbVec3f& cnt);
++    /** True for the styles where the view follows what is looked at: the wheel moves the eye
++     * towards the point under the cursor, turning is about the point under the cursor and
++     * moving and the wheel bring the focal point there (see LookNavigation.h). */
++    virtual bool followsLook() const
++    {
++        return false;
++    }
++    /// The point looked at, e.g. the center of the model after fitting it into the view
++    void setLookTarget(const SbVec3f& point);
+ 
+     SoCamera* getCamera() const;
+     std::shared_ptr<NavigationAnimation> setCameraOrientation(
+@@ -345,6 +354,21 @@ protected:
+         const SbVec2f& current
+     );
+     void setupPanningPlane(const SoCamera* camera);
++    /// The panning plane through the point of the model under \a pos (normalized), else
++    /// through the focal point; the focal point follows
++    void setupPanningPlaneAt(SoCamera* camera, const SbVec2f& pos);
++    /// Moves the eye towards (\a logfactor < 0) or away from the point under \a pos
++    void dollyAt(SoCamera* camera, float logfactor, const SbVec2f& pos);
++    /// The first point of the scene under the pixel \a pixel
++    bool pickScenePoint(const SbVec2s& pixel, SbVec3f& point) const;
++    /// The center of the points of the model seen in a grid over the view
++    bool visibleGeometryCenter(SbVec3f& center) const;
++    /// Whether \a point is in front of the camera and inside the view
++    bool isInView(const SbVec3f& point) const;
++    /// Moves the focal point to the depth of \a point (the image does not change)
++    void setFocalDepth(SoCamera* camera, const SbVec3f& point) const;
++    /// The pivot of turning when the pixel \a pixel is under the cursor
++    void findLookPivot(const SbVec2s& pixel);
+     int getDelta() const;
+     void zoom(SoCamera* camera, float diffvalue);
+     virtual void zoomByCursor(const SbVec2f& thispos, const SbVec2f& prevpos);
+@@ -480,6 +504,13 @@ private:
+     SbBool rotationCenterIsScenePointAtCursor;
+     NavigationStyle::RotationCenterModes rotationCenterMode;
+     std::optional<OrbitDragState> orbitDrag;
++    /// The point last looked at (see followsLook())
++    SbVec3f lookTarget;
++    bool lookTargetValid {false};
++    /// The camera after the last dolly step and its pixel, to go on to the same target
++    SbVec3f dollyCameraPosition;
++    SbRotation dollyCameraOrientation;
++    SbVec2s dollyPixel {-1, -1};
+     float sensitivity;
+     SbBool resetcursorpos;
+ 
+@@ -643,6 +674,10 @@ public:
+     TouchpadNavigationStyle();
+     ~TouchpadNavigationStyle() override;
+     const char* mouseButtons(ViewerMode) override;
++    bool followsLook() const override
++    {
++        return true;
++    }
+ 
+ protected:
+     SbBool processSoEvent(const SoEvent* const ev) override;
+@@ -695,6 +730,10 @@ public:
+     TinkerCADNavigationStyle();
+     ~TinkerCADNavigationStyle() override;
+     const char* mouseButtons(ViewerMode) override;
++    bool followsLook() const override
++    {
++        return true;
++    }
+ 
+ protected:
+     SbBool processSoEvent(const SoEvent* const ev) override;
+diff --git a/src/Gui/Navigation/TouchpadNavigationStyle.cpp b/src/Gui/Navigation/TouchpadNavigationStyle.cpp
+index fa6238d45..e15269499 100644
+--- a/src/Gui/Navigation/TouchpadNavigationStyle.cpp
++++ b/src/Gui/Navigation/TouchpadNavigationStyle.cpp
+@@ -22,6 +22,8 @@
+  ***************************************************************************/
+ 
+ 
++#include <algorithm>
++
+ #include <QApplication>
+ 
+ 
+@@ -269,6 +271,15 @@ SbBool TouchpadNavigationStyle::processSoEvent(const SoEvent* const ev)
+         case ALTDOWN:
+             if (newmode != NavigationStyle::DRAGGING) {
+                 saveCursorPosition(ev);
++                // Alt may have been pressed outside the view: the first move shows it. Turn
++                // about what was under the cursor before that move.
++                if (type.isDerivedFrom(SoLocation2Event::getClassTypeId())) {
++                    const SbVec2s size = vp.getViewportSizePixels();
++                    findLookPivot(SbVec2s(
++                        static_cast<short>(prevnormalized[0] * std::max(size[0] - 1, 1)),
++                        static_cast<short>(prevnormalized[1] * std::max(size[1] - 1, 1))
++                    ));
++                }
+             }
+             newmode = NavigationStyle::DRAGGING;
+             break;
+diff --git a/src/Gui/View3DInventorViewer.cpp b/src/Gui/View3DInventorViewer.cpp
+index 2b6bda935..949ec3869 100644
+--- a/src/Gui/View3DInventorViewer.cpp
++++ b/src/Gui/View3DInventorViewer.cpp
+@@ -4946,6 +4946,10 @@ void View3DInventorViewer::viewBoundBox(const SbBox3f& box)
+             break;
+     }
+     cam->viewBoundingBox(box, aspectratio, 1.0);
++    // The model's center is looked at (and turned about when nothing is under the cursor)
++    if (navigation) {
++        navigation->setLookTarget(box.getCenter());
++    }
+ }
+ 
+ /**
+diff --git a/tests/src/Gui/CMakeLists.txt b/tests/src/Gui/CMakeLists.txt
+index 6bf341a7f..6d8e891fa 100644
+--- a/tests/src/Gui/CMakeLists.txt
++++ b/tests/src/Gui/CMakeLists.txt
+@@ -28,6 +28,7 @@ add_executable(Gui_tests_run
+         NativeGesturePinchTest.cpp
+         NavigationStylePinchTest.cpp
+         NavigationStyleWheelTest.cpp
++        LookNavigationTest.cpp
+         SelectionTest.cpp
+         SoMouseWheelEventTest.cpp
+ )
+diff --git a/tests/src/Gui/LookNavigationTest.cpp b/tests/src/Gui/LookNavigationTest.cpp
+new file mode 100644
+index 000000000..b93c9658b
+--- /dev/null
++++ b/tests/src/Gui/LookNavigationTest.cpp
+@@ -0,0 +1,159 @@
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++#include <gtest/gtest.h>
++
++#include <cmath>
++
++#include <Inventor/SbViewVolume.h>
++#include <Inventor/SoDB.h>
++#include <Inventor/nodes/SoOrthographicCamera.h>
++#include <Inventor/nodes/SoPerspectiveCamera.h>
++
++#include <Gui/Navigation/LookNavigation.h>
++
++namespace LN = Gui::LookNavigation;
++
++namespace
++{
++constexpr float wheelIn = -0.2F;  // one notch of the wheel towards the target (ZoomStep 0.2)
++constexpr float wheelOut = 0.2F;
++
++SbVec3f screenOf(SoCamera* camera, const SbVec3f& point)
++{
++    SbViewVolume vv = camera->getViewVolume(1.0F);
++    SbVec3f screen;
++    vv.projectToScreen(point, screen);
++    return screen;
++}
++}  // namespace
++
++TEST(LookNavigation, approachingSlowsDownAndNeverReachesTheSmallestDistance)
++{
++    const float minDistance = 0.5F;
++    float distance = 1000.0F;
++    float lastStep = distance;
++    for (int i = 0; i < 80; ++i) {
++        const float next = LN::dollyDistance(distance, minDistance, wheelIn);
++        EXPECT_LT(next, distance);
++        EXPECT_GT(next, minDistance);
++        EXPECT_LE(distance - next, lastStep);  // steps get smaller near the target
++        lastStep = distance - next;
++        distance = next;
++    }
++    EXPECT_NEAR(distance, minDistance, 1.0e-3F);
++}
++
++TEST(LookNavigation, aStepIsProportionalToTheDistance)
++{
++    const float far = LN::dollyDistance(1000.0F, 0.0F, wheelIn);
++    const float near = LN::dollyDistance(10.0F, 0.0F, wheelIn);
++    EXPECT_NEAR((1000.0F - far) / 1000.0F, (10.0F - near) / 10.0F, 1.0e-6F);
++    EXPECT_NEAR((1000.0F - far) / 1000.0F, 1.0F - std::exp(wheelIn), 1.0e-6F);
++}
++
++TEST(LookNavigation, outAgainIsWhereItStarted)
++{
++    float distance = 300.0F;
++    for (int i = 0; i < 20; ++i) {
++        distance = LN::dollyDistance(distance, 2.0F, wheelIn);
++    }
++    for (int i = 0; i < 20; ++i) {
++        distance = LN::dollyDistance(distance, 2.0F, wheelOut);
++    }
++    EXPECT_NEAR(distance, 300.0F, 1.0e-2F);
++}
++
++TEST(LookNavigation, movingAwayHasNoFixedLimit)
++{
++    float distance = 1.0F;
++    for (int i = 0; i < 100; ++i) {
++        distance = LN::dollyDistance(distance, 0.01F, wheelOut);
++    }
++    EXPECT_GT(distance, 1.0e8F);
++    EXPECT_TRUE(std::isfinite(distance));
++    for (int i = 0; i < 10000; ++i) {
++        distance = LN::dollyDistance(distance, 0.01F, wheelOut);
++    }
++    EXPECT_TRUE(std::isfinite(distance));
++    EXPECT_TRUE(std::isfinite(distance * distance));
++}
++
++TEST(LookNavigation, anEyeNearerThanTheSmallestDistanceOnlyMovesAway)
++{
++    EXPECT_FLOAT_EQ(LN::dollyDistance(0.1F, 1.0F, wheelIn), 0.1F);
++    EXPECT_GT(LN::dollyDistance(0.1F, 1.0F, wheelOut), 0.1F);
++    EXPECT_FLOAT_EQ(LN::dollyDistance(5.0F, 1.0F, 0.0F), 5.0F);
++}
++
++TEST(LookNavigation, theTargetStaysInFrontOfCoinsNearPlane)
++{
++    for (float extent : {1.0F, 50.0F, 1000.0F, 1.0e5F}) {
++        const float distance = LN::minimumDistance(extent, extent);
++        // Coin's variable near plane: the far distance (the scene seen from the eye) / 4096
++        const float nearPlane = (extent + distance) / LN::coinNearPlaneRatio;
++        // At the corner of the view the target's depth is 0.85 of its distance
++        EXPECT_GT(0.85F * distance, 1.5F * nearPlane) << extent;
++        // ... and the smallest distance is still small: a thousandth of the scene
++        EXPECT_LT(distance, extent / 1000.0F) << extent;
++    }
++}
++
++TEST(LookNavigation, theSmallestDistanceIsAboveTheFloatResolution)
++{
++    const float distance = LN::minimumDistance(0.0F, 1.0e4F);
++    EXPECT_GT(distance, 1.0e4F * 1.0e-6F);
++}
++
++TEST(LookNavigation, theTargetKeepsItsPlaceInAPerspectiveImage)
++{
++    SoDB::init();
++    auto camera = new SoPerspectiveCamera;
++    camera->ref();
++    camera->position = SbVec3f(10, -200, 80);
++    camera->pointAt(SbVec3f(0, 0, 0), SbVec3f(0, 0, 1));
++    camera->nearDistance = 0.01F;
++    camera->farDistance = 1000.0F;
++    const SbVec3f target(12, 5, -3);  // not on the view axis: under the cursor
++    const SbVec3f before = screenOf(camera, target);
++    const float distance = (target - camera->position.getValue()).length();
++    for (int i = 0; i < 50; ++i) {
++        const float d = (target - camera->position.getValue()).length();
++        const float scale = LN::dollyDistance(d, 0.1F, wheelIn) / d;
++        camera->position = LN::scaleAbout(camera->position.getValue(), target, scale);
++    }
++    const SbVec3f after = screenOf(camera, target);
++    EXPECT_NEAR(after[0], before[0], 1.0e-4F);
++    EXPECT_NEAR(after[1], before[1], 1.0e-4F);
++    const float closer = (target - camera->position.getValue()).length();
++    EXPECT_LT(closer, distance * 0.01F);
++    EXPECT_GT(closer, 0.1F);
++    camera->unref();
++}
++
++TEST(LookNavigation, theTargetKeepsItsPlaceInAnOrthographicImage)
++{
++    SoDB::init();
++    auto camera = new SoOrthographicCamera;
++    camera->ref();
++    camera->position = SbVec3f(0, 0, 100);
++    camera->height = 80.0F;
++    const SbVec3f target(17, -9, 4);
++    const SbVec3f before = screenOf(camera, target);
++    for (int i = 0; i < 30; ++i) {
++        const float d = LN::orthographicDistance(camera->height.getValue());
++        const float scale = LN::dollyDistance(d, 0.01F, wheelIn) / d;
++        camera->height = camera->height.getValue() * scale;
++        camera->position = LN::scaleAbout(camera->position.getValue(), target, scale);
++    }
++    const SbVec3f after = screenOf(camera, target);
++    EXPECT_NEAR(after[0], before[0], 1.0e-4F);
++    EXPECT_NEAR(after[1], before[1], 1.0e-4F);
++    EXPECT_LT(camera->height.getValue(), 80.0F * 0.01F);
++    camera->unref();
++}
++
++TEST(LookNavigation, anOrthographicHeightIsSeenAtTheSameDistanceByA45DegreeCamera)
++{
++    const float distance = LN::orthographicDistance(10.0F);
++    EXPECT_NEAR(2.0F * distance * std::tan(M_PI / 8.0), 10.0F, 1.0e-4F);
++}
+-- 
+2.43.0
+

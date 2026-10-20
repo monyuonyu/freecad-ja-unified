@@ -1,7 +1,7 @@
 From 4647e1701df83ce506303edebd9147c3a0ec0dad Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:31:55 +0900
-Subject: [PATCH 260/271] Import: STEP parts without product names are named
+Subject: [PATCH 260/273] Import: STEP parts without product names are named
  after the file, also when merged
 
 The importer used for plain shapes (ImportOCAF, which ImportOCAF2 hands

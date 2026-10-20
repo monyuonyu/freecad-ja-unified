@@ -298,6 +298,15 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.4
+
+The 3D view follows what you look at (the default mouse style and the touchpad style offered on the first start; other styles are unchanged). Screens: [docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4).
+
+- **The wheel moves forward/backward** towards the point under the cursor (else the focal depth). Steps are proportional to the remaining distance: it slows down near a surface and never passes through it. No fixed zoom limits; an orthographic camera zooms about the same point
+- **Rotation is about the point under the cursor** where the drag starts, which stays put on the screen. From the empty background: about the point last looked at (if in view), else the middle of the visible geometry — never a far away fixed center. A small marker shows the pivot while rotating
+- **Panning** keeps the grabbed point under the cursor; the focal point follows wheel/pan/rotate, so the view cube turns about what you look at. Fit all looks at the model center
+- **Perspective view by default** (unless a choice is stored): moving the eye only shows as motion in perspective. Orthographic stays available in the view menu
+
 ## Changes in 0.6.3
 
 - "Make Drawing": a picked face becomes the front view; hole center lines and callouts go on the view that shows the holes as circles

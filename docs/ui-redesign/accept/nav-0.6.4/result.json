@@ -1,0 +1,334 @@
+{
+ "default_navigation": "Gui::TinkerCADNavigationStyle",
+ "default_camera": "PerspectiveCamera",
+ "default_orthographic_param": false,
+ "perspective_dolly": {
+  "before": {
+   "type": "PerspectiveCamera",
+   "position": [
+    1313.3031005859375,
+    -513.3031005859375,
+    834.7869873046875
+   ],
+   "focalDistance": 1408.6729736328125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  },
+  "after": {
+   "type": "PerspectiveCamera",
+   "position": [
+    721.7323608398438,
+    378.3191223144531,
+    43.31484603881836
+   ],
+   "focalDistance": 0.522411048412323,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  },
+  "feature_pixel_before": [
+   713.0,
+   349.0
+  ],
+  "feature_pixel_after": [
+   552.0,
+   855.0
+  ],
+  "feature_in_view": false,
+  "target_on_the_pin": [
+   721.4970092773438,
+   378.67376708984375,
+   43.0
+  ],
+  "target_moved_px": 0.0,
+  "eye_to_target": 0.529425445972018,
+  "feature_moved_px": 530.996233508299,
+  "eye_outside_solid": true,
+  "eye_to_feature": 2.434245653452661,
+  "focal_point_to_feature": 1.9873547193916496,
+  "after_150_steps": {
+   "type": "PerspectiveCamera",
+   "position": [
+    721.7056274414062,
+    378.3595886230469,
+    43.278831481933594
+   ],
+   "focalDistance": 0.46282023191452026,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  },
+  "eye_outside_solid_after_150": true,
+  "feature_in_view_after_150": false,
+  "target_moved_px_after_150": 1.0,
+  "eye_to_target_after_150": 0.4690166763484293,
+  "back_out": {
+   "type": "PerspectiveCamera",
+   "position": [
+    4828705.0,
+    -7274719.0,
+    6457058.5
+   ],
+   "focalDistance": 10715678.0,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  }
+ },
+ "perspective_rotate": {
+  "grabbed": [
+   720.2808227539062,
+   380.2850646972656,
+   43.0
+  ],
+  "grabbed_pixel_before": [
+   716.0,
+   528.0
+  ],
+  "grabbed_pixel_after": [
+   716.0,
+   528.0
+  ],
+  "grabbed_moved_px": 0.0,
+  "pin_in_view_after": true,
+  "pin_pixel_before": [
+   656.0,
+   528.0
+  ],
+  "pin_pixel_after": [
+   728.0,
+   487.0
+  ],
+  "no_context_menu": true,
+  "camera": {
+   "type": "PerspectiveCamera",
+   "position": [
+    714.1448974609375,
+    379.9166564941406,
+    41.94926071166992
+   ],
+   "focalDistance": 6.071413040161133,
+   "direction": [
+    0.9964180588722229,
+    -0.08383973687887192,
+    -0.011041641235351562
+   ]
+  }
+ },
+ "perspective_background_rotate": {
+  "empty_background_found": true,
+  "target_pixel_before": [
+   714.0,
+   348.0
+  ],
+  "target_pixel_after": [
+   714.0,
+   348.0
+  ],
+  "target_moved_px": 0.0
+ },
+ "pan": {
+  "feature_follows_cursor_px": 1.4142135623730951,
+  "focal_depth_to_feature": 1.039004821504208e-05,
+  "focal_point_before": [
+   721.0251620027045,
+   378.29606491652487,
+   43.094144059850294
+  ]
+ },
+ "fit_all": {
+  "focal_point_to_scene_center": 1.489300043759835
+ },
+ "ortho_dolly": {
+  "before": {
+   "type": "OrthographicCamera",
+   "position": [
+    836.8790893554688,
+    -36.87890625,
+    358.3789367675781
+   ],
+   "focalDistance": 583.491455078125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ],
+   "height": 1166.98291015625
+  },
+  "after": {
+   "type": "OrthographicCamera",
+   "position": [
+    1058.31298828125,
+    41.744415283203125,
+    379.8914794921875
+   ],
+   "focalDistance": 583.491455078125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ],
+   "height": 0.4414955973625183
+  },
+  "feature_pixel_before": [
+   704.0,
+   350.0
+  ],
+  "feature_pixel_after": [
+   498.0,
+   2313.0
+  ],
+  "feature_in_view": false,
+  "target_on_the_pin": [
+   721.4970092773438,
+   378.67376708984375,
+   43.0
+  ],
+  "target_moved_px": 0.0,
+  "eye_to_target": 583.4914401905462,
+  "feature_moved_px": 1973.7793696358262,
+  "eye_outside_solid": true,
+  "eye_to_feature": 585.1225406582166,
+  "focal_point_to_feature": 1.9878341018056571,
+  "after_150_steps": {
+   "type": "OrthographicCamera",
+   "position": [
+    1058.3206787109375,
+    41.7506103515625,
+    379.8898620605469
+   ],
+   "focalDistance": 583.491455078125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ],
+   "height": 0.3885323107242584
+  },
+  "eye_outside_solid_after_150": true,
+  "feature_in_view_after_150": false,
+  "target_moved_px_after_150": 1.0,
+  "eye_to_target_after_150": 583.4913683992023,
+  "back_out": {
+   "type": "OrthographicCamera",
+   "position": [
+    1058.3206787109375,
+    41.7506103515625,
+    379.8898620605469
+   ],
+   "focalDistance": 583.491455078125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ],
+   "height": 0.3885323107242584
+  }
+ },
+ "ortho_rotate": {
+  "grabbed": [
+   720.1571655273438,
+   380.15484619140625,
+   43.0
+  ],
+  "grabbed_pixel_before": [
+   731.0,
+   664.0
+  ],
+  "grabbed_pixel_after": [
+   731.0,
+   664.0
+  ],
+  "grabbed_moved_px": 0.0,
+  "pin_in_view_after": true,
+  "pin_pixel_before": [
+   671.0,
+   664.0
+  ],
+  "pin_pixel_after": [
+   749.0,
+   610.0
+  ],
+  "no_context_menu": true,
+  "camera": {
+   "type": "OrthographicCamera",
+   "position": [
+    717.7881469726562,
+    380.2499084472656,
+    41.33745193481445
+   ],
+   "focalDistance": 1.0,
+   "direction": [
+    0.8473548889160156,
+    -0.39855673909187317,
+    0.3509162664413452
+   ],
+   "height": 2.7560553550720215
+  },
+  "ortho_height": 2.7560553550720215
+ },
+ "ortho_background_rotate": {
+  "empty_background_found": true,
+  "target_pixel_before": [
+   704.0,
+   350.0
+  ],
+  "target_pixel_after": [
+   704.0,
+   350.0
+  ],
+  "target_moved_px": 0.0
+ },
+ "touchpad": {
+  "distance_before": 1333.0137403441759,
+  "distance_after_30_steps": 5.468977006827802,
+  "feature_pixel_before_turn": [
+   714.0,
+   348.0
+  ],
+  "feature_pixel_after_turn": [
+   714.0,
+   348.0
+  ],
+  "feature_moved_px": 0.0
+ },
+ "cad_style": {
+  "before": {
+   "type": "PerspectiveCamera",
+   "position": [
+    1313.3031005859375,
+    -513.3031005859375,
+    834.7869873046875
+   ],
+   "focalDistance": 1408.6729736328125,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  },
+  "after": {
+   "type": "PerspectiveCamera",
+   "position": [
+    1026.5330810546875,
+    -81.3420639038086,
+    452.6664733886719
+   ],
+   "focalDistance": 773.0961303710938,
+   "direction": [
+    -0.5773504972457886,
+    0.5773501992225647,
+    -0.5773502588272095
+   ]
+  }
+ }
+}
