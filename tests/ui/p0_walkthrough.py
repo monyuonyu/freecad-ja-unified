@@ -11,6 +11,7 @@ from PySide import QtCore, QtGui, QtWidgets
 
 OUT = os.environ.get("P0_OUT", "/tmp/p0-accept")
 WORK = os.environ.get("P0_WORK", "/tmp/p0-work")
+os.makedirs(OUT, exist_ok=True)
 os.makedirs(WORK, exist_ok=True)
 results = {}
 App.ParamGet("User parameter:BaseApp/Preferences/Dialog").SetBool("DontUseNativeDialog", True)
