@@ -1,0 +1,54 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.dim { position:absolute; inset:0; background: rgba(30,35,45,.28); }
+.dlg { position:absolute; left: 220px; top: 70px; width: 1160px; height: 850px; background:#fff; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.25);
+  display:grid; grid-template-columns: 260px 1fr; grid-template-rows: 56px 1fr 56px; overflow:hidden; }
+.hd { grid-column: 1 / 3; display:flex; align-items:center; gap: 14px; padding: 0 18px; border-bottom: 1px solid #e6e8eb; }
+.hd h1 { font-size: 18px; margin: 0; } .hd .search { flex: 0 0 380px; margin-left: auto; margin-right: 0; }
+.nav { background:#f7f8fa; border-right: 1px solid #e6e8eb; padding: 10px 0; }
+.nav div { padding: 9px 20px; } .nav .on { background:#e7f0fd; color:#1d4f91; font-weight:700; border-left: 3px solid #2f6fd0; padding-left: 17px; }
+.nav .sub { color:#7b8594; font-size: 12px; padding: 2px 20px 8px 34px; }
+.nav hr { border:0; border-top:1px solid #e3e5e8; margin: 8px 16px; }
+.body { padding: 18px 28px; overflow:hidden; }
+.body h2 { font-size: 16px; margin: 4px 0 4px; } .body .muted { margin-bottom: 10px; }
+.box { border:1px solid #e3e5e8; border-radius: 8px; padding: 10px 16px; margin: 10px 0 16px; }
+.row label { width: 170px; }
+.ft { grid-column: 1 / 3; display:flex; gap:10px; align-items:center; justify-content:flex-end; padding: 0 18px; border-top: 1px solid #e6e8eb; }
+.okline { color:#1a7f37; }
+.radio { display:inline-block; width: 13px; height: 13px; border-radius: 7px; border: 1px solid #888; margin-right: 5px; vertical-align: -1px; }
+.radio.on { border: 4px solid #2f6fd0; }
+</style></head><body>
+<div class="win"><div class="top"></div><div class="ribbon"></div><div class="mid"><div class="side"></div><div class="view"></div></div><div class="status"></div></div>
+<div class="dim"></div>
+<div class="dlg">
+ <div class="hd"><h1>設定</h1><span class="muted">変えるとすぐ効きます（OK は要りません）</span><div class="search">🔍 設定を探す（例: プロキシ、JIS、タッチパッド）</div></div>
+ <div class="nav">
+  <div>基本</div><div class="sub">言語・単位・見た目・起動</div>
+  <div>操作</div><div class="sub">マウス・タッチパッド・キー・吸着</div>
+  <div>図面</div><div class="sub">JIS・第三角法・用紙・文字</div>
+  <div>ファイル</div><div class="sub">保存・読み込み・書き出し（STEP・DXF・STL…）</div>
+  <div class="on">ネットワークとアカウント</div><div class="sub">プロキシ・会社の証明書・AI の鍵</div>
+  <div>AI</div><div class="sub">モデル・確認の方法・送る内容</div>
+  <hr><div class="muted">詳しい設定</div><div class="sub">本家 FreeCAD の全ページ（45）</div>
+ </div>
+ <div class="body">
+  <h2>ネットワーク</h2><div class="muted">AI チャットとオンラインのヘルプが使います。会社のネットワークでは、情報システムの人に聞いて合わせてください。</div>
+  <div class="box">
+   <div class="row"><label>プロキシ</label><span><span class="radio on"></span>パソコンの設定に従う（おすすめ）</span><span style="margin-left:22px"><span class="radio"></span>使わない</span><span style="margin-left:22px"><span class="radio"></span>手で入れる</span></div>
+   <div class="row"><label>会社の証明書</label><span class="inp" style="min-width:420px">（無し）</span><span class="btn">選ぶ…</span></div>
+   <div class="row"><label></label><span class="btn">つながるか確かめる</span><span class="okline">✓ api.anthropic.com につながりました（0.4 秒）</span></div>
+  </div>
+  <h2>AI の鍵（Anthropic の API キー）</h2><div class="muted">AI チャットを使うときだけ要ります。鍵は Windows の資格情報マネージャーにしまい、ファイルには書きません。</div>
+  <div class="box">
+   <div class="row"><label>状態</label><span class="okline">✓ 入っています（sk-ant-…7f3Q）</span></div>
+   <div class="row"><label></label><span class="btn">入れ直す…</span><span class="btn">消す</span><span class="muted">使った分は鍵の持ち主に請求されます</span></div>
+  </div>
+</div>
+ </div>
+ <div class="ft"><span class="muted" style="margin-right:auto">この画面の内容を初期値に戻す</span><span class="btn">閉じる</span></div>
+</div>
+<div class="note" style="left:20px;top:200px;max-width:190px"><span class="num">1</span>6 つの分け方は「利用者が何をしたいか」。モジュール名（Part・Sketcher…）の並びは「詳しい設定」の中に移す</div>
+<div class="note" style="left:1395px;top:250px;max-width:190px"><span class="num">2</span>プロキシ・証明書・AI の鍵は、ここ一か所。AI パネルには鍵の状態と「設定を開く」だけ</div>
+<div class="note" style="left:1395px;top:400px;max-width:190px"><span class="num">3</span>「つながるか確かめる」で、うまくいかない理由（プロキシ・証明書・鍵）を日本語で出す</div>
+<div class="note" style="left:1395px;top:90px;max-width:190px"><span class="num">4</span>探す欄は全ページ（詳しい設定も）を探す</div>
+</body></html>

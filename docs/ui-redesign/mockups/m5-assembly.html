@@ -1,0 +1,60 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.lib .card { margin: 6px 12px; padding: 6px; display:flex; gap: 8px; align-items:center; }
+.lib .thumb { width: 54px; height: 40px; border-radius: 5px; background: linear-gradient(135deg,#e9edf3,#d6dde8); flex: none; }
+.joint { border:1px solid #e3e5e8; border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.joint.on { border-color:#2f6fd0; background:#f3f8ff; }
+.joint b { display:block; } .joint .muted { font-size: 12px; }
+.warn { background:#fdecec; color:#9b1c1c; border-radius: 6px; padding: 6px 10px; margin-top: 10px; }
+</style></head><body>
+<div class="win">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <span class="doc">治具組立.FCStd</span><div class="search">🔍 やりたいことを入力 <kbd>Ctrl</kbd><kbd>K</kbd></div><span class="right"><span>AI</span><span>⚙ 設定</span></span></div>
+ <div class="ribbon"><div class="tools"><div class="tool"><div class="ic"></div>スケッチ</div><span class="sep"></span><div class="tool"><div class="ic"></div>押し出す</div><div class="tool"><div class="ic"></div>切り抜く</div><div class="tool"><div class="ic"></div>回す</div><div class="tool"><div class="ic"></div>穴</div><span class="sep"></span><div class="tool"><div class="ic"></div>丸め</div><div class="tool"><div class="ic"></div>面取り</div><div class="tool"><div class="ic"></div>厚み</div><span class="sep"></span><div class="tool"><div class="ic"></div>鏡に映す</div><div class="tool"><div class="ic"></div>並べる</div><span class="sep"></span><div class="tool"><div class="ic"></div>動かす</div><div class="tool"><div class="ic"></div>測る</div><span class="sep"></span><div class="tool"><div class="ic"></div>図面を描く</div><div class="tool"><div class="ic"></div>部品を置く</div><span class="sep"></span><div class="tool more"><div class="ic"></div>その他の道具</div></div></div>
+ <div class="mid withright">
+  <div class="side lib">
+   <h3>この組立の部品</h3>
+   <div class="item"><span class="dot"></span>ベース（動かない）</div>
+   <div class="item sel"><span class="dot"></span>ピン</div>
+   <div class="item ind muted">つながり: まだ無し</div>
+   <h3 style="margin-top:18px">置ける部品 <span class="muted" style="font-weight:400">― ドラッグで置く</span></h3>
+   <div class="card"><div class="thumb"></div><div>ベース板.FCStd<div class="muted" style="font-size:11px">このフォルダー</div></div></div>
+   <div class="card"><div class="thumb"></div><div>bearing_6201.step<div class="muted" style="font-size:11px">STEP ・ 保存しなくても置ける</div></div></div>
+   <div class="card"><div class="thumb"></div><div>M5x20.step<div class="muted" style="font-size:11px">STEP</div></div></div>
+   <div style="margin:10px 12px"><span class="btn">ファイルから選ぶ…</span></div>
+  </div>
+  <div class="view">
+   <svg width="1000" height="860">
+    <polygon points="160,520 520,330 860,490 500,690" fill="#b9c0c9" stroke="#333" stroke-width="1.3"/>
+    <polygon points="160,520 500,690 500,760 160,590" fill="#8c949e" stroke="#333" stroke-width="1.3"/>
+    <polygon points="500,690 860,490 860,560 500,760" fill="#6f7782" stroke="#333" stroke-width="1.3"/>
+    <ellipse cx="510" cy="510" rx="40" ry="22" fill="#2f6fd0" opacity=".85"/>
+    <rect x="660" y="140" width="66" height="180" fill="#a9b1bb" stroke="#333"/>
+    <ellipse cx="693" cy="320" rx="33" ry="16" fill="#2f6fd0" opacity=".85" stroke="#333"/>
+    <ellipse cx="693" cy="140" rx="55" ry="24" fill="#c3c9d1" stroke="#333"/>
+    <path d="M693 330 C 640 420, 560 470, 520 500" stroke="#2f6fd0" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#a)"/>
+    <defs><marker id="a" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#2f6fd0"/></marker></defs>
+   </svg>
+   <div class="cbar" style="left:560px;top:560px">
+    <div class="b main"><div class="ic"></div>差し込む</div><div class="b"><div class="ic"></div>軸をそろえる</div><div class="b"><div class="ic"></div>回る軸にする</div><div class="b"><div class="ic"></div>AI に頼む</div><div class="b dots">…</div>
+   </div>
+  </div>
+  <div class="panel">
+   <h2>差し込む（ピン → ベースの穴）</h2>
+   <div class="muted">軸をそろえて、ピンの頭の下の面を穴の上の面に当てます。</div>
+   <div class="joint on"><b>そのまま動かない</b><span class="muted">ボルト・圧入ピン（固定）</span></div>
+   <div class="joint"><b>回るだけ</b><span class="muted">軸・ヒンジ（回転）</span></div>
+   <div class="joint"><b>回って、すべる</b><span class="muted">ガイドピン（円筒）</span></div>
+   <div class="row"><label>すき間</label><span class="inp">0 mm</span></div>
+   <div class="row"><label>向き</label><span class="btn">⇅ 反対向き</span></div>
+   <div class="warn">● ぶつかり: ピン と ベース が 0.3 mm³ 重なっています（⌀10 の穴に ⌀10.1 の軸）</div>
+   <div style="margin-top:14px;display:flex;gap:8px"><span class="btn pri">決める（Enter）</span><span class="btn">やめる（Esc）</span></div>
+  </div>
+ </div>
+ <div class="status"><span>ピン の 円柱面 と ベース の 穴の面</span><span class="r"><span>マウス: 標準 ▾</span><span style="color:#b42318">● 検査: エラー 1（ぶつかり）</span></span></div>
+</div>
+<div class="note" style="left:20px;top:560px;max-width:220px"><span class="num">1</span>組立は「開く物」でありモードではない。道具の列は部品のときと同じ。STEP もドラッグで置ける。「先に保存」「接地しますか？」のダイアログは出さない（最初に置いた物を自動で「動かない」に。左の一覧に書く）</div>
+<div class="note" style="left:270px;top:150px;max-width:300px"><span class="num">2</span>Ctrl で 2 つ選ぶと、形の組み合わせ（円柱面×穴＝差し込む、平面×平面＝面を合わせる）に合った候補が先頭</div>
+<div class="note" style="left:290px;top:860px;max-width:420px"><span class="num">3</span>ジョイントの種類名（円筒・スライダー）でなく、動き方で選ぶ。名前は括弧で添える</div>
+<div class="note" style="left:950px;top:860px;max-width:300px"><span class="num">4</span>ぶつかりは置いた瞬間に調べ、ステータスバーと右に出す</div>
+</body></html>

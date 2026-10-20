@@ -1,0 +1,45 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.banner { position:absolute; left: 24px; right: 24px; top: 16px; background:#fff; border:1px solid #cdd3db; border-radius: 10px; padding: 12px 16px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+.banner b { font-size: 15px; } .acts { display:flex; gap: 10px; margin-top: 10px; }
+.acts .card { padding: 10px 12px; width: 250px; } .acts .card.p { border: 2px solid #2f6fd0; }
+.acts .card .muted { font-size: 12px; }
+.half { position:absolute; top: 0; bottom: 0; width: 50%; } .half + .half { left: 50%; border-left: 2px solid #c7ccd3; }
+.lbl { position:absolute; left: 14px; bottom: 12px; font-weight: 700; color:#555; }
+.stlbar { position:absolute; left: 24px; right: 24px; top: 16px; background:#fff; border:1px solid #cdd3db; border-radius: 10px; padding: 12px 16px; }
+.bad { color:#b42318; } .good { color:#1a7f37; }
+</style></head><body>
+<div class="win">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <span class="doc">外形.dxf</span><div class="search">🔍 やりたいことを入力 <kbd>Ctrl</kbd><kbd>K</kbd></div><span class="right"><span>AI</span><span>⚙ 設定</span></span></div>
+ <div class="ribbon"><div class="tools"><div class="tool"><div class="ic"></div>スケッチ</div><span class="sep"></span><div class="tool"><div class="ic"></div>押し出す</div><div class="tool"><div class="ic"></div>切り抜く</div><div class="tool"><div class="ic"></div>回す</div><div class="tool"><div class="ic"></div>穴</div><span class="sep"></span><div class="tool"><div class="ic"></div>丸め</div><div class="tool"><div class="ic"></div>面取り</div><div class="tool"><div class="ic"></div>厚み</div><span class="sep"></span><div class="tool"><div class="ic"></div>鏡に映す</div><div class="tool"><div class="ic"></div>並べる</div><span class="sep"></span><div class="tool"><div class="ic"></div>動かす</div><div class="tool"><div class="ic"></div>測る</div><span class="sep"></span><div class="tool"><div class="ic"></div>図面を描く</div><div class="tool"><div class="ic"></div>部品を置く</div><span class="sep"></span><div class="tool more"><div class="ic"></div>その他の道具</div></div></div>
+ <div class="mid"><div class="side"><h3>外形.dxf</h3><div class="item"><span class="dot"></span>レイヤー 0（線 4・円 4）</div><div class="item"><span class="dot"></span>レイヤー 寸法（隠している）</div></div>
+  <div class="view">
+   <div class="half">
+    <svg width="675" height="860"><g stroke="#333" fill="none" stroke-width="1.5"><rect x="140" y="330" width="400" height="230"/><circle cx="200" cy="390" r="16"/><circle cx="480" cy="390" r="16"/><circle cx="200" cy="500" r="16"/><circle cx="480" cy="500" r="16"/></g></svg>
+    <div class="banner"><b>DXF を開きました（線 4・円 4、閉じた輪郭 5）</b> <span class="muted">― 読み込み方は聞かずに、あとから選べるようにする</span>
+     <div class="acts">
+      <div class="card p"><b>押し出して立体にする</b><div class="muted">閉じた輪郭を板にする（穴は抜く）</div></div>
+      <div class="card"><b>スケッチにして直す</b><div class="muted">寸法を付けて形を変えられるようにする</div></div>
+     </div>
+     <div class="acts" style="margin-top:6px"><div class="card"><b>このまま図面として使う</b><div class="muted">線と文字を 2D のまま見る・印刷する</div></div><div class="card"><b>ほかの形式で保存</b><div class="muted">DXF の版を変える・PDF・Jw_cad</div></div></div>
+    </div>
+    <div class="lbl">DXF・DWG・Jw_cad を開いた直後</div>
+   </div>
+   <div class="half">
+    <svg width="675" height="860"><polygon points="140,520 400,380 640,500 380,640" fill="#a7c7e8" stroke="#355" stroke-width="1"/><polygon points="140,520 380,640 380,665 140,545" fill="#7fa6cc"/><polygon points="380,640 640,500 640,525 380,665" fill="#6890b8"/>
+     <circle cx="430" cy="470" r="9" fill="#e5484d"/><circle cx="300" cy="560" r="9" fill="#e5484d"/></svg>
+    <div class="stlbar"><b>3D プリント用に書き出す（STL・3MF）</b>
+     <div class="row"><label>形式</label><span class="inp">3MF（おすすめ）▾</span><span class="muted">STL も可</span></div>
+     <div class="row"><label>細かさ</label><span class="inp">ふつう（0.05 mm）▾</span><span class="muted">三角形 12,480</span></div>
+     <div class="row"><label>調べた結果</label><span class="bad">● 穴 2 か所（赤）</span><span class="good">● 裏返り無し</span><span class="good">● 1 つの塊</span></div>
+     <div class="row"><label></label><span class="btn">穴をふさぐ</span><span class="btn">直してから書き出す</span><span class="btn pri">書き出す…</span></div>
+    </div>
+    <div class="lbl">STL を開いた・3D プリント用に書き出すとき</div>
+   </div>
+  </div></div>
+ <div class="status"><span>外形.dxf ・ 2D</span><span class="r"><span>マウス: 標準 ▾</span><span class="ok">● 検査: OK</span></span></div>
+</div>
+<div class="note" style="left:300px;top:760px;max-width:420px"><span class="num">1</span>今は「DXF インポート」のモーダル（ドラフトオブジェクト／パートプリミティブ…）が先に出て、開いた後は線を選んでも候補が出ない。押し出しは「アクティブな部品が必要です」で止まる</div>
+<div class="note" style="left:1000px;top:760px;max-width:420px"><span class="num">2</span>今は STL の調べ・直しの道具（Mesh）に届かず、ファイル → エクスポートで .stl と打つと FEM の書き出しが選ばれて英語のエラーになる</div>
+</body></html>

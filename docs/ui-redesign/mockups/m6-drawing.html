@@ -1,0 +1,69 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.sheet { position:absolute; left: 40px; top: 24px; width: 980px; height: 690px; background:#fff; border:1px solid #9aa3ad; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.sheet .frame { position:absolute; inset: 14px; border: 1.5px solid #333; }
+.tb { position:absolute; right: 14px; bottom: 14px; width: 330px; height: 70px; border-left:1.5px solid #333; border-top:1.5px solid #333; font-size: 11px; display:grid; grid-template-columns: 1fr 1fr; }
+.tb div { border-right:1px solid #999; border-bottom:1px solid #999; padding: 3px 6px; }
+.views { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0; }
+.views .v { border:1px solid #d5dae1; border-radius: 6px; height: 64px; text-align:center; padding-top: 42px; font-size: 11px; color:#555; background: #fafbfc; position: relative; }
+.views .v.on { border-color:#2f6fd0; background:#eef4fd; color:#1d4f91; font-weight:700; }
+.chk { margin: 6px 0; } .chk::before { content:"☑ "; color:#2f6fd0; }
+.chk.off::before { content:"☐ "; color:#888; }
+</style></head><body>
+<div class="win">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <span class="doc">ベース板.FCStd ・ 図面 1</span><div class="search">🔍 やりたいことを入力 <kbd>Ctrl</kbd><kbd>K</kbd></div><span class="right"><span>AI</span><span>⚙ 設定</span></span></div>
+ <div class="ribbon"><div class="tools"><div class="tool"><div class="ic"></div>スケッチ</div><span class="sep"></span><div class="tool"><div class="ic"></div>押し出す</div><div class="tool"><div class="ic"></div>切り抜く</div><div class="tool"><div class="ic"></div>回す</div><div class="tool"><div class="ic"></div>穴</div><span class="sep"></span><div class="tool"><div class="ic"></div>丸め</div><div class="tool"><div class="ic"></div>面取り</div><div class="tool"><div class="ic"></div>厚み</div><span class="sep"></span><div class="tool"><div class="ic"></div>鏡に映す</div><div class="tool"><div class="ic"></div>並べる</div><span class="sep"></span><div class="tool"><div class="ic"></div>動かす</div><div class="tool"><div class="ic"></div>測る</div><span class="sep"></span><div class="tool"><div class="ic"></div>図面を描く</div><div class="tool"><div class="ic"></div>部品を置く</div><span class="sep"></span><div class="tool more"><div class="ic"></div>その他の道具</div></div></div>
+ <div class="mid withright">
+  <div class="side">
+   <h3>図面 1（A4 横・1:1）</h3>
+   <div class="item"><span class="dot"></span>正面図</div><div class="item ind">寸法 6 ・ 中心線 4</div>
+   <div class="item"><span class="dot"></span>平面図</div><div class="item"><span class="dot"></span>右側面図</div>
+   <div class="item"><span class="dot"></span>表題欄</div>
+   <h3 style="margin-top:18px">元の部品</h3><div class="item"><span class="dot"></span>ベース板（変えると図面も変わる）</div>
+  </div>
+  <div class="view" style="background:#e9ecf0">
+   <div class="sheet"><div class="frame"></div>
+    <svg width="980" height="690" style="position:absolute;left:0;top:0">
+     <g stroke="#111" fill="none" stroke-width="1.6">
+      <rect x="120" y="300" width="400" height="250" rx="10"/>
+      <circle cx="180" cy="360" r="15"/><circle cx="460" cy="360" r="15"/><circle cx="180" cy="490" r="15"/><circle cx="460" cy="490" r="15"/>
+      <rect x="120" y="230" width="400" height="25"/>
+      <rect x="570" y="300" width="25" height="250"/>
+     </g>
+     <g stroke="#2a62c9" stroke-width="0.8" stroke-dasharray="14 3 2 3">
+      <line x1="158" y1="360" x2="202" y2="360"/><line x1="180" y1="338" x2="180" y2="382"/>
+      <line x1="438" y1="360" x2="482" y2="360"/><line x1="460" y1="338" x2="460" y2="382"/>
+      <line x1="158" y1="490" x2="202" y2="490"/><line x1="180" y1="468" x2="180" y2="512"/>
+      <line x1="438" y1="490" x2="482" y2="490"/><line x1="460" y1="468" x2="460" y2="512"/>
+     </g>
+     <g stroke="#111" stroke-width="0.8" fill="#111" font-size="13" font-family="Noto Sans CJK JP">
+      <line x1="120" y1="580" x2="520" y2="580"/><text x="300" y="576" stroke="none">100</text>
+      <line x1="90" y1="300" x2="90" y2="550"/><text x="66" y="430" stroke="none">50</text>
+      <line x1="180" y1="608" x2="460" y2="608"/><text x="305" y="604" stroke="none">70</text>
+      <line x1="460" y1="360" x2="540" y2="260"/><line x1="540" y1="260" x2="640" y2="260"/><text x="546" y="254" stroke="none">4×⌀6 キリ</text>
+      <text x="580" y="290" stroke="none">5</text>
+     </g>
+    </svg>
+    <div class="tb"><div>名前 ベース板</div><div>材料 A5052</div><div>尺度 1:1</div><div>第三角法 ⊕◎</div><div>作成 水野</div><div>2026-10-20</div></div>
+   </div>
+  </div>
+  <div class="panel">
+   <h2>図面を作る</h2>
+   <div class="muted">正面にする面をクリックするか、下から選んでください。</div>
+   <div class="views"><div class="v">上から</div><div class="v on">前から</div><div class="v">右から</div></div>
+   <div class="muted" style="font-size:12px">並べる図（JIS・第三角法）</div>
+   <div class="chk">正面図</div><div class="chk">平面図（上）</div><div class="chk">右側面図</div><div class="chk off">等角図（右上に小さく）</div>
+   <div class="row"><label>用紙</label><span class="inp">A4 横 ▾</span></div>
+   <div class="row"><label>尺度</label><span class="inp">自動（1:1）▾</span></div>
+   <div class="muted" style="font-size:12px;margin-top:10px">最初に付けるもの</div>
+   <div class="chk">穴・軸の中心線</div><div class="chk">外形と穴の寸法（あとで動かせる）</div><div class="chk">表題欄（名前・材料をモデルから）</div>
+   <div style="margin-top:14px;display:flex;gap:8px"><span class="btn pri">作る</span><span class="btn">やめる</span></div>
+  </div>
+ </div>
+ <div class="status"><span>図面 1 ・ A4</span><span class="r"><span>マウス: 標準 ▾</span><span class="ok">● 検査: OK</span></span></div>
+</div>
+<div class="note" style="left:1286px;top:640px;max-width:300px"><span class="num">1</span>正面は「今の 3D の向き」ではなく、面のクリックか 3 つの絵から選ぶ（等角が正面図になる事故を無くす）</div>
+<div class="note" style="left:300px;top:840px;max-width:430px"><span class="num">2</span>JIS の既定で最初から中心線・外形と穴の寸法・表題欄を付ける。穴は数をまとめて「4×⌀6 キリ」</div>
+<div class="note" style="left:760px;top:150px;max-width:280px"><span class="num">3</span>図面のページは文書の中の 1 つの物。開いても道具の列は変わらない。図面の道具は、図・線・寸法を選んだときの横の候補と右クリック、Ctrl+K で出る</div>
+</body></html>

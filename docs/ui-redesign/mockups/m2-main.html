@@ -1,0 +1,47 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"></head><body>
+<div class="win">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <span class="doc">ベース板.FCStd</span>
+  <div class="search">🔍 やりたいことを入力 <kbd>Ctrl</kbd><kbd>K</kbd></div>
+  <span class="right"><span>AI</span><span>⚙ 設定</span></span></div>
+ <div class="ribbon"><div class="tools"><div class="tool"><div class="ic"></div>スケッチ</div><span class="sep"></span><div class="tool"><div class="ic"></div>押し出す</div><div class="tool"><div class="ic"></div>切り抜く</div><div class="tool"><div class="ic"></div>回す</div><div class="tool"><div class="ic"></div>穴</div><span class="sep"></span><div class="tool"><div class="ic"></div>丸め</div><div class="tool"><div class="ic"></div>面取り</div><div class="tool"><div class="ic"></div>厚み</div><span class="sep"></span><div class="tool"><div class="ic"></div>鏡に映す</div><div class="tool"><div class="ic"></div>並べる</div><span class="sep"></span><div class="tool"><div class="ic"></div>動かす</div><div class="tool"><div class="ic"></div>測る</div><span class="sep"></span><div class="tool"><div class="ic"></div>図面を描く</div><div class="tool"><div class="ic"></div>部品を置く</div><span class="sep"></span><div class="tool more"><div class="ic"></div>その他の道具</div></div></div>
+ <div class="mid">
+  <div class="side">
+   <h3>ベース板 の 作った順</h3>
+   <div class="item"><span class="dot"></span>スケッチ 1（床）</div>
+   <div class="item"><span class="dot"></span>押し出し 5 mm</div>
+   <div class="item"><span class="dot"></span>穴 ⌀6 ×4</div>
+   <div class="tip"><span>ここまで有効 ・ ドラッグで戻る</span></div>
+   <div class="item dim"><span class="dot"></span>丸め R3（まだ反映していない）</div>
+   <h3 style="margin-top:22px">選んだもの: 辺 1 本</h3>
+   <div class="item muted" style="font-size:12px">長さ 5.00 mm ・ 押し出し 5 mm の辺</div>
+   <h3 style="margin-top:22px">基準</h3>
+   <div class="item"><span class="dot"></span>床（XY）・正面（XZ）・横（YZ）</div>
+  </div>
+  <div class="view">
+   <svg width="1350" height="860" viewBox="0 0 1350 860">
+    <polygon points="380,500 760,300 1120,470 740,670" fill="#b9c0c9" stroke="#333" stroke-width="1.4"/>
+    <polygon points="380,500 740,670 740,700 380,530" fill="#8c949e" stroke="#333" stroke-width="1.4"/>
+    <polygon points="740,670 1120,470 1120,500 740,700" fill="#6f7782" stroke="#333" stroke-width="1.4"/>
+    <ellipse cx="560" cy="490" rx="24" ry="13" fill="#555"/><ellipse cx="760" cy="385" rx="24" ry="13" fill="#555"/>
+    <ellipse cx="740" cy="585" rx="24" ry="13" fill="#555"/><ellipse cx="940" cy="480" rx="24" ry="13" fill="#555"/>
+    <line x1="740" y1="670" x2="740" y2="700" stroke="#1f7ae0" stroke-width="5"/>
+    <line x1="380" y1="500" x2="380" y2="530" stroke="#7fb3f0" stroke-width="4" stroke-dasharray="4 3"/>
+    <line x1="1120" y1="470" x2="1120" y2="500" stroke="#7fb3f0" stroke-width="4" stroke-dasharray="4 3"/>
+   </svg>
+   <div class="cbar" style="left:760px;top:712px">
+    <div class="b main"><div class="ic"></div>丸め</div><div class="b"><div class="ic"></div>面取り</div>
+    <div class="field">半径 <input value="3 mm"></div>
+    <div class="b"><div class="ic"></div>同じ向きの辺も選ぶ</div><div class="b"><div class="ic"></div>測る</div><div class="b"><div class="ic"></div>AI に頼む</div><div class="b dots">…</div>
+   </div>
+   <div style="position:absolute;right:20px;top:20px;width:86px;height:86px;border-radius:10px;background:#dfe3e9;text-align:center;line-height:86px;color:#555">上 前 右</div>
+  </div>
+ </div>
+ <div class="status"><span>押し出し の 辺（長さ 5.00 mm）</span><span class="r"><span>マウス: 標準 ▾</span><span>単位: mm ▾</span><span class="ok">● 検査: OK</span></span></div>
+</div>
+<div class="note" style="left:560px;top:100px"><span class="num">1</span>道具の列は<b>いつも同じ</b>（タブもモードも無い）。よく使う作る道具だけ。残りは Ctrl+K・「その他の道具」・選んだ物の横の候補・右クリックで届く</div>
+<div class="note" style="left:270px;top:330px;max-width:220px"><span class="num">2</span>履歴の青い線をドラッグすると「途中に手順を差し込む」。先端（Tip）という言葉は出さない</div>
+<div class="note" style="left:1150px;top:640px"><span class="num">3</span>候補の中に数値欄。打って Enter で確定（パネルを開かずに済む）。詳しい設定は「…」</div>
+<div class="note" style="left:1150px;top:410px;max-width:260px"><span class="num">4</span>点線は「同じ向きの辺も選ぶ」で一緒に選ばれる候補</div>
+<div class="note" style="left:1290px;top:100px;max-width:280px"><span class="num">5</span>本家のメニューバー・ツールバー・作業場の切り替えは出さない。☰ には ファイル・設定・ヘルプだけ</div>
+</body></html>

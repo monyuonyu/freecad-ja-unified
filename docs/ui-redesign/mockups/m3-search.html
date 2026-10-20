@@ -1,0 +1,44 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.dim { position:absolute; inset:0; background: rgba(30,35,45,.28); }
+.pal { position:absolute; left: 400px; top: 70px; width: 800px; background:#fff; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.25); overflow:hidden; }
+.pal .q { display:flex; align-items:center; gap:10px; padding: 14px 18px; border-bottom:1px solid #e6e8eb; font-size: 18px; }
+.pal .q .cur { border-left: 2px solid #2f6fd0; height: 22px; }
+.sec { padding: 8px 18px 2px; font-size: 11px; color: #7b8594; font-weight: 700; letter-spacing: .05em; }
+.r { display:grid; grid-template-columns: 28px 1fr 210px; align-items:center; gap: 10px; padding: 7px 18px; }
+.r .ic { width: 24px; height: 24px; border-radius: 5px; background: #cfd9e8; }
+.r.on { background: #e7f0fd; }
+.r b { font-weight: 600; } .r .d { color:#666; font-size: 12px; }
+.r .w { color:#7b8594; font-size: 12px; text-align: right; }
+.load { color:#9a6a00; }
+.foot { display:flex; gap:18px; padding: 9px 18px; border-top:1px solid #e6e8eb; color:#7b8594; font-size: 12px; background:#fafbfc; }
+</style></head><body>
+<div class="win">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <span class="doc">ベース板.FCStd</span><div class="search"></div><span class="right"><span>AI</span><span>⚙ 設定</span></span></div>
+ <div class="ribbon"><div class="tools"><div class="tool"><div class="ic"></div>スケッチ</div><span class="sep"></span><div class="tool"><div class="ic"></div>押し出す</div><div class="tool"><div class="ic"></div>切り抜く</div><div class="tool"><div class="ic"></div>回す</div><div class="tool"><div class="ic"></div>穴</div><span class="sep"></span><div class="tool"><div class="ic"></div>丸め</div><div class="tool"><div class="ic"></div>面取り</div><div class="tool"><div class="ic"></div>厚み</div><span class="sep"></span><div class="tool"><div class="ic"></div>鏡に映す</div><div class="tool"><div class="ic"></div>並べる</div><span class="sep"></span><div class="tool"><div class="ic"></div>動かす</div><div class="tool"><div class="ic"></div>測る</div><span class="sep"></span><div class="tool"><div class="ic"></div>図面を描く</div><div class="tool"><div class="ic"></div>部品を置く</div><span class="sep"></span><div class="tool more"><div class="ic"></div>その他の道具</div></div></div>
+ <div class="mid"><div class="side"></div><div class="view"></div></div>
+ <div class="status"></div>
+</div>
+<div class="dim"></div>
+<div class="pal">
+ <div class="q">🔍 <span>ねじ</span><span class="cur"></span><span style="margin-left:auto" class="muted" >選んでいる物: 面 1</span></div>
+ <div class="sec">いま使える（選んだ面に）</div>
+ <div class="r on"><div class="ic"></div><div><b>穴</b>（ねじ穴・座ぐり・皿もみ）<div class="d">クリックした位置に M3〜M12 のねじ穴をあける</div></div><div class="w">形をつくる ▸ 削る ・ <kbd>H</kbd></div></div>
+ <div class="r"><div class="ic"></div><div><b>らせんで足す</b><div class="d">ねじ山・ばねの形をらせんに沿って作る</div></div><div class="w">形をつくる ▸ もっと…</div></div>
+ <div class="sec">ほかの場所にあるもの</div>
+ <div class="r"><div class="ic"></div><div><b>ねじのジョイント</b><div class="d">組立で、回すと進む動き（ボルトとナット）</div></div><div class="w">組み立てる ▸ 動きを付ける</div></div>
+ <div class="r"><div class="ic"></div><div><b>ねじの表示（図面）</b><div class="d">図面の穴や軸に、ねじの細線を描き足す</div></div><div class="w">図面 ▸ 線を足す</div></div>
+ <div class="sec">その他の道具（はじめて使うときに読み込む・1〜2 秒）</div>
+ <div class="r"><div class="ic"></div><div><b>らせん（線）</b> <span class="chip">基本の形</span><div class="d">ピッチと高さを決めたらせん線。スイープの道筋に</div></div><div class="w load">その他の道具 ▸ 基本の形</div></div>
+ <div class="r"><div class="ic"></div><div><b>ねじの部品を入れる（ボルト・ナット）</b><div class="d">規格のねじ部品は FreeCAD に入っていない。部品ライブラリーから入れる方法を見る</div></div><div class="w">ヘルプ</div></div>
+ <div class="sec">見つからないとき</div>
+ <div class="r"><div class="ic" style="background:#dbe8fb"></div><div><b>AI に聞く:「ねじ」</b><div class="d">どの道具を使えばよいか、モデルを見て答える</div></div><div class="w">Enter で AI へ</div></div>
+ <div class="foot"><span>↑↓ 選ぶ</span><span>Enter 実行</span><span>Shift+Enter 場所を表示</span><span>Tab タブに固定</span><span style="margin-left:auto">英語名・別名でも探せる（Pad, Pocket, 押し出し…）</span></div>
+</div>
+<div class="note" style="left:1220px;top:90px;max-width:330px"><span class="num">1</span>Ctrl+K、または上の探す欄。全部のコマンド（読み込んでいない作業場のものも）を、日本語名・英語名・別名・説明で探す</div>
+<div class="note" style="left:1220px;top:200px;max-width:330px"><span class="num">2</span>今の選択で使えるものを先に。使えないものは灰色にせず「何を選べば使えるか」を出す</div>
+<div class="note" style="left:1220px;top:300px;max-width:330px"><span class="num">3</span>右の列は「普段はどこにあるか」。Shift+Enter でその場所を光らせて覚えられる</div>
+<div class="note" style="left:1220px;top:410px;max-width:330px"><span class="num">4</span>まだ読み込んでいないモジュールの道具も出す。選んだときに読み込む</div>
+<div class="note" style="left:40px;top:560px;max-width:330px"><span class="num">5</span>無ければ AI に回す。道具が見つからない＝行き止まり、を無くす</div>
+</body></html>

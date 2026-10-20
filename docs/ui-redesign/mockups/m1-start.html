@@ -1,0 +1,57 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.start { position:absolute; inset:40px 0 26px 0; padding: 34px 60px; display:grid; grid-template-columns: 1fr 380px; gap: 40px; }
+h1 { font-size: 26px; margin: 0 0 4px; } .lead { color:#555; margin:0 0 22px; }
+.big { display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.big .card { padding: 18px 16px; height: 165px; position: relative; }
+.big .card b { font-size: 16px; display:block; margin: 8px 0 6px; }
+.big .card .ic { width: 42px; height: 42px; border-radius: 9px; background: #dbe8fb; }
+.big .card.p { border: 2px solid #2f6fd0; }
+.big .card .muted { font-size: 12px; line-height: 1.5; }
+.ask { margin: 26px 0 8px; display:flex; gap: 10px; }
+.ask .search { flex: 1; height: 42px; font-size: 15px; margin: 0; background: #fff; }
+.recent { display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.recent .card { padding: 8px; } .thumb { height: 104px; border-radius: 6px; background: linear-gradient(135deg,#e9edf3,#d6dde8); margin-bottom: 6px; }
+h2 { font-size: 15px; margin: 24px 0 10px; }
+.learn .card { padding: 12px 14px; margin-bottom: 10px; display:flex; gap: 12px; align-items:center; }
+.learn .card .thumb { width: 92px; height: 60px; margin: 0; flex: none; }
+</style></head><body>
+<div class="win" style="grid-template-rows:40px 1fr 26px">
+ <div class="top"><span class="logo">FreeCAD</span><span class="menu"><span class="mbtn">☰</span><span>↶</span><span>↷</span></span>
+  <div class="search">🔍 やりたいことを入力（例: 穴、STL、ねじ、JIS） <kbd>Ctrl</kbd><kbd>K</kbd></div>
+  <span class="right"><span>⚙ 設定</span></span></div>
+ <div></div>
+ <div class="status"><span>ようこそ</span><span class="r"><span>マウス: 標準（右ドラッグで回す）▾</span><span>単位: mm</span></span></div>
+</div>
+<div class="start">
+ <div>
+  <h1>何をつくりますか</h1><p class="lead">選ぶとすぐ始まります。あとから別の種類を足すこともできます（部品に図面を足す、など）。</p>
+  <div class="big">
+   <div class="card p"><div class="ic"></div><b>新しい部品</b><div class="muted">床・正面・横のどれかに形を描いて、立体にします</div></div>
+   <div class="card"><div class="ic"></div><b>新しい組立</b><div class="muted">部品やSTEPを並べて、くっつけて、ぶつかりを調べます</div></div>
+   <div class="card"><div class="ic"></div><b>図面を描く</b><div class="muted">部品を選んで JIS の図面（三面図・寸法）を作ります</div></div>
+   <div class="card"><div class="ic"></div><b>ファイルを開く</b><div class="muted">FreeCAD・STEP・DXF・DWG・Jw_cad・STL…<br>ここへドラッグしても開けます</div></div>
+  </div>
+  <div class="ask"><div class="search">🔍 やりたいことを入力 ―「3Dプリント用に書き出す」「DXF を立体にする」</div></div>
+  <h2>最近のファイル</h2>
+  <div class="recent">
+   <div class="card"><div class="thumb"></div>ベース板.FCStd<div class="muted">部品 ・ 10月18日</div></div>
+   <div class="card"><div class="thumb"></div>治具組立.FCStd<div class="muted">組立 ・ 10月17日</div></div>
+   <div class="card"><div class="thumb"></div>ブラケット図面.FCStd<div class="muted">図面 ・ 10月15日</div></div>
+   <div class="card"><div class="thumb"></div>外形.dxf<div class="muted">DXF ・ 10月12日</div></div>
+  </div>
+ </div>
+ <div class="learn">
+  <h2 style="margin-top:6px">はじめての人へ（5 分）</h2>
+  <div class="card"><div class="thumb"></div><div><b>穴あきの板を作る</b><div class="muted">描く → 押し出す → 穴 → 丸め</div></div></div>
+  <div class="card"><div class="thumb"></div><div><b>寸法をあとから変える</b><div class="muted">形をダブルクリックして数字を変える</div></div></div>
+  <div class="card"><div class="thumb"></div><div><b>STEP を組み立てる</b><div class="muted">置く → 面を 2 つ選ぶ → くっつける</div></div></div>
+  <div class="card"><div class="thumb"></div><div><b>JIS の図面を出す</b><div class="muted">正面を選ぶ → 寸法を自動で → PDF</div></div></div>
+  <h2>作例</h2>
+  <div class="muted">ブラケット ・ 軸受ハウジング ・ 治具板 ・ 歯車（作例を開いて中身を見る）</div>
+ </div>
+</div>
+<div class="note" style="left:60px;top:650px"><span class="num">1</span>種類は 4 つだけ。どれを押しても「描く場所」まで 1 回で着く</div>
+<div class="note" style="left:420px;top:650px"><span class="num">2</span>探す欄は全画面で同じもの（Ctrl+K）。ここでも使える</div>
+<div class="note" style="left:1260px;top:928px"><span class="num">3</span>マウスの方式はステータスバーでいつでも変えられる</div>
+</body></html>
