@@ -2,7 +2,7 @@
 #   pwsh tests/windows_argv_smoke.ps1 -FreeCADCmd <...\bin\freecadcmd.exe>
 # 0.5.6 までは、'--' の後ろに日本語のパスを渡すとスクリプトが走る前に
 # "Unknown exception while processing file" で止まっていた（引数を ANSI コードページのまま UTF-8 として読んでいた）。
-# PowerShell から・cmd から・スクリプト自体が日本語のフォルダ・.jww を直接開く・-c の日本語、を確かめる。
+# PowerShell から・cmd から・スクリプト自体が日本語のフォルダ・.jww を直接開く・-c の日本語、を確かめる。あわせて import ssl も。
 # 'é' は英語版 Windows（CP1252）でも UTF-8 として読めないバイトになるので、CI でも元の不具合が再現する。
 param([Parameter(Mandatory = $true)][string]$FreeCADCmd)
 $ErrorActionPreference = 'Stop'
@@ -85,6 +85,12 @@ $code = $LASTEXITCODE
 $got = if (Test-Path -LiteralPath $txt) { Get-Content -LiteralPath $txt -Raw -Encoding utf8 } else { '<none>' }
 if ($code -eq 0 -and $got -eq '天板') { Write-Host '  OK  PowerShell: freecadcmd -c "<日本語>"' }
 else { Write-Host "  NG  PowerShell: freecadcmd -c `"<日本語>`" (exit code $code, wrote $got)"; Write-Host $out; $failed++ }
+
+# 6. FreeCAD の Python で ssl が使える（0.5.6 までは古い ssl.py を同梱していて import ssl が失敗し、AI チャットがつながらなかった）
+$out = & $FreeCADCmd -c "import ssl; ssl.create_default_context(); print('SSL-OK', ssl.OPENSSL_VERSION)" 2>&1 | Out-String
+$code = $LASTEXITCODE
+if ($code -eq 0 -and $out -match 'SSL-OK') { Write-Host '  OK  freecadcmd: import ssl' }
+else { Write-Host "  NG  freecadcmd: import ssl (exit code $code)"; Write-Host $out; $failed++ }
 
 if ($failed -gt 0) { Write-Host "== $failed failed"; exit 1 }
 Write-Host '== all passed'

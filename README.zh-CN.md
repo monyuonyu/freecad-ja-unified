@@ -147,10 +147,12 @@
 
 1. 发布包（自 0.3.5 起）已经包含 AI 聊天所需的组件（claude-agent-sdk、keyring、Claude Code），无需准备。
    如果是自己构建的，请在右侧“AI”面板中点击“AI の準備をする”（准备 AI）（会安装到 Python 虚拟环境中，需要联网）
-2. 在 [console.anthropic.com](https://console.anthropic.com/) 创建 API 密钥，通过“API キー…”（API 密钥…）输入。
+2. 在 [console.anthropic.com](https://console.anthropic.com/) 创建 API 密钥，在第一次发送时出现的“API キーを入れる…”（输入 API 密钥…）中输入。
+   之后要更改或删除：编辑 → 设置 → 標準 → AI チャット（自 0.5.7 起）。
    密钥保存在操作系统的密钥库中（Windows 凭据管理器、macOS 钥匙串、Linux Secret Service）。
    在没有密钥库的环境中，保存在只有本人可读的文件中（FreeCAD 用户数据中的 `ai/ai-api-key`）
 3. 使用费用计入 API 密钥所有者的账户。本补丁不包含任何密钥或登录信息
+4. 在公司网络中，请在 编辑 → 设置 → 標準 → ネットワーク 中设置代理（默认使用系统设置）；如果网络会检查 TLS，再选择公司的证书（PEM）（自 0.5.7 起）
 
 AI 会把文档内容、画面图像和设计检查的结果发送给模型（默认为 Opus）。
 AI 要执行的代码默认每次都会显示，只有点“実行する”（执行）时才会运行（代码也可以做 FreeCAD 以外的事情，请先读一遍）。

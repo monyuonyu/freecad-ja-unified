@@ -1,0 +1,2431 @@
+From 4265fed3ea042711e270fbb902fc5a7575964f1b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 16:06:06 +0900
+Subject: [PATCH 239/239] Unified: AI chat works on Windows and behind a
+ company proxy; network and AI chat preferences
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Windows bundle: do not replace Lib/ssl.py with package/bundle/windows/ssl-patch.py.
+  It is the ssl.py of Python 3.11 and imports RAND_pseudo_bytes, which the bundled
+  Python 3.13's _ssl no longer has, so 'import ssl' failed everywhere and the AI chat
+  stopped with "cannot import name 'RAND_pseudo_bytes' from '_ssl'". Its workaround
+  (skip a bad certificate in the Windows store) is built into Python 3.10+.
+- Edit → Preferences → General → Network (new, app-wide): proxy (system settings by
+  default / none / manual, with exceptions) and the company's certificate file for
+  networks that inspect TLS. Applied to the environment at startup and on save
+  (HTTPS_PROXY, HTTP_PROXY, NO_PROXY, SSL_CERT_FILE, REQUESTS_CA_BUNDLE,
+  NODE_EXTRA_CA_CERTS) so Python, the AI chat bridge and claude use it, and to Qt's
+  application proxy. With the system setting, the Windows proxy (Internet Options,
+  with its exceptions) is turned into these variables, since claude reads only them.
+- Edit → Preferences → General → AI chat (new): change or remove the API key. The
+  panel no longer has a permanent "API key…" button; "Enter the API key…" appears only
+  when a key is needed.
+- AI chat: a proxy or certificate error is explained in Japanese with where to fix
+  it; while claude retries a failed connection the panel says so instead of waiting
+  silently.
+- AIAgentBridge --self-test: loads ssl, claude-agent-sdk and the bundled claude
+  without connecting; the Windows and Linux bundles run it and fail if it does not
+  pass. --has-key for the preferences page.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh         |    6 +
+ package/bundle/windows/create_bundle.sh       |   13 +-
+ package/bundle/windows/ssl-patch.py           | 1497 -----------------
+ src/Mod/Unified/AIAgentBridge.py              |   66 +-
+ src/Mod/Unified/AIChatGui.py                  |  120 +-
+ src/Mod/Unified/CMakeLists.txt                |    3 +-
+ .../Gui/Resources/translations/Unified_ja.ts  |  103 +-
+ src/Mod/Unified/Init.py                       |    9 +
+ src/Mod/Unified/InitGui.py                    |   11 +
+ src/Mod/Unified/NetworkSettings.py            |  148 ++
+ src/Mod/Unified/UnifiedPreferences.py         |  192 +++
+ 11 files changed, 618 insertions(+), 1550 deletions(-)
+ delete mode 100644 package/bundle/windows/ssl-patch.py
+ create mode 100644 src/Mod/Unified/NetworkSettings.py
+ create mode 100644 src/Mod/Unified/UnifiedPreferences.py
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 610adb63e..3aa00a06b 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -100,6 +100,12 @@ ai_out=$(echo "" | PYTHONPATH="${conda_env}/ai-runtime" PYTHONNOUSERSITE=1 \
+     "${conda_env}/bin/python" "${conda_env}/Mod/Unified/AIAgentBridge.py" --datadir "$(mktemp -d)")
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++# 部品が全部読めること（ssl・claude-agent-sdk・同梱の claude）。AI には接続しない
++ai_test=$(PYTHONPATH="${conda_env}/ai-runtime" PYTHONNOUSERSITE=1 \
++    "${conda_env}/bin/python" "${conda_env}/Mod/Unified/AIAgentBridge.py" --self-test \
++    --datadir "$(mktemp -d)" --workdir "$(mktemp -d)" 2>&1 | tail -1)
++echo "AI chat self-test: ${ai_test}"
++case "${ai_test}" in *'"self_test": "ok"'*) ;; *) echo "The bundled AI chat runtime cannot load its parts."; exit 1 ;; esac
+ 
+ # DWG の読み書き: LibreDWG の dwg2dxf / dxf2dwg（自前の修正入り、静的リンク）を同梱する。
+ # LIBREDWG_BIN はリリースの手順で作った物の場所。Mod/Unified/Init.py が同梱の物を DWG の変換器に設定する
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index 080ac2ee2..daa211cb3 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -53,9 +53,10 @@ rm -rf ${copy_dir}/share/cmake
+ rm -rf ${copy_dir}/share/cmake-*
+ rm -rf ${copy_dir}/share/man
+ 
+-# Apply Patches
+-mv ${copy_dir}/bin/Lib/ssl.py .ssl-orig.py
+-cp ssl-patch.py ${copy_dir}/bin/Lib/ssl.py
++# ssl.py is not replaced any more: ssl-patch.py was the ssl.py of Python 3.11 (with a workaround for
++# a bad certificate in the Windows store) and broke 'import ssl' on the bundled Python 3.13
++# ("cannot import name 'RAND_pseudo_bytes' from '_ssl'"). Python 3.10+ skips bad certificates itself.
++"${copy_dir}/bin/python.exe" -c "import ssl; ssl.create_default_context(); print('ssl:', ssl.OPENSSL_VERSION)"
+ 
+ # AI チャットの部品（Claude Agent SDK など）を同梱する。インストールしてすぐ、ダウンロードなしで使える。
+ # FreeCAD 自身の Python で動かすので、その版の物を ai-runtime に入れる（版は Mod/Unified/ai-requirements.txt で固定）
+@@ -67,6 +68,12 @@ ai_out=$(echo "" | PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime")" PYTHONNOU
+     "${copy_dir}/bin/python.exe" "${copy_dir}/Mod/Unified/AIAgentBridge.py" --datadir "$(cygpath -w "$(mktemp -d)")")
+ echo "AI chat bridge: ${ai_out}"
+ case "${ai_out}" in *need_key*) ;; *) echo "The bundled AI chat runtime does not start."; exit 1 ;; esac
++# 部品が全部読めること（ssl・claude-agent-sdk・同梱の claude）。AI には接続しない
++ai_test=$(PYTHONPATH="$(cygpath -w "${copy_dir}/ai-runtime")" PYTHONNOUSERSITE=1 PYTHONUTF8=1 \
++    "${copy_dir}/bin/python.exe" "${copy_dir}/Mod/Unified/AIAgentBridge.py" --self-test \
++    --datadir "$(cygpath -w "$(mktemp -d)")" --workdir "$(cygpath -w "$(mktemp -d)")" 2>&1 | tail -1)
++echo "AI chat self-test: ${ai_test}"
++case "${ai_test}" in *'"self_test": "ok"'*) ;; *) echo "The bundled AI chat runtime cannot load its parts."; exit 1 ;; esac
+ 
+ # DWG の読み書き: LibreDWG の dwg2dxf / dxf2dwg（自前の修正入り、静的リンク）を同梱する。
+ # LIBREDWG_BIN はリリースの手順で作った物の場所。Mod/Unified/Init.py が同梱の物を DWG の変換器に設定する
+diff --git a/package/bundle/windows/ssl-patch.py b/package/bundle/windows/ssl-patch.py
+deleted file mode 100644
+index 3c8a74f73..000000000
+--- a/package/bundle/windows/ssl-patch.py
++++ /dev/null
+@@ -1,1497 +0,0 @@
+-# Wrapper module for _ssl, providing some additional facilities
+-# implemented in Python.  Written by Bill Janssen.
+-
+-"""This module provides some more Pythonic support for SSL.
+-
+-Object types:
+-
+-  SSLSocket -- subtype of socket.socket which does SSL over the socket
+-
+-Exceptions:
+-
+-  SSLError -- exception raised for I/O errors
+-
+-Functions:
+-
+-  cert_time_to_seconds -- convert time string used for certificate
+-                          notBefore and notAfter functions to integer
+-                          seconds past the Epoch (the time values
+-                          returned from time.time())
+-
+-  fetch_server_certificate (HOST, PORT) -- fetch the certificate provided
+-                          by the server running on HOST at port PORT.  No
+-                          validation of the certificate is performed.
+-
+-Integer constants:
+-
+-SSL_ERROR_ZERO_RETURN
+-SSL_ERROR_WANT_READ
+-SSL_ERROR_WANT_WRITE
+-SSL_ERROR_WANT_X509_LOOKUP
+-SSL_ERROR_SYSCALL
+-SSL_ERROR_SSL
+-SSL_ERROR_WANT_CONNECT
+-
+-SSL_ERROR_EOF
+-SSL_ERROR_INVALID_ERROR_CODE
+-
+-The following group define certificate requirements that one side is
+-allowing/requiring from the other side:
+-
+-CERT_NONE - no certificates from the other side are required (or will
+-            be looked at if provided)
+-CERT_OPTIONAL - certificates are not required, but if provided will be
+-                validated, and if validation fails, the connection will
+-                also fail
+-CERT_REQUIRED - certificates are required, and will be validated, and
+-                if validation fails, the connection will also fail
+-
+-The following constants identify various SSL protocol variants:
+-
+-PROTOCOL_SSLv2
+-PROTOCOL_SSLv3
+-PROTOCOL_SSLv23
+-PROTOCOL_TLS
+-PROTOCOL_TLS_CLIENT
+-PROTOCOL_TLS_SERVER
+-PROTOCOL_TLSv1
+-PROTOCOL_TLSv1_1
+-PROTOCOL_TLSv1_2
+-
+-The following constants identify various SSL alert message descriptions as per
+-http://www.iana.org/assignments/tls-parameters/tls-parameters.xml#tls-parameters-6
+-
+-ALERT_DESCRIPTION_CLOSE_NOTIFY
+-ALERT_DESCRIPTION_UNEXPECTED_MESSAGE
+-ALERT_DESCRIPTION_BAD_RECORD_MAC
+-ALERT_DESCRIPTION_RECORD_OVERFLOW
+-ALERT_DESCRIPTION_DECOMPRESSION_FAILURE
+-ALERT_DESCRIPTION_HANDSHAKE_FAILURE
+-ALERT_DESCRIPTION_BAD_CERTIFICATE
+-ALERT_DESCRIPTION_UNSUPPORTED_CERTIFICATE
+-ALERT_DESCRIPTION_CERTIFICATE_REVOKED
+-ALERT_DESCRIPTION_CERTIFICATE_EXPIRED
+-ALERT_DESCRIPTION_CERTIFICATE_UNKNOWN
+-ALERT_DESCRIPTION_ILLEGAL_PARAMETER
+-ALERT_DESCRIPTION_UNKNOWN_CA
+-ALERT_DESCRIPTION_ACCESS_DENIED
+-ALERT_DESCRIPTION_DECODE_ERROR
+-ALERT_DESCRIPTION_DECRYPT_ERROR
+-ALERT_DESCRIPTION_PROTOCOL_VERSION
+-ALERT_DESCRIPTION_INSUFFICIENT_SECURITY
+-ALERT_DESCRIPTION_INTERNAL_ERROR
+-ALERT_DESCRIPTION_USER_CANCELLED
+-ALERT_DESCRIPTION_NO_RENEGOTIATION
+-ALERT_DESCRIPTION_UNSUPPORTED_EXTENSION
+-ALERT_DESCRIPTION_CERTIFICATE_UNOBTAINABLE
+-ALERT_DESCRIPTION_UNRECOGNIZED_NAME
+-ALERT_DESCRIPTION_BAD_CERTIFICATE_STATUS_RESPONSE
+-ALERT_DESCRIPTION_BAD_CERTIFICATE_HASH_VALUE
+-ALERT_DESCRIPTION_UNKNOWN_PSK_IDENTITY
+-"""
+-# Workaround see https://forum.freecad.org/viewtopic.php?f=42&t=47095
+-CERTS_IGNORE = ["MUP Republike Srbije"]
+-
+-import sys
+-import os
+-from collections import namedtuple
+-from enum import Enum as _Enum, IntEnum as _IntEnum, IntFlag as _IntFlag
+-
+-import _ssl             # if we can't import it, let the error propagate
+-
+-from _ssl import OPENSSL_VERSION_NUMBER, OPENSSL_VERSION_INFO, OPENSSL_VERSION
+-from _ssl import _SSLContext, MemoryBIO, SSLSession
+-from _ssl import (
+-    SSLError, SSLZeroReturnError, SSLWantReadError, SSLWantWriteError,
+-    SSLSyscallError, SSLEOFError, SSLCertVerificationError
+-    )
+-from _ssl import txt2obj as _txt2obj, nid2obj as _nid2obj
+-from _ssl import RAND_status, RAND_add, RAND_bytes, RAND_pseudo_bytes
+-try:
+-    from _ssl import RAND_egd
+-except ImportError:
+-    # LibreSSL does not provide RAND_egd
+-    pass
+-
+-
+-from _ssl import (
+-    HAS_SNI, HAS_ECDH, HAS_NPN, HAS_ALPN, HAS_SSLv2, HAS_SSLv3, HAS_TLSv1,
+-    HAS_TLSv1_1, HAS_TLSv1_2, HAS_TLSv1_3
+-)
+-from _ssl import _DEFAULT_CIPHERS, _OPENSSL_API_VERSION
+-
+-
+-_IntEnum._convert_(
+-    '_SSLMethod', __name__,
+-    lambda name: name.startswith('PROTOCOL_') and name != 'PROTOCOL_SSLv23',
+-    source=_ssl)
+-
+-_IntFlag._convert_(
+-    'Options', __name__,
+-    lambda name: name.startswith('OP_'),
+-    source=_ssl)
+-
+-_IntEnum._convert_(
+-    'AlertDescription', __name__,
+-    lambda name: name.startswith('ALERT_DESCRIPTION_'),
+-    source=_ssl)
+-
+-_IntEnum._convert_(
+-    'SSLErrorNumber', __name__,
+-    lambda name: name.startswith('SSL_ERROR_'),
+-    source=_ssl)
+-
+-_IntFlag._convert_(
+-    'VerifyFlags', __name__,
+-    lambda name: name.startswith('VERIFY_'),
+-    source=_ssl)
+-
+-_IntEnum._convert_(
+-    'VerifyMode', __name__,
+-    lambda name: name.startswith('CERT_'),
+-    source=_ssl)
+-
+-PROTOCOL_SSLv23 = _SSLMethod.PROTOCOL_SSLv23 = _SSLMethod.PROTOCOL_TLS
+-_PROTOCOL_NAMES = {value: name for name, value in _SSLMethod.__members__.items()}
+-
+-_SSLv2_IF_EXISTS = getattr(_SSLMethod, 'PROTOCOL_SSLv2', None)
+-
+-
+-class TLSVersion(_IntEnum):
+-    MINIMUM_SUPPORTED = _ssl.PROTO_MINIMUM_SUPPORTED
+-    SSLv3 = _ssl.PROTO_SSLv3
+-    TLSv1 = _ssl.PROTO_TLSv1
+-    TLSv1_1 = _ssl.PROTO_TLSv1_1
+-    TLSv1_2 = _ssl.PROTO_TLSv1_2
+-    TLSv1_3 = _ssl.PROTO_TLSv1_3
+-    MAXIMUM_SUPPORTED = _ssl.PROTO_MAXIMUM_SUPPORTED
+-
+-
+-class _TLSContentType(_IntEnum):
+-    """Content types (record layer)
+-
+-    See RFC 8446, section B.1
+-    """
+-    CHANGE_CIPHER_SPEC = 20
+-    ALERT = 21
+-    HANDSHAKE = 22
+-    APPLICATION_DATA = 23
+-    # pseudo content types
+-    HEADER = 0x100
+-    INNER_CONTENT_TYPE = 0x101
+-
+-
+-class _TLSAlertType(_IntEnum):
+-    """Alert types for TLSContentType.ALERT messages
+-
+-    See RFC 8466, section B.2
+-    """
+-    CLOSE_NOTIFY = 0
+-    UNEXPECTED_MESSAGE = 10
+-    BAD_RECORD_MAC = 20
+-    DECRYPTION_FAILED = 21
+-    RECORD_OVERFLOW = 22
+-    DECOMPRESSION_FAILURE = 30
+-    HANDSHAKE_FAILURE = 40
+-    NO_CERTIFICATE = 41
+-    BAD_CERTIFICATE = 42
+-    UNSUPPORTED_CERTIFICATE = 43
+-    CERTIFICATE_REVOKED = 44
+-    CERTIFICATE_EXPIRED = 45
+-    CERTIFICATE_UNKNOWN = 46
+-    ILLEGAL_PARAMETER = 47
+-    UNKNOWN_CA = 48
+-    ACCESS_DENIED = 49
+-    DECODE_ERROR = 50
+-    DECRYPT_ERROR = 51
+-    EXPORT_RESTRICTION = 60
+-    PROTOCOL_VERSION = 70
+-    INSUFFICIENT_SECURITY = 71
+-    INTERNAL_ERROR = 80
+-    INAPPROPRIATE_FALLBACK = 86
+-    USER_CANCELED = 90
+-    NO_RENEGOTIATION = 100
+-    MISSING_EXTENSION = 109
+-    UNSUPPORTED_EXTENSION = 110
+-    CERTIFICATE_UNOBTAINABLE = 111
+-    UNRECOGNIZED_NAME = 112
+-    BAD_CERTIFICATE_STATUS_RESPONSE = 113
+-    BAD_CERTIFICATE_HASH_VALUE = 114
+-    UNKNOWN_PSK_IDENTITY = 115
+-    CERTIFICATE_REQUIRED = 116
+-    NO_APPLICATION_PROTOCOL = 120
+-
+-
+-class _TLSMessageType(_IntEnum):
+-    """Message types (handshake protocol)
+-
+-    See RFC 8446, section B.3
+-    """
+-    HELLO_REQUEST = 0
+-    CLIENT_HELLO = 1
+-    SERVER_HELLO = 2
+-    HELLO_VERIFY_REQUEST = 3
+-    NEWSESSION_TICKET = 4
+-    END_OF_EARLY_DATA = 5
+-    HELLO_RETRY_REQUEST = 6
+-    ENCRYPTED_EXTENSIONS = 8
+-    CERTIFICATE = 11
+-    SERVER_KEY_EXCHANGE = 12
+-    CERTIFICATE_REQUEST = 13
+-    SERVER_DONE = 14
+-    CERTIFICATE_VERIFY = 15
+-    CLIENT_KEY_EXCHANGE = 16
+-    FINISHED = 20
+-    CERTIFICATE_URL = 21
+-    CERTIFICATE_STATUS = 22
+-    SUPPLEMENTAL_DATA = 23
+-    KEY_UPDATE = 24
+-    NEXT_PROTO = 67
+-    MESSAGE_HASH = 254
+-    CHANGE_CIPHER_SPEC = 0x0101
+-
+-
+-if sys.platform == "win32":
+-    from _ssl import enum_certificates, enum_crls
+-
+-from socket import socket, AF_INET, SOCK_STREAM, create_connection
+-from socket import SOL_SOCKET, SO_TYPE
+-import socket as _socket
+-import base64        # for DER-to-PEM translation
+-import errno
+-import warnings
+-
+-
+-socket_error = OSError  # keep that public name in module namespace
+-
+-CHANNEL_BINDING_TYPES = ['tls-unique']
+-
+-HAS_NEVER_CHECK_COMMON_NAME = hasattr(_ssl, 'HOSTFLAG_NEVER_CHECK_SUBJECT')
+-
+-
+-_RESTRICTED_SERVER_CIPHERS = _DEFAULT_CIPHERS
+-
+-CertificateError = SSLCertVerificationError
+-
+-
+-def _dnsname_match(dn, hostname):
+-    """Matching according to RFC 6125, section 6.4.3
+-
+-    - Hostnames are compared lower case.
+-    - For IDNA, both dn and hostname must be encoded as IDN A-label (ACE).
+-    - Partial wildcards like 'www*.example.org', multiple wildcards, sole
+-      wildcard or wildcards in labels other then the left-most label are not
+-      supported and a CertificateError is raised.
+-    - A wildcard must match at least one character.
+-    """
+-    if not dn:
+-        return False
+-
+-    wildcards = dn.count('*')
+-    # speed up common case w/o wildcards
+-    if not wildcards:
+-        return dn.lower() == hostname.lower()
+-
+-    if wildcards > 1:
+-        raise CertificateError(
+-            "too many wildcards in certificate DNS name: {!r}.".format(dn))
+-
+-    dn_leftmost, sep, dn_remainder = dn.partition('.')
+-
+-    if '*' in dn_remainder:
+-        # Only match wildcard in leftmost segment.
+-        raise CertificateError(
+-            "wildcard can only be present in the leftmost label: "
+-            "{!r}.".format(dn))
+-
+-    if not sep:
+-        # no right side
+-        raise CertificateError(
+-            "sole wildcard without additional labels are not support: "
+-            "{!r}.".format(dn))
+-
+-    if dn_leftmost != '*':
+-        # no partial wildcard matching
+-        raise CertificateError(
+-            "partial wildcards in leftmost label are not supported: "
+-            "{!r}.".format(dn))
+-
+-    hostname_leftmost, sep, hostname_remainder = hostname.partition('.')
+-    if not hostname_leftmost or not sep:
+-        # wildcard must match at least one char
+-        return False
+-    return dn_remainder.lower() == hostname_remainder.lower()
+-
+-
+-def _inet_paton(ipname):
+-    """Try to convert an IP address to packed binary form
+-
+-    Supports IPv4 addresses on all platforms and IPv6 on platforms with IPv6
+-    support.
+-    """
+-    # inet_aton() also accepts strings like '1', '127.1', some also trailing
+-    # data like '127.0.0.1 whatever'.
+-    try:
+-        addr = _socket.inet_aton(ipname)
+-    except OSError:
+-        # not an IPv4 address
+-        pass
+-    else:
+-        if _socket.inet_ntoa(addr) == ipname:
+-            # only accept injective ipnames
+-            return addr
+-        else:
+-            # refuse for short IPv4 notation and additional trailing data
+-            raise ValueError(
+-                "{!r} is not a quad-dotted IPv4 address.".format(ipname)
+-            )
+-
+-    try:
+-        return _socket.inet_pton(_socket.AF_INET6, ipname)
+-    except OSError:
+-        raise ValueError("{!r} is neither an IPv4 nor an IP6 "
+-                         "address.".format(ipname))
+-    except AttributeError:
+-        # AF_INET6 not available
+-        pass
+-
+-    raise ValueError("{!r} is not an IPv4 address.".format(ipname))
+-
+-
+-def _ipaddress_match(cert_ipaddress, host_ip):
+-    """Exact matching of IP addresses.
+-
+-    RFC 6125 explicitly doesn't define an algorithm for this
+-    (section 1.7.2 - "Out of Scope").
+-    """
+-    # OpenSSL may add a trailing newline to a subjectAltName's IP address,
+-    # commonly with IPv6 addresses. Strip off trailing \n.
+-    ip = _inet_paton(cert_ipaddress.rstrip())
+-    return ip == host_ip
+-
+-
+-def match_hostname(cert, hostname):
+-    """Verify that *cert* (in decoded format as returned by
+-    SSLSocket.getpeercert()) matches the *hostname*.  RFC 2818 and RFC 6125
+-    rules are followed.
+-
+-    The function matches IP addresses rather than dNSNames if hostname is a
+-    valid ipaddress string. IPv4 addresses are supported on all platforms.
+-    IPv6 addresses are supported on platforms with IPv6 support (AF_INET6
+-    and inet_pton).
+-
+-    CertificateError is raised on failure. On success, the function
+-    returns nothing.
+-    """
+-    if not cert:
+-        raise ValueError("empty or no certificate, match_hostname needs a "
+-                         "SSL socket or SSL context with either "
+-                         "CERT_OPTIONAL or CERT_REQUIRED")
+-    try:
+-        host_ip = _inet_paton(hostname)
+-    except ValueError:
+-        # Not an IP address (common case)
+-        host_ip = None
+-    dnsnames = []
+-    san = cert.get('subjectAltName', ())
+-    for key, value in san:
+-        if key == 'DNS':
+-            if host_ip is None and _dnsname_match(value, hostname):
+-                return
+-            dnsnames.append(value)
+-        elif key == 'IP Address':
+-            if host_ip is not None and _ipaddress_match(value, host_ip):
+-                return
+-            dnsnames.append(value)
+-    if not dnsnames:
+-        # The subject is only checked when there is no dNSName entry
+-        # in subjectAltName
+-        for sub in cert.get('subject', ()):
+-            for key, value in sub:
+-                # XXX according to RFC 2818, the most specific Common Name
+-                # must be used.
+-                if key == 'commonName':
+-                    if _dnsname_match(value, hostname):
+-                        return
+-                    dnsnames.append(value)
+-    if len(dnsnames) > 1:
+-        raise CertificateError("hostname %r "
+-            "doesn't match either of %s"
+-            % (hostname, ', '.join(map(repr, dnsnames))))
+-    elif len(dnsnames) == 1:
+-        raise CertificateError("hostname %r "
+-            "doesn't match %r"
+-            % (hostname, dnsnames[0]))
+-    else:
+-        raise CertificateError("no appropriate commonName or "
+-            "subjectAltName fields were found")
+-
+-
+-DefaultVerifyPaths = namedtuple("DefaultVerifyPaths",
+-    "cafile capath openssl_cafile_env openssl_cafile openssl_capath_env "
+-    "openssl_capath")
+-
+-def get_default_verify_paths():
+-    """Return paths to default cafile and capath.
+-    """
+-    parts = _ssl.get_default_verify_paths()
+-
+-    # environment vars shadow paths
+-    cafile = os.environ.get(parts[0], parts[1])
+-    capath = os.environ.get(parts[2], parts[3])
+-
+-    return DefaultVerifyPaths(cafile if os.path.isfile(cafile) else None,
+-                              capath if os.path.isdir(capath) else None,
+-                              *parts)
+-
+-
+-class _ASN1Object(namedtuple("_ASN1Object", "nid shortname longname oid")):
+-    """ASN.1 object identifier lookup
+-    """
+-    __slots__ = ()
+-
+-    def __new__(cls, oid):
+-        return super().__new__(cls, *_txt2obj(oid, name=False))
+-
+-    @classmethod
+-    def fromnid(cls, nid):
+-        """Create _ASN1Object from OpenSSL numeric ID
+-        """
+-        return super().__new__(cls, *_nid2obj(nid))
+-
+-    @classmethod
+-    def fromname(cls, name):
+-        """Create _ASN1Object from short name, long name or OID
+-        """
+-        return super().__new__(cls, *_txt2obj(name, name=True))
+-
+-
+-class Purpose(_ASN1Object, _Enum):
+-    """SSLContext purpose flags with X509v3 Extended Key Usage objects
+-    """
+-    SERVER_AUTH = '1.3.6.1.5.5.7.3.1'
+-    CLIENT_AUTH = '1.3.6.1.5.5.7.3.2'
+-
+-
+-class SSLContext(_SSLContext):
+-    """An SSLContext holds various SSL-related configuration options and
+-    data, such as certificates and possibly a private key."""
+-    _windows_cert_stores = ("CA", "ROOT")
+-
+-    sslsocket_class = None  # SSLSocket is assigned later.
+-    sslobject_class = None  # SSLObject is assigned later.
+-
+-    def __new__(cls, protocol=PROTOCOL_TLS, *args, **kwargs):
+-        self = _SSLContext.__new__(cls, protocol)
+-        return self
+-
+-    def _encode_hostname(self, hostname):
+-        if hostname is None:
+-            return None
+-        elif isinstance(hostname, str):
+-            return hostname.encode('idna').decode('ascii')
+-        else:
+-            return hostname.decode('ascii')
+-
+-    def wrap_socket(self, sock, server_side=False,
+-                    do_handshake_on_connect=True,
+-                    suppress_ragged_eofs=True,
+-                    server_hostname=None, session=None):
+-        # SSLSocket class handles server_hostname encoding before it calls
+-        # ctx._wrap_socket()
+-        return self.sslsocket_class._create(
+-            sock=sock,
+-            server_side=server_side,
+-            do_handshake_on_connect=do_handshake_on_connect,
+-            suppress_ragged_eofs=suppress_ragged_eofs,
+-            server_hostname=server_hostname,
+-            context=self,
+-            session=session
+-        )
+-
+-    def wrap_bio(self, incoming, outgoing, server_side=False,
+-                 server_hostname=None, session=None):
+-        # Need to encode server_hostname here because _wrap_bio() can only
+-        # handle ASCII str.
+-        return self.sslobject_class._create(
+-            incoming, outgoing, server_side=server_side,
+-            server_hostname=self._encode_hostname(server_hostname),
+-            session=session, context=self,
+-        )
+-
+-    def set_npn_protocols(self, npn_protocols):
+-        protos = bytearray()
+-        for protocol in npn_protocols:
+-            b = bytes(protocol, 'ascii')
+-            if len(b) == 0 or len(b) > 255:
+-                raise SSLError('NPN protocols must be 1 to 255 in length')
+-            protos.append(len(b))
+-            protos.extend(b)
+-
+-        self._set_npn_protocols(protos)
+-
+-    def set_servername_callback(self, server_name_callback):
+-        if server_name_callback is None:
+-            self.sni_callback = None
+-        else:
+-            if not callable(server_name_callback):
+-                raise TypeError("not a callable object")
+-
+-            def shim_cb(sslobj, servername, sslctx):
+-                servername = self._encode_hostname(servername)
+-                return server_name_callback(sslobj, servername, sslctx)
+-
+-            self.sni_callback = shim_cb
+-
+-    def set_alpn_protocols(self, alpn_protocols):
+-        protos = bytearray()
+-        for protocol in alpn_protocols:
+-            b = bytes(protocol, 'ascii')
+-            if len(b) == 0 or len(b) > 255:
+-                raise SSLError('ALPN protocols must be 1 to 255 in length')
+-            protos.append(len(b))
+-            protos.extend(b)
+-
+-        self._set_alpn_protocols(protos)
+-
+-    def _load_windows_store_certs(self, storename, purpose):
+-        certs = bytearray()
+-        try:
+-            for cert, encoding, trust in enum_certificates(storename):
+-                # CA certs are never PKCS#7 encoded
+-                if encoding == "x509_asn":
+-                    if trust is True or purpose.oid in trust:
+-                        ignore_cert = False
+-                        for CERT_IGNORE in CERTS_IGNORE:
+-                            if CERT_IGNORE in str(cert):
+-                                ignore_cert = True
+-                        # only load certs that are not in the CERTS_IGNORE list
+-                        if not ignore_cert:
+-                            certs.extend(cert)
+-        except PermissionError:
+-            warnings.warn("unable to enumerate Windows certificate store")
+-        if certs:
+-            self.load_verify_locations(cadata=certs)
+-        return certs
+-
+-    def load_default_certs(self, purpose=Purpose.SERVER_AUTH):
+-        if not isinstance(purpose, _ASN1Object):
+-            raise TypeError(purpose)
+-        if sys.platform == "win32":
+-            for storename in self._windows_cert_stores:
+-                self._load_windows_store_certs(storename, purpose)
+-        self.set_default_verify_paths()
+-
+-    if hasattr(_SSLContext, 'minimum_version'):
+-        @property
+-        def minimum_version(self):
+-            return TLSVersion(super().minimum_version)
+-
+-        @minimum_version.setter
+-        def minimum_version(self, value):
+-            if value == TLSVersion.SSLv3:
+-                self.options &= ~Options.OP_NO_SSLv3
+-            super(SSLContext, SSLContext).minimum_version.__set__(self, value)
+-
+-        @property
+-        def maximum_version(self):
+-            return TLSVersion(super().maximum_version)
+-
+-        @maximum_version.setter
+-        def maximum_version(self, value):
+-            super(SSLContext, SSLContext).maximum_version.__set__(self, value)
+-
+-    @property
+-    def options(self):
+-        return Options(super().options)
+-
+-    @options.setter
+-    def options(self, value):
+-        super(SSLContext, SSLContext).options.__set__(self, value)
+-
+-    if hasattr(_ssl, 'HOSTFLAG_NEVER_CHECK_SUBJECT'):
+-        @property
+-        def hostname_checks_common_name(self):
+-            ncs = self._host_flags & _ssl.HOSTFLAG_NEVER_CHECK_SUBJECT
+-            return ncs != _ssl.HOSTFLAG_NEVER_CHECK_SUBJECT
+-
+-        @hostname_checks_common_name.setter
+-        def hostname_checks_common_name(self, value):
+-            if value:
+-                self._host_flags &= ~_ssl.HOSTFLAG_NEVER_CHECK_SUBJECT
+-            else:
+-                self._host_flags |= _ssl.HOSTFLAG_NEVER_CHECK_SUBJECT
+-    else:
+-        @property
+-        def hostname_checks_common_name(self):
+-            return True
+-
+-    @property
+-    def _msg_callback(self):
+-        """TLS message callback
+-
+-        The message callback provides a debugging hook to analyze TLS
+-        connections. The callback is called for any TLS protocol message
+-        (header, handshake, alert, and more), but not for application data.
+-        Due to technical  limitations, the callback can't be used to filter
+-        traffic or to abort a connection. Any exception raised in the
+-        callback is delayed until the handshake, read, or write operation
+-        has been performed.
+-
+-        def msg_cb(conn, direction, version, content_type, msg_type, data):
+-            pass
+-
+-        conn
+-            :class:`SSLSocket` or :class:`SSLObject` instance
+-        direction
+-            ``read`` or ``write``
+-        version
+-            :class:`TLSVersion` enum member or int for unknown version. For a
+-            frame header, it's the header version.
+-        content_type
+-            :class:`_TLSContentType` enum member or int for unsupported
+-            content type.
+-        msg_type
+-            Either a :class:`_TLSContentType` enum number for a header
+-            message, a :class:`_TLSAlertType` enum member for an alert
+-            message, a :class:`_TLSMessageType` enum member for other
+-            messages, or int for unsupported message types.
+-        data
+-            Raw, decrypted message content as bytes
+-        """
+-        inner = super()._msg_callback
+-        if inner is not None:
+-            return inner.user_function
+-        else:
+-            return None
+-
+-    @_msg_callback.setter
+-    def _msg_callback(self, callback):
+-        if callback is None:
+-            super(SSLContext, SSLContext)._msg_callback.__set__(self, None)
+-            return
+-
+-        if not hasattr(callback, '__call__'):
+-            raise TypeError(f"{callback} is not callable.")
+-
+-        def inner(conn, direction, version, content_type, msg_type, data):
+-            try:
+-                version = TLSVersion(version)
+-            except ValueError:
+-                pass
+-
+-            try:
+-                content_type = _TLSContentType(content_type)
+-            except ValueError:
+-                pass
+-
+-            if content_type == _TLSContentType.HEADER:
+-                msg_enum = _TLSContentType
+-            elif content_type == _TLSContentType.ALERT:
+-                msg_enum = _TLSAlertType
+-            else:
+-                msg_enum = _TLSMessageType
+-            try:
+-                msg_type = msg_enum(msg_type)
+-            except ValueError:
+-                pass
+-
+-            return callback(conn, direction, version,
+-                            content_type, msg_type, data)
+-
+-        inner.user_function = callback
+-
+-        super(SSLContext, SSLContext)._msg_callback.__set__(self, inner)
+-
+-    @property
+-    def protocol(self):
+-        return _SSLMethod(super().protocol)
+-
+-    @property
+-    def verify_flags(self):
+-        return VerifyFlags(super().verify_flags)
+-
+-    @verify_flags.setter
+-    def verify_flags(self, value):
+-        super(SSLContext, SSLContext).verify_flags.__set__(self, value)
+-
+-    @property
+-    def verify_mode(self):
+-        value = super().verify_mode
+-        try:
+-            return VerifyMode(value)
+-        except ValueError:
+-            return value
+-
+-    @verify_mode.setter
+-    def verify_mode(self, value):
+-        super(SSLContext, SSLContext).verify_mode.__set__(self, value)
+-
+-
+-def create_default_context(purpose=Purpose.SERVER_AUTH, *, cafile=None,
+-                           capath=None, cadata=None):
+-    """Create a SSLContext object with default settings.
+-
+-    NOTE: The protocol and settings may change anytime without prior
+-          deprecation. The values represent a fair balance between maximum
+-          compatibility and security.
+-    """
+-    if not isinstance(purpose, _ASN1Object):
+-        raise TypeError(purpose)
+-
+-    # SSLContext sets OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_COMPRESSION,
+-    # OP_CIPHER_SERVER_PREFERENCE, OP_SINGLE_DH_USE and OP_SINGLE_ECDH_USE
+-    # by default.
+-    context = SSLContext(PROTOCOL_TLS)
+-
+-    if purpose == Purpose.SERVER_AUTH:
+-        # verify certs and host name in client mode
+-        context.verify_mode = CERT_REQUIRED
+-        context.check_hostname = True
+-
+-    if cafile or capath or cadata:
+-        context.load_verify_locations(cafile, capath, cadata)
+-    elif context.verify_mode != CERT_NONE:
+-        # no explicit cafile, capath or cadata but the verify mode is
+-        # CERT_OPTIONAL or CERT_REQUIRED. Let's try to load default system
+-        # root CA certificates for the given purpose. This may fail silently.
+-        context.load_default_certs(purpose)
+-    # OpenSSL 1.1.1 keylog file
+-    if hasattr(context, 'keylog_filename'):
+-        keylogfile = os.environ.get('SSLKEYLOGFILE')
+-        if keylogfile and not sys.flags.ignore_environment:
+-            context.keylog_filename = keylogfile
+-    return context
+-
+-def _create_unverified_context(protocol=PROTOCOL_TLS, *, cert_reqs=CERT_NONE,
+-                           check_hostname=False, purpose=Purpose.SERVER_AUTH,
+-                           certfile=None, keyfile=None,
+-                           cafile=None, capath=None, cadata=None):
+-    """Create a SSLContext object for Python stdlib modules
+-
+-    All Python stdlib modules shall use this function to create SSLContext
+-    objects in order to keep common settings in one place. The configuration
+-    is less restrict than create_default_context()'s to increase backward
+-    compatibility.
+-    """
+-    if not isinstance(purpose, _ASN1Object):
+-        raise TypeError(purpose)
+-
+-    # SSLContext sets OP_NO_SSLv2, OP_NO_SSLv3, OP_NO_COMPRESSION,
+-    # OP_CIPHER_SERVER_PREFERENCE, OP_SINGLE_DH_USE and OP_SINGLE_ECDH_USE
+-    # by default.
+-    context = SSLContext(protocol)
+-
+-    if not check_hostname:
+-        context.check_hostname = False
+-    if cert_reqs is not None:
+-        context.verify_mode = cert_reqs
+-    if check_hostname:
+-        context.check_hostname = True
+-
+-    if keyfile and not certfile:
+-        raise ValueError("certfile must be specified")
+-    if certfile or keyfile:
+-        context.load_cert_chain(certfile, keyfile)
+-
+-    # load CA root certs
+-    if cafile or capath or cadata:
+-        context.load_verify_locations(cafile, capath, cadata)
+-    elif context.verify_mode != CERT_NONE:
+-        # no explicit cafile, capath or cadata but the verify mode is
+-        # CERT_OPTIONAL or CERT_REQUIRED. Let's try to load default system
+-        # root CA certificates for the given purpose. This may fail silently.
+-        context.load_default_certs(purpose)
+-    # OpenSSL 1.1.1 keylog file
+-    if hasattr(context, 'keylog_filename'):
+-        keylogfile = os.environ.get('SSLKEYLOGFILE')
+-        if keylogfile and not sys.flags.ignore_environment:
+-            context.keylog_filename = keylogfile
+-    return context
+-
+-# Used by http.client if no context is explicitly passed.
+-_create_default_https_context = create_default_context
+-
+-
+-# Backwards compatibility alias, even though it's not a public name.
+-_create_stdlib_context = _create_unverified_context
+-
+-
+-class SSLObject:
+-    """This class implements an interface on top of a low-level SSL object as
+-    implemented by OpenSSL. This object captures the state of an SSL connection
+-    but does not provide any network IO itself. IO needs to be performed
+-    through separate "BIO" objects which are OpenSSL's IO abstraction layer.
+-
+-    This class does not have a public constructor. Instances are returned by
+-    ``SSLContext.wrap_bio``. This class is typically used by framework authors
+-    that want to implement asynchronous IO for SSL through memory buffers.
+-
+-    When compared to ``SSLSocket``, this object lacks the following features:
+-
+-     * Any form of network IO, including methods such as ``recv`` and ``send``.
+-     * The ``do_handshake_on_connect`` and ``suppress_ragged_eofs`` machinery.
+-    """
+-    def __init__(self, *args, **kwargs):
+-        raise TypeError(
+-            f"{self.__class__.__name__} does not have a public "
+-            f"constructor. Instances are returned by SSLContext.wrap_bio()."
+-        )
+-
+-    @classmethod
+-    def _create(cls, incoming, outgoing, server_side=False,
+-                 server_hostname=None, session=None, context=None):
+-        self = cls.__new__(cls)
+-        sslobj = context._wrap_bio(
+-            incoming, outgoing, server_side=server_side,
+-            server_hostname=server_hostname,
+-            owner=self, session=session
+-        )
+-        self._sslobj = sslobj
+-        return self
+-
+-    @property
+-    def context(self):
+-        """The SSLContext that is currently in use."""
+-        return self._sslobj.context
+-
+-    @context.setter
+-    def context(self, ctx):
+-        self._sslobj.context = ctx
+-
+-    @property
+-    def session(self):
+-        """The SSLSession for client socket."""
+-        return self._sslobj.session
+-
+-    @session.setter
+-    def session(self, session):
+-        self._sslobj.session = session
+-
+-    @property
+-    def session_reused(self):
+-        """Was the client session reused during handshake"""
+-        return self._sslobj.session_reused
+-
+-    @property
+-    def server_side(self):
+-        """Whether this is a server-side socket."""
+-        return self._sslobj.server_side
+-
+-    @property
+-    def server_hostname(self):
+-        """The currently set server hostname (for SNI), or ``None`` if no
+-        server hostname is set."""
+-        return self._sslobj.server_hostname
+-
+-    def read(self, len=1024, buffer=None):
+-        """Read up to 'len' bytes from the SSL object and return them.
+-
+-        If 'buffer' is provided, read into this buffer and return the number of
+-        bytes read.
+-        """
+-        if buffer is not None:
+-            v = self._sslobj.read(len, buffer)
+-        else:
+-            v = self._sslobj.read(len)
+-        return v
+-
+-    def write(self, data):
+-        """Write 'data' to the SSL object and return the number of bytes
+-        written.
+-
+-        The 'data' argument must support the buffer interface.
+-        """
+-        return self._sslobj.write(data)
+-
+-    def getpeercert(self, binary_form=False):
+-        """Returns a formatted version of the data in the certificate provided
+-        by the other end of the SSL channel.
+-
+-        Return None if no certificate was provided, {} if a certificate was
+-        provided, but not validated.
+-        """
+-        return self._sslobj.getpeercert(binary_form)
+-
+-    def selected_npn_protocol(self):
+-        """Return the currently selected NPN protocol as a string, or ``None``
+-        if a next protocol was not negotiated or if NPN is not supported by one
+-        of the peers."""
+-        if _ssl.HAS_NPN:
+-            return self._sslobj.selected_npn_protocol()
+-
+-    def selected_alpn_protocol(self):
+-        """Return the currently selected ALPN protocol as a string, or ``None``
+-        if a next protocol was not negotiated or if ALPN is not supported by one
+-        of the peers."""
+-        if _ssl.HAS_ALPN:
+-            return self._sslobj.selected_alpn_protocol()
+-
+-    def cipher(self):
+-        """Return the currently selected cipher as a 3-tuple ``(name,
+-        ssl_version, secret_bits)``."""
+-        return self._sslobj.cipher()
+-
+-    def shared_ciphers(self):
+-        """Return a list of ciphers shared by the client during the handshake or
+-        None if this is not a valid server connection.
+-        """
+-        return self._sslobj.shared_ciphers()
+-
+-    def compression(self):
+-        """Return the current compression algorithm in use, or ``None`` if
+-        compression was not negotiated or not supported by one of the peers."""
+-        return self._sslobj.compression()
+-
+-    def pending(self):
+-        """Return the number of bytes that can be read immediately."""
+-        return self._sslobj.pending()
+-
+-    def do_handshake(self):
+-        """Start the SSL/TLS handshake."""
+-        self._sslobj.do_handshake()
+-
+-    def unwrap(self):
+-        """Start the SSL shutdown handshake."""
+-        return self._sslobj.shutdown()
+-
+-    def get_channel_binding(self, cb_type="tls-unique"):
+-        """Get channel binding data for current connection.  Raise ValueError
+-        if the requested `cb_type` is not supported.  Return bytes of the data
+-        or None if the data is not available (e.g. before the handshake)."""
+-        return self._sslobj.get_channel_binding(cb_type)
+-
+-    def version(self):
+-        """Return a string identifying the protocol version used by the
+-        current SSL channel. """
+-        return self._sslobj.version()
+-
+-    def verify_client_post_handshake(self):
+-        return self._sslobj.verify_client_post_handshake()
+-
+-
+-def _sslcopydoc(func):
+-    """Copy docstring from SSLObject to SSLSocket"""
+-    func.__doc__ = getattr(SSLObject, func.__name__).__doc__
+-    return func
+-
+-
+-class SSLSocket(socket):
+-    """This class implements a subtype of socket.socket that wraps
+-    the underlying OS socket in an SSL context when necessary, and
+-    provides read and write methods over that channel. """
+-
+-    def __init__(self, *args, **kwargs):
+-        raise TypeError(
+-            f"{self.__class__.__name__} does not have a public "
+-            f"constructor. Instances are returned by "
+-            f"SSLContext.wrap_socket()."
+-        )
+-
+-    @classmethod
+-    def _create(cls, sock, server_side=False, do_handshake_on_connect=True,
+-                suppress_ragged_eofs=True, server_hostname=None,
+-                context=None, session=None):
+-        if sock.getsockopt(SOL_SOCKET, SO_TYPE) != SOCK_STREAM:
+-            raise NotImplementedError("only stream sockets are supported")
+-        if server_side:
+-            if server_hostname:
+-                raise ValueError("server_hostname can only be specified "
+-                                 "in client mode")
+-            if session is not None:
+-                raise ValueError("session can only be specified in "
+-                                 "client mode")
+-        if context.check_hostname and not server_hostname:
+-            raise ValueError("check_hostname requires server_hostname")
+-
+-        kwargs = dict(
+-            family=sock.family, type=sock.type, proto=sock.proto,
+-            fileno=sock.fileno()
+-        )
+-        self = cls.__new__(cls, **kwargs)
+-        super(SSLSocket, self).__init__(**kwargs)
+-        self.settimeout(sock.gettimeout())
+-        sock.detach()
+-
+-        self._context = context
+-        self._session = session
+-        self._closed = False
+-        self._sslobj = None
+-        self.server_side = server_side
+-        self.server_hostname = context._encode_hostname(server_hostname)
+-        self.do_handshake_on_connect = do_handshake_on_connect
+-        self.suppress_ragged_eofs = suppress_ragged_eofs
+-
+-        # See if we are connected
+-        try:
+-            self.getpeername()
+-        except OSError as e:
+-            if e.errno != errno.ENOTCONN:
+-                raise
+-            connected = False
+-        else:
+-            connected = True
+-
+-        self._connected = connected
+-        if connected:
+-            # create the SSL object
+-            try:
+-                self._sslobj = self._context._wrap_socket(
+-                    self, server_side, self.server_hostname,
+-                    owner=self, session=self._session,
+-                )
+-                if do_handshake_on_connect:
+-                    timeout = self.gettimeout()
+-                    if timeout == 0.0:
+-                        # non-blocking
+-                        raise ValueError("do_handshake_on_connect should not be specified for non-blocking sockets")
+-                    self.do_handshake()
+-            except (OSError, ValueError):
+-                self.close()
+-                raise
+-        return self
+-
+-    @property
+-    @_sslcopydoc
+-    def context(self):
+-        return self._context
+-
+-    @context.setter
+-    def context(self, ctx):
+-        self._context = ctx
+-        self._sslobj.context = ctx
+-
+-    @property
+-    @_sslcopydoc
+-    def session(self):
+-        if self._sslobj is not None:
+-            return self._sslobj.session
+-
+-    @session.setter
+-    def session(self, session):
+-        self._session = session
+-        if self._sslobj is not None:
+-            self._sslobj.session = session
+-
+-    @property
+-    @_sslcopydoc
+-    def session_reused(self):
+-        if self._sslobj is not None:
+-            return self._sslobj.session_reused
+-
+-    def dup(self):
+-        raise NotImplementedError("Can't dup() %s instances" %
+-                                  self.__class__.__name__)
+-
+-    def _checkClosed(self, msg=None):
+-        # raise an exception here if you wish to check for spurious closes
+-        pass
+-
+-    def _check_connected(self):
+-        if not self._connected:
+-            # getpeername() will raise ENOTCONN if the socket is really
+-            # not connected; note that we can be connected even without
+-            # _connected being set, e.g. if connect() first returned
+-            # EAGAIN.
+-            self.getpeername()
+-
+-    def read(self, len=1024, buffer=None):
+-        """Read up to LEN bytes and return them.
+-        Return zero-length string on EOF."""
+-
+-        self._checkClosed()
+-        if self._sslobj is None:
+-            raise ValueError("Read on closed or unwrapped SSL socket.")
+-        try:
+-            if buffer is not None:
+-                return self._sslobj.read(len, buffer)
+-            else:
+-                return self._sslobj.read(len)
+-        except SSLError as x:
+-            if x.args[0] == SSL_ERROR_EOF and self.suppress_ragged_eofs:
+-                if buffer is not None:
+-                    return 0
+-                else:
+-                    return b''
+-            else:
+-                raise
+-
+-    def write(self, data):
+-        """Write DATA to the underlying SSL channel.  Returns
+-        number of bytes of DATA actually transmitted."""
+-
+-        self._checkClosed()
+-        if self._sslobj is None:
+-            raise ValueError("Write on closed or unwrapped SSL socket.")
+-        return self._sslobj.write(data)
+-
+-    @_sslcopydoc
+-    def getpeercert(self, binary_form=False):
+-        self._checkClosed()
+-        self._check_connected()
+-        return self._sslobj.getpeercert(binary_form)
+-
+-    @_sslcopydoc
+-    def selected_npn_protocol(self):
+-        self._checkClosed()
+-        if self._sslobj is None or not _ssl.HAS_NPN:
+-            return None
+-        else:
+-            return self._sslobj.selected_npn_protocol()
+-
+-    @_sslcopydoc
+-    def selected_alpn_protocol(self):
+-        self._checkClosed()
+-        if self._sslobj is None or not _ssl.HAS_ALPN:
+-            return None
+-        else:
+-            return self._sslobj.selected_alpn_protocol()
+-
+-    @_sslcopydoc
+-    def cipher(self):
+-        self._checkClosed()
+-        if self._sslobj is None:
+-            return None
+-        else:
+-            return self._sslobj.cipher()
+-
+-    @_sslcopydoc
+-    def shared_ciphers(self):
+-        self._checkClosed()
+-        if self._sslobj is None:
+-            return None
+-        else:
+-            return self._sslobj.shared_ciphers()
+-
+-    @_sslcopydoc
+-    def compression(self):
+-        self._checkClosed()
+-        if self._sslobj is None:
+-            return None
+-        else:
+-            return self._sslobj.compression()
+-
+-    def send(self, data, flags=0):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to send() on %s" %
+-                    self.__class__)
+-            return self._sslobj.write(data)
+-        else:
+-            return super().send(data, flags)
+-
+-    def sendto(self, data, flags_or_addr, addr=None):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            raise ValueError("sendto not allowed on instances of %s" %
+-                             self.__class__)
+-        elif addr is None:
+-            return super().sendto(data, flags_or_addr)
+-        else:
+-            return super().sendto(data, flags_or_addr, addr)
+-
+-    def sendmsg(self, *args, **kwargs):
+-        # Ensure programs don't send data unencrypted if they try to
+-        # use this method.
+-        raise NotImplementedError("sendmsg not allowed on instances of %s" %
+-                                  self.__class__)
+-
+-    def sendall(self, data, flags=0):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to sendall() on %s" %
+-                    self.__class__)
+-            count = 0
+-            with memoryview(data) as view, view.cast("B") as byte_view:
+-                amount = len(byte_view)
+-                while count < amount:
+-                    v = self.send(byte_view[count:])
+-                    count += v
+-        else:
+-            return super().sendall(data, flags)
+-
+-    def sendfile(self, file, offset=0, count=None):
+-        """Send a file, possibly by using os.sendfile() if this is a
+-        clear-text socket.  Return the total number of bytes sent.
+-        """
+-        if self._sslobj is not None:
+-            return self._sendfile_use_send(file, offset, count)
+-        else:
+-            # os.sendfile() works with plain sockets only
+-            return super().sendfile(file, offset, count)
+-
+-    def recv(self, buflen=1024, flags=0):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to recv() on %s" %
+-                    self.__class__)
+-            return self.read(buflen)
+-        else:
+-            return super().recv(buflen, flags)
+-
+-    def recv_into(self, buffer, nbytes=None, flags=0):
+-        self._checkClosed()
+-        if buffer and (nbytes is None):
+-            nbytes = len(buffer)
+-        elif nbytes is None:
+-            nbytes = 1024
+-        if self._sslobj is not None:
+-            if flags != 0:
+-                raise ValueError(
+-                  "non-zero flags not allowed in calls to recv_into() on %s" %
+-                  self.__class__)
+-            return self.read(nbytes, buffer)
+-        else:
+-            return super().recv_into(buffer, nbytes, flags)
+-
+-    def recvfrom(self, buflen=1024, flags=0):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            raise ValueError("recvfrom not allowed on instances of %s" %
+-                             self.__class__)
+-        else:
+-            return super().recvfrom(buflen, flags)
+-
+-    def recvfrom_into(self, buffer, nbytes=None, flags=0):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            raise ValueError("recvfrom_into not allowed on instances of %s" %
+-                             self.__class__)
+-        else:
+-            return super().recvfrom_into(buffer, nbytes, flags)
+-
+-    def recvmsg(self, *args, **kwargs):
+-        raise NotImplementedError("recvmsg not allowed on instances of %s" %
+-                                  self.__class__)
+-
+-    def recvmsg_into(self, *args, **kwargs):
+-        raise NotImplementedError("recvmsg_into not allowed on instances of "
+-                                  "%s" % self.__class__)
+-
+-    @_sslcopydoc
+-    def pending(self):
+-        self._checkClosed()
+-        if self._sslobj is not None:
+-            return self._sslobj.pending()
+-        else:
+-            return 0
+-
+-    def shutdown(self, how):
+-        self._checkClosed()
+-        self._sslobj = None
+-        super().shutdown(how)
+-
+-    @_sslcopydoc
+-    def unwrap(self):
+-        if self._sslobj:
+-            s = self._sslobj.shutdown()
+-            self._sslobj = None
+-            return s
+-        else:
+-            raise ValueError("No SSL wrapper around " + str(self))
+-
+-    @_sslcopydoc
+-    def verify_client_post_handshake(self):
+-        if self._sslobj:
+-            return self._sslobj.verify_client_post_handshake()
+-        else:
+-            raise ValueError("No SSL wrapper around " + str(self))
+-
+-    def _real_close(self):
+-        self._sslobj = None
+-        super()._real_close()
+-
+-    @_sslcopydoc
+-    def do_handshake(self, block=False):
+-        self._check_connected()
+-        timeout = self.gettimeout()
+-        try:
+-            if timeout == 0.0 and block:
+-                self.settimeout(None)
+-            self._sslobj.do_handshake()
+-        finally:
+-            self.settimeout(timeout)
+-
+-    def _real_connect(self, addr, connect_ex):
+-        if self.server_side:
+-            raise ValueError("can't connect in server-side mode")
+-        # Here we assume that the socket is client-side, and not
+-        # connected at the time of the call.  We connect it, then wrap it.
+-        if self._connected or self._sslobj is not None:
+-            raise ValueError("attempt to connect already-connected SSLSocket!")
+-        self._sslobj = self.context._wrap_socket(
+-            self, False, self.server_hostname,
+-            owner=self, session=self._session
+-        )
+-        try:
+-            if connect_ex:
+-                rc = super().connect_ex(addr)
+-            else:
+-                rc = None
+-                super().connect(addr)
+-            if not rc:
+-                self._connected = True
+-                if self.do_handshake_on_connect:
+-                    self.do_handshake()
+-            return rc
+-        except (OSError, ValueError):
+-            self._sslobj = None
+-            raise
+-
+-    def connect(self, addr):
+-        """Connects to remote ADDR, and then wraps the connection in
+-        an SSL channel."""
+-        self._real_connect(addr, False)
+-
+-    def connect_ex(self, addr):
+-        """Connects to remote ADDR, and then wraps the connection in
+-        an SSL channel."""
+-        return self._real_connect(addr, True)
+-
+-    def accept(self):
+-        """Accepts a new connection from a remote client, and returns
+-        a tuple containing that new connection wrapped with a server-side
+-        SSL channel, and the address of the remote client."""
+-
+-        newsock, addr = super().accept()
+-        newsock = self.context.wrap_socket(newsock,
+-                    do_handshake_on_connect=self.do_handshake_on_connect,
+-                    suppress_ragged_eofs=self.suppress_ragged_eofs,
+-                    server_side=True)
+-        return newsock, addr
+-
+-    @_sslcopydoc
+-    def get_channel_binding(self, cb_type="tls-unique"):
+-        if self._sslobj is not None:
+-            return self._sslobj.get_channel_binding(cb_type)
+-        else:
+-            if cb_type not in CHANNEL_BINDING_TYPES:
+-                raise ValueError(
+-                    "{0} channel binding type not implemented".format(cb_type)
+-                )
+-            return None
+-
+-    @_sslcopydoc
+-    def version(self):
+-        if self._sslobj is not None:
+-            return self._sslobj.version()
+-        else:
+-            return None
+-
+-
+-# Python does not support forward declaration of types.
+-SSLContext.sslsocket_class = SSLSocket
+-SSLContext.sslobject_class = SSLObject
+-
+-
+-def wrap_socket(sock, keyfile=None, certfile=None,
+-                server_side=False, cert_reqs=CERT_NONE,
+-                ssl_version=PROTOCOL_TLS, ca_certs=None,
+-                do_handshake_on_connect=True,
+-                suppress_ragged_eofs=True,
+-                ciphers=None):
+-
+-    if server_side and not certfile:
+-        raise ValueError("certfile must be specified for server-side "
+-                         "operations")
+-    if keyfile and not certfile:
+-        raise ValueError("certfile must be specified")
+-    context = SSLContext(ssl_version)
+-    context.verify_mode = cert_reqs
+-    if ca_certs:
+-        context.load_verify_locations(ca_certs)
+-    if certfile:
+-        context.load_cert_chain(certfile, keyfile)
+-    if ciphers:
+-        context.set_ciphers(ciphers)
+-    return context.wrap_socket(
+-        sock=sock, server_side=server_side,
+-        do_handshake_on_connect=do_handshake_on_connect,
+-        suppress_ragged_eofs=suppress_ragged_eofs
+-    )
+-
+-# some utility functions
+-
+-def cert_time_to_seconds(cert_time):
+-    """Return the time in seconds since the Epoch, given the timestring
+-    representing the "notBefore" or "notAfter" date from a certificate
+-    in ``"%b %d %H:%M:%S %Y %Z"`` strptime format (C locale).
+-
+-    "notBefore" or "notAfter" dates must use UTC (RFC 5280).
+-
+-    Month is one of: Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+-    UTC should be specified as GMT (see ASN1_TIME_print())
+-    """
+-    from time import strptime
+-    from calendar import timegm
+-
+-    months = (
+-        "Jan","Feb","Mar","Apr","May","Jun",
+-        "Jul","Aug","Sep","Oct","Nov","Dec"
+-    )
+-    time_format = ' %d %H:%M:%S %Y GMT' # NOTE: no month, fixed GMT
+-    try:
+-        month_number = months.index(cert_time[:3].title()) + 1
+-    except ValueError:
+-        raise ValueError('time data %r does not match '
+-                         'format "%%b%s"' % (cert_time, time_format))
+-    else:
+-        # found valid month
+-        tt = strptime(cert_time[3:], time_format)
+-        # return an integer, the previous mktime()-based implementation
+-        # returned a float (fractional seconds are always zero here).
+-        return timegm((tt[0], month_number) + tt[2:6])
+-
+-PEM_HEADER = "-----BEGIN CERTIFICATE-----"
+-PEM_FOOTER = "-----END CERTIFICATE-----"
+-
+-def DER_cert_to_PEM_cert(der_cert_bytes):
+-    """Takes a certificate in binary DER format and returns the
+-    PEM version of it as a string."""
+-
+-    f = str(base64.standard_b64encode(der_cert_bytes), 'ASCII', 'strict')
+-    ss = [PEM_HEADER]
+-    ss += [f[i:i+64] for i in range(0, len(f), 64)]
+-    ss.append(PEM_FOOTER + '\n')
+-    return '\n'.join(ss)
+-
+-def PEM_cert_to_DER_cert(pem_cert_string):
+-    """Takes a certificate in ASCII PEM format and returns the
+-    DER-encoded version of it as a byte sequence"""
+-
+-    if not pem_cert_string.startswith(PEM_HEADER):
+-        raise ValueError("Invalid PEM encoding; must start with %s"
+-                         % PEM_HEADER)
+-    if not pem_cert_string.strip().endswith(PEM_FOOTER):
+-        raise ValueError("Invalid PEM encoding; must end with %s"
+-                         % PEM_FOOTER)
+-    d = pem_cert_string.strip()[len(PEM_HEADER):-len(PEM_FOOTER)]
+-    return base64.decodebytes(d.encode('ASCII', 'strict'))
+-
+-def get_server_certificate(addr, ssl_version=PROTOCOL_TLS, ca_certs=None):
+-    """Retrieve the certificate from the server at the specified address,
+-    and return it as a PEM-encoded string.
+-    If 'ca_certs' is specified, validate the server cert against it.
+-    If 'ssl_version' is specified, use it in the connection attempt."""
+-
+-    host, port = addr
+-    if ca_certs is not None:
+-        cert_reqs = CERT_REQUIRED
+-    else:
+-        cert_reqs = CERT_NONE
+-    context = _create_stdlib_context(ssl_version,
+-                                     cert_reqs=cert_reqs,
+-                                     cafile=ca_certs)
+-    with  create_connection(addr) as sock:
+-        with context.wrap_socket(sock) as sslsock:
+-            dercert = sslsock.getpeercert(True)
+-    return DER_cert_to_PEM_cert(dercert)
+-
+-def get_protocol_name(protocol_code):
+-    return _PROTOCOL_NAMES.get(protocol_code, '<unknown>')
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index 793dd0a37..a23c620c3 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -16,6 +16,13 @@ import json
+ import os
+ import sys
+ 
++try:
++    # 接続の失敗（プロキシ・証明書）の説明。この仲介役と同じ場所（Mod/Unified）にある
++    from NetworkSettings import describe_error
++except ImportError:
++    def describe_error(text):
++        return None
++
+ # API キーの置き場所: OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）。
+ # 使えない環境（鍵保管庫の無い Linux など）では、本人だけが読めるファイル
+ KEY_SERVICE = "freecad-ja-unified"
+@@ -206,7 +213,12 @@ class Bridge:
+         try:
+             await self.client.query(text)
+             async for m in self.client.receive_response():
+-                if isinstance(m, AssistantMessage):
++                if isinstance(m, SystemMessage) and m.subtype == "api_retry":
++                    # つながらずにやり直している（プロキシの設定違いなどでは長く待つことになる）: 待っていることを知らせる
++                    d = m.data or {}
++                    self.send(type="status", text="接続できないので、もう一度試しています（%s/%s 回目）…"
++                              % (d.get("attempt", "?"), d.get("max_retries", "?")))
++                elif isinstance(m, AssistantMessage):
+                     for b in m.content:
+                         if isinstance(b, TextBlock) and b.text.strip():
+                             said.append(b.text)
+@@ -230,6 +242,9 @@ class Bridge:
+             else:
+                 self.send(type="need_key")
+                 error = None
++        elif error is not None and (describe_error(error) or describe_error("\n".join(said))):
++            # プロキシ・証明書の問題: 何を確かめればよいかを添える
++            error = describe_error(error) or describe_error("\n".join(said))
+         elif error is not None and error in said:
+             error = None  # 同じ説明はもう出した
+         self.send(type="done", error=error)
+@@ -253,7 +268,8 @@ class Bridge:
+             try:
+                 await self.client.connect()
+             except Exception as e:
+-                self.send(type="fatal", text="Claude に接続できない: %s" % e)
++                text = "%s" % e
++                self.send(type="fatal", text=describe_error(text) or "Claude に接続できない: %s" % text)
+                 return
+             self.send(type="ready")
+             reset = False
+@@ -290,6 +306,9 @@ def main():
+     ap.add_argument("--local-login", action="store_true", help="API キーではなく、この PC の claude のログインを使う")
+     ap.add_argument("--store-key", action="store_true", help="標準入力の API キーを保管して終わる")
+     ap.add_argument("--delete-key", action="store_true", help="保管した API キーを消して終わる")
++    ap.add_argument("--has-key", action="store_true", help="API キーがしまってあれば yes、無ければ no を出して終わる")
++    ap.add_argument("--self-test", action="store_true",
++                    help="AI に接続せずに、部品が読めること（ssl・SDK・claude）を確かめて終わる（配布物の試験用）")
+     ap.add_argument("--model", default="opus")
+     ap.add_argument("--claude", default="", help="claude の実行ファイル（空なら SDK に同梱のもの）")
+     ap.add_argument("--workdir", default=os.path.join(os.path.expanduser("~"), ".cache", "freecad-ai"))
+@@ -303,17 +322,54 @@ def main():
+     if args.delete_key:
+         delete_key(args.datadir)
+         return
++    if args.has_key:
++        print("yes" if load_key(args.datadir) else "no")
++        return
+     read_bundled_pth()
+-    global AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, TextBlock
++    global AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, SystemMessage, TextBlock
+     global create_sdk_mcp_server, tool
+     try:
++        import ssl  # noqa: F401  SDK の通信が使う。Python の版と合わない ssl.py だとここで落ちる
+         from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage,
+-                                      TextBlock, create_sdk_mcp_server, tool)
++                                      SystemMessage, TextBlock, create_sdk_mcp_server, tool)
+     except ImportError as e:  # 準備ができていない
+-        print(json.dumps({"type": "fatal", "text": "claude-agent-sdk が見つからない: %s" % e}), flush=True)
++        print(json.dumps({"type": "fatal", "text": "claude-agent-sdk が読めない: %s" % e}, ensure_ascii=False),
++              flush=True)
+         sys.exit(2)
++    if args.self_test:
++        self_test(args)
++        return
+     asyncio.run(Bridge(args).main())
+ 
+ 
++def self_test(args):
++    """AI に接続せずに、使う部品が全部読めて動くことを確かめる（配布物を作るときの試験）"""
++    import glob
++    import ssl
++    import subprocess
++
++    import claude_agent_sdk
++
++    ctx = ssl.create_default_context()  # 証明書の読み込みまで
++    bridge = Bridge(args)
++    bridge.api_key, bridge.oauth_token = "self-test", None
++    client = ClaudeSDKClient(options=bridge.options())  # 作るだけ（接続しない）
++    sdk_dir = os.path.dirname(claude_agent_sdk.__file__)
++    cli = args.claude or (glob.glob(os.path.join(sdk_dir, "_bundled", "claude*")) or [""])[0]
++    version = ""
++    if cli:
++        flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
++        r = subprocess.run([cli, "--version"], capture_output=True, timeout=120, creationflags=flags)
++        version = r.stdout.decode("utf-8", "replace").strip()
++        if r.returncode != 0 or not version:
++            print(json.dumps({"self_test": "claude does not start", "cli": cli,
++                              "stderr": r.stderr.decode("utf-8", "replace")[-500:]}), flush=True)
++            sys.exit(1)
++    print(json.dumps({"self_test": "ok", "python": sys.version.split()[0], "ssl": ssl.OPENSSL_VERSION,
++                      "ca_certs": len(ctx.get_ca_certs()), "sdk": getattr(claude_agent_sdk, "__version__", ""),
++                      "client": type(client).__name__, "claude": version,
++                      "https_proxy": os.environ.get("HTTPS_PROXY", "")}), flush=True)
++
++
+ if __name__ == "__main__":
+     main()
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index 0be71ea43..f58e5d93f 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -75,6 +75,57 @@ def _datadir():
+     return os.path.join(App.getUserAppDataDir(), "ai")
+ 
+ 
++def _run_bridge(args, stdin=b"", timeout=60000):
++    """仲介役を道具として 1 回走らせる（キーの保管・削除・有無）。(終了コード, 出力)。準備ができていなければ (None, "")"""
++    py = find_python()
++    if py is None:
++        return None, ""
++    p = QtCore.QProcess()
++    p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
++    p.setProcessEnvironment(ai_environment())
++    p.start(py, [os.path.join(HERE, "AIAgentBridge.py")] + args + ["--datadir", _datadir()])
++    if not p.waitForStarted(10000):
++        return 1, p.errorString()
++    # キーはコマンドラインに載せない（他のプロセスから見える）。標準入力で渡す
++    if stdin:
++        p.write(stdin)
++    p.closeWriteChannel()
++    p.waitForFinished(timeout)
++    out = bytes(p.readAll()).decode("utf-8", "replace").strip()
++    return p.exitCode(), out
++
++
++def store_key(key):
++    """API キーを OS の鍵保管庫にしまう（空なら消す）。(成功したか, 知らせる文)"""
++    key = key.strip()
++    if key:
++        code, out = _run_bridge(["--store-key"], key.encode("utf-8"))
++    else:
++        code, out = _run_bridge(["--delete-key"])
++    if code is None:
++        return False, translate("AIChat", "Set up the AI first.")
++    if code != 0:
++        return False, translate("AIChat", "Could not store the key: {0}").format(out)
++    if not key:
++        msg = translate("AIChat", "The stored API key was removed.")
++    elif out.splitlines()[-1:] == ["file"]:
++        msg = translate("AIChat", "Stored (no key store on this system: in a file only you can read).")
++    else:
++        msg = translate("AIChat", "Stored in the key store of the system.")
++    # 新しいキーで始め直す
++    if chat.panel is not None:
++        chat.panel.restart()
++    return True, msg
++
++
++def has_key():
++    """API キーがしまってあるか。分からなければ None"""
++    code, out = _run_bridge(["--has-key"])
++    if code != 0 or not out:
++        return None
++    return out.splitlines()[-1] == "yes"
++
++
+ def find_claude():
+     """claude の実行ファイル。見つからなければ空（SDK に同梱のものを使う）"""
+     p = _params().GetString("ClaudePath", "")
+@@ -139,6 +190,11 @@ class ChatPanel(QtWidgets.QWidget):
+         self.setup_btn.clicked.connect(self.setup)
+         self.setup_btn.hide()
+         lay.addWidget(self.setup_btn)
++        # API キーが無いとき（初めて・認証の失敗のあと）だけ出す。変える・消すのは 編集 → 設定 → 標準 → AI チャット
++        self.key_btn = QtWidgets.QPushButton(translate("AIChat", "Enter the API key…"))
++        self.key_btn.clicked.connect(self.on_key)
++        self.key_btn.hide()
++        lay.addWidget(self.key_btn)
+         self.input = QtWidgets.QPlainTextEdit()
+         self.input.setPlaceholderText(translate("AIChat", "Ask or instruct (Ctrl+Enter to send). "
+                                                           "What you have selected is passed along."))
+@@ -156,10 +212,6 @@ class ChatPanel(QtWidgets.QWidget):
+         new = QtWidgets.QPushButton(translate("AIChat", "New conversation"))
+         new.clicked.connect(self.on_new)
+         row.addWidget(new)
+-        self.key_btn = QtWidgets.QPushButton(translate("AIChat", "API key…"))
+-        self.key_btn.setToolTip(translate("AIChat", "Set or remove your Anthropic API key"))
+-        self.key_btn.clicked.connect(self.on_key)
+-        row.addWidget(self.key_btn)
+         lay.addLayout(row)
+         # 自動で実行（承認を省く）。保存しない: FreeCAD を開き直すと、毎回たずねる形に戻る
+         self.auto_box = QtWidgets.QCheckBox(translate("AIChat", "Run the AI's code without asking (until FreeCAD closes)"))
+@@ -369,9 +421,12 @@ class ChatPanel(QtWidgets.QWidget):
+         if t == "ready":
+             self.resetting = False
+             self.ready = True
++            self.key_btn.hide()
+             self.status.setText("")
+             if self.queue:
+                 self._start_turn(self.queue.pop(0))
++        elif t == "status":
++            self.status.setText(msg.get("text", ""))
+         elif t == "text":
+             self._assistant(msg.get("text", ""))
+         elif t == "call":
+@@ -398,8 +453,10 @@ class ChatPanel(QtWidgets.QWidget):
+             self.ready = False
+             self._note(translate("AIChat", "An Anthropic API key is needed. Create one at "
+                                            "console.anthropic.com (usage is billed to your account) "
+-                                           "and enter it with “API key…”. It is kept in the key store of "
+-                                           "your system, not in the FreeCAD settings."))
++                                           "and enter it with “Enter the API key…”. It is kept in the key store of "
++                                           "your system, not in the FreeCAD settings. To change or remove it later: "
++                                           "Edit → Preferences → General → AI chat."))
++            self.key_btn.show()
+             self.key_btn.setFocus()
+         elif t == "fatal":
+             self._set_busy(False)
+@@ -462,49 +519,28 @@ class ChatPanel(QtWidgets.QWidget):
+                 self.proc.kill()
+ 
+     # ---------------------------------------------------------------- API キー
++    def restart(self):
++        """仲介役を止める（次に送ったときに新しいキー・設定で始まる）"""
++        self.shutdown()
++        self.proc = None
++        self.ready = False
++        if self.queue:
++            self.ensure_started()
++
+     def on_key(self):
+-        py = find_python()
+-        if py is None:
++        if find_python() is None:
+             self.setup_btn.show()
+             self._note(translate("AIChat", "Set up the AI first."))
+             return
+         key, ok = QtWidgets.QInputDialog.getText(
+             self, translate("AIChat", "Anthropic API key"),
+-            translate("AIChat", "Your API key (sk-ant-…). Leave empty to remove the stored key."),
+-            QtWidgets.QLineEdit.Password)
+-        if not ok:
++            translate("AIChat", "Your API key (sk-ant-…)."), QtWidgets.QLineEdit.Password)
++        if not ok or not key.strip():
+             return
+-        key = key.strip()
+-        p = QtCore.QProcess(self)
+-        p.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+-        p.setProcessEnvironment(ai_environment())
+-        bridge = os.path.join(HERE, "AIAgentBridge.py")
+-
+-        def done(code, *rest):
+-            out = bytes(p.readAll()).decode("utf-8", "replace").strip()
+-            if code != 0:
+-                self._note(translate("AIChat", "Could not store the key: {0}").format(out))
+-                return
+-            if not key:
+-                self._note(translate("AIChat", "The stored API key was removed."))
+-            elif out == "file":
+-                self._note(translate("AIChat", "Stored (no key store on this system: in a file only you can read)."))
+-            else:
+-                self._note(translate("AIChat", "Stored in the key store of the system."))
+-            # 新しいキーで始め直す
+-            self.shutdown()
+-            self.proc = None
+-            if key and self.queue:
+-                self.ensure_started()
+-        p.finished.connect(done)
+-        # キーはコマンドラインに載せない（他のプロセスから見える）。標準入力で渡す
+-        if key:
+-            p.start(py, [bridge, "--store-key", "--datadir", _datadir()])
+-            p.waitForStarted(5000)
+-            p.write(key.encode("utf-8"))
+-            p.closeWriteChannel()
+-        else:
+-            p.start(py, [bridge, "--delete-key", "--datadir", _datadir()])
++        ok, msg = store_key(key)
++        self._note(msg)
++        if ok:
++            self.key_btn.hide()
+ 
+     # ---------------------------------------------------------------- 準備（venv に SDK を入れる）
+     def setup(self):
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 24aaf090d..4ed793ee6 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -10,11 +10,12 @@ set(Unified_Scripts
+     DesignCheck.py
+     AITools.py
+     AIAgentBridge.py
++    NetworkSettings.py
+     ai-requirements.txt
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py AIChat.svg)
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg)
+ endif(BUILD_GUI)
+ 
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index bfe9bd1aa..a97454512 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -927,8 +927,8 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>エラーで止まりました: {0}</translation>
+     </message>
+     <message>
+-        <source>An Anthropic API key is needed. Create one at console.anthropic.com (usage is billed to your account) and enter it with “API key…”. It is kept in the key store of your system, not in the FreeCAD settings.</source>
+-        <translation>Anthropic の API キーが要ります。console.anthropic.com で作り（使った分はあなたのアカウントに請求されます）、「API キー…」で入れてください。キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。</translation>
++        <source>An Anthropic API key is needed. Create one at console.anthropic.com (usage is billed to your account) and enter it with “Enter the API key…”. It is kept in the key store of your system, not in the FreeCAD settings. To change or remove it later: Edit → Preferences → General → AI chat.</source>
++        <translation>Anthropic の API キーが要ります。console.anthropic.com で作り（使った分はあなたのアカウントに請求されます）、「API キーを入れる…」で入れてください。キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。あとで変える・消すときは 編集 → 設定 → 標準 → AI チャット。</translation>
+     </message>
+     <message>
+         <source>New conversation.</source>
+@@ -982,6 +982,46 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <source>What should be done with {0}?</source>
+         <translation>{0} をどうしますか？</translation>
+     </message>
++    <message>
++        <source>Enter the API key…</source>
++        <translation>API キーを入れる…</translation>
++    </message>
++    <message>
++        <source>Your API key (sk-ant-…).</source>
++        <translation>API キー（sk-ant-…）</translation>
++    </message>
++    <message>
++        <source>AI chat</source>
++        <translation>AI チャット</translation>
++    </message>
++    <message>
++        <source>Change the key…</source>
++        <translation>キーを変える…</translation>
++    </message>
++    <message>
++        <source>Remove the key</source>
++        <translation>キーを消す</translation>
++    </message>
++    <message>
++        <source>The key is kept in the key store of your system, not in the FreeCAD settings. Create one at console.anthropic.com (usage is billed to your account).</source>
++        <translation>キーは FreeCAD の設定ではなく、OS の鍵保管庫にしまいます。キーは console.anthropic.com で作れます（使った分はあなたのアカウントに請求されます）。</translation>
++    </message>
++    <message>
++        <source>The AI is not set up yet.</source>
++        <translation>AI の準備がまだです。</translation>
++    </message>
++    <message>
++        <source>A key is stored.</source>
++        <translation>キーはしまってあります。</translation>
++    </message>
++    <message>
++        <source>No key is stored.</source>
++        <translation>キーはまだありません。</translation>
++    </message>
++    <message>
++        <source>Could not check the stored key.</source>
++        <translation>しまってあるキーを確かめられませんでした。</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_AIChat</name>
+@@ -1005,4 +1045,63 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>選んだ物について AI に頼む（例:「この穴を 6 mm にして座ぐりを付けて」）</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedNetwork</name>
++    <message>
++        <source>Network</source>
++        <translation>ネットワーク</translation>
++    </message>
++    <message>
++        <source>Proxy</source>
++        <translation>プロキシ</translation>
++    </message>
++    <message>
++        <source>Use the system proxy settings</source>
++        <translation>システムの設定を使う</translation>
++    </message>
++    <message>
++        <source>No proxy</source>
++        <translation>プロキシを使わない</translation>
++    </message>
++    <message>
++        <source>Use this proxy:</source>
++        <translation>このプロキシを使う:</translation>
++    </message>
++    <message>
++        <source>Not through the proxy:</source>
++        <translation>プロキシを通さない宛先:</translation>
++    </message>
++    <message>
++        <source>Certificate</source>
++        <translation>証明書</translation>
++    </message>
++    <message>
++        <source>If your company network inspects encrypted connections, choose the company's certificate file (PEM). Ask your IT department for it.</source>
++        <translation>会社のネットワークが暗号化した通信を検査しているときは、会社の証明書のファイル（PEM）を選んでください。ファイルは社内のシステム担当に聞いてください。</translation>
++    </message>
++    <message>
++        <source>Choose…</source>
++        <translation>選ぶ…</translation>
++    </message>
++    <message>
++        <source>Used by the AI chat and by anything FreeCAD connects to the internet with.</source>
++        <translation>AI チャットなど、FreeCAD がインターネットにつなぐときに使います。</translation>
++    </message>
++    <message>
++        <source>Certificate file</source>
++        <translation>証明書のファイル</translation>
++    </message>
++    <message>
++        <source>Certificates (*.pem *.crt *.cer);;All files (*)</source>
++        <translation>証明書 (*.pem *.crt *.cer);;すべてのファイル (*)</translation>
++    </message>
++    <message>
++        <source>System proxy: {0}</source>
++        <translation>システムのプロキシ: {0}</translation>
++    </message>
++    <message>
++        <source>System proxy: none (connects directly)</source>
++        <translation>システムのプロキシ: なし（直接つなぐ）</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Init.py b/src/Mod/Unified/Init.py
+index 3ca0649c9..b478d9b9f 100644
+--- a/src/Mod/Unified/Init.py
++++ b/src/Mod/Unified/Init.py
+@@ -26,3 +26,12 @@ def _setup_bundled_dwg_converter():
+ 
+ 
+ _setup_bundled_dwg_converter()
++
++
++# ネットワークの設定（プロキシと会社の証明書。編集 → 設定 → 標準 → ネットワーク）を環境変数に反映する。
++# 既定はシステムのプロキシ。画面なしの FreeCADCmd でも同じ
++try:
++    import NetworkSettings
++    NetworkSettings.apply()
++except Exception as e:
++    FreeCAD.Console.PrintWarning("Network settings: %s\n" % e)
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 2e5cfd3eb..b56029c0e 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -70,3 +70,14 @@ class UnifiedWorkbench(Workbench):
+ 
+ 
+ Gui.addWorkbench(UnifiedWorkbench())
++
++# 設定の画面（編集 → 設定 → 標準）に「ネットワーク」（プロキシと会社の証明書）と「AI チャット」（API キー）を足す。
++# Qt の通信にも同じプロキシを使う（既定はシステムの設定）
++try:
++    import UnifiedPreferences
++
++    Gui.addPreferencePage(UnifiedPreferences.NetworkPage, "General")
++    Gui.addPreferencePage(UnifiedPreferences.AIChatPage, "General")
++    UnifiedPreferences.apply_qt_proxy()
++except Exception as e:
++    FreeCAD.Console.PrintWarning("Unified preferences: %s\n" % e)
+diff --git a/src/Mod/Unified/NetworkSettings.py b/src/Mod/Unified/NetworkSettings.py
+new file mode 100644
+index 000000000..dad53b342
+--- /dev/null
++++ b/src/Mod/Unified/NetworkSettings.py
+@@ -0,0 +1,148 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""ネットワークの設定（プロキシと会社の証明書）。FreeCAD 全体で使う（編集 → 設定 → 標準 → ネットワーク）。
++
++設定は User parameter:BaseApp/Preferences/Network:
++  ProxyMode   0 = システムの設定を使う（既定）、1 = 使わない、2 = 手動
++  ProxyURL    手動のときのプロキシ（例 http://proxy.example.co.jp:8080）
++  NoProxy     プロキシを通さない宛先（カンマ区切り）
++  CACertFile  会社の証明書（PEM）。通信を検査する会社のネットワークで要る
++
++起動時と設定を変えたときに、この FreeCAD の環境変数（HTTPS_PROXY・HTTP_PROXY・NO_PROXY・SSL_CERT_FILE・
++REQUESTS_CA_BUNDLE・NODE_EXTRA_CA_CERTS）に反映する。Python の urllib・requests、AI チャットの仲介役と
++claude、そのほか FreeCAD から起動するものが、これを使う。
++"""
++
++import os
++
++# FreeCAD は使うときに読む（AI チャットの仲介役は FreeCAD の外の Python で、describe_error だけを使う）
++
++PARAMS = "User parameter:BaseApp/Preferences/Network"
++SYSTEM, NONE, MANUAL = 0, 1, 2
++PROXY_VARS = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")
++NO_PROXY_VARS = ("NO_PROXY", "no_proxy")
++CA_VARS = ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
++LOCAL = "localhost,127.0.0.1,::1"
++
++# 起動したときの環境（利用者が自分で設定した環境変数）。設定を変えたら、ここから作り直す
++_original = None
++
++
++def params():
++    import FreeCAD
++    return FreeCAD.ParamGet(PARAMS)
++
++
++def settings():
++    p = params()
++    return {
++        "mode": p.GetInt("ProxyMode", SYSTEM),
++        "url": p.GetString("ProxyURL", "").strip(),
++        "no_proxy": p.GetString("NoProxy", "").strip(),
++        "ca": p.GetString("CACertFile", "").strip(),
++    }
++
++
++def _windows_no_proxy():
++    """Windows のプロキシの例外（インターネット オプションの ProxyOverride）を NO_PROXY の形に"""
++    try:
++        import winreg
++        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
++                            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as k:
++            override = winreg.QueryValueEx(k, "ProxyOverride")[0]
++    except Exception:
++        return ""
++    out = []
++    for item in str(override).replace(",", ";").split(";"):
++        item = item.strip()
++        if not item or item == "<local>":
++            continue
++        if item.startswith("*."):
++            item = item[1:]          # *.example.co.jp → .example.co.jp
++        if "*" in item:
++            continue                 # 10.* などは NO_PROXY では書けない
++        out.append(item)
++    return ",".join(out)
++
++
++def system_proxy():
++    """システムのプロキシ（Windows はインターネット オプション、ほかは環境変数）。(url, no_proxy)。無ければ ("", "")"""
++    try:
++        import urllib.request
++        proxies = urllib.request.getproxies()
++    except Exception:
++        return "", ""
++    url = proxies.get("https") or proxies.get("http") or ""
++    if url and "://" not in url:
++        url = "http://" + url
++    no_proxy = proxies.get("no", "") or (_windows_no_proxy() if os.name == "nt" else "")
++    return url, no_proxy
++
++
++def compute(environ, s):
++    """設定 s を当てた環境変数（変える分だけ）。値が None のものは消す"""
++    changes = {}
++    has_env_proxy = any(environ.get(k) for k in PROXY_VARS)
++    if s["mode"] == MANUAL and s["url"]:
++        url = s["url"] if "://" in s["url"] else "http://" + s["url"]
++        no_proxy = ",".join(x for x in (LOCAL, s["no_proxy"]) if x)
++        for k in PROXY_VARS[:4]:
++            changes[k] = url
++        for k in NO_PROXY_VARS:
++            changes[k] = no_proxy
++    elif s["mode"] == NONE:
++        for k in PROXY_VARS + NO_PROXY_VARS:
++            changes[k] = None
++    elif not has_env_proxy:
++        # システムの設定: 環境変数が無ければ、OS のプロキシの設定を環境変数にする（claude などはこれしか読まない）
++        url, no_proxy = system_proxy()
++        if url:
++            for k in PROXY_VARS[:4]:
++                changes[k] = url
++            no_proxy = ",".join(x for x in (LOCAL, no_proxy) if x)
++            for k in NO_PROXY_VARS:
++                changes[k] = no_proxy
++    ca = s["ca"]
++    if ca:
++        for k in CA_VARS:
++            changes[k] = ca
++    elif environ.get("SSL_CERT_FILE") and not environ.get("NODE_EXTRA_CA_CERTS"):
++        changes["NODE_EXTRA_CA_CERTS"] = environ["SSL_CERT_FILE"]
++    return changes
++
++
++def apply():
++    """設定を、この FreeCAD の環境変数に反映する（起動時と、設定を変えたとき）"""
++    global _original
++    try:
++        if _original is None:
++            _original = {k: os.environ.get(k) for k in PROXY_VARS + NO_PROXY_VARS + CA_VARS}
++        # 前に当てた分を戻してから当て直す
++        for k, v in _original.items():
++            if v is None:
++                os.environ.pop(k, None)
++            else:
++                os.environ[k] = v
++        for k, v in compute(dict(os.environ), settings()).items():
++            if v is None:
++                os.environ.pop(k, None)
++            else:
++                os.environ[k] = v
++    except Exception as e:  # 設定に失敗しても FreeCAD の起動は止めない
++        import FreeCAD
++        FreeCAD.Console.PrintWarning("Network settings: %s\n" % e)
++
++
++def describe_error(text):
++    """接続の失敗の説明（プロキシ・証明書）を日本語で。当てはまらなければ None"""
++    t = (text or "").lower()
++    if "cannot import" in t or "no module named" in t:
++        return None
++    hint = "編集 → 設定 → 標準 → ネットワーク で、プロキシと証明書を確かめてください"
++    if any(k in t for k in ("certificate", "self_signed", "self-signed", "self signed", "issuer",
++                            "unable_to_verify", "unable to verify", "cert_has_expired")):
++        return "証明書を確かめられないので接続できない（会社のネットワークの検査など）: %s。%s" % (text, hint)
++    if any(k in t for k in ("proxy", "407", "econnrefused", "enotfound", "etimedout", "econnreset",
++                            "getaddrinfo", "connection error", "unable to connect", "fetch failed",
++                            "network is unreachable", "timed out")):
++        return "プロキシ経由で接続できない: %s。%s" % (text, hint)
++    return None
+diff --git a/src/Mod/Unified/UnifiedPreferences.py b/src/Mod/Unified/UnifiedPreferences.py
+new file mode 100644
+index 000000000..633baab59
+--- /dev/null
++++ b/src/Mod/Unified/UnifiedPreferences.py
+@@ -0,0 +1,192 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""設定の画面（編集 → 設定 → 標準）: 「ネットワーク」（プロキシと会社の証明書）と「AI チャット」（API キー）"""
++
++import os
++
++import FreeCAD as App
++from PySide import QtWidgets
++
++import NetworkSettings
++
++translate = App.Qt.translate
++
++
++class NetworkPage:
++    """プロキシと会社の証明書。FreeCAD 全体で使う（AI チャット・ダウンロードなど）"""
++
++    def __init__(self, parent=None):
++        self.form = QtWidgets.QWidget(parent)
++        self.form.setWindowTitle(translate("UnifiedNetwork", "Network"))
++        lay = QtWidgets.QVBoxLayout(self.form)
++
++        box = QtWidgets.QGroupBox(translate("UnifiedNetwork", "Proxy"))
++        g = QtWidgets.QGridLayout(box)
++        self.system = QtWidgets.QRadioButton(translate("UnifiedNetwork", "Use the system proxy settings"))
++        self.none = QtWidgets.QRadioButton(translate("UnifiedNetwork", "No proxy"))
++        self.manual = QtWidgets.QRadioButton(translate("UnifiedNetwork", "Use this proxy:"))
++        self.url = QtWidgets.QLineEdit()
++        self.url.setPlaceholderText("http://proxy.example.co.jp:8080")
++        self.no_proxy = QtWidgets.QLineEdit()
++        self.no_proxy.setPlaceholderText(".example.co.jp, 192.168.1.10")
++        g.addWidget(self.system, 0, 0, 1, 2)
++        g.addWidget(self.none, 1, 0, 1, 2)
++        g.addWidget(self.manual, 2, 0)
++        g.addWidget(self.url, 2, 1)
++        g.addWidget(QtWidgets.QLabel(translate("UnifiedNetwork", "Not through the proxy:")), 3, 0)
++        g.addWidget(self.no_proxy, 3, 1)
++        self.detected = QtWidgets.QLabel()
++        self.detected.setWordWrap(True)
++        g.addWidget(self.detected, 4, 0, 1, 2)
++        for b in (self.system, self.none, self.manual):
++            b.toggled.connect(self._update)
++        lay.addWidget(box)
++
++        box = QtWidgets.QGroupBox(translate("UnifiedNetwork", "Certificate"))
++        v = QtWidgets.QVBoxLayout(box)
++        v.addWidget(QtWidgets.QLabel(translate(
++            "UnifiedNetwork",
++            "If your company network inspects encrypted connections, choose the company's "
++            "certificate file (PEM). Ask your IT department for it.")))
++        row = QtWidgets.QHBoxLayout()
++        self.ca = QtWidgets.QLineEdit()
++        row.addWidget(self.ca, 1)
++        browse = QtWidgets.QPushButton(translate("UnifiedNetwork", "Choose…"))
++        browse.clicked.connect(self._browse)
++        row.addWidget(browse)
++        v.addLayout(row)
++        lay.addWidget(box)
++        lay.addWidget(QtWidgets.QLabel(translate(
++            "UnifiedNetwork", "Used by the AI chat and by anything FreeCAD connects to the internet with.")))
++        lay.addStretch(1)
++
++    def _browse(self):
++        f, _ = QtWidgets.QFileDialog.getOpenFileName(
++            self.form, translate("UnifiedNetwork", "Certificate file"), os.path.dirname(self.ca.text()),
++            translate("UnifiedNetwork", "Certificates (*.pem *.crt *.cer);;All files (*)"))
++        if f:
++            self.ca.setText(f)
++
++    def _update(self, *args):
++        self.url.setEnabled(self.manual.isChecked())
++        self.no_proxy.setEnabled(self.manual.isChecked())
++        if self.system.isChecked():
++            url, _no = NetworkSettings.system_proxy()
++            self.detected.setText(
++                translate("UnifiedNetwork", "System proxy: {0}").format(url) if url
++                else translate("UnifiedNetwork", "System proxy: none (connects directly)"))
++            self.detected.show()
++        else:
++            self.detected.hide()
++
++    def loadSettings(self):
++        s = NetworkSettings.settings()
++        {NetworkSettings.NONE: self.none, NetworkSettings.MANUAL: self.manual}.get(s["mode"], self.system).setChecked(True)
++        self.url.setText(s["url"])
++        self.no_proxy.setText(s["no_proxy"])
++        self.ca.setText(s["ca"])
++        self._update()
++
++    def saveSettings(self):
++        p = NetworkSettings.params()
++        mode = NetworkSettings.MANUAL if self.manual.isChecked() else \
++            NetworkSettings.NONE if self.none.isChecked() else NetworkSettings.SYSTEM
++        p.SetInt("ProxyMode", mode)
++        p.SetString("ProxyURL", self.url.text().strip())
++        p.SetString("NoProxy", self.no_proxy.text().strip())
++        p.SetString("CACertFile", self.ca.text().strip())
++        NetworkSettings.apply()
++        apply_qt_proxy()
++        try:
++            import AIChatGui
++            if AIChatGui.chat.panel is not None:
++                AIChatGui.chat.panel.restart()  # 次に送るときに新しい設定で始まる
++        except Exception:
++            pass
++
++
++class AIChatPage:
++    """AI チャットの API キー（変える・消す）"""
++
++    def __init__(self, parent=None):
++        self.form = QtWidgets.QWidget(parent)
++        self.form.setWindowTitle(translate("AIChat", "AI chat"))
++        lay = QtWidgets.QVBoxLayout(self.form)
++        box = QtWidgets.QGroupBox(translate("AIChat", "Anthropic API key"))
++        v = QtWidgets.QVBoxLayout(box)
++        self.state = QtWidgets.QLabel()
++        self.state.setWordWrap(True)
++        v.addWidget(self.state)
++        row = QtWidgets.QHBoxLayout()
++        self.change = QtWidgets.QPushButton(translate("AIChat", "Change the key…"))
++        self.change.clicked.connect(self._change)
++        row.addWidget(self.change)
++        self.remove = QtWidgets.QPushButton(translate("AIChat", "Remove the key"))
++        self.remove.clicked.connect(self._remove)
++        row.addWidget(self.remove)
++        row.addStretch(1)
++        v.addLayout(row)
++        v.addWidget(QtWidgets.QLabel(translate(
++            "AIChat", "The key is kept in the key store of your system, not in the FreeCAD settings. "
++                      "Create one at console.anthropic.com (usage is billed to your account).")))
++        lay.addWidget(box)
++        lay.addStretch(1)
++
++    def _refresh(self):
++        import AIChatGui
++        if AIChatGui.find_python() is None:
++            self.state.setText(translate("AIChat", "The AI is not set up yet."))
++            self.change.setEnabled(False)
++            self.remove.setEnabled(False)
++            return
++        has = AIChatGui.has_key()
++        self.state.setText(translate("AIChat", "A key is stored.") if has
++                           else translate("AIChat", "No key is stored.") if has is False
++                           else translate("AIChat", "Could not check the stored key."))
++        self.change.setEnabled(True)
++        self.remove.setEnabled(has is not False)
++
++    def _change(self):
++        import AIChatGui
++        key, ok = QtWidgets.QInputDialog.getText(
++            self.form, translate("AIChat", "Anthropic API key"),
++            translate("AIChat", "Your API key (sk-ant-…)."), QtWidgets.QLineEdit.Password)
++        if ok and key.strip():
++            _ok, msg = AIChatGui.store_key(key)
++            QtWidgets.QMessageBox.information(self.form, translate("AIChat", "AI chat"), msg)
++            self._refresh()
++
++    def _remove(self):
++        import AIChatGui
++        _ok, msg = AIChatGui.store_key("")
++        QtWidgets.QMessageBox.information(self.form, translate("AIChat", "AI chat"), msg)
++        self._refresh()
++
++    def loadSettings(self):
++        self._refresh()
++
++    def saveSettings(self):
++        pass  # キーはボタンを押したときにしまう
++
++
++def apply_qt_proxy():
++    """Qt の通信（画面の中のダウンロードなど）にも同じプロキシを使う"""
++    try:
++        from PySide import QtNetwork
++    except ImportError:
++        try:
++            from PySide6 import QtNetwork
++        except ImportError:
++            return
++    s = NetworkSettings.settings()
++    if s["mode"] == NetworkSettings.MANUAL and s["url"]:
++        from urllib.parse import urlsplit
++        u = urlsplit(s["url"] if "://" in s["url"] else "http://" + s["url"])
++        proxy = QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.HttpProxy, u.hostname or "", u.port or 8080,
++                                        u.username or "", u.password or "")
++        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(False)
++        QtNetwork.QNetworkProxy.setApplicationProxy(proxy)
++    elif s["mode"] == NetworkSettings.NONE:
++        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(False)
++        QtNetwork.QNetworkProxy.setApplicationProxy(QtNetwork.QNetworkProxy(QtNetwork.QNetworkProxy.NoProxy))
++    else:
++        QtNetwork.QNetworkProxyFactory.setUseSystemConfiguration(True)
+-- 
+2.43.0
+

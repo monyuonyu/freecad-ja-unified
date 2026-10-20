@@ -148,10 +148,12 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 
 1. 配布物（0.3.5 から）には、AI チャットに要る部品（claude-agent-sdk・keyring・Claude Code）が最初から入っている。準備は要らない。
    自分でビルドした場合は、右の「AI」パネルの「AI の準備をする」を押す（Python の仮想環境に入れる。ネットワークが要る）
-2. [console.anthropic.com](https://console.anthropic.com/) で API キーを作り、「API キー…」で入れる。
+2. [console.anthropic.com](https://console.anthropic.com/) で API キーを作り、初めて送ったときに出る「API キーを入れる…」で入れる。
+   あとで変える・消すときは 編集 → 設定 → 標準 → AI チャット（0.5.7 から）。
    キーは OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）にしまう。
    鍵保管庫の無い環境では、本人だけが読めるファイル（FreeCAD のユーザーデータの `ai/ai-api-key`）
 3. 使った分は API キーの持ち主のアカウントに請求される。このパッチにキーやログインは含まれない
+4. 会社のネットワークでは、編集 → 設定 → 標準 → ネットワーク でプロキシ（既定はシステムの設定）と、通信を検査している場合は会社の証明書（PEM）を選ぶ（0.5.7 から）
 
 AI はモデル（既定は Opus）に、文書の中身・画面の画像・設計の検査の結果を送る。
 AI が実行しようとするコードは、既定では毎回表示され、「実行する」を押したときだけ動く（FreeCAD の外のことも書けるので、読んでから）。
@@ -281,6 +283,16 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 - コマンドラインのファイルの処理で Python のエラーが起きたとき、「Unknown exception」でなくエラーの中身（とトレースバック）を出す
 - リリースの手順で、作った Windows 版に日本語のパスを PowerShell と cmd から渡す試験（`tests/windows_argv_smoke.ps1`）を通ってから載せるようにした。
   公開済みの版にも当てられる（Actions の「Windows argv smoke test」）。0.5.6 では 5 項目すべて落ち、0.5.7 で通ることを確かめた
+- **Windows: AI チャットが「Claude に接続できない: cannot import name 'RAND_pseudo_bytes' from '_ssl'」で使えなかったのを直した**。
+  Windows 版は、本家の手順のまま Python 3.11 用の `ssl.py`（Windows の証明書の不具合の回避策入り）を Python 3.13 に上書きしていて、
+  FreeCAD の Python で `import ssl` そのものが失敗していた。上書きをやめた（回避策は Python 3.10 から Python 自身に入っている）。
+  配布物を作るときに、AI チャットの部品（ssl・claude-agent-sdk・同梱の claude）が全部読めることを AI に接続せずに確かめ、だめなら載せない
+- **プロキシと会社の証明書の設定**（編集 → 設定 → 標準 → ネットワーク）。FreeCAD 全体で使う。既定はシステムの設定で、
+  Windows のプロキシ（インターネット オプション。例外も）を AI チャットの claude にも渡す。手動のプロキシ・プロキシを使わない、も選べる。
+  通信を検査している会社のネットワークでは、会社の証明書のファイル（PEM）を選ぶ。環境変数 `HTTPS_PROXY`・`NO_PROXY`・`SSL_CERT_FILE` なども引き継ぐ。
+  プロキシや証明書でつながらないときは、AI チャットに「プロキシ経由で接続できない: …」「証明書を確かめられないので接続できない: …」と、どこを確かめればよいかを出す。
+  つながらずにやり直している間は、そのことをパネルに出す（黙って待たない）。自動構成スクリプト（PAC）だけのプロキシは読めないので、手動で入れる
+- AI チャットの「API キー…」ボタンを常に出すのをやめた。キーが要るときだけ「API キーを入れる…」を出し、変える・消すのは 編集 → 設定 → 標準 → AI チャット に
 - 同梱の jww2dxf を jww-tools v0.1.2 に（`--check` の最後に全図面で比べやすい `check total` の行。変換の結果は同じ）
 
 ## 0.5.6 の変更

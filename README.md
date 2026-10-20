@@ -147,10 +147,12 @@ No features have been removed. Things you rarely use are in the menus, with desc
 
 1. Release packages (from 0.3.5) already include what the AI chat needs (claude-agent-sdk, keyring, Claude Code). No setup required.
    If you built it yourself, press "AI の準備をする" (Set up AI) in the "AI" panel on the right (installs into a Python virtual environment; needs network access)
-2. Create an API key at [console.anthropic.com](https://console.anthropic.com/) and enter it via "API キー…" (API key…).
+2. Create an API key at [console.anthropic.com](https://console.anthropic.com/) and enter it with "API キーを入れる…" (Enter the API key…), shown when you first send a message.
+   To change or remove it later: 編集 → 設定 → 標準 → AI チャット (Edit → Preferences → General → AI chat; from 0.5.7).
    The key is stored in the OS keystore (Windows Credential Manager, macOS Keychain, Linux Secret Service).
    On systems without a keystore, it goes into a file readable only by you (`ai/ai-api-key` in FreeCAD's user data)
 3. Usage is billed to the account that owns the API key. This patch set contains no keys or logins
+4. On a company network, set the proxy (system settings by default) and, if the network inspects TLS, the company certificate (PEM) in Edit → Preferences → General → Network (from 0.5.7)
 
 The AI sends the document contents, images of the view and the design check results to the model (Opus by default).
 By default the code the AI wants to run is shown every time and only runs when you press "実行する" (Run) (it can do things outside FreeCAD too, so read it first).
