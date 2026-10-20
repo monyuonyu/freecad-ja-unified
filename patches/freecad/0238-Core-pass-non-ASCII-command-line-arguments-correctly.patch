@@ -1,0 +1,200 @@
+From e5a838f95c4c7636ff7c185f275e26062df685bb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 15:27:21 +0900
+Subject: [PATCH 238/238] Core: pass non-ASCII command line arguments correctly
+ on Windows (FreeCADCmd)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On Windows the char* argv of main() is in the ANSI code page (CP932 on
+Japanese Windows; characters missing from it become '?'), but FreeCAD reads
+it as UTF-8. 'freecadcmd.exe script.py -- C:\...\日本語\天板.jww' therefore
+failed before the script ran with "Unknown exception while processing file"
+(PyUnicode_FromStringAndSize raised UnicodeDecodeError while building
+sys.argv), and non-ASCII file names and -c code were garbled.
+
+- FreeCADCmd on Windows takes the command line as UTF-16
+  (CommandLineToArgvW) and converts it to UTF-8, as the GUI main already does
+  with QCoreApplication::arguments().
+- The Python interpreter's argv is decoded as UTF-8 on Windows
+  (PyConfig_SetArgv), not with the ANSI code page.
+- sys.argv for scripts is built with the file system decoding, like Python's
+  own (undecodable bytes on POSIX become surrogates instead of failing).
+- A Python error or std::exception while processing a command line file is
+  reported with its message (and traceback) instead of "Unknown exception".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp  | 22 ++++++++++++++++++++--
+ src/Base/Interpreter.cpp | 26 ++++++++++++++++++++++++++
+ src/Main/CMakeLists.txt  |  5 +++++
+ src/Main/MainCmd.cpp     | 40 ++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 91 insertions(+), 2 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 4c096bb82..9d317625e 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -3230,10 +3230,20 @@ void setScriptArgv(const std::string& script)
+     auto& cfg = Application::Config();
+     const int count = std::atoi(cfg["ScriptArgCount"].c_str());
+     Base::PyGILStateLocker lock;
++    // Decode like Python does for its own sys.argv (the file system encoding: UTF-8;
++    // undecodable bytes become surrogates on POSIX). A failure raises the Python error
++    // (e.g. UnicodeDecodeError) so it is reported instead of "Unknown exception".
++    auto toStr = [](const std::string& arg) {
++        PyObject* str = PyUnicode_DecodeFSDefaultAndSize(arg.data(), Py_ssize_t(arg.size()));
++        if (!str) {
++            throw Base::PyException();
++        }
++        return Py::asObject(str);
++    };
+     Py::List argv;
+-    argv.append(Py::String(script));
++    argv.append(toStr(script));
+     for (int i = 0; i < count; i++) {
+-        argv.append(Py::String(cfg["ScriptArg" + std::to_string(i)]));
++        argv.append(toStr(cfg["ScriptArg" + std::to_string(i)]));
+     }
+     PySys_SetObject("argv", argv.ptr());
+ }
+@@ -3323,6 +3333,14 @@ std::list<std::string> Application::processFiles(const std::list<std::string>& f
+         catch (const Base::Exception& e) {
+             Base::Console().error("Exception while processing file: {} [{}]\n", file.filePath(), e.what());
+         }
++        catch (const Py::Exception&) {
++            // a Python error raised through PyCXX: report it with its message and traceback
++            Base::PyGILStateLocker lock;
++            reportScriptError(file.filePath(), Base::PyException());
++        }
++        catch (const std::exception& e) {
++            Base::Console().error("Exception while processing file: {} [{}]\n", file.filePath(), e.what());
++        }
+         catch (...) {
+             Base::Console().error("Unknown exception while processing file: {} \n", file.filePath());
+         }
+diff --git a/src/Base/Interpreter.cpp b/src/Base/Interpreter.cpp
+index e8c542f7a..76c8d0536 100644
+--- a/src/Base/Interpreter.cpp
++++ b/src/Base/Interpreter.cpp
+@@ -663,7 +663,33 @@ void initInterpreter(int argc, char* argv[])
+     config.isolated = 0;
+     config.user_site_directory = 1;
+ 
++#ifdef FC_OS_WIN32
++    // FreeCAD's Windows mains pass the command line as UTF-8 (see MainCmd.cpp/MainGui.cpp).
++    // PyConfig_SetBytesArgv() would decode it with the ANSI code page and garble
++    // non-ASCII arguments, so decode it as UTF-8 here.
++    status = PyStatus_Ok();
++    bool argvSet = false;
++    try {
++        std::vector<std::wstring> wideArgs;
++        for (int i = 0; i < argc; i++) {
++            wideArgs.push_back(Base::FileInfo::stringToPath(argv[i]).wstring());
++        }
++        std::vector<wchar_t*> wideArgv;
++        for (auto& arg : wideArgs) {
++            wideArgv.push_back(arg.data());
++        }
++        status = PyConfig_SetArgv(&config, argc, wideArgv.data());
++        argvSet = true;
++    }
++    catch (const std::exception&) {
++        // not UTF-8 (e.g. an embedding application): fall back to the code page
++    }
++    if (!argvSet) {
++        status = PyConfig_SetBytesArgv(&config, argc, argv);
++    }
++#else
+     status = PyConfig_SetBytesArgv(&config, argc, argv);
++#endif
+     if (PyStatus_Exception(status)) {
+         throw Base::RuntimeError("Failed to set config");
+     }
+diff --git a/src/Main/CMakeLists.txt b/src/Main/CMakeLists.txt
+index c7703be41..b888f2dab 100644
+--- a/src/Main/CMakeLists.txt
++++ b/src/Main/CMakeLists.txt
+@@ -83,6 +83,11 @@ if(NOT BUILD_DYNAMIC_LINK_PYTHON)
+     )
+ endif(NOT BUILD_DYNAMIC_LINK_PYTHON)
+ 
++if(WIN32)
++    # CommandLineToArgvW: the command line as UTF-16 (see MainCmd.cpp)
++    list(APPEND FreeCADMainCmd_LIBS shell32)
++endif()
++
+ target_link_libraries(FreeCADMainCmd
+     ${FreeCADMainCmd_LIBS}
+ )
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 8398dba81..7ea8d8a2f 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -24,6 +24,11 @@
+ 
+ #include "../FCConfig.h"
+ 
++#if defined(FC_OS_WIN32)
++# include <windows.h>
++# include <shellapi.h>
++#endif
++
+ #if HAVE_CONFIG_H
+ # include <config.h>
+ #endif  // HAVE_CONFIG_H
+@@ -34,6 +39,8 @@
+ #include <format>
+ #include <iostream>
+ #include <ostream>
++#include <vector>
++#include <QByteArray>
+ #include <QString>
+ 
+ // FreeCAD Base header
+@@ -74,8 +81,41 @@ static void flushPythonStreams()
+     PyErr_Clear();
+ }
+ 
++#if defined(FC_OS_WIN32)
++// On Windows the char* argv of main() is in the ANSI code page (CP932 on Japanese
++// Windows), and characters that do not exist in it are replaced with '?'. FreeCAD
++// expects UTF-8 everywhere (file names, sys.argv), so take the command line as wide
++// strings and convert it, like FreeCAD's GUI main does with QCoreApplication::arguments().
++static std::vector<QByteArray> utf8Args;
++static std::vector<char*> utf8Argv;
++
++static void useUtf8CommandLine(int& argc, char**& argv)
++{
++    int wargc = 0;
++    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
++    if (!wargv) {
++        return;
++    }
++    utf8Args.reserve(wargc);
++    for (int i = 0; i < wargc; i++) {
++        utf8Args.push_back(QString::fromWCharArray(wargv[i]).toUtf8());
++    }
++    LocalFree(wargv);
++    for (auto& arg : utf8Args) {
++        utf8Argv.push_back(arg.data());
++    }
++    utf8Argv.push_back(nullptr);
++    argc = wargc;
++    argv = utf8Argv.data();
++}
++#endif
++
+ int main(int argc, char** argv)
+ {
++#if defined(FC_OS_WIN32)
++    useUtf8CommandLine(argc, argv);
++#endif
++
+     // Make sure that we use '.' as decimal point
+     setlocale(LC_ALL, "");
+     setlocale(LC_NUMERIC, "C");
+-- 
+2.43.0
+

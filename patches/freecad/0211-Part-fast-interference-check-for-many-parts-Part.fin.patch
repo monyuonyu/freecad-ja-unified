@@ -1,7 +1,7 @@
 From 61177d95ee610124767ca973a10fc67962794cce Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 14 Oct 2026 21:31:14 +0900
-Subject: [PATCH 211/237] Part: fast interference check for many parts
+Subject: [PATCH 211/238] Part: fast interference check for many parts
  (Part.findInterferences, --interference)
 
   FreeCADCmd model.FCStd --interference [--interference-report pairs.json]

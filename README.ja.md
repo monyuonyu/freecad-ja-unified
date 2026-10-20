@@ -272,6 +272,17 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
 
+## 0.5.7 の変更
+
+- **Windows: `FreeCADCmd` に日本語のパスを渡すと止まっていたのを直した**。`freecadcmd.exe script.py -- 'C:\…\日本語のフォルダ\天板.jww'` が、スクリプトが走る前に
+  `Unknown exception while processing file` で止まっていた。コマンドラインを ANSI コードページ（日本語版は CP932）のまま UTF-8 として読んでいたため。
+  Windows ではコマンドラインを UTF-16 で受け取って UTF-8 に直すようにした（画面ありの `FreeCAD.exe` はもともとそうしていた）。
+  `--` の後ろの引数（`sys.argv`）、開くファイル・スクリプト自体のパス、`-c` のコードのどれに日本語があってもよい。Linux は変わらない
+- コマンドラインのファイルの処理で Python のエラーが起きたとき、「Unknown exception」でなくエラーの中身（とトレースバック）を出す
+- リリースの手順で、作った Windows 版に日本語のパスを PowerShell と cmd から渡す試験（`tests/windows_argv_smoke.ps1`）を通ってから載せるようにした。
+  公開済みの版にも当てられる（Actions の「Windows argv smoke test」）。0.5.6 では 5 項目すべて落ち、0.5.7 で通ることを確かめた
+- 同梱の jww2dxf を jww-tools v0.1.2 に（`--check` の最後に全図面で比べやすい `check total` の行。変換の結果は同じ）
+
 ## 0.5.6 の変更
 
 - **Jw_cad の図面（`.jww`・`.jws`）を開けるようにした**。「開く」「インポート」で選ぶだけ。新しく作った変換器 [jww-tools](https://github.com/monyuonyu/jww-tools) の `jww2dxf` を同梱し、DXF にしてから読み込む

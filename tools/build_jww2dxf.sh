@@ -6,8 +6,8 @@
 set -euo pipefail
 OUT=$(mkdir -p "$1" && cd "$1" && pwd)
 TARGET=${2:-linux}
-VERSION=v0.1.0
-COMMIT=e89fa7fdb85d8e75323fe533df90344a3cbc958c
+VERSION=v0.1.2
+COMMIT=ab81c2c3b151250fd4e1ce240931724da5eff0de
 URL=https://github.com/monyuonyu/jww-tools.git
 
 WORK=$(mktemp -d)

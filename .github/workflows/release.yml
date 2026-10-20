@@ -162,7 +162,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TARGET_PLATFORM: ${{ matrix.target }}
           MAKE_INSTALLER: "true"
-          UPLOAD_RELEASE: "true"
+          # Windows は下の試験に通ってから載せる
+          UPLOAD_RELEASE: ${{ runner.os == 'Windows' && 'false' || 'true' }}
           MACOS_SIGN_RELEASE: "0"
           WINDOWS_SIGN_RELEASE: "0"
         run: |
@@ -188,3 +189,25 @@ jobs:
           export JWW_BIN="$LIBREDWG_BIN"
           ls -l "$LIBREDWG_BIN"
           pixi run --locked bash -c "cd ${{ matrix.osfolder }} && bash create_bundle.sh"
+
+      # Windows: FreeCADCmd に日本語のパスを渡す試験（PowerShell から・cmd から・-- の後ろ・開くファイル・-c）。
+      # 0.5.6 までは '--' の後ろの日本語のパスで "Unknown exception" になっていた
+      - name: "Windows: Japanese paths on the command line"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
+          ./patches/tests/windows_argv_smoke.ps1 -FreeCADCmd $cmd
+
+      - name: "Windows: upload"
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: FreeCAD/package/bundle/windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ls -l FreeCAD_*-Windows-x86_64.7z* FreeCAD_*-Windows-x86_64-installer.exe*
+          gh release upload --clobber "$BUILD_TAG" FreeCAD_*-Windows-x86_64.7z FreeCAD_*-Windows-x86_64.7z-SHA256.txt \
+            FreeCAD_*-Windows-x86_64-installer.exe FreeCAD_*-Windows-x86_64-installer.exe-SHA256.txt
