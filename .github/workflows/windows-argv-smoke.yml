@@ -1,0 +1,33 @@
+name: Windows argv smoke test
+
+# 公開済みの Windows 版（7z）に tests/windows_argv_smoke.ps1 を当てる（日本語のパスを FreeCADCmd に渡す試験）。
+# リリースの手順（release.yml）でも同じ試験を作りたての物に当てている。これは既存の版を確かめる用。
+# 使い方: gh workflow run windows-argv-smoke.yml -f tag=ja-unified-0.5.6
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (e.g. ja-unified-0.5.6)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the Windows 7z
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download "${{ inputs.tag }}" --pattern '*-Windows-x86_64.7z' --dir dl
+          7z x -bd -y -odl\x (Get-ChildItem dl\*.7z).FullName | Out-Null
+      - name: Japanese paths on the command line
+        shell: pwsh
+        run: |
+          $cmd = (Get-ChildItem dl\x\*\bin\freecadcmd.exe).FullName
+          ./tests/windows_argv_smoke.ps1 -FreeCADCmd $cmd
