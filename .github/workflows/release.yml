@@ -199,6 +199,23 @@ jobs:
           $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
           ./patches/tests/windows_argv_smoke.ps1 -FreeCADCmd $cmd
 
+      # Windows: 設定 → 標準 → ネットワーク の「適用」と同じ道筋を画面なしで（閉じたポート・応答の無いアドレス・システム・なし）。
+      # 適用が 1 秒以内に戻る・画面のスレッドで通信も OS のプロキシの自動検出もしない・確認は別のスレッドで日本語の結果を返す。
+      # 0.5.7/0.5.8 は Qt にシステムの設定（WinHTTP の WPAD）を使わせていて、会社のネットワークで「適用」が数分固まった
+      - name: "Windows: applying the proxy settings does not wait"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'fc-net-appdata'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'fc-net-localappdata'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $out = & $cmd -t TestNetworkSettings 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Output $out
+          if ($code -ne 0 -or $out -notmatch '(?m)^OK') { throw "TestNetworkSettings failed (exit code $code)" }
+
       - name: "Windows: upload"
         if: runner.os == 'Windows'
         shell: bash
