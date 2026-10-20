@@ -1,7 +1,7 @@
 From e771aa8866ef80d760f670568958a461f9ed938b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 07:50:36 +0900
-Subject: [PATCH 235/240] DXF/DWG import: 3DSOLID, REGION and BODY entities
+Subject: [PATCH 235/246] DXF/DWG import: 3DSOLID, REGION and BODY entities
  (ACIS) become Part shapes
 
 Neither DXF importer read the ACIS data of solids, so DWG 3DSOLIDs were lost.

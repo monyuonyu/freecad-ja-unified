@@ -1,0 +1,93 @@
+From a79a721bbc4bcde24588ea12bd8dfd860a97e31b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:20:50 +0900
+Subject: [PATCH 245/246] Import: name parts and documents of STEP files
+ without product names after the file
+
+A STEP file written without product names (by FreeCAD or Open CASCADE
+itself) named its parts "Open CASCADE STEP translator 8.0 1", and its
+document was "Unnamed". Both now take the name of the file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Import/App/AppImportPy.cpp    |  3 ++-
+ src/Mod/Import/App/ImportOCAF2.cpp    | 14 +++++++++++++-
+ src/Mod/Import/App/ImportOCAF2.h      |  1 +
+ src/Mod/Import/Gui/AppImportGuiPy.cpp |  3 ++-
+ 4 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Import/App/AppImportPy.cpp b/src/Mod/Import/App/AppImportPy.cpp
+index f67e753f8..ed1be0e5c 100644
+--- a/src/Mod/Import/App/AppImportPy.cpp
++++ b/src/Mod/Import/App/AppImportPy.cpp
+@@ -184,7 +184,8 @@ private:
+                 pcDoc = App::GetApplication().getDocument(DocName);
+             }
+             if (!pcDoc) {
+-                pcDoc = App::GetApplication().newDocument();
++                // Named after the file, as a document opened from a FreeCAD file is
++                pcDoc = App::GetApplication().newDocument("Unnamed", file.fileNamePure().c_str());
+             }
+ 
+             Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
+diff --git a/src/Mod/Import/App/ImportOCAF2.cpp b/src/Mod/Import/App/ImportOCAF2.cpp
+index b4bb114ef..27ec542c6 100644
+--- a/src/Mod/Import/App/ImportOCAF2.cpp
++++ b/src/Mod/Import/App/ImportOCAF2.cpp
+@@ -169,7 +169,7 @@ std::string ImportOCAF2::getLabelName(TDF_Label label)
+         return name;
+     }
+     if (!XCAFDoc_ShapeTool::IsReference(label)) {
+-        return Tools::labelName(label);
++        return withoutTranslatorName(Tools::labelName(label));
+     }
+     if (!options.useBaseName) {
+         name = Tools::labelName(label);
+@@ -178,6 +178,18 @@ std::string ImportOCAF2::getLabelName(TDF_Label label)
+     if (name.empty() && XCAFDoc_ShapeTool::GetReferredShape(label, ref)) {
+         name = Tools::labelName(ref);
+     }
++    return withoutTranslatorName(name);
++}
++
++std::string ImportOCAF2::withoutTranslatorName(const std::string& name) const
++{
++    // A file written without product names (e.g. by FreeCAD or Open CASCADE itself) names its
++    // parts after the program: "Open CASCADE STEP translator 8.0 1". The file name tells more.
++    if (!default_name.empty()
++        && (name.starts_with("Open CASCADE STEP translator")
++            || name.starts_with("Open CASCADE IGES processor"))) {
++        return default_name;
++    }
+     return name;
+ }
+ 
+diff --git a/src/Mod/Import/App/ImportOCAF2.h b/src/Mod/Import/App/ImportOCAF2.h
+index 7141e2c3d..a8d5566f7 100644
+--- a/src/Mod/Import/App/ImportOCAF2.h
++++ b/src/Mod/Import/App/ImportOCAF2.h
+@@ -176,6 +176,7 @@ private:
+     void getSHUOColors(TDF_Label label, std::map<std::string, Base::Color>& colors, bool appendFirst);
+     void setObjectName(Info& info, TDF_Label label);
+     std::string getLabelName(TDF_Label label);
++    std::string withoutTranslatorName(const std::string& name) const;
+     App::DocumentObject* expandShape(App::Document* doc, TDF_Label label, const TopoDS_Shape& shape);
+ 
+     virtual void applyEdgeColors(Part::Feature*, const std::vector<Base::Color>&)
+diff --git a/src/Mod/Import/Gui/AppImportGuiPy.cpp b/src/Mod/Import/Gui/AppImportGuiPy.cpp
+index 23d443f65..c760bef71 100644
+--- a/src/Mod/Import/Gui/AppImportGuiPy.cpp
++++ b/src/Mod/Import/Gui/AppImportGuiPy.cpp
+@@ -232,7 +232,8 @@ private:
+                 pcDoc = App::GetApplication().getDocument(DocName);
+             }
+             if (!pcDoc) {
+-                pcDoc = App::GetApplication().newDocument();
++                // Named after the file, as a document opened from a FreeCAD file is
++                pcDoc = App::GetApplication().newDocument("Unnamed", file.fileNamePure().c_str());
+             }
+ 
+             Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
+-- 
+2.43.0
+

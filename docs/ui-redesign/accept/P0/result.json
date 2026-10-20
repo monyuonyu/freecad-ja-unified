@@ -1,0 +1,75 @@
+{
+ "stl_export": {
+  "ok": true,
+  "facets": 12,
+  "dialog_filter": "3D Manufacturing Format (*.3mf) (*.3mf)",
+  "modals": []
+ },
+ "assembly_insert": {
+  "ok": true,
+  "step_labels": [
+   "Pin"
+  ],
+  "clicked": "Pin",
+  "parts": [
+   "Pin"
+  ],
+  "grounded": [
+   "GroundedJoint"
+  ],
+  "assembly_file": "/tmp/uirb/gui/xdg/data/FreeCAD-ja-unified/v26-3/Unsaved/20261020-171940-組立/組立.FCStd",
+  "modals": []
+ },
+ "dxf_open_modals": [],
+ "dxf_extrude": {
+  "ok": true,
+  "objects": 4,
+  "pad_volume": 39999.99999999999,
+  "open_modals": [],
+  "pad_modals": []
+ },
+ "dxf_broken": {
+  "ok": true,
+  "modals": []
+ },
+ "three_view": {
+  "ok": true,
+  "direction": [
+   0.0,
+   0.0,
+   1.0
+  ],
+  "scale_type": "Custom",
+  "scale": 2.0,
+  "views": [
+   "前面",
+   "上面",
+   "右面"
+  ],
+  "page": [
+   297.0,
+   210.0
+  ]
+ },
+ "step_name": {
+  "ok": true,
+  "labels": [
+   "直方体"
+  ],
+  "document": "bracket"
+ },
+ "terms": {
+  "ok": true,
+  "got": {
+   "Additive Loft": "ロフトで足す",
+   "Multi-Transform": "並べ方の組み合わせ",
+   "Parallel": "平行拘束",
+   "Solve": "つながりを計算し直す",
+   "Ground": "動かない／動かせるの切り替え",
+   "Datum Plane": "基準面",
+   "Projection Group": "三面図（正面図と周りの図）",
+   "Ask AI": "AI に頼む"
+  },
+  "bad": []
+ }
+}

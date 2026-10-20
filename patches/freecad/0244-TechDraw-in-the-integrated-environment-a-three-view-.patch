@@ -1,0 +1,240 @@
+From 96ed5e4c297a390d66ce847e906e5e0cee1f2952 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:20:50 +0900
+Subject: [PATCH 244/246] TechDraw in the integrated environment: a three-view
+ drawing that is right at once
+
+The front view looked in the direction the 3D view happened to have, so an
+isometric "front" view came out, too large for the page. The front view
+now looks at the largest flat face of the shapes (keeping the model's up
+direction up), the top and right views are added (placed by the drawing
+standard's projection), and a standard scale (JIS Z 8314) is chosen at
+which the three views fit on the page. The status bar names a picked edge
+of a drawing by the name the user sees ("Front view, edge 3"), as in the
+3D view, instead of "Unnamed.ProjItem.Edge3".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/Command.cpp     | 133 ++++++++++++++++++++++++++-
+ src/Mod/TechDraw/Gui/MDIViewPage.cpp |  33 +++++++
+ 2 files changed, 163 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/TechDraw/Gui/Command.cpp b/src/Mod/TechDraw/Gui/Command.cpp
+index 5c73d935f..df7bded7d 100644
+--- a/src/Mod/TechDraw/Gui/Command.cpp
++++ b/src/Mod/TechDraw/Gui/Command.cpp
+@@ -35,6 +35,16 @@
+ 
+ #include <Base/Console.h>
+ #include <Base/Tools.h>
++#include <App/SingleWorkbench.h>
++#include <Mod/Part/App/PartFeature.h>
++#include <BRepAdaptor_Surface.hxx>
++#include <BRepGProp.hxx>
++#include <BRepBndLib.hxx>
++#include <Bnd_Box.hxx>
++#include <GProp_GProps.hxx>
++#include <TopExp.hxx>
++#include <TopTools_IndexedMapOfShape.hxx>
++#include <TopoDS.hxx>
+ 
+ #include <Gui/Action.h>
+ #include <Gui/Application.h>
+@@ -1054,6 +1064,102 @@ bool CmdTechDrawDetailView::isActive()
+ // TechDraw_ProjectionGroup
+ //===========================================================================
+ 
++namespace
++{
++// The view direction and the drawing's X direction for a front view looking at the largest flat
++// face of the shapes; looking from the front (-Y) if there is none. The X direction keeps the
++// up direction of the model up in the drawing, as when looking at it from the front.
++std::pair<Base::Vector3d, Base::Vector3d> frontFromLargestFlatFace(const std::vector<App::DocumentObject*>& objects)
++{
++    std::pair<Base::Vector3d, Base::Vector3d> front {Base::Vector3d(0, -1, 0), Base::Vector3d(1, 0, 0)};
++    double bestArea = 0.0;
++    double bestScore = -2.0;
++    const gp_Dir preferred(0.3, -0.6, 0.9);
++    for (App::DocumentObject* obj : objects) {
++        TopoDS_Shape shape = Part::Feature::getShape(obj, Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform);
++        if (shape.IsNull()) {
++            continue;
++        }
++        TopTools_IndexedMapOfShape faces;
++        TopExp::MapShapes(shape, TopAbs_FACE, faces);
++        for (int i = 1; i <= faces.Extent(); ++i) {
++            const TopoDS_Face& face = TopoDS::Face(faces(i));
++            BRepAdaptor_Surface surface(face);
++            if (surface.GetType() != GeomAbs_Plane) {
++                continue;
++            }
++            GProp_GProps props;
++            BRepGProp::SurfaceProperties(face, props);
++            double area = props.Mass();
++            gp_Dir normal = surface.Plane().Axis().Direction();
++            if (face.Orientation() == TopAbs_REVERSED) {
++                normal.Reverse();
++            }
++            double score = normal.Dot(preferred);
++            bool clearlyLarger = area > bestArea * 1.01;
++            bool aboutTheSame = !clearlyLarger && area > bestArea * 0.99;
++            if (clearlyLarger || (aboutTheSame && score > bestScore)) {
++                bestArea = std::max(area, bestArea);
++                bestScore = score;
++                Base::Vector3d dir(normal.X(), normal.Y(), normal.Z());
++                Base::Vector3d xdir = Base::Vector3d(0, 0, 1).Cross(dir);
++                if (xdir.Length() < 1e-6) {
++                    xdir = Base::Vector3d(1, 0, 0);  // looking down or up: X stays X
++                }
++                front = {dir, xdir.Normalize()};
++            }
++        }
++    }
++    return front;
++}
++
++// The largest standard scale (JIS Z 8314: 10:1, 5:1, 2:1, 1:1, 1:2, 1:5, 1:10, ...) at which a
++// front view with the top view above and the right view beside it fits on the page, leaving
++// room for the frame and the title block
++double fittingScale(const std::vector<App::DocumentObject*>& objects,
++                    const Base::Vector3d& dir, const Base::Vector3d& xdir, TechDraw::DrawPage* page)
++{
++    Bnd_Box box;
++    for (App::DocumentObject* obj : objects) {
++        TopoDS_Shape shape = Part::Feature::getShape(obj, Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform);
++        if (!shape.IsNull()) {
++            BRepBndLib::AddOptimal(shape, box, false, false);
++        }
++    }
++    if (box.IsVoid() || !page) {
++        return 1.0;
++    }
++    double x0, y0, z0, x1, y1, z1;
++    box.Get(x0, y0, z0, x1, y1, z1);
++    // The extent of the box along a direction
++    auto extent = [&](const Base::Vector3d& d) {
++        double lo = 1e300, hi = -1e300;
++        for (double x : {x0, x1}) {
++            for (double y : {y0, y1}) {
++                for (double z : {z0, z1}) {
++                    double v = Base::Vector3d(x, y, z) * d;
++                    lo = std::min(lo, v);
++                    hi = std::max(hi, v);
++                }
++            }
++        }
++        return hi - lo;
++    };
++    Base::Vector3d ydir = dir.Cross(xdir);
++    double w = extent(xdir), h = extent(ydir), d = extent(dir);
++    const double gap = 15.0;  // between the views, as the group's default spacing (mm on paper)
++    double usableW = page->getPageWidth() - 40.0;
++    double usableH = page->getPageHeight() - 70.0;
++    for (double scale : {10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001}) {
++        if ((w + d) * scale + 2 * gap <= usableW && (h + d) * scale + 2 * gap <= usableH) {
++            return scale;
++        }
++    }
++    return 0.001;
++}
++
++}  // namespace
++
+ DEF_STD_CMD_A(CmdTechDrawProjectionGroup)
+ 
+ CmdTechDrawProjectionGroup::CmdTechDrawProjectionGroup() : Command("TechDraw_ProjectionGroup")
+@@ -1157,9 +1263,18 @@ void CmdTechDrawProjectionGroup::activated(int iMsg)
+     multiView->XSource.setValues(xShapes);
+     doCommand(Doc, "App.activeDocument().%s.addProjection('Front')", multiViewName.c_str());
+ 
+-    std::pair<Base::Vector3d, Base::Vector3d> dirs = !faceName.empty() ?
+-        DrawGuiUtil::getProjDirFromFace(partObj, faceName)
+-        : DrawGuiUtil::get3DDirAndRot();
++    std::pair<Base::Vector3d, Base::Vector3d> dirs;
++    if (!faceName.empty()) {
++        dirs = DrawGuiUtil::getProjDirFromFace(partObj, faceName);
++    }
++    else if (App::isSingleWorkbench()) {
++        // Not the direction the 3D view happens to have (an isometric front view does not fit
++        // on the page and is not a drawing): the part's largest flat face looks at the viewer
++        dirs = frontFromLargestFlatFace(shapes);
++    }
++    else {
++        dirs = DrawGuiUtil::get3DDirAndRot();
++    }
+ 
+     Base::Vector3d checkedDir = checkDirectionVsBasis(dirs.first);
+     getDocument()->setStatus(App::Document::Status::SkipRecompute, true);
+@@ -1174,6 +1289,18 @@ void CmdTechDrawProjectionGroup::activated(int iMsg)
+         multiViewName.c_str(), dirs.second.x, dirs.second.y, dirs.second.z);
+     getDocument()->setStatus(App::Document::Status::SkipRecompute, false);
+ 
++    if (App::isSingleWorkbench()) {
++        // A three-view drawing from the start (front, top and right, placed by the projection
++        // convention of the drawing standard), that fits on the page
++        doCommand(Doc, "App.activeDocument().%s.addProjection('Top')", multiViewName.c_str());
++        doCommand(Doc, "App.activeDocument().%s.addProjection('Right')", multiViewName.c_str());
++        // A standard scale chosen from the size of the shapes, not by the automatic scale of
++        // the group: that one is computed before the views have their geometry (in a thread)
++        // and makes them as large as possible, larger than the page
++        double scale = fittingScale(shapes, dirs.first, dirs.second, page);
++        doCommand(Doc, "App.activeDocument().%s.ScaleType = 'Custom'", multiViewName.c_str());
++        doCommand(Doc, "App.activeDocument().%s.Scale = %.12g", multiViewName.c_str(), scale);
++    }
+     doCommand(Doc, "App.activeDocument().%s.Anchor.recompute()", multiViewName.c_str());
+     commitCommand();
+     updateActive();
+diff --git a/src/Mod/TechDraw/Gui/MDIViewPage.cpp b/src/Mod/TechDraw/Gui/MDIViewPage.cpp
+index 9c4411667..d72699816 100644
+--- a/src/Mod/TechDraw/Gui/MDIViewPage.cpp
++++ b/src/Mod/TechDraw/Gui/MDIViewPage.cpp
+@@ -43,6 +43,7 @@
+ #include <cmath>
+ 
+ 
++#include <App/SingleWorkbench.h>
+ #include <App/Application.h>
+ #include <App/Document.h>
+ #include <App/DocumentObject.h>
+@@ -1429,6 +1430,38 @@ bool MDIViewPage::compareSelections(std::vector<Gui::SelectionObject> treeSel,
+ 
+ void MDIViewPage::showStatusMsg(const char* string1, const char* string2, const char* string3) const
+ {
++    // In the integrated environment: the name the user sees and the kind of element in their
++    // language ("Front view, edge 11"), as in the 3D view, instead of "Unnamed.ProjItem.Edge11"
++    if (App::isSingleWorkbench()) {
++        App::Document* doc = App::GetApplication().getDocument(string1);
++        App::DocumentObject* obj = doc ? doc->getObject(string2) : nullptr;
++        if (obj) {
++            QString what = QString::fromUtf8(obj->Label.getValue());
++            std::string element = string3 ? string3 : "";
++            auto digits = element.find_first_of("0123456789");
++            std::string kind = element.substr(0, digits);
++            QString number = digits == std::string::npos
++                ? QString()
++                : QString::fromStdString(element.substr(digits));
++            QString kindText;
++            if (kind == "Face") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "face %1").arg(number);
++            }
++            else if (kind == "Edge") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "edge %1").arg(number);
++            }
++            else if (kind == "Vertex") {
++                kindText = QApplication::translate("Gui::SelectionSingleton", "vertex %1").arg(number);
++            }
++            if (!kindText.isEmpty()) {
++                what = QApplication::translate("Gui::SelectionSingleton", "%1, %2").arg(what, kindText);
++            }
++            if (Gui::getMainWindow()) {
++                Gui::getMainWindow()->showMessage(what, 6000);
++            }
++            return;
++        }
++    }
+     QString msg = QStringLiteral("%1 %2.%3.%4 ")
+                       .arg(tr("Selected:"), QString::fromUtf8(string1), QString::fromUtf8(string2),
+                            QString::fromUtf8(string3));
+-- 
+2.43.0
+

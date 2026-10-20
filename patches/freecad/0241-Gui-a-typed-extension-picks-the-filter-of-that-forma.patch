@@ -1,0 +1,45 @@
+From 43489b319b512752783fb136a9d4d5cf581a4bed Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:20:31 +0900
+Subject: [PATCH 241/246] Gui: a typed extension picks the filter of that
+ format, not a collection of formats
+
+"plate.stl" typed with another filter selected picked the first filter that
+takes .stl, "FEM mesh formats", which only exports FEM meshes and stopped
+with "No FEM mesh for export selected". Of the filters that take the
+extension, pick the one with the fewest patterns (the format's own).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/FileDialog.cpp | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/src/Gui/FileDialog.cpp b/src/Gui/FileDialog.cpp
+index e85a6ca2e..41dff41ac 100644
+--- a/src/Gui/FileDialog.cpp
++++ b/src/Gui/FileDialog.cpp
+@@ -662,9 +662,18 @@ QString FileDialog::getSaveFileName(
+             });
+         };
+         if (!matches(filters[actuallySelectedFilterIndex])) {
+-            auto other = std::ranges::find_if(filters, matches);
+-            if (other != filters.end()) {
+-                actuallySelectedFilterIndex = std::distance(filters.begin(), other);
++            // Of the filters that take the extension, the one of that format rather than a
++            // collection of formats of a special field: "plate.stl" goes to "STL Mesh", not to
++            // "FEM mesh formats (*.dat *.inp *.med *.stl …)", which only exports FEM meshes
++            qsizetype best = -1;
++            for (qsizetype i = 0; i < filters.size(); ++i) {
++                if (matches(filters[i])
++                    && (best < 0 || filters[i].patterns.size() < filters[best].patterns.size())) {
++                    best = i;
++                }
++            }
++            if (best >= 0) {
++                actuallySelectedFilterIndex = best;
+             }
+         }
+     }
+-- 
+2.43.0
+

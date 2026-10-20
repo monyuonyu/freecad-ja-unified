@@ -1,0 +1,340 @@
+From e803dfaf4c36983572934b601c1bf8d4d265a49f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:20:31 +0900
+Subject: [PATCH 242/246] Assembly: put parts in without being stopped to save
+ or to ground
+
+An unsaved assembly is saved to a provisional place (user data/Unsaved)
+instead of the English "must be saved" message; it stays marked modified,
+and Save asks for the place as for a new document. A part of a document
+that was never saved (an opened STEP file) is copied into the assembly
+rather than linked. The question whether to ground the first part, the
+"inserted" counter and their buttons are translatable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Document.cpp                     |  20 +++-
+ src/Mod/Assembly/CommandInsertLink.py    | 124 +++++++++--------------
+ src/Mod/Assembly/CommandInsertNewPart.py |  26 +----
+ src/Mod/Assembly/UtilsAssembly.py        |  41 ++++++++
+ 4 files changed, 110 insertions(+), 101 deletions(-)
+
+diff --git a/src/Gui/Document.cpp b/src/Gui/Document.cpp
+index 1c51baa3d..13c685a2b 100644
+--- a/src/Gui/Document.cpp
++++ b/src/Gui/Document.cpp
+@@ -33,6 +33,7 @@
+ #include <QApplication>
+ #include <QCheckBox>
+ #include <QFileInfo>
++#include <QDir>
+ #include <QMessageBox>
+ #include <QOpenGLWidget>
+ #include <QTextStream>
+@@ -1627,8 +1628,25 @@ bool Document::warnIfOlderVersion()
+ }
+ 
+ /// Save the document
++namespace
++{
++// A document saved for the user before they chose a place (see Assembly's
++// UtilsAssembly.saveProvisionally): the first save asks for the place, as for a new document
++bool isProvisionallySaved(const App::Document* doc)
++{
++    const QString file = QDir::cleanPath(QString::fromUtf8(doc->FileName.getValue()));
++    const QString dir = QDir::cleanPath(
++        QString::fromStdString(App::Application::getUserAppDataDir()) + QStringLiteral("/Unsaved")
++    );
++    return !file.isEmpty() && file.startsWith(dir + QLatin1Char('/'));
++}
++}  // namespace
++
+ bool Document::save()
+ {
++    if (isProvisionallySaved(d->_pcDocument)) {
++        return saveAs();
++    }
+     if (d->_pcDocument->isSaved()) {
+         // Warn if this document was created with an older FreeCAD version
+         if (!warnIfOlderVersion()) {
+@@ -1733,7 +1751,7 @@ bool Document::saveAs()
+ 
+     QString exe = qApp->applicationName();
+     QString name = QString::fromUtf8(getDocument()->FileName.getValue());
+-    if (name.isEmpty()) {
++    if (name.isEmpty() || isProvisionallySaved(getDocument())) {
+         name = QString::fromUtf8(getDocument()->Label.getValue());
+     }
+     if (name.endsWith(QStringLiteral(".FCBak"), Qt::CaseInsensitive)) {
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index 6586e3671..6d69f84a5 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -36,6 +36,8 @@ import UtilsAssembly
+ import Preferences
+ import CommandCreateJoint
+ 
++translate = App.Qt.translate
++
+ __title__ = "Assembly Command Insert Component"
+ __author__ = "Ondsel"
+ __url__ = "https://www.freecad.org"
+@@ -362,54 +364,27 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             item.setExpanded(not item.isExpanded())
+             return
+ 
+-        # check that the current document had been saved or that it's the same document as that of the selected part
++        # A part of another document is linked. Links need saved documents: instead of asking
++        # the user to save first, save the assembly provisionally (the first real save asks for
++        # the place). A part of a document that was never saved (e.g. an opened STEP file) is
++        # copied into the assembly, so that the assembly does not depend on an unsaved file.
++        copyInstead = False
+         if not self.doc == selectedPart.Document:
+-            if self.doc.FileName == "":
+-                msgBox = QtWidgets.QMessageBox()
+-                msgBox.setIcon(QtWidgets.QMessageBox.Warning)
+-                msgBox.setText(
+-                    "The current document must be saved before inserting external parts."
+-                )
+-                msgBox.setWindowTitle("Save Document")
+-                saveButton = msgBox.addButton("Save", QtWidgets.QMessageBox.AcceptRole)
+-                cancelButton = msgBox.addButton("Cancel", QtWidgets.QMessageBox.RejectRole)
+-
+-                msgBox.exec_()
+-
+-                if not (msgBox.clickedButton() == saveButton and Gui.ActiveDocument.saveAs()):
+-                    return
+-
+-            # check that the selectedPart document is saved.
++            if not UtilsAssembly.saveProvisionally(self.doc):
++                return
+             if selectedPart.Document.FileName == "":
+-                msgBox = QtWidgets.QMessageBox()
+-                msgBox.setIcon(QtWidgets.QMessageBox.Warning)
+-                msgBox.setText("The selected object's document must be saved before inserting it.")
+-                msgBox.setWindowTitle("Save Document")
+-                saveButton = msgBox.addButton("Save", QtWidgets.QMessageBox.AcceptRole)
+-                cancelButton = msgBox.addButton("Cancel", QtWidgets.QMessageBox.RejectRole)
+-
+-                msgBox.exec_()
+-
+-                if not (
+-                    msgBox.clickedButton() == saveButton
+-                    and selectedPart.ViewObject.Document.saveAs()
+-                ):
+-                    return
+-
+-                # Update the document item text - useless because Document.Name still return 'Unnamed'
+-                """documentItem = item
+-                while documentItem.parent() is not None:
+-                    documentItem = documentItem.parent()
+-                newDocName = selectedPart.Document.Name
+-                print(selectedPart.Document.Name)
+-                documentItem.setText(0, f"{newDocName}.FCStd")"""
+-
+-        if selectedPart.isDerivedFrom("Assembly::AssemblyObject"):
+-            objType = "Assembly::AssemblyLink"
++                copyInstead = True
++
++        if copyInstead:
++            addedObject = self.doc.copyObject(selectedPart, False)
++            self.assembly.addObject(addedObject)
+         else:
+-            objType = "App::Link"
++            if selectedPart.isDerivedFrom("Assembly::AssemblyObject"):
++                objType = "Assembly::AssemblyLink"
++            else:
++                objType = "App::Link"
+ 
+-        addedObject = self.assembly.newObject(objType, selectedPart.Label)
++            addedObject = self.assembly.newObject(objType, selectedPart.Label)
+ 
+         # set placement of the added object to the center of the screen.
+         view = Gui.activeView()
+@@ -417,7 +392,8 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+         screenCenter = view.getPointOnFocalPlane(x // 2, y // 2)
+         screenCorner = view.getPointOnFocalPlane(x, y)
+ 
+-        addedObject.LinkedObject = selectedPart
++        if not copyInstead:
++            addedObject.LinkedObject = selectedPart
+         addedObject.Label = selectedPart.Label  # non-ASCII characters fails with newObject. #12164
+         addedObject.recompute()
+ 
+@@ -453,7 +429,7 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+ 
+         # We turn it flexible after changing the position so that it uses the logic in
+         # AssemblyLink::onChanged to handle positioning correctly.
+-        if selectedPart.isDerivedFrom("Assembly::AssemblyObject"):
++        if selectedPart.isDerivedFrom("Assembly::AssemblyObject") and not copyInstead:
+             addedObject.Rigid = self.form.CheckBox_RigidSubAsm.isChecked()
+ 
+         # highlight the link
+@@ -471,14 +447,14 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+         fixPartPref = pref.GetInt("GroundFirstPart", 0)
+         if fixPartPref == 0:  # unset
+             msgBox = QtWidgets.QMessageBox()
+-            msgBox.setWindowTitle("Ground Part?")
+-            msgBox.setText("Do you want to ground the first inserted part automatically?")
++            msgBox.setWindowTitle(translate("Assembly", "Ground Part?"))
++            msgBox.setText(translate("Assembly", "Do you want to ground the first inserted part automatically?"))
+             msgBox.setIcon(QtWidgets.QMessageBox.Question)
+ 
+-            yesButton = msgBox.addButton("Yes", QtWidgets.QMessageBox.YesRole)
+-            noButton = msgBox.addButton("No", QtWidgets.QMessageBox.RejectRole)
+-            yesAlwaysButton = msgBox.addButton("Always", QtWidgets.QMessageBox.YesRole)
+-            noAlwaysButton = msgBox.addButton("Never", QtWidgets.QMessageBox.NoRole)
++            yesButton = msgBox.addButton(translate("Assembly", "Yes"), QtWidgets.QMessageBox.YesRole)
++            noButton = msgBox.addButton(translate("Assembly", "No"), QtWidgets.QMessageBox.RejectRole)
++            yesAlwaysButton = msgBox.addButton(translate("Assembly", "Always"), QtWidgets.QMessageBox.YesRole)
++            noAlwaysButton = msgBox.addButton(translate("Assembly", "Never"), QtWidgets.QMessageBox.NoRole)
+ 
+             msgBox.exec_()
+ 
+@@ -538,36 +514,28 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             self.groundedObj = targetObj
+             self.groundedJoint = CommandCreateJoint.createGroundedJoint(self.groundedObj)
+ 
+-    def increment_counter(self, item):
+-        text = item.text(0)
+-        match = re.search(r"(\d+) inserted$", text)
+-
+-        if match:
+-            # Counter exists, increment it
+-            counter = int(match.group(1)) + 1
+-            new_text = re.sub(r"\d+ inserted$", f"{counter} inserted", text)
++    # How many times a part was put in, after its name ("Pin : 2 inserted"). The name and the
++    # count are kept in the item, so that the text can be in the user's language
++    COUNT_ROLE = QtCore.Qt.UserRole + 101
++    NAME_ROLE = QtCore.Qt.UserRole + 102
++
++    def set_counter(self, item, counter):
++        if item.data(0, self.NAME_ROLE) is None:
++            item.setData(0, self.NAME_ROLE, item.text(0))
++        name = item.data(0, self.NAME_ROLE)
++        item.setData(0, self.COUNT_ROLE, counter)
++        if counter > 0:
++            item.setText(0, translate("Assembly", "{} : {} inserted").format(name, counter))
+         else:
+-            # Counter does not exist, add it
+-            new_text = f"{text} : 1 inserted"
++            item.setText(0, name)
+ 
+-        item.setText(0, new_text)
++    def increment_counter(self, item):
++        self.set_counter(item, (item.data(0, self.COUNT_ROLE) or 0) + 1)
+ 
+     def decrement_counter(self, item):
+-        text = item.text(0)
+-        match = re.search(r"(\d+) inserted$", text)
+-
+-        if match:
+-            counter = int(match.group(1)) - 1
+-            if counter > 0:
+-                # Update the counter
+-                new_text = re.sub(r"\d+ inserted$", f"{counter} inserted", text)
+-            elif counter == 0:
+-                # Remove the counter part from the text
+-                new_text = re.sub(r" : \d+ inserted$", "", text)
+-            else:
+-                return
+-
+-            item.setText(0, new_text)
++        counter = item.data(0, self.COUNT_ROLE) or 0
++        if counter > 0:
++            self.set_counter(item, counter - 1)
+ 
+     """def clickMouse(self, info):
+         if info["Button"] == "BUTTON1" and info["State"] == "DOWN":
+diff --git a/src/Mod/Assembly/CommandInsertNewPart.py b/src/Mod/Assembly/CommandInsertNewPart.py
+index 2c48a6055..5cda4d077 100644
+--- a/src/Mod/Assembly/CommandInsertNewPart.py
++++ b/src/Mod/Assembly/CommandInsertNewPart.py
+@@ -64,28 +64,10 @@ class CommandInsertNewPart:
+         return UtilsAssembly.isAssemblyCommandActive()
+ 
+     def Activated(self):
+-        # Check if document is saved before proceeding
+-        doc = App.ActiveDocument
+-        if not doc.FileName:
+-            msgBox = QtWidgets.QMessageBox()
+-            msgBox.setIcon(QtWidgets.QMessageBox.Warning)
+-            msgBox.setText(
+-                translate(
+-                    "Assembly",
+-                    "The assembly document must be saved before inserting a new part.",
+-                )
+-            )
+-            msgBox.setWindowTitle(translate("Assembly", "Save Document"))
+-            saveButton = msgBox.addButton(
+-                translate("Assembly", "Save"), QtWidgets.QMessageBox.AcceptRole
+-            )
+-            msgBox.addButton(QtWidgets.QMessageBox.Cancel)
+-            msgBox.exec_()
+-            if msgBox.clickedButton() == saveButton:
+-                if not Gui.getDocument(doc).saveAs():
+-                    return
+-            else:
+-                return
++        # The new part may be made in a new file, which is linked: save the assembly first,
++        # provisionally if it was never saved (the first real save asks for the place)
++        if not UtilsAssembly.saveProvisionally(App.ActiveDocument):
++            return
+ 
+         panel = TaskAssemblyNewPart()
+         dialog = Gui.Control.showDialog(panel)
+diff --git a/src/Mod/Assembly/UtilsAssembly.py b/src/Mod/Assembly/UtilsAssembly.py
+index 872543d22..50eb918c5 100644
+--- a/src/Mod/Assembly/UtilsAssembly.py
++++ b/src/Mod/Assembly/UtilsAssembly.py
+@@ -73,6 +73,47 @@ def isAssemblyCommandActive():
+     return activeAssembly() is not None and not Gui.Control.activeDialog()
+ 
+ 
++def provisionalDir():
++    """Where documents are kept that were saved for the user before they chose a place.
++    Saving such a document (Std_Save) asks for the place, as for a new document."""
++    import os
++
++    path = os.path.join(App.getUserAppDataDir(), "Unsaved")
++    os.makedirs(path, exist_ok=True)
++    return path
++
++
++def saveProvisionally(doc):
++    """Save a document that was never saved to a provisional place, without asking.
++
++    Links to parts in other documents need a saved document. Instead of stopping the user with
++    "the document must be saved", save it where the user does not have to choose; the first
++    real save asks for the place. Returns True if the document is saved now."""
++    import os
++    import time
++
++    if doc.FileName:
++        return True
++    # Saving renames the document after the file: keep the name the user sees
++    name = "".join("_" if c in '/\\:*?"<>|' else c for c in doc.Label) or doc.Name
++    folder = os.path.join(provisionalDir(), time.strftime("%Y%m%d-%H%M%S-") + doc.Name)
++    os.makedirs(folder, exist_ok=True)
++    path = os.path.join(folder, name + ".FCStd")
++    try:
++        doc.saveAs(path)
++    except Exception as e:
++        App.Console.PrintWarning("Assembly: could not save {} provisionally: {}\n".format(doc.Name, e))
++        return False
++    # Still "not saved" for the user: closing asks to save, and saving asks for the place
++    try:
++        import FreeCADGui
++
++        FreeCADGui.getDocument(doc.Name).Modified = True
++    except Exception:
++        pass
++    return True
++
++
+ def isDocTemporary(doc):
+     # Guard against older versions of FreeCad which don't have the Temporary attribute
+     try:
+-- 
+2.43.0
+

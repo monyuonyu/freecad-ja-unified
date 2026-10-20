@@ -298,6 +298,22 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.0
+
+First stage (P0, "no dead ends") of the UI rebuild designed in [docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)
+(no modes; the stock FreeCAD chrome is to be replaced, not layered on). Everyday tasks that stopped at an English dialog
+or at an upstream concept now go on without asking. Acceptance screenshots: [docs/ui-redesign/accept/P0](docs/ui-redesign/accept/P0).
+
+- Saving as `plate.stl` picked the FEM exporter ("No FEM mesh for export selected"); a typed extension now picks the format's own filter
+- Putting parts into an assembly no longer stops at "must be saved" / "ground the first part?": an unsaved assembly is saved
+  provisionally (Save still asks for a place), parts of unsaved STEP documents are copied in, the first part is grounded
+- DXF files open without the import-mode dialog; extruding a picked line of an opened drawing makes its closed outline the
+  sketch of a new part instead of "an active body is required"; an unreadable DXF says so
+- Three-view drawings face the largest flat face, include top and right views and use a standard scale that fits the page
+  (they used to take the isometric 3D direction and overflow the page)
+- Drawing selections in the status bar show user names ("Front view, edge 3"); STEP files without product names are named after the file
+- Terms unified with the glossary (176 translations)
+
 ## Changes in 0.5.0
 
 - DWG: **can now write R2004, R2010, R2013 and R2018 DWG** (previously up to R2000).

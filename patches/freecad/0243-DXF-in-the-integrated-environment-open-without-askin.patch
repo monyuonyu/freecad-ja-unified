@@ -1,0 +1,340 @@
+From 02a089943055a416d4d896665e030a319e40f4b2 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 20 Oct 2026 17:20:41 +0900
+Subject: [PATCH 243/246] DXF in the integrated environment: open without
+ asking, extrude picked lines
+
+A DXF file opens without the import-mode dialog (separate Part shapes, the
+default; a choice made in the preferences stays), and so does the first part
+of an assembly get grounded without asking. Picking a line of an opened 2D
+drawing and extruding it used to stop with "an active body is required":
+the closed outline the picked lines belong to (also over several objects,
+one per line as DXF files often have) becomes the sketch of a new part,
+which the tool then uses. Only shapes with solids are adopted as the base of
+a new part. A file with nothing readable in it says so instead of opening an
+empty document silently.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Draft/DxfImportDialog.py |   4 +-
+ src/Mod/Draft/importDXF.py       |  10 +++
+ src/Mod/PartDesign/Gui/Utils.cpp |  46 ++++++++++++
+ src/Mod/PartDesign/Gui/Utils.h   |   2 +
+ src/Mod/Unified/CMakeLists.txt   |   2 +-
+ src/Mod/Unified/InitGui.py       |  23 ++++++
+ src/Mod/Unified/LooseOutline.py  | 122 +++++++++++++++++++++++++++++++
+ 7 files changed, 207 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Unified/LooseOutline.py
+
+diff --git a/src/Mod/Draft/DxfImportDialog.py b/src/Mod/Draft/DxfImportDialog.py
+index 521296ea9..89b1014a7 100644
+--- a/src/Mod/Draft/DxfImportDialog.py
++++ b/src/Mod/Draft/DxfImportDialog.py
+@@ -26,7 +26,9 @@ class DxfImportDialog:
+     def setup_ui(self):
+         """Perform initial UI setup."""
+         self.dialog.label_Summary.setText(
+-            f"File contains approximately {self.total_entities} geometric entities."
++            FreeCAD.Qt.translate(
++                "DxfImportDialog", "File contains approximately {} geometric entities."
++            ).format(self.total_entities)
+         )
+         self.dialog.label_Warning.hide()
+ 
+diff --git a/src/Mod/Draft/importDXF.py b/src/Mod/Draft/importDXF.py
+index 4d25fc744..100dba19c 100644
+--- a/src/Mod/Draft/importDXF.py
++++ b/src/Mod/Draft/importDXF.py
+@@ -2984,6 +2984,16 @@ def _import_dxf_file(filename, doc_name=None):
+     if hGrp.GetBool("dxfImportAcis", True):
+         _import_acis_entities(doc, filename)
+ 
++    # A file with nothing readable in it opened as an empty document without a word: say so
++    if not doc_name and not (set(doc.Objects) - objects_before):
++        FreeCAD.Console.PrintUserWarning(
++            translate(
++                "draft",
++                "No drawing elements could be read from {}. It may not be a DXF file, or it may be damaged.",
++            ).format(os.path.basename(filename))
++            + "\n"
++        )
++
+     make_text.convert_draft_texts()  # This is a general utility that should run for both importers
+     doc.recompute()
+ 
+diff --git a/src/Mod/PartDesign/Gui/Utils.cpp b/src/Mod/PartDesign/Gui/Utils.cpp
+index 0642e8601..8105a2281 100644
+--- a/src/Mod/PartDesign/Gui/Utils.cpp
++++ b/src/Mod/PartDesign/Gui/Utils.cpp
+@@ -25,6 +25,7 @@
+ 
+ #include <QMessageBox>
+ #include <gp_Pln.hxx>
++#include <TopExp_Explorer.hxx>
+ #include <Precision.hxx>
+ 
+ 
+@@ -33,6 +34,8 @@
+ #include <App/Datums.h>
+ #include <App/Part.h>
+ #include <App/SingleWorkbench.h>
++#include <Base/Interpreter.h>
++#include <Base/PyObjectBase.h>
+ #include <Gui/Application.h>
+ #include <Gui/CommandT.h>
+ #include <Gui/MainWindow.h>
+@@ -146,6 +149,10 @@ PartDesign::Body* getBody(
+                      && (activeBody = adoptPickedLooseSolid())) {
+                 // Picked elements of an imported solid: it became a part
+             }
++            else if (messageIfNot && App::isSingleWorkbench()
++                     && (activeBody = adoptPickedLooseOutline())) {
++                // Picked lines of an opened 2D drawing: their outline became a part
++            }
+             else if (messageIfNot) {
+                 DlgActiveBody dia(
+                     Gui::getMainWindow(),
+@@ -216,6 +223,40 @@ void needActiveBodyError()
+     );
+ }
+ 
++PartDesign::Body* adoptPickedLooseOutline()
++{
++    // In Python (Unified's LooseOutline): finding closed outlines in loose lines and turning
++    // them into a sketch is done by Part and Draft there
++    std::string bodyName;
++    {
++        Base::PyGILStateLocker lock;
++        try {
++            Py::Module module(PyImport_ImportModule("LooseOutline"), true);
++            if (module.isNull()) {
++                PyErr_Clear();
++                return nullptr;
++            }
++            Py::Object result = module.callMemberFunction("adopt");
++            if (!result.isString()) {
++                return nullptr;
++            }
++            bodyName = Py::String(result).as_std_string("utf-8");
++        }
++        catch (Py::Exception&) {
++            Base::PyException e;
++            e.reportException();
++            return nullptr;
++        }
++    }
++    App::Document* doc = App::GetApplication().getActiveDocument();
++    App::DocumentObject* body = doc ? doc->getObject(bodyName.c_str()) : nullptr;
++    if (!body) {
++        return nullptr;
++    }
++    // The selection (the new sketch) is kept: the tool goes on with it
++    return makeBodyActive(body, doc, nullptr, nullptr);
++}
++
+ PartDesign::Body* adoptPickedLooseSolid()
+ {
+     auto selection = Gui::Selection().getSelectionEx();
+@@ -228,6 +269,11 @@ PartDesign::Body* adoptPickedLooseSolid()
+         || solid->isDerivedFrom<Part::Part2DObject>() || PartDesign::Body::findBodyOf(solid)) {
+         return nullptr;
+     }
++    // Lines (e.g. of an opened DXF drawing) are not a solid to build on: adoptPickedLooseOutline()
++    TopExp_Explorer solids(static_cast<Part::Feature*>(solid)->Shape.getValue(), TopAbs_SOLID);
++    if (!solids.More()) {
++        return nullptr;
++    }
+     Gui::Application::Instance->commandManager().runCommandByName("PartDesign_Body");
+     // The command makes the new body active; the solid is its base, held by a base feature
+     // in the body. (Searching the whole document would find an older body made from it.)
+diff --git a/src/Mod/PartDesign/Gui/Utils.h b/src/Mod/PartDesign/Gui/Utils.h
+index 22f15d25c..d7d058da3 100644
+--- a/src/Mod/PartDesign/Gui/Utils.h
++++ b/src/Mod/PartDesign/Gui/Utils.h
+@@ -88,6 +88,8 @@ PartDesign::Body* makeBody(App::Document* doc);
+ /// picked: make a part from that solid, as "New part" does with a selected solid, pick the
+ /// same elements on it and return the part. Returns nullptr if the selection is not like that.
+ PartDesign::Body* adoptPickedLooseSolid();
++/// In the integrated environment: picked lines of a 2D drawing become the sketch of a new part
++PartDesign::Body* adoptPickedLooseOutline();
+ 
+ /**
+  * Finds a body for the given feature. And shows a message if not found
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 8a6ae8d77..16605c317 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -15,7 +15,7 @@ set(Unified_Scripts
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg)
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index b56029c0e..2aa2c0ec3 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -71,6 +71,29 @@ class UnifiedWorkbench(Workbench):
+ 
+ Gui.addWorkbench(UnifiedWorkbench())
+ 
++
++def _integrated_defaults():
++    """Defaults of the integrated environment where the modules would stop the user with a
++    question. Only settings the user never set: a choice made in the preferences stays."""
++
++    def unset_bool(group, name):
++        return group.GetBool(name, True) != group.GetBool(name, False)
++
++    def unset_int(group, name):
++        return group.GetInt(name, 1) != group.GetInt(name, 2)
++
++    # The first part put into an assembly does not move ("ground it?" is not asked)
++    assembly = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Assembly")
++    if unset_int(assembly, "GroundFirstPart"):
++        assembly.SetInt("GroundFirstPart", 1)
++    # A DXF file opens without asking how (as separate Part shapes, which can be extruded)
++    draft = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
++    if unset_bool(draft, "dxfShowDialog"):
++        draft.SetBool("dxfShowDialog", False)
++
++
++_integrated_defaults()
++
+ # 設定の画面（編集 → 設定 → 標準）に「ネットワーク」（プロキシと会社の証明書）と「AI チャット」（API キー）を足す。
+ # Qt の通信にも同じプロキシを使う（既定はシステムの設定）
+ try:
+diff --git a/src/Mod/Unified/LooseOutline.py b/src/Mod/Unified/LooseOutline.py
+new file mode 100644
+index 000000000..930dcf4bb
+--- /dev/null
++++ b/src/Mod/Unified/LooseOutline.py
+@@ -0,0 +1,122 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Lines of an opened DXF/DWG/JWW drawing as the outline of a new part.
++
++An opened 2D drawing is loose lines (often one object per line). Extruding a picked line used to
++stop with "an active body is required". Instead, the closed outline the picked lines belong to
++becomes a sketch in a new part, which the tool then uses. Called from PartDesign's getBody() in
++the integrated environment (PartDesignGui::adoptPickedLooseOutline).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++
++def _is_loose_2d(obj):
++    """A shape of lines only (no faces or solids), not part of a part (body)"""
++    if obj is None or not obj.isDerivedFrom("Part::Feature"):
++        return False
++    if obj.isDerivedFrom("PartDesign::Feature") or obj.isDerivedFrom("Part::Part2DObject"):
++        return False
++    if any(p.isDerivedFrom("PartDesign::Body") for p in obj.InList):
++        return False
++    shape = obj.Shape
++    return not shape.isNull() and bool(shape.Edges) and not shape.Faces and not shape.Solids
++
++
++def _same_point(a, b):
++    return (a - b).Length <= 1e-4
++
++
++def closed_loops(edges):
++    """The closed wires that can be made of the edges (edges of other loops are left out)"""
++    import Part
++
++    loops = []
++    for group in Part.sortEdges(edges):
++        try:
++            wire = Part.Wire(group)
++        except Exception:
++            continue
++        if wire.isClosed() or _same_point(wire.Vertexes[0].Point, wire.Vertexes[-1].Point):
++            loops.append(wire)
++    return loops
++
++
++def _touches(wire, edges):
++    for edge in edges:
++        mid = edge.valueAt((edge.FirstParameter + edge.LastParameter) / 2)
++        if wire.distToShape(_vertex(mid))[0] <= 1e-4:
++            return True
++    return False
++
++
++def _vertex(point):
++    import Part
++
++    return Part.Vertex(point)
++
++
++def outline_for(picked_objects, picked_edges, candidates):
++    """The closed loops that contain the picked edges, from the edges of the picked objects
++    and, if those do not close, of the other loose 2D objects in the same plane"""
++    own = [e for o in picked_objects for e in o.Shape.Edges]
++    loops = [w for w in closed_loops(own) if _touches(w, picked_edges)]
++    if loops:
++        return loops, list(picked_objects)
++    everything = list(picked_objects) + [o for o in candidates if o not in picked_objects]
++    edges = [e for o in everything for e in o.Shape.Edges]
++    loops = [w for w in closed_loops(edges) if _touches(w, picked_edges)]
++    used = []
++    for obj in everything:
++        if any(_touches(w, obj.Shape.Edges) for w in loops):
++            used.append(obj)
++    return loops, used
++
++
++def adopt():
++    """Make a part (body) from the closed outline of the picked loose lines.
++
++    Returns the name of the new body, or None if the selection is not such lines (then the
++    caller goes on as before)."""
++    selection = Gui.Selection.getSelectionEx()
++    if not selection or not all(_is_loose_2d(s.Object) for s in selection):
++        return None
++    doc = selection[0].Object.Document
++    picked = [s.Object for s in selection]
++    picked_edges = []
++    for s in selection:
++        subs = [x for x in s.SubObjects if x.ShapeType == "Edge"]
++        picked_edges += subs or s.Object.Shape.Edges
++    candidates = [o for o in doc.Objects if _is_loose_2d(o) and o.Visibility]
++    loops, used = outline_for(picked, picked_edges, candidates)
++    if not loops:
++        App.Console.PrintUserWarning(
++            App.Qt.translate(
++                "Unified",
++                "The picked lines do not make a closed outline, so they cannot be extruded. "
++                "Close the gaps, or pick lines that go all the way round.",
++            )
++            + "\n"
++        )
++        return None
++
++    import Draft
++
++    doc.openTransaction(App.Qt.translate("Unified", "Part from drawing lines"))
++    try:
++        sketch = Draft.make_sketch(loops, autoconstraints=True, name="Sketch")
++        if sketch is None:
++            doc.abortTransaction()
++            return None
++        body = doc.addObject("PartDesign::Body", "Body")
++        body.addObject(sketch)
++        for obj in used:
++            obj.Visibility = False
++        doc.recompute()
++    except Exception as e:
++        doc.abortTransaction()
++        App.Console.PrintWarning("Unified: outline from lines failed: {}\n".format(e))
++        return None
++    doc.commitTransaction()
++    Gui.Selection.clearSelection()
++    Gui.Selection.addSelection(doc.Name, sketch.Name)
++    return body.Name
+-- 
+2.43.0
+
