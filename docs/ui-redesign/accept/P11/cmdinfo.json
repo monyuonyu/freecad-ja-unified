@@ -1,0 +1,4058 @@
+{
+"Assembly_ActivateAssembly": {
+"ctx": "PythonCommand",
+"menu": "Activate Assembly",
+"tip": "Sets an assembly as the active one for editing.",
+"status": ""
+},
+"Assembly_CreateAssembly": {
+"ctx": "PythonCommand",
+"menu": "New Assembly",
+"tip": "Creates an assembly object in the current document, or in the current active assembly (if any). Limit of one root assembly per file.",
+"status": ""
+},
+"Assembly_CreateBom": {
+"ctx": "PythonCommand",
+"menu": "Bill of Materials",
+"tip": "<p>Creates a bill of materials of the current assembly. If an assembly is active, it will be a BOM of this assembly. Else it will be a BOM of the whole document.</p><p>The BOM object is a document object that stores the settings of your BOM. It is also a spreadsheet object so you can easily visualize the BOM. If you do not need the BOM object to be saved as a document object, you can simply export and cancel the task.</p><p>The columns 'Index', 'Name', 'File Name' and 'Quantity' are automatically generated on recompute. The 'Description' and custom columns are not overwritten.</p>",
+"status": ""
+},
+"Assembly_CreateJointAngle": {
+"ctx": "PythonCommand",
+"menu": "Angle Joint",
+"tip": "Creates an angle joint that fixes the angle between the Z-axis of the selected coordinate systems",
+"status": ""
+},
+"Assembly_CreateJointBall": {
+"ctx": "PythonCommand",
+"menu": "Ball Joint",
+"tip": "Creates a ball joint that connects parts at a point, allowing unrestricted movement as long as the connection points remain in contact",
+"status": ""
+},
+"Assembly_CreateJointBelt": {
+"ctx": "PythonCommand",
+"menu": "Belt Joint",
+"tip": "<p>Creates a belt joint that links 2 rotating objects together. They will have the same rotation direction.</p><p>Select the same coordinate systems as the revolute joints.</p>",
+"status": ""
+},
+"Assembly_CreateJointCylindrical": {
+"ctx": "PythonCommand",
+"menu": "Cylindrical Joint",
+"tip": "Creates a cylindrical joint that allows rotation around and translation along a single axis between assembled parts",
+"status": ""
+},
+"Assembly_CreateJointDistance": {
+"ctx": "PythonCommand",
+"menu": "Distance Joint",
+"tip": "<p>Creates a distance joint that fixes the distance between the selected objects</p><p>Creates one of several different joints based on the selection. For example, a distance of 0 between a plane and a cylinder creates a tangent joint. A distance of 0 between planes will make them co-planar.</p>",
+"status": ""
+},
+"Assembly_CreateJointFixed": {
+"ctx": "PythonCommand",
+"menu": "Fixed Joint",
+"tip": "<p>1 - If an assembly is active : Creates a joint statically locking two parts together, preventing any movement or rotation</p><p>2 - If a part is active: Positions sub-parts by matching selected coordinate systems. The second part selected will move.</p>",
+"status": ""
+},
+"Assembly_CreateJointGearBelt": {
+"ctx": "PythonGroupCommand",
+"menu": "Gears/Belt Joint",
+"tip": "<p>Creates a gears or belt joint that links 2 rotating gears together</p><p>Select the same coordinate systems as the revolute joints.</p>",
+"status": ""
+},
+"Assembly_CreateJointGears": {
+"ctx": "PythonCommand",
+"menu": "Gears Joint",
+"tip": "<p>Creates a gears joint that links 2 rotating gears together. They will have inverse rotation direction.</p><p>Select the same coordinate systems as the revolute joints.</p>",
+"status": ""
+},
+"Assembly_CreateJointParallel": {
+"ctx": "PythonCommand",
+"menu": "Parallel Joint",
+"tip": "Creates a parallel joint that makes the Z-axis of the selected coordinate systems parallel",
+"status": ""
+},
+"Assembly_CreateJointPerpendicular": {
+"ctx": "PythonCommand",
+"menu": "Perpendicular Joint",
+"tip": "Creates a perpendicular joint that makes the Z-axis of the selected coordinate systems perpendicular",
+"status": ""
+},
+"Assembly_CreateJointRackPinion": {
+"ctx": "PythonCommand",
+"menu": "Rack and Pinion Joint",
+"tip": "<p>Creates a rack and pinion joint that links a part with a slider joint to a part with a revolute joint</p><p>Select the same coordinate systems as the revolute and slider joints. The pitch radius defines the movement ratio between the rack and the pinion.</p>",
+"status": ""
+},
+"Assembly_CreateJointRevolute": {
+"ctx": "PythonCommand",
+"menu": "Revolute Joint",
+"tip": "Creates a revolute joint allowing rotation around a single axis between selected parts",
+"status": ""
+},
+"Assembly_CreateJointRigidGroup": {
+"ctx": "PythonCommand",
+"menu": "Create Rigid Group",
+"tip": "<p>Create a rigid group.</p><p>Creates a rigid group that permanently locks the selected components together.</p>",
+"status": ""
+},
+"Assembly_CreateJointScrew": {
+"ctx": "PythonCommand",
+"menu": "Screw Joint",
+"tip": "<p>Creates a screw joint that links a part with a slider joint to a part with a revolute joint</p><p>Select the same coordinate systems as the revolute and slider joints. The pitch radius defines the movement ratio between the rotating screw and the sliding part.</p>",
+"status": ""
+},
+"Assembly_CreateJointSlider": {
+"ctx": "PythonCommand",
+"menu": "Slider Joint",
+"tip": "Creates a slider joint that allows linear movement along a single axis, but restricts rotation between selected parts",
+"status": ""
+},
+"Assembly_CreateSimulation": {
+"ctx": "PythonCommand",
+"menu": "Simulation",
+"tip": "Creates a new simulation of the current assembly",
+"status": ""
+},
+"Assembly_CreateSnapshot": {
+"ctx": "PythonCommand",
+"menu": "Snapshot",
+"tip": "Captures the current assembly state (placements and visibility). Double-clicking the Snapshot object restores the assembly to that state.",
+"status": ""
+},
+"Assembly_CreateView": {
+"ctx": "PythonCommand",
+"menu": "Exploded View",
+"tip": "Creates an exploded view of the current assembly",
+"status": ""
+},
+"Assembly_ExportASMT": {
+"ctx": "PythonCommand",
+"menu": "Export ASMT File",
+"tip": "Export currently active assembly as a ASMT file.",
+"status": ""
+},
+"Assembly_Insert": {
+"ctx": "PythonGroupCommand",
+"menu": "Insert Component",
+"tip": "<p>Inserts a component into the active assembly. This will create dynamic links to parts, bodies, primitives, and assemblies. To insert external components, make sure that the file is <b>open in the current session</b></p><ul><li>Insert by left clicking items in the list.</li><li>Remove by right clicking items in the list.</li><li>Press shift to add several instances of the component while clicking on the view.</li></ul>",
+"status": ""
+},
+"Assembly_InsertLink": {
+"ctx": "PythonCommand",
+"menu": "Insert Component",
+"tip": "<p>Inserts a component into the active assembly. This will create dynamic links to parts, bodies, primitives, and assemblies. To insert external components, make sure that the file is <b>open in the current session</b></p><ul><li>Insert by left clicking items in the list.</li><li>Remove by right clicking items in the list.</li><li>Press shift to add several instances of the component while clicking on the view.</li></ul>",
+"status": ""
+},
+"Assembly_InsertNewPart": {
+"ctx": "PythonCommand",
+"menu": "New Part",
+"tip": "Insert a new part into the active assembly. The new part's origin can be positioned in the assembly.",
+"status": ""
+},
+"Assembly_LinkSelectLinked": {
+"ctx": "CmdAssemblyLinkSelectLinked",
+"menu": "Go to Linked Assembly",
+"tip": "Selects the linked assembly and switches to its original document",
+"status": "Selects the linked assembly and switches to its original document"
+},
+"Assembly_SelectComponentsWithDoFs": {
+"ctx": "CmdAssemblySelectComponentsWithDoFs",
+"menu": "Select Components With DoFs",
+"tip": "Selects unconstrained components in the active assembly",
+"status": "Selects unconstrained components in the active assembly"
+},
+"Assembly_SelectConflictingConstraints": {
+"ctx": "CmdAssemblySelectConflictingConstraints",
+"menu": "Select Conflicting Constraints",
+"tip": "Selects conflicting joints in the active assembly",
+"status": "Selects conflicting joints in the active assembly"
+},
+"Assembly_SelectJointsOfComponent": {
+"ctx": "CmdAssemblySelectJointsOfComponent",
+"menu": "Select Component Joints",
+"tip": "Selects all joints referencing the selected component",
+"status": "Selects all joints referencing the selected component"
+},
+"Assembly_SelectMalformedConstraints": {
+"ctx": "CmdAssemblySelectMalformedConstraints",
+"menu": "Select Malformed Constraints",
+"tip": "Selects malformed joints in the active assembly",
+"status": "Selects malformed joints in the active assembly"
+},
+"Assembly_SelectRedundantConstraints": {
+"ctx": "CmdAssemblySelectRedundantConstraints",
+"menu": "Select Redundant Constraints",
+"tip": "Selects redundant joints in the active assembly",
+"status": "Selects redundant joints in the active assembly"
+},
+"Assembly_SolveAssembly": {
+"ctx": "PythonCommand",
+"menu": "Solve Assembly",
+"tip": "Solves the currently active assembly.",
+"status": ""
+},
+"Assembly_ToggleGrounded": {
+"ctx": "PythonCommand",
+"menu": "Toggle Grounded",
+"tip": "<p>Toggles the grounding of a part.</p><p>Grounding a part permanently locks its position in the assembly, preventing any movement or rotation.",
+"status": ""
+},
+"Material_Edit": {
+"ctx": "CmdMaterialEdit",
+"menu": "Edit",
+"tip": "Edits material properties",
+"status": "Edits material properties"
+},
+"Materials_InspectAppearance": {
+"ctx": "CmdInspectAppearance",
+"menu": "Inspect Appearance",
+"tip": "Inspects the appearance properties of the selected object",
+"status": "Inspect the appearance properties of the selected object"
+},
+"Materials_InspectMaterial": {
+"ctx": "CmdInspectMaterial",
+"menu": "Inspect Material",
+"tip": "Inspects the material properties of the selected object",
+"status": "Inspect the material properties of the selected object"
+},
+"NaviCubeDraggableCmd": {
+"ctx": "NaviCubeDraggableCmd",
+"menu": "Movable Navigation Cube",
+"tip": "Drags and places the NaviCube",
+"status": "Drags and places the NaviCube"
+},
+"PartDesign_AdditiveHelix": {
+"ctx": "CmdPartDesignAdditiveHelix",
+"menu": "Additive Helix",
+"tip": "Sweeps the selected sketch or profile along a helix and adds it to the body",
+"status": "Sweeps the selected sketch or profile along a helix and adds it to the body"
+},
+"PartDesign_AdditiveLoft": {
+"ctx": "CmdPartDesignAdditiveLoft",
+"menu": "Additive Loft",
+"tip": "Lofts the selected sketch or profile through one or more sections and adds it to the body",
+"status": "Lofts the selected sketch or profile through one or more sections and adds it to the body"
+},
+"PartDesign_AdditivePipe": {
+"ctx": "CmdPartDesignAdditivePipe",
+"menu": "Additive Pipe",
+"tip": "Sweeps the selected sketch or profile along a path and adds it to the body",
+"status": "Sweeps the selected sketch or profile along a path and adds it to the body"
+},
+"PartDesign_Body": {
+"ctx": "CmdPartDesignBody",
+"menu": "New Body",
+"tip": "Creates a new body and activates it",
+"status": "Creates a new body and activates it"
+},
+"PartDesign_Boolean": {
+"ctx": "CmdPartDesignBoolean",
+"menu": "Boolean Operation",
+"tip": "Applies boolean operations with the selected objects and the active body",
+"status": "Applies boolean operations with the selected objects and the active body"
+},
+"PartDesign_Chamfer": {
+"ctx": "CmdPartDesignChamfer",
+"menu": "Chamfer",
+"tip": "Applies a chamfer to the selected edges or faces",
+"status": "Applies a chamfer to the selected edges or faces"
+},
+"PartDesign_Clone": {
+"ctx": "CmdPartDesignClone",
+"menu": "Clone",
+"tip": "Copies a solid object parametrically as the base feature of a new body",
+"status": "Copies a solid object parametrically as the base feature of a new body"
+},
+"PartDesign_CompDatums": {
+"ctx": "CmdPartDesignCompDatums",
+"menu": "Create Datum",
+"tip": "Creates a datum object or local coordinate system",
+"status": "Creates a datum object or local coordinate system"
+},
+"PartDesign_CompPrimitiveAdditive": {
+"ctx": "CmdPrimtiveCompAdditive",
+"menu": "Additive Primitive",
+"tip": "Creates an additive primitive",
+"status": "Creates an additive primitive"
+},
+"PartDesign_CompPrimitiveSubtractive": {
+"ctx": "CmdPrimtiveCompSubtractive",
+"menu": "Subtractive Primitive",
+"tip": "Creates a subtractive primitive",
+"status": "Creates a subtractive primitive"
+},
+"PartDesign_CompSketches": {
+"ctx": "CmdPartDesignCompSketches",
+"menu": "Create Datum",
+"tip": "Creates a datum object or local coordinate system",
+"status": "Creates a datum object or local coordinate system"
+},
+"PartDesign_CoordinateSystem": {
+"ctx": "CmdPartDesignCS",
+"menu": "Local Coordinate System",
+"tip": "Creates a new local coordinate system",
+"status": "Creates a new local coordinate system"
+},
+"PartDesign_Defeaturing": {
+"ctx": "CmdPartDesignDefeaturing",
+"menu": "Defeaturing",
+"tip": "Removes selected faces from a solid",
+"status": "Removes selected faces from a solid"
+},
+"PartDesign_Draft": {
+"ctx": "CmdPartDesignDraft",
+"menu": "Draft",
+"tip": "Applies a draft to the selected faces",
+"status": "Applies a draft to the selected faces"
+},
+"PartDesign_DuplicateSelection": {
+"ctx": "CmdPartDesignDuplicateSelection",
+"menu": "Duplicate &Object",
+"tip": "Duplicates the selected object and adds it to the active body",
+"status": "Duplicates the selected object and adds it to the active body"
+},
+"PartDesign_Fillet": {
+"ctx": "CmdPartDesignFillet",
+"menu": "Fillet",
+"tip": "Applies a fillet to the selected edges or faces",
+"status": "Applies a fillet to the selected edges or faces"
+},
+"PartDesign_Groove": {
+"ctx": "CmdPartDesignGroove",
+"menu": "Groove",
+"tip": "Revolves the sketch or profile around a line or axis and removes it from the body",
+"status": "Revolves the sketch or profile around a line or axis and removes it from the body"
+},
+"PartDesign_Hole": {
+"ctx": "CmdPartDesignHole",
+"menu": "Hole",
+"tip": "Creates holes in the active body at the center points of circles or arcs of the selected sketch or profile",
+"status": "Creates holes in the active body at the center points of circles or arcs of the selected sketch or profile"
+},
+"PartDesign_InvoluteGear": {
+"ctx": "PythonCommand",
+"menu": "Involute Gear",
+"tip": "Creates or edits the involute gear definition",
+"status": ""
+},
+"PartDesign_Line": {
+"ctx": "CmdPartDesignLine",
+"menu": "Datum Line",
+"tip": "Creates a new datum line",
+"status": "Creates a new datum line"
+},
+"PartDesign_LinearPattern": {
+"ctx": "CmdPartDesignLinearPattern",
+"menu": "Linear Pattern",
+"tip": "Duplicates the selected features or the active body in a linear pattern",
+"status": "Duplicates the selected features or the active body in a linear pattern"
+},
+"PartDesign_Migrate": {
+"ctx": "CmdPartDesignMigrate",
+"menu": "Migrate",
+"tip": "Migrates the document to the modern Part Design workflow",
+"status": "Migrates the document to the modern Part Design workflow"
+},
+"PartDesign_Mirrored": {
+"ctx": "CmdPartDesignMirrored",
+"menu": "Mirror",
+"tip": "Mirrors the selected features or active body",
+"status": "Mirrors the selected features or active body"
+},
+"PartDesign_MoveFeature": {
+"ctx": "CmdPartDesignMoveFeature",
+"menu": "Move Object To…",
+"tip": "Moves the selected object to another body",
+"status": "Moves the selected object to another body"
+},
+"PartDesign_MoveFeatureInTree": {
+"ctx": "CmdPartDesignMoveFeatureInTree",
+"menu": "Move Feature After…",
+"tip": "Moves the selected feature after another feature in the same body",
+"status": "Moves the selected feature after another feature in the same body"
+},
+"PartDesign_MoveTip": {
+"ctx": "CmdPartDesignMoveTip",
+"menu": "Set Tip",
+"tip": "Moves the tip of the body to the selected feature",
+"status": "Moves the tip of the body to the selected feature"
+},
+"PartDesign_MultiTransform": {
+"ctx": "CmdPartDesignMultiTransform",
+"menu": "Multi-Transform",
+"tip": "Applies multiple transformations to the selected features or active body",
+"status": "Applies multiple transformations to the selected features or active body"
+},
+"PartDesign_NewSketch": {
+"ctx": "CmdPartDesignNewSketch",
+"menu": "New Sketch",
+"tip": "Creates a new sketch",
+"status": "Creates a new sketch"
+},
+"PartDesign_Pad": {
+"ctx": "CmdPartDesignPad",
+"menu": "Pad",
+"tip": "Extrudes the selected sketch or profile and adds it to the body",
+"status": "Extrudes the selected sketch or profile and adds it to the body"
+},
+"PartDesign_Plane": {
+"ctx": "CmdPartDesignPlane",
+"menu": "Datum Plane",
+"tip": "Creates a new datum plane",
+"status": "Creates a new datum plane"
+},
+"PartDesign_Pocket": {
+"ctx": "CmdPartDesignPocket",
+"menu": "Pocket",
+"tip": "Extrudes the selected sketch or profile and removes it from the body",
+"status": "Extrudes the selected sketch or profile and removes it from the body"
+},
+"PartDesign_Point": {
+"ctx": "CmdPartDesignPoint",
+"menu": "Datum Point",
+"tip": "Creates a new datum point",
+"status": "Creates a new datum point"
+},
+"PartDesign_PolarPattern": {
+"ctx": "CmdPartDesignPolarPattern",
+"menu": "Polar Pattern",
+"tip": "Duplicates the selected features or the active body in a circular pattern",
+"status": "Duplicates the selected features or the active body in a circular pattern"
+},
+"PartDesign_Revolution": {
+"ctx": "CmdPartDesignRevolution",
+"menu": "Revolve",
+"tip": "Revolves the selected sketch or profile around a line or axis and adds it to the body",
+"status": "Revolves the selected sketch or profile around a line or axis and adds it to the body"
+},
+"PartDesign_ShapeBinder": {
+"ctx": "CmdPartDesignShapeBinder",
+"menu": "Shape Binder",
+"tip": "Creates a new shape binder",
+"status": "Creates a new shape binder"
+},
+"PartDesign_Sprocket": {
+"ctx": "PythonCommand",
+"menu": "Sprocket",
+"tip": "Creates or edits the sprocket definition.",
+"status": ""
+},
+"PartDesign_SubShapeBinder": {
+"ctx": "CmdPartDesignSubShapeBinder",
+"menu": "Sub-Shape Binder",
+"tip": "Creates a reference to geometry from one or more objects, allowing it to be used inside or outside a body. It tracks relative placements, supports multiple geometry types (solids, faces, edges, vertices), and can work with objects in the same or external documents.",
+"status": "Creates a reference to geometry from one or more objects, allowing it to be used inside or outside a body. It tracks relative placements, supports multiple geometry types (solids, faces, edges, vertices), and can work with objects in the same or external documents."
+},
+"PartDesign_SubtractiveHelix": {
+"ctx": "CmdPartDesignSubtractiveHelix",
+"menu": "Subtractive Helix",
+"tip": "Sweeps the selected sketch or profile along a helix and removes it from the body",
+"status": "Sweeps the selected sketch or profile along a helix and removes it from the body"
+},
+"PartDesign_SubtractiveLoft": {
+"ctx": "CmdPartDesignSubtractiveLoft",
+"menu": "Subtractive Loft",
+"tip": "Lofts the selected sketch or profile through one or more sections and removes it from the body",
+"status": "Lofts the selected sketch or profile through one or more sections and removes it from the body"
+},
+"PartDesign_SubtractivePipe": {
+"ctx": "CmdPartDesignSubtractivePipe",
+"menu": "Subtractive Pipe",
+"tip": "Sweeps the selected sketch or profile along a path and removes it from the body",
+"status": "Sweeps the selected sketch or profile along a path and removes it from the body"
+},
+"PartDesign_Thickness": {
+"ctx": "CmdPartDesignThickness",
+"menu": "Thickness",
+"tip": "Applies thickness and removes the selected faces",
+"status": "Applies thickness and removes the selected faces"
+},
+"PartDesign_WizardShaft": {
+"ctx": "PythonCommand",
+"menu": "Shaft Design Wizard",
+"tip": "Starts the shaft design wizard",
+"status": ""
+},
+"PartDesign_WizardShaftCallBack": {
+"ctx": "PythonCommand",
+"menu": "Shaft design wizard...",
+"tip": "Start the shaft design wizard",
+"status": ""
+},
+"Part_Boolean": {
+"ctx": "CmdPartBoolean",
+"menu": "Boolean Operation",
+"tip": "Applies a boolean operation with the selected shapes",
+"status": "Applies a boolean operation with the selected shapes"
+},
+"Part_Box": {
+"ctx": "CmdPartBox",
+"menu": "Cube",
+"tip": "Creates a solid cube",
+"status": "Creates a solid cube"
+},
+"Part_BoxSelection": {
+"ctx": "CmdBoxSelection",
+"menu": "Box Selection",
+"tip": "Selects elements in the 3D view using a box selection",
+"status": "Box selection"
+},
+"Part_Builder": {
+"ctx": "CmdPartBuilder",
+"menu": "Shape Builder",
+"tip": "Advanced utility to create shapes",
+"status": "Advanced utility to create shapes"
+},
+"Part_Chamfer": {
+"ctx": "CmdPartChamfer",
+"menu": "Chamfer",
+"tip": "Chamfers the selected edges of a shape",
+"status": "Chamfers the selected edges of a shape"
+},
+"Part_CheckGeometry": {
+"ctx": "CmdCheckGeometry",
+"menu": "Check Geometry",
+"tip": "Analyzes the selected shapes for errors",
+"status": "Analyzes the selected shapes for errors"
+},
+"Part_ColorPerFace": {
+"ctx": "CmdColorPerFace",
+"menu": "Appearance per &Face",
+"tip": "Sets the appearance of individual faces of the selected object",
+"status": "Sets the appearance of individual faces of the selected object"
+},
+"Part_Common": {
+"ctx": "CmdPartCommon",
+"menu": "Intersection",
+"tip": "Intersects the selected shapes",
+"status": "Intersects the selected shapes"
+},
+"Part_CompCompoundTools": {
+"ctx": "CmdPartCompCompoundTools",
+"menu": "Compound Tools",
+"tip": "Compound tools for working with multiple shapes",
+"status": "Compound tools for working with multiple shapes"
+},
+"Part_CompJoinFeatures": {
+"ctx": "CmdPartCompJoinFeatures",
+"menu": "Join Shapes",
+"tip": "Joins the selected walled shapes",
+"status": "Joins the selected walled shapes"
+},
+"Part_CompOffset": {
+"ctx": "CmdPartCompOffset",
+"menu": "Offset",
+"tip": "Tools to offset shapes (construct parallel shapes)",
+"status": "Tools to offset shapes (construct parallel shapes)"
+},
+"Part_CompSplitFeatures": {
+"ctx": "CmdPartCompSplitFeatures",
+"menu": "Split Shapes",
+"tip": "Shape splitting and compsolid creation tools",
+"status": "Shape splitting and compsolid creation tools"
+},
+"Part_Compound": {
+"ctx": "CmdPartCompound",
+"menu": "Compound",
+"tip": "Compounds the selected shapes",
+"status": "Compounds the selected shapes"
+},
+"Part_Cone": {
+"ctx": "CmdPartCone",
+"menu": "Cone",
+"tip": "Creates a solid cone",
+"status": "Creates a solid cone"
+},
+"Part_CoordinateSystem": {
+"ctx": "CmdPartCoordinateSystem",
+"menu": "Coordinate System",
+"tip": "Creates a coordinate system that can be attached to other objects",
+"status": "Creates a coordinate system that can be attached to other objects"
+},
+"Part_CrossSections": {
+"ctx": "CmdPartCrossSections",
+"menu": "Cross-Sections",
+"tip": "Creates cross-sections",
+"status": "Creates cross-sections"
+},
+"Part_Cut": {
+"ctx": "CmdPartCut",
+"menu": "Cut",
+"tip": "Cuts 2 selected shapes",
+"status": "Cuts 2 selected shapes"
+},
+"Part_Cylinder": {
+"ctx": "CmdPartCylinder",
+"menu": "Cylinder",
+"tip": "Creates a solid cylinder",
+"status": "Creates a solid cylinder"
+},
+"Part_DatumLine": {
+"ctx": "CmdPartDatumLine",
+"menu": "Datum Line",
+"tip": "Creates a datum line that can be attached to other objects",
+"status": "Creates a datum line that can be attached to other objects"
+},
+"Part_DatumPlane": {
+"ctx": "CmdPartDatumPlane",
+"menu": "Datum Plane",
+"tip": "Creates a datum plane that can be attached to other objects",
+"status": "Creates a datum plane that can be attached to other objects"
+},
+"Part_DatumPoint": {
+"ctx": "CmdPartDatumPoint",
+"menu": "Datum Point",
+"tip": "Creates a datum point that can be attached to other objects",
+"status": "Creates a datum point that can be attached to other objects"
+},
+"Part_Datums": {
+"ctx": "CmdPartDatums",
+"menu": "Datums",
+"tip": "Creates a datum object (coordinate system, plane, line, or point) that can be attached to other objects",
+"status": "Creates a datum object (coordinate system, plane, line, or point) that can be attached to other objects"
+},
+"Part_Defeaturing": {
+"ctx": "CmdPartDefeaturing",
+"menu": "Defeaturing",
+"tip": "Removes the selected features from a shape",
+"status": "Removes the selected features from a shape"
+},
+"Part_EdgeSelection": {
+"ctx": "PartCmdEdgeSelection",
+"menu": "Edge Selection",
+"tip": "Only allows the selection of edges",
+"status": "Only allows the selection of edges"
+},
+"Part_EditAttachment": {
+"ctx": "PythonCommand",
+"menu": "Attachment",
+"tip": "Opens the attachment editor to change the attachment of the selected object",
+"status": ""
+},
+"Part_ElementCopy": {
+"ctx": "CmdPartElementCopy",
+"menu": "Shape Element Copy",
+"tip": "Creates a non-parametric copy of the selected shape element",
+"status": "Creates a non-parametric copy of the selected shape element"
+},
+"Part_Export": {
+"ctx": "CmdPartExport",
+"menu": "Export CAD File",
+"tip": "Exports to a CAD file",
+"status": "Exports to a CAD file"
+},
+"Part_Extrude": {
+"ctx": "CmdPartExtrude",
+"menu": "Extrude",
+"tip": "Extrudes the selected sketch or profile",
+"status": "Extrudes the selected sketch or profile"
+},
+"Part_FaceSelection": {
+"ctx": "PartCmdFaceSelection",
+"menu": "Face Selection",
+"tip": "Only allows the selection of faces",
+"status": "Only allows the selection of faces"
+},
+"Part_Fillet": {
+"ctx": "CmdPartFillet",
+"menu": "Fillet",
+"tip": "Fillets the selected edges of a shape",
+"status": "Fillets the selected edges of a shape"
+},
+"Part_Fuse": {
+"ctx": "CmdPartFuse",
+"menu": "Union",
+"tip": "Unites the selected shapes",
+"status": "Unites the selected shapes"
+},
+"Part_Import": {
+"ctx": "CmdPartImport",
+"menu": "Import CAD File",
+"tip": "Imports a CAD file",
+"status": "Imports a CAD file"
+},
+"Part_ImportCurveNet": {
+"ctx": "CmdPartImportCurveNet",
+"menu": "Import Curve Network",
+"tip": "Imports a curve network",
+"status": "Imports a curve network"
+},
+"Part_LinkArrayCircular": {
+"ctx": "CmdPartLinkArrayCircular",
+"menu": "Circular Link Array",
+"tip": "Creates a concentric circular array of linked objects",
+"status": "Creates a concentric circular array of linked objects"
+},
+"Part_LinkArrayLinear": {
+"ctx": "CmdPartLinkArrayLinear",
+"menu": "Linear Link Array",
+"tip": "Creates a linear array of linked objects",
+"status": "Creates a linear array of linked objects"
+},
+"Part_LinkArrayPath": {
+"ctx": "CmdPartLinkArrayPath",
+"menu": "Path Link Array",
+"tip": "Creates an array of linked objects along a path",
+"status": "Creates an array of linked objects along a path"
+},
+"Part_LinkArrayPoint": {
+"ctx": "CmdPartLinkArrayPoint",
+"menu": "Point Link Array",
+"tip": "Creates an array of linked objects at each point of a sketch or shape",
+"status": "Creates an array of linked objects at each point of a sketch or shape"
+},
+"Part_LinkArrayPolar": {
+"ctx": "CmdPartLinkArrayPolar",
+"menu": "Polar Link Array",
+"tip": "Creates a polar array of linked objects",
+"status": "Creates a polar array of linked objects"
+},
+"Part_LinkArrays": {
+"ctx": "CmdPartLinkArrays",
+"menu": "Link Arrays",
+"tip": "Creates link arrays",
+"status": "Creates link arrays"
+},
+"Part_Loft": {
+"ctx": "CmdPartLoft",
+"menu": "Loft",
+"tip": "Lofts the selected profiles",
+"status": "Lofts the selected profiles"
+},
+"Part_MakeFace": {
+"ctx": "CmdPartMakeFace",
+"menu": "Face From Wires",
+"tip": "Creates a face from the selected wires (e.g. from a sketch)",
+"status": "Creates a face from the selected wires (e.g. from a sketch)"
+},
+"Part_MakeSolid": {
+"ctx": "CmdPartMakeSolid",
+"menu": "Convert to Solid",
+"tip": "Converts the selected shell or compound to a solid",
+"status": "Converts the selected shell or compound to a solid"
+},
+"Part_Mirror": {
+"ctx": "CmdPartMirror",
+"menu": "Mirror",
+"tip": "Mirrors the selected shape",
+"status": "Mirrors the selected shape"
+},
+"Part_Offset": {
+"ctx": "CmdPartOffset",
+"menu": "3D Offset",
+"tip": "Offsets shapes in 3D",
+"status": "Offsets shapes in 3D"
+},
+"Part_Offset2D": {
+"ctx": "CmdPartOffset2D",
+"menu": "2D Offset",
+"tip": "Offsets planar shapes in 2D",
+"status": "Offsets planar shapes in 2D"
+},
+"Part_PickCurveNet": {
+"ctx": "CmdPartPickCurveNet",
+"menu": "Pick Curve Network",
+"tip": "Picks a curve network",
+"status": "Picks a curve network"
+},
+"Part_PointsFromMesh": {
+"ctx": "CmdPartPointsFromMesh",
+"menu": "Points From Shape",
+"tip": "Creates distributed points from the selected shape",
+"status": "Creates distributed points from the selected shape"
+},
+"Part_Primitives": {
+"ctx": "CmdPartPrimitives",
+"menu": "Primitive",
+"tip": "Creates solid geometric primitives parametrically",
+"status": "Creates solid geometric primitives parametrically"
+},
+"Part_ProjectionOnSurface": {
+"ctx": "CmdPartProjectionOnSurface",
+"menu": "Project on Surface",
+"tip": "Projects edges, wires, or faces of one shape\nonto a face of another shape.\nThe camera view determines the direction\nof the projection.",
+"status": "Projects edges, wires, or faces of one shape\nonto a face of another shape.\nThe camera view determines the direction\nof the projection."
+},
+"Part_RefineShape": {
+"ctx": "CmdPartRefineShape",
+"menu": "Refine Shape",
+"tip": "Creates a refined copy of the selected shapes",
+"status": "Creates a refined copy of the selected shapes"
+},
+"Part_RemoveSelectionGate": {
+"ctx": "PartCmdRemoveSelectionGate",
+"menu": "No Selection Filters",
+"tip": "Clears all selection filters",
+"status": "Clears all selection filters"
+},
+"Part_ReverseShape": {
+"ctx": "CmdPartReverseShape",
+"menu": "Reverse Shapes",
+"tip": "Reverses the orientation of the selected shapes",
+"status": "Reverses the orientation of the selected shapes"
+},
+"Part_Revolve": {
+"ctx": "CmdPartRevolve",
+"menu": "Revolve",
+"tip": "Revolves the selected shape",
+"status": "Revolves the selected shape"
+},
+"Part_RuledSurface": {
+"ctx": "CmdPartRuledSurface",
+"menu": "Ruled Surface",
+"tip": "Creates a ruled surface between 2 selected wires",
+"status": "Creates a ruled surface between 2 selected wires"
+},
+"Part_Scale": {
+"ctx": "CmdPartScale",
+"menu": "Scale",
+"tip": "Scales the selected shape",
+"status": "Scales the selected shape"
+},
+"Part_Section": {
+"ctx": "CmdPartSection",
+"menu": "Section",
+"tip": "Sections 2 selected shapes",
+"status": "Sections 2 selected shapes"
+},
+"Part_SectionCut": {
+"ctx": "CmdPartSectionCut",
+"menu": "Persiste&nt Section Cut",
+"tip": "Creates a new object as a boolean intersection of all visible shapes and the selected axis planes",
+"status": "Creates a new object as a boolean intersection of all visible shapes and the selected axis planes"
+},
+"Part_SelectFilter": {
+"ctx": "PartCmdSelectFilter",
+"menu": "Selection Filter",
+"tip": "Changes the selection filter",
+"status": "Changes the selection filter"
+},
+"Part_ShapeFromMesh": {
+"ctx": "CmdPartShapeFromMesh",
+"menu": "Shape From Mesh",
+"tip": "Creates a shape from the selected mesh",
+"status": "Creates a shape from the selected mesh"
+},
+"Part_ShapeInfo": {
+"ctx": "CmdShapeInfo",
+"menu": "Shape Info",
+"tip": "Displays information about the selected shape",
+"status": "Displays information about the selected shape"
+},
+"Part_SimpleCopy": {
+"ctx": "CmdPartSimpleCopy",
+"menu": "Simple Copy",
+"tip": "Creates a simple non-parametric copy of the selected shapes",
+"status": "Creates a simple non-parametric copy of the selected shapes"
+},
+"Part_SimpleCylinder": {
+"ctx": "CmdPartSimpleCylinder",
+"menu": "Cylinder",
+"tip": "Creates a solid cylinder",
+"status": "Creates a solid cylinder"
+},
+"Part_Sphere": {
+"ctx": "CmdPartSphere",
+"menu": "Sphere",
+"tip": "Creates a solid sphere",
+"status": "Creates a solid sphere"
+},
+"Part_Sweep": {
+"ctx": "CmdPartSweep",
+"menu": "Sweep",
+"tip": "Sweeps profiles along a wire",
+"status": "Sweeps profiles along a wire"
+},
+"Part_Thickness": {
+"ctx": "CmdPartThickness",
+"menu": "Thickness",
+"tip": "Removes the selected faces and offsets the remaining shape outward to add thickness",
+"status": "Removes the selected faces and offsets the remaining shape outward to add thickness"
+},
+"Part_Torus": {
+"ctx": "CmdPartTorus",
+"menu": "Torus",
+"tip": "Creates a solid torus",
+"status": "Creates a solid torus"
+},
+"Part_TransformedCopy": {
+"ctx": "CmdPartTransformedCopy",
+"menu": "Transformed Copy",
+"tip": "Creates a non-parametric copy with transformed placement of the selected shapes",
+"status": "Creates a non-parametric copy with transformed placement of the selected shapes"
+},
+"Part_VertexSelection": {
+"ctx": "PartCmdVertexSelection",
+"menu": "Vertex Selection",
+"tip": "Only allows the selection of vertices",
+"status": "Only allows the selection of vertices"
+},
+"Sketcher_ArcOverlay": {
+"ctx": "CmdSketcherArcOverlay",
+"menu": "Toggle Circular Helper for Arcs",
+"tip": "Toggles the visibility of the circular helpers for all arcs",
+"status": "Toggles the visibility of the circular helpers for all arcs"
+},
+"Sketcher_BSplineComb": {
+"ctx": "CmdSketcherBSplineComb",
+"menu": "Toggle B-Spline Curvature Comb",
+"tip": "Toggles the visibility of the curvature comb for all B-splines",
+"status": "Toggles the visibility of the curvature comb for all B-splines"
+},
+"Sketcher_BSplineConvertToNURBS": {
+"ctx": "CmdSketcherConvertToNURBS",
+"menu": "Geometry to B-Spline",
+"tip": "Converts the selected geometry to B-splines",
+"status": "Converts the selected geometry to B-splines"
+},
+"Sketcher_BSplineDecreaseDegree": {
+"ctx": "CmdSketcherDecreaseDegree",
+"menu": "Decrease B-Spline Degree",
+"tip": "Decreases the degree of the B-spline",
+"status": "Decreases the degree of the B-spline"
+},
+"Sketcher_BSplineDecreaseKnotMultiplicity": {
+"ctx": "CmdSketcherDecreaseKnotMultiplicity",
+"menu": "Decrease Knot Multiplicity",
+"tip": "Decreases the multiplicity of the selected knot of a B-spline",
+"status": "Decreases the multiplicity of the selected knot of a B-spline"
+},
+"Sketcher_BSplineDegree": {
+"ctx": "CmdSketcherBSplineDegree",
+"menu": "Toggle B-Spline Degree",
+"tip": "Toggles the visibility of the degree for all B-splines",
+"status": "Toggles the visibility of the degree for all B-splines"
+},
+"Sketcher_BSplineIncreaseDegree": {
+"ctx": "CmdSketcherIncreaseDegree",
+"menu": "Increase B-Spline Degree",
+"tip": "Increases the degree of the B-spline",
+"status": "Increases the degree of the B-spline"
+},
+"Sketcher_BSplineIncreaseKnotMultiplicity": {
+"ctx": "CmdSketcherIncreaseKnotMultiplicity",
+"menu": "Increase Knot Multiplicity",
+"tip": "Increases the multiplicity of the selected knot of a B-spline",
+"status": "Increases the multiplicity of the selected knot of a B-spline"
+},
+"Sketcher_BSplineInsertKnot": {
+"ctx": "CmdSketcherInsertKnot",
+"menu": "Insert Knot",
+"tip": "Inserts a knot at a given parameter. If a knot already exists at that parameter, its multiplicity is increased by 1.",
+"status": "Inserts a knot at a given parameter. If a knot already exists at that parameter, its multiplicity is increased by 1."
+},
+"Sketcher_BSplineKnotMultiplicity": {
+"ctx": "CmdSketcherBSplineKnotMultiplicity",
+"menu": "Toggle B-Spline Knot Multiplicity",
+"tip": "Toggles the visibility of the knot multiplicity for all B-splines",
+"status": "Toggles the visibility of the knot multiplicity for all B-splines"
+},
+"Sketcher_BSplinePoleWeight": {
+"ctx": "CmdSketcherBSplinePoleWeight",
+"menu": "Toggle B-Spline Control Point Weight",
+"tip": "Toggles the visibility of control point weights for all B-splines",
+"status": "Toggles the visibility of control point weights for all B-splines"
+},
+"Sketcher_BSplinePolygon": {
+"ctx": "CmdSketcherBSplinePolygon",
+"menu": "Toggle B-Spline Control Polygon",
+"tip": "Toggles the visibility of the control polygons for all B-splines",
+"status": "Toggles the visibility of the control polygons for all B-splines"
+},
+"Sketcher_CancelSketch": {
+"ctx": "CmdSketcherCancelSketch",
+"menu": "Cancel Editing",
+"tip": "Leaves 'edit' mode and reverts any changes",
+"status": "Leaves 'edit' mode and reverts any changes"
+},
+"Sketcher_CarbonCopy": {
+"ctx": "CmdSketcherCarbonCopy",
+"menu": "Carbon Copy",
+"tip": "Copies the geometry of another sketch",
+"status": "Copies the geometry of another sketch"
+},
+"Sketcher_ChangeDimensionConstraint": {
+"ctx": "CmdSketcherChangeDimensionConstraint",
+"menu": "Edit Value",
+"tip": "Edits the value of a dimensional constraint",
+"status": "Edits the value of a dimensional constraint"
+},
+"Sketcher_Clone": {
+"ctx": "CmdSketcherClone",
+"menu": "Clone",
+"tip": "Creates a clone of the geometry taking as reference the last selected point",
+"status": "Creates a clone of the geometry taking as reference the last selected point"
+},
+"Sketcher_CompBSplineShowHideGeometryInformation": {
+"ctx": "CmdSketcherCompBSplineShowHideGeometryInformation",
+"menu": "Toggle B-Spline Information Layer",
+"tip": "Toggles the visibility of the information layer for all B-splines",
+"status": "Toggles the visibility of the information layer for all B-splines"
+},
+"Sketcher_CompConstrainRadDia": {
+"ctx": "CmdSketcherCompConstrainRadDia",
+"menu": "Radius/Diameter Dimension",
+"tip": "Constrains the radius or diameter of an arc or a circle",
+"status": "Constrains the radius or diameter of an arc or a circle"
+},
+"Sketcher_CompConstrainTools": {
+"ctx": "CmdSketcherCompConstrainTools",
+"menu": "Constrain",
+"tip": "Constrain tools",
+"status": "Constrain tools"
+},
+"Sketcher_CompCopy": {
+"ctx": "CmdSketcherCompCopy",
+"menu": "Clone",
+"tip": "Creates a clone of the geometry taking as reference the last selected point",
+"status": "Creates a clone of the geometry taking as reference the last selected point"
+},
+"Sketcher_CompCreateArc": {
+"ctx": "CmdSketcherCompCreateArc",
+"menu": "Arc",
+"tip": "Creates an arc",
+"status": "Creates an arc"
+},
+"Sketcher_CompCreateBSpline": {
+"ctx": "CmdSketcherCompCreateBSpline",
+"menu": "B-Spline",
+"tip": "Creates a B-spline curve defined by control points",
+"status": "Creates a B-spline curve defined by control points"
+},
+"Sketcher_CompCreateConic": {
+"ctx": "CmdSketcherCompCreateConic",
+"menu": "Conic",
+"tip": "Creates a conic",
+"status": "Creates a conic"
+},
+"Sketcher_CompCreateFillets": {
+"ctx": "CmdSketcherCompCreateFillets",
+"menu": "Fillet/Chamfer",
+"tip": "Creates a fillet or chamfer between 2 curves",
+"status": "Creates a fillet or chamfer between 2 curves"
+},
+"Sketcher_CompCreateRectangles": {
+"ctx": "CmdSketcherCompCreateRectangles",
+"menu": "Rectangle",
+"tip": "Creates a rectangle",
+"status": "Creates a rectangle"
+},
+"Sketcher_CompCreateRegularPolygon": {
+"ctx": "CmdSketcherCompCreateRegularPolygon",
+"menu": "Polygon",
+"tip": "Creates a regular polygon from a center and corner point",
+"status": "Creates a regular polygon from a center and corner point"
+},
+"Sketcher_CompCurveEdition": {
+"ctx": "CmdSketcherCompCurveEdition",
+"menu": "Edit Edges",
+"tip": "Edge editing tools",
+"status": "Edge editing tools"
+},
+"Sketcher_CompDimensionTools": {
+"ctx": "CmdSketcherCompDimensionTools",
+"menu": "Dimension",
+"tip": "Dimension tools",
+"status": "Dimension tools"
+},
+"Sketcher_CompExternal": {
+"ctx": "CmdSketcherCompExternal",
+"menu": "External Geometry",
+"tip": "Creates sketch elements linked to geometry defined outside the sketch",
+"status": "Creates sketch elements linked to geometry defined outside the sketch"
+},
+"Sketcher_CompHorVer": {
+"ctx": "CmdSketcherCompHorizontalVertical",
+"menu": "Horizontal/Vertical Constraint",
+"tip": "Constrains the selected elements either horizontally or vertically",
+"status": "Constrains the selected elements either horizontally or vertically"
+},
+"Sketcher_CompLine": {
+"ctx": "CmdSketcherCompLine",
+"menu": "Polyline",
+"tip": "Creates a continuous polyline",
+"status": "Creates a continuous polyline"
+},
+"Sketcher_CompModifyKnotMultiplicity": {
+"ctx": "CmdSketcherCompModifyKnotMultiplicity",
+"menu": "Modify Knot Multiplicity",
+"tip": "Modifies the multiplicity of the selected knot of a B-spline",
+"status": "Modifies the multiplicity of the selected knot of a B-spline"
+},
+"Sketcher_CompSlot": {
+"ctx": "CmdSketcherCompSlot",
+"menu": "Slot",
+"tip": "Slot tools",
+"status": "Slot tools"
+},
+"Sketcher_CompToggleConstraints": {
+"ctx": "CmdSketcherCompToggleConstraints",
+"menu": "Toggle Constraints",
+"tip": "Toggle constrain tools",
+"status": "Toggle constrain tools"
+},
+"Sketcher_ConstrainAngle": {
+"ctx": "CmdSketcherConstrainAngle",
+"menu": "Angle Dimension",
+"tip": "Constrains the angle between two straight lines or between one line and the X-axis of the sketch if only one is selected",
+"status": "Constrains the angle between two straight lines or between one line and the X-axis of the sketch if only one is selected"
+},
+"Sketcher_ConstrainBlock": {
+"ctx": "CmdSketcherConstrainBlock",
+"menu": "Block Constraint",
+"tip": "Constrains the selected edges as fixed",
+"status": "Constrains the selected edges as fixed"
+},
+"Sketcher_ConstrainCoincident": {
+"ctx": "CmdSketcherConstrainCoincident",
+"menu": "Coincident Constraint",
+"tip": "Constrains the selected elements to be coincident",
+"status": "Constrains the selected elements to be coincident"
+},
+"Sketcher_ConstrainCoincidentUnified": {
+"ctx": "CmdSketcherConstrainCoincidentUnified",
+"menu": "Coincident Constraint",
+"tip": "Constrains the selected elements to be coincident",
+"status": "Constrains the selected elements to be coincident"
+},
+"Sketcher_ConstrainDiameter": {
+"ctx": "CmdSketcherConstrainDiameter",
+"menu": "Diameter Dimension",
+"tip": "Constrains the diameter of the selected circle or arc",
+"status": "Constrains the diameter of the selected circle or arc"
+},
+"Sketcher_ConstrainDistance": {
+"ctx": "CmdSketcherConstrainDistance",
+"menu": "Distance Dimension",
+"tip": "Constrains the vertical distance between two points, or from a point to the origin if one is selected",
+"status": "Constrains the vertical distance between two points, or from a point to the origin if one is selected"
+},
+"Sketcher_ConstrainDistanceX": {
+"ctx": "CmdSketcherConstrainDistanceX",
+"menu": "Horizontal Dimension",
+"tip": "Constrains the horizontal distance between two points, or from a point to the origin if only one is selected",
+"status": "Constrains the horizontal distance between two points, or from a point to the origin if only one is selected"
+},
+"Sketcher_ConstrainDistanceY": {
+"ctx": "CmdSketcherConstrainDistanceY",
+"menu": "Vertical Dimension",
+"tip": "Constrains the vertical distance between two points, or from a point to the origin if only one is selected",
+"status": "Constrains the vertical distance between two points, or from a point to the origin if only one is selected"
+},
+"Sketcher_ConstrainEqual": {
+"ctx": "CmdSketcherConstrainEqual",
+"menu": "Equal Constraint",
+"tip": "Constrains the selected edges or circles to be equal",
+"status": "Constrains the selected edges or circles to be equal"
+},
+"Sketcher_ConstrainGroup": {
+"ctx": "CmdSketcherConstrainGroup",
+"menu": "Group Constraint",
+"tip": "Constrains the selected geometries together as a single entity.The position and size of the grouped geometries can be defined by constraining the construction line that is generated.Constraints applied to grouped edges are ignored as long as the Group constraint is here.",
+"status": "Constrains the selected geometries together as a single entity.The position and size of the grouped geometries can be defined by constraining the construction line that is generated.Constraints applied to grouped edges are ignored as long as the Group constraint is here."
+},
+"Sketcher_ConstrainHorVer": {
+"ctx": "CmdSketcherConstrainHorVer",
+"menu": "Horizontal/Vertical Constraint",
+"tip": "Constrains the selected elements either horizontally or vertically, based on their closest alignment",
+"status": "Constrains the selected elements either horizontally or vertically, based on their closest alignment"
+},
+"Sketcher_ConstrainHorizontal": {
+"ctx": "CmdSketcherConstrainHorizontal",
+"menu": "Horizontal Constraint",
+"tip": "Constrains the selected elements horizontally",
+"status": "Constrains the selected elements horizontally"
+},
+"Sketcher_ConstrainLock": {
+"ctx": "CmdSketcherConstrainLock",
+"menu": "Lock Position",
+"tip": "Constrains the selected vertices by adding horizontal and vertical distance constraints",
+"status": "Constrains the selected vertices by adding horizontal and vertical distance constraints"
+},
+"Sketcher_ConstrainParallel": {
+"ctx": "CmdSketcherConstrainParallel",
+"menu": "Parallel Constraint",
+"tip": "Constrains the selected lines to be parallel",
+"status": "Constrains the selected lines to be parallel"
+},
+"Sketcher_ConstrainPerpendicular": {
+"ctx": "CmdSketcherConstrainPerpendicular",
+"menu": "Perpendicular Constraint",
+"tip": "Constrains the selected lines to be perpendicular",
+"status": "Constrains the selected lines to be perpendicular"
+},
+"Sketcher_ConstrainPointOnObject": {
+"ctx": "CmdSketcherConstrainPointOnObject",
+"menu": "Point-On-Object Constraint",
+"tip": "Constrains the selected point onto the selected object",
+"status": "Constrains the selected point onto the selected object"
+},
+"Sketcher_ConstrainRadiam": {
+"ctx": "CmdSketcherConstrainRadiam",
+"menu": "Radius/Diameter Dimension",
+"tip": "Constrains the radius of the selected arc or the diameter of the selected circle",
+"status": "Constrains the radius of the selected arc or the diameter of the selected circle"
+},
+"Sketcher_ConstrainRadius": {
+"ctx": "CmdSketcherConstrainRadius",
+"menu": "Radius Dimension",
+"tip": "Constrains the radius of the selected circle or arc",
+"status": "Constrains the radius of the selected circle or arc"
+},
+"Sketcher_ConstrainSnellsLaw": {
+"ctx": "CmdSketcherConstrainSnellsLaw",
+"menu": "Refraction Constraint",
+"tip": "Constrains the selected elements based on the refraction law (Snell's Law)",
+"status": "Constrains the selected elements based on the refraction law (Snell's Law)"
+},
+"Sketcher_ConstrainSymmetric": {
+"ctx": "CmdSketcherConstrainSymmetric",
+"menu": "Symmetric Constraint",
+"tip": "Constrains the selected elements to be symmetric",
+"status": "Constrains the selected elements to be symmetric"
+},
+"Sketcher_ConstrainTangent": {
+"ctx": "CmdSketcherConstrainTangent",
+"menu": "Tangent/Collinear Constraint",
+"tip": "Constrains the selected elements to be tangent or collinear",
+"status": "Constrains the selected elements to be tangent or collinear"
+},
+"Sketcher_ConstrainVertical": {
+"ctx": "CmdSketcherConstrainVertical",
+"menu": "Vertical Constraint",
+"tip": "Constrains the selected elements vertically",
+"status": "Constrains the selected elements vertically"
+},
+"Sketcher_Copy": {
+"ctx": "CmdSketcherCopy",
+"menu": "Copy",
+"tip": "Creates a simple copy of the geometry taking as reference the last selected point",
+"status": "Creates a simple copy of the geometry taking as reference the last selected point"
+},
+"Sketcher_CopyClipboard": {
+"ctx": "CmdSketcherCopyClipboard",
+"menu": "C&opy Elements",
+"tip": "Copies the selected geometries and constraints to the clipboard",
+"status": "Copies the selected geometries and constraints to the clipboard"
+},
+"Sketcher_Create3PointArc": {
+"ctx": "CmdSketcherCreate3PointArc",
+"menu": "Arc From 3 Points",
+"tip": "Creates an arc defined by 2 end points and 1 point on the arc",
+"status": "Creates an arc defined by 2 end points and 1 point on the arc"
+},
+"Sketcher_Create3PointCircle": {
+"ctx": "CmdSketcherCreate3PointCircle",
+"menu": "Circle From 3 Points",
+"tip": "Creates a circle from 3 perimeter points",
+"status": "Creates a circle from 3 perimeter points"
+},
+"Sketcher_CreateArc": {
+"ctx": "CmdSketcherCreateArc",
+"menu": "Arc From Center",
+"tip": "Creates an arc defined by a center point and an end point",
+"status": "Creates an arc defined by a center point and an end point"
+},
+"Sketcher_CreateArcOfEllipse": {
+"ctx": "CmdSketcherCreateArcOfEllipse",
+"menu": "Elliptical Arc",
+"tip": "Creates an elliptical arc",
+"status": "Creates an elliptical arc"
+},
+"Sketcher_CreateArcOfHyperbola": {
+"ctx": "CmdSketcherCreateArcOfHyperbola",
+"menu": "Hyperbolic Arc",
+"tip": "Creates a hyperbolic arc",
+"status": "Creates a hyperbolic arc"
+},
+"Sketcher_CreateArcOfParabola": {
+"ctx": "CmdSketcherCreateArcOfParabola",
+"menu": "Parabolic Arc",
+"tip": "Creates a parabolic arc",
+"status": "Creates a parabolic arc"
+},
+"Sketcher_CreateArcSlot": {
+"ctx": "CmdSketcherCreateArcSlot",
+"menu": "Arc Slot",
+"tip": "Creates an arc slot",
+"status": "Creates an arc slot"
+},
+"Sketcher_CreateBSpline": {
+"ctx": "CmdSketcherCreateBSpline",
+"menu": "B-Spline",
+"tip": "Creates a B-spline curve defined by control points",
+"status": "Creates a B-spline curve defined by control points"
+},
+"Sketcher_CreateBSplineByInterpolation": {
+"ctx": "CmdSketcherCreateBSplineByInterpolation",
+"menu": "B-Spline From Knots",
+"tip": "Creates a B-spline from knots, i.e. from interpolation",
+"status": "Creates a B-spline from knots, i.e. from interpolation"
+},
+"Sketcher_CreateChamfer": {
+"ctx": "CmdSketcherCreateChamfer",
+"menu": "Chamfer",
+"tip": "Creates a chamfer between 2 selected curves or at coincident points",
+"status": "Creates a chamfer between 2 selected curves or at coincident points"
+},
+"Sketcher_CreateCircle": {
+"ctx": "CmdSketcherCreateCircle",
+"menu": "Circle From Center",
+"tip": "Creates a circle from a center and rim point",
+"status": "Creates a circle from a center and rim point"
+},
+"Sketcher_CreateEllipseBy3Points": {
+"ctx": "CmdSketcherCreateEllipseBy3Points",
+"menu": "Ellipse From 3 Points",
+"tip": "Creates an ellipse from 3 points on its perimeter",
+"status": "Creates an ellipse from 3 points on its perimeter"
+},
+"Sketcher_CreateEllipseByCenter": {
+"ctx": "CmdSketcherCreateEllipseByCenter",
+"menu": "Ellipse From Center",
+"tip": "Creates an ellipse from a center and rim point",
+"status": "Creates an ellipse from a center and rim point"
+},
+"Sketcher_CreateFillet": {
+"ctx": "CmdSketcherCreateFillet",
+"menu": "Fillet",
+"tip": "Creates a fillet between 2 selected curves or at coincident points",
+"status": "Creates a fillet between 2 selected curves or at coincident points"
+},
+"Sketcher_CreateHeptagon": {
+"ctx": "CmdSketcherCreateHeptagon",
+"menu": "Heptagon",
+"tip": "Creates a heptagon from a center and corner point",
+"status": "Creates a heptagon from a center and corner point"
+},
+"Sketcher_CreateHexagon": {
+"ctx": "CmdSketcherCreateHexagon",
+"menu": "Hexagon",
+"tip": "Creates a hexagon from a center and corner point",
+"status": "Creates a hexagon from a center and corner point"
+},
+"Sketcher_CreateLine": {
+"ctx": "CmdSketcherCreateLine",
+"menu": "Line",
+"tip": "Creates a line",
+"status": "Creates a line"
+},
+"Sketcher_CreateOblong": {
+"ctx": "CmdSketcherCreateOblong",
+"menu": "Rounded Rectangle",
+"tip": "Creates a rounded rectangle from 2 corner points",
+"status": "Creates a rounded rectangle from 2 corner points"
+},
+"Sketcher_CreateOctagon": {
+"ctx": "CmdSketcherCreateOctagon",
+"menu": "Octagon",
+"tip": "Creates an octagon from a center and corner point",
+"status": "Creates an octagon from a center and corner point"
+},
+"Sketcher_CreatePentagon": {
+"ctx": "CmdSketcherCreatePentagon",
+"menu": "Pentagon",
+"tip": "Creates a pentagon from a center and corner point",
+"status": "Creates a pentagon from a center and corner point"
+},
+"Sketcher_CreatePeriodicBSpline": {
+"ctx": "CmdSketcherCreatePeriodicBSpline",
+"menu": "Periodic B-Spline",
+"tip": "Creates a periodic B-spline curve defined by control points",
+"status": "Creates a periodic B-spline curve defined by control points"
+},
+"Sketcher_CreatePeriodicBSplineByInterpolation": {
+"ctx": "CmdSketcherCreatePeriodicBSplineByInterpolation",
+"menu": "Periodic B-Spline From Knots",
+"tip": "Creates a periodic B-spline defined by knots using interpolation",
+"status": "Creates a periodic B-spline defined by knots using interpolation"
+},
+"Sketcher_CreatePoint": {
+"ctx": "CmdSketcherCreatePoint",
+"menu": "Point",
+"tip": "Creates a point",
+"status": "Creates a point"
+},
+"Sketcher_CreatePolyline": {
+"ctx": "CmdSketcherCreatePolyline",
+"menu": "Polyline",
+"tip": "Creates a polyline in the sketch. M key cycles through segment modes.",
+"status": "Creates a polyline in the sketch. M key cycles through segment modes."
+},
+"Sketcher_CreatePolylineLegacy": {
+"ctx": "CmdSketcherCreatePolylineLegacy",
+"menu": "Polyline",
+"tip": "Creates a continuous polyline. Press the 'M' key to switch segment modes",
+"status": "Creates a continuous polyline. Press the 'M' key to switch segment modes"
+},
+"Sketcher_CreateRectangle": {
+"ctx": "CmdSketcherCreateRectangle",
+"menu": "Rectangle",
+"tip": "Creates a rectangle from 2 corner points",
+"status": "Creates a rectangle from 2 corner points"
+},
+"Sketcher_CreateRectangle_Center": {
+"ctx": "CmdSketcherCreateRectangleCenter",
+"menu": "Centered Rectangle",
+"tip": "Creates a centered rectangle from a center and a corner point",
+"status": "Creates a centered rectangle from a center and a corner point"
+},
+"Sketcher_CreateRegularPolygon": {
+"ctx": "CmdSketcherCreateRegularPolygon",
+"menu": "Polygon",
+"tip": "Creates a regular polygon from a center and corner point",
+"status": "Creates a regular polygon from a center and corner point"
+},
+"Sketcher_CreateSlot": {
+"ctx": "CmdSketcherCreateSlot",
+"menu": "Slot",
+"tip": "Creates a slot",
+"status": "Creates a slot"
+},
+"Sketcher_CreateSquare": {
+"ctx": "CmdSketcherCreateSquare",
+"menu": "Square",
+"tip": "Creates a square from a center and corner point",
+"status": "Creates a square from a center and corner point"
+},
+"Sketcher_CreateText": {
+"ctx": "CmdSketcherCreateText",
+"menu": "Text",
+"tip": "Creates text geometries controlled by a Text constraint.\nTo Edit: Double-click the Text constraint to change the text content and font.\nTo Position/Size: Apply constraints to the group's construction line.\nNote: While the Text constraint is active, any constraints applied directly to the text geometries will be ignored.\n",
+"status": "Creates text geometries controlled by a Text constraint.\nTo Edit: Double-click the Text constraint to change the text content and font.\nTo Position/Size: Apply constraints to the group's construction line.\nNote: While the Text constraint is active, any constraints applied directly to the text geometries will be ignored.\n"
+},
+"Sketcher_CreateTriangle": {
+"ctx": "CmdSketcherCreateTriangle",
+"menu": "Triangle",
+"tip": "Creates an equilateral triangle from a center and corner point",
+"status": "Creates an equilateral triangle from a center and corner point"
+},
+"Sketcher_Cut": {
+"ctx": "CmdSketcherCut",
+"menu": "C&ut Elements",
+"tip": "Cuts the selected geometries and constraints to the clipboard",
+"status": "Cuts the selected geometries and constraints to the clipboard"
+},
+"Sketcher_DeleteAllConstraints": {
+"ctx": "CmdSketcherDeleteAllConstraints",
+"menu": "Delete All Constraints",
+"tip": "Deletes all constraints in the sketch",
+"status": "Deletes all constraints in the sketch"
+},
+"Sketcher_DeleteAllGeometry": {
+"ctx": "CmdSketcherDeleteAllGeometry",
+"menu": "Delete All Geometry",
+"tip": "Deletes all geometry and their constraints in the current sketch, with the exception of external geometry",
+"status": "Deletes all geometry and their constraints in the current sketch, with the exception of external geometry"
+},
+"Sketcher_Dimension": {
+"ctx": "CmdSketcherDimension",
+"menu": "Dimension",
+"tip": "Constrains contextually based on the selection. The type can be changed with the M key.",
+"status": "Constrains contextually based on the selection. The type can be changed with the M key."
+},
+"Sketcher_EditSketch": {
+"ctx": "CmdSketcherEditSketch",
+"menu": "Edit Sketch",
+"tip": "Opens the selected sketch for editing",
+"status": "Opens the selected sketch for editing"
+},
+"Sketcher_Extend": {
+"ctx": "CmdSketcherExtend",
+"menu": "Extend Edge",
+"tip": "Extends an edge with respect to the selected position",
+"status": "Extends an edge with respect to the selected position"
+},
+"Sketcher_Grid": {
+"ctx": "CmdSketcherGrid",
+"menu": "Toggle Grid",
+"tip": "Toggles the grid display in the active sketch",
+"status": "Toggles the grid display in the active sketch"
+},
+"Sketcher_Intersection": {
+"ctx": "CmdSketcherIntersection",
+"menu": "External Intersection",
+"tip": "Creates the intersection of external geometry with the sketch plane",
+"status": "Creates the intersection of external geometry with the sketch plane"
+},
+"Sketcher_JoinCurves": {
+"ctx": "CmdSketcherJoinCurves",
+"menu": "Join Curves",
+"tip": "Joins 2 curves at selected end points",
+"status": "Joins 2 curves at selected end points"
+},
+"Sketcher_LeaveGroup": {
+"ctx": "CmdSketcherLeaveGroup",
+"menu": "Leave",
+"tip": "Leaves the sketch editing mode",
+"status": "Leaves the sketch editing mode"
+},
+"Sketcher_LeaveSketch": {
+"ctx": "CmdSketcherLeaveSketch",
+"menu": "Leave Sketch",
+"tip": "Finishes editing the active sketch. Press Escape to exit.",
+"status": "Finishes editing the active sketch. Press Escape to exit."
+},
+"Sketcher_MapSketch": {
+"ctx": "CmdSketcherMapSketch",
+"menu": "Attach Sketch",
+"tip": "Attaches a sketch to the selected geometry element",
+"status": "Attaches a sketch to the selected geometry element"
+},
+"Sketcher_MergeSketches": {
+"ctx": "CmdSketcherMergeSketches",
+"menu": "Merge Sketches",
+"tip": "Creates a new sketch by merging at least 2 selected sketches",
+"status": "Creates a new sketch by merging at least 2 selected sketches"
+},
+"Sketcher_MirrorSketch": {
+"ctx": "CmdSketcherMirrorSketch",
+"menu": "Mirror Sketch",
+"tip": "Creates a new mirrored sketch for each selected sketch\nby using the X or Y axes, or the origin point,\nas mirroring reference",
+"status": "Creates a new mirrored sketch for each selected sketch\nby using the X or Y axes, or the origin point,\nas mirroring reference"
+},
+"Sketcher_Move": {
+"ctx": "CmdSketcherMove",
+"menu": "Move",
+"tip": "Moves the geometry taking as reference the last selected point",
+"status": "Moves the geometry taking as reference the last selected point"
+},
+"Sketcher_NewSketch": {
+"ctx": "CmdSketcherNewSketch",
+"menu": "New Sketch",
+"tip": "Creates a new sketch",
+"status": "Creates a new sketch"
+},
+"Sketcher_Offset": {
+"ctx": "CmdSketcherOffset",
+"menu": "Offset",
+"tip": "Adds an equidistant closed contour around selected geometry: positive values offset outward, negative values inward",
+"status": "Adds an equidistant closed contour around selected geometry: positive values offset outward, negative values inward"
+},
+"Sketcher_Paste": {
+"ctx": "CmdSketcherPaste",
+"menu": "P&aste Elements",
+"tip": "Pastes the geometries and constraints from the clipboard into the sketch",
+"status": "Pastes the geometries and constraints from the clipboard into the sketch"
+},
+"Sketcher_ProfilesHexagon1": {
+"ctx": "PythonCommand",
+"menu": "Creates a hexagonal profile",
+"tip": "Creates a hexagonal profile in the sketch",
+"status": ""
+},
+"Sketcher_Projection": {
+"ctx": "CmdSketcherProjection",
+"menu": "External Projection",
+"tip": "Creates the projection of external geometry in the sketch plane",
+"status": "Creates the projection of external geometry in the sketch plane"
+},
+"Sketcher_RectangularArray": {
+"ctx": "CmdSketcherRectangularArray",
+"menu": "Rectangular Array",
+"tip": "Creates a rectangular array pattern of the geometry taking as reference the last selected point",
+"status": "Creates a rectangular array pattern of the geometry taking as reference the last selected point"
+},
+"Sketcher_RemoveAxesAlignment": {
+"ctx": "CmdSketcherRemoveAxesAlignment",
+"menu": "Remove Axes Alignment",
+"tip": "Modifies the constraints to remove axes alignment while trying to preserve the constraint relationship of the selection",
+"status": "Modifies the constraints to remove axes alignment while trying to preserve the constraint relationship of the selection"
+},
+"Sketcher_RenderingOrder": {
+"ctx": "CmdRenderingOrder",
+"menu": "Rendering Order",
+"tip": "Reorders items in the rendering order",
+"status": "Reorders items in the rendering order"
+},
+"Sketcher_ReorientSketch": {
+"ctx": "CmdSketcherReorientSketch",
+"menu": "Reorient Sketch",
+"tip": "Places the selected sketch on one of the global coordinate planes.\nThis will clear the AttachmentSupport property.",
+"status": "Places the selected sketch on one of the global coordinate planes.\nThis will clear the AttachmentSupport property."
+},
+"Sketcher_RestoreInternalAlignmentGeometry": {
+"ctx": "CmdSketcherRestoreInternalAlignmentGeometry",
+"menu": "Toggle Internal Geometry",
+"tip": "Toggles the visibility of all internal geometry",
+"status": "Toggles the visibility of all internal geometry"
+},
+"Sketcher_Rotate": {
+"ctx": "CmdSketcherRotate",
+"menu": "Rotate / Polar Transform",
+"tip": "Rotates the selected geometry by creating 'n' total elements, enabling circular pattern creation",
+"status": "Rotates the selected geometry by creating 'n' total elements, enabling circular pattern creation"
+},
+"Sketcher_Scale": {
+"ctx": "CmdSketcherScale",
+"menu": "Scale",
+"tip": "Scales the selected geometries",
+"status": "Scales the selected geometries"
+},
+"Sketcher_SelectConflictingConstraints": {
+"ctx": "CmdSketcherSelectConflictingConstraints",
+"menu": "Select Conflicting Constraints",
+"tip": "Selects all conflicting constraints",
+"status": "Selects all conflicting constraints"
+},
+"Sketcher_SelectConstraints": {
+"ctx": "CmdSketcherSelectConstraints",
+"menu": "Select Associated Constraints",
+"tip": "Selects the constraints associated with the selected geometrical elements",
+"status": "Selects the constraints associated with the selected geometrical elements"
+},
+"Sketcher_SelectElementsAssociatedWithConstraints": {
+"ctx": "CmdSketcherSelectElementsAssociatedWithConstraints",
+"menu": "Select Associated Geometry",
+"tip": "Selects the geometrical elements associated with the selected constraints",
+"status": "Selects the geometrical elements associated with the selected constraints"
+},
+"Sketcher_SelectElementsWithDoFs": {
+"ctx": "CmdSketcherSelectElementsWithDoFs",
+"menu": "Select Under-Constrained Elements",
+"tip": "Selects geometrical elements where the solver still detects unconstrained degrees of freedom",
+"status": "Selects geometrical elements where the solver still detects unconstrained degrees of freedom"
+},
+"Sketcher_SelectHorizontalAxis": {
+"ctx": "CmdSketcherSelectHorizontalAxis",
+"menu": "Select Horizontal Axis",
+"tip": "Selects the local horizontal axis of the sketch",
+"status": "Selects the local horizontal axis of the sketch"
+},
+"Sketcher_SelectMalformedConstraints": {
+"ctx": "CmdSketcherSelectMalformedConstraints",
+"menu": "Select Malformed Constraints",
+"tip": "Selects all malformed constraints",
+"status": "Selects all malformed constraints"
+},
+"Sketcher_SelectOrigin": {
+"ctx": "CmdSketcherSelectOrigin",
+"menu": "Select Origin",
+"tip": "Selects the local origin point of the sketch",
+"status": "Selects the local origin point of the sketch"
+},
+"Sketcher_SelectPartiallyRedundantConstraints": {
+"ctx": "CmdSketcherSelectPartiallyRedundantConstraints",
+"menu": "Select Partially Redundant Constraints",
+"tip": "Selects all partially redundant constraints",
+"status": "Selects all partially redundant constraints"
+},
+"Sketcher_SelectRedundantConstraints": {
+"ctx": "CmdSketcherSelectRedundantConstraints",
+"menu": "Select Redundant Constraints",
+"tip": "Selects all redundant constraints",
+"status": "Selects all redundant constraints"
+},
+"Sketcher_SelectVerticalAxis": {
+"ctx": "CmdSketcherSelectVerticalAxis",
+"menu": "Select Vertical Axis",
+"tip": "Selects the local vertical axis of the sketch",
+"status": "Selects the local vertical axis of the sketch"
+},
+"Sketcher_Snap": {
+"ctx": "CmdSketcherSnap",
+"menu": "Toggle Snap",
+"tip": "Toggles snapping",
+"status": "Toggles snapping"
+},
+"Sketcher_Split": {
+"ctx": "CmdSketcherSplit",
+"menu": "Split Edge",
+"tip": "Splits an edge into 2 segments while preserving constraints",
+"status": "Splits an edge into 2 segments while preserving constraints"
+},
+"Sketcher_StopOperation": {
+"ctx": "CmdSketcherStopOperation",
+"menu": "Stop Operation",
+"tip": "Stops the active operation while in edit mode",
+"status": "Stops the active operation while in edit mode"
+},
+"Sketcher_SwitchVirtualSpace": {
+"ctx": "CmdSketcherSwitchVirtualSpace",
+"menu": "Switch Virtual Space",
+"tip": "Switches the selected constraints or the view to the other virtual space",
+"status": "Switches the selected constraints or the view to the other virtual space"
+},
+"Sketcher_Symmetry": {
+"ctx": "CmdSketcherSymmetry",
+"menu": "Mirror",
+"tip": "Creates a mirrored copy of the selected geometry",
+"status": "Creates a mirrored copy of the selected geometry"
+},
+"Sketcher_ToggleActiveConstraint": {
+"ctx": "CmdSketcherToggleActiveConstraint",
+"menu": "Toggle Constraints",
+"tip": "Toggles the state of the selected constraints",
+"status": "Toggles the state of the selected constraints"
+},
+"Sketcher_ToggleConstruction": {
+"ctx": "CmdSketcherToggleConstruction",
+"menu": "Toggle Construction Geometry",
+"tip": "Toggles between defining geometry and construction geometry modes",
+"status": "Toggles between defining geometry and construction geometry modes"
+},
+"Sketcher_ToggleDrivingConstraint": {
+"ctx": "CmdSketcherToggleDrivingConstraint",
+"menu": "Toggle Driving/Reference Constraints",
+"tip": "Toggles between driving and reference mode of the selected constraints and commands",
+"status": "Toggles between driving and reference mode of the selected constraints and commands"
+},
+"Sketcher_Translate": {
+"ctx": "CmdSketcherTranslate",
+"menu": "Move / Array Transform",
+"tip": "Translates the selected geometries and enables the creation of 'i' * 'j' total elements",
+"status": "Translates the selected geometries and enables the creation of 'i' * 'j' total elements"
+},
+"Sketcher_Trimming": {
+"ctx": "CmdSketcherTrimming",
+"menu": "Trim Edge",
+"tip": "Trims an edge with respect to the selected position",
+"status": "Trims an edge with respect to the selected position"
+},
+"Sketcher_ValidateSketch": {
+"ctx": "CmdSketcherValidateSketch",
+"menu": "Validate Sketch",
+"tip": "Validates a sketch by checking for missing coincidences,\ninvalid constraints, and degenerate geometry",
+"status": "Validates a sketch by checking for missing coincidences,\ninvalid constraints, and degenerate geometry"
+},
+"Sketcher_ViewSection": {
+"ctx": "CmdSketcherViewSection",
+"menu": "Toggle Section View",
+"tip": "Toggles between section view and full view",
+"status": "Toggles between section view and full view"
+},
+"Sketcher_ViewSketch": {
+"ctx": "CmdSketcherViewSketch",
+"menu": "Align View to Sketch",
+"tip": "Aligns the camera orientation perpendicular to the active sketch plane",
+"status": "Aligns the camera orientation perpendicular to the active sketch plane"
+},
+"Spreadsheet_AlignBottom": {
+"ctx": "CmdSpreadsheetAlignBottom",
+"menu": "Align &Bottom",
+"tip": "Aligns cell contents to the bottom",
+"status": "Aligns cell contents to the bottom"
+},
+"Spreadsheet_AlignCenter": {
+"ctx": "CmdSpreadsheetAlignCenter",
+"menu": "Align Horizontal &Center",
+"tip": "Aligns cell contents to the horizontal center",
+"status": "Aligns cell contents to the horizontal center"
+},
+"Spreadsheet_AlignLeft": {
+"ctx": "CmdSpreadsheetAlignLeft",
+"menu": "Align &Left",
+"tip": "Aligns cell contents to the left",
+"status": "Aligns cell contents to the left"
+},
+"Spreadsheet_AlignRight": {
+"ctx": "CmdSpreadsheetAlignRight",
+"menu": "Align &Right",
+"tip": "Aligns cell contents to the right",
+"status": "Aligns cell contents to the right"
+},
+"Spreadsheet_AlignTop": {
+"ctx": "CmdSpreadsheetAlignTop",
+"menu": "Align &Top",
+"tip": "Aligns cell contents to the top",
+"status": "Aligns cell contents to the top"
+},
+"Spreadsheet_AlignVCenter": {
+"ctx": "CmdSpreadsheetAlignVCenter",
+"menu": "Align &Vertical Center",
+"tip": "Aligns cell contents to the vertical center",
+"status": "Aligns cell contents to the vertical center"
+},
+"Spreadsheet_CreateSheet": {
+"ctx": "CmdCreateSpreadsheet",
+"menu": "&New Spreadsheet",
+"tip": "Creates a new spreadsheet",
+"status": "Creates a new spreadsheet"
+},
+"Spreadsheet_Export": {
+"ctx": "CmdSpreadsheetExport",
+"menu": "&Export Spreadsheet",
+"tip": "Exports the spreadsheet to a CSV file",
+"status": "Exports the spreadsheet to a CSV file"
+},
+"Spreadsheet_Import": {
+"ctx": "CmdSpreadsheetImport",
+"menu": "&Import Spreadsheet",
+"tip": "Imports a CSV file into a new spreadsheet",
+"status": "Imports a CSV file into a new spreadsheet"
+},
+"Spreadsheet_MergeCells": {
+"ctx": "CmdSpreadsheetMergeCells",
+"menu": "&Merge Cells",
+"tip": "Merges the selected cells",
+"status": "Merges the selected cells"
+},
+"Spreadsheet_SetAlias": {
+"ctx": "CmdSpreadsheetSetAlias",
+"menu": "Set Alias",
+"tip": "Sets an alias for the selected cell",
+"status": "Sets an alias for the selected cell"
+},
+"Spreadsheet_SplitCell": {
+"ctx": "CmdSpreadsheetSplitCell",
+"menu": "Sp&lit Cell",
+"tip": "Splits a previously merged cell",
+"status": "Splits a previously merged cell"
+},
+"Spreadsheet_StyleBold": {
+"ctx": "CmdSpreadsheetStyleBold",
+"menu": "&Bold Text",
+"tip": "Sets the text in the selected cells bold",
+"status": "Sets the text in the selected cells bold"
+},
+"Spreadsheet_StyleItalic": {
+"ctx": "CmdSpreadsheetStyleItalic",
+"menu": "&Italic Text",
+"tip": "Sets the text in the selected cells italic",
+"status": "Sets the text in the selected cells italic"
+},
+"Spreadsheet_StyleUnderline": {
+"ctx": "CmdSpreadsheetStyleUnderline",
+"menu": "&Underline Text",
+"tip": "Underlines the text in the selected cells",
+"status": "Underlines the text in the selected cells"
+},
+"Start_Start": {
+"ctx": "CmdStart",
+"menu": "&Start Page",
+"tip": "Displays the start page",
+"status": "Displays the start page"
+},
+"Std_About": {
+"ctx": "StdCmdAbout",
+"menu": "&About %1",
+"tip": "Displays information about %1",
+"status": "Displays information about %1"
+},
+"Std_AboutQt": {
+"ctx": "StdCmdAboutQt",
+"menu": "About &Qt",
+"tip": "Displays information about Qt",
+"status": "Displays information about Qt"
+},
+"Std_ActivateNextWindow": {
+"ctx": "StdCmdActivateNextWindow",
+"menu": "&Next",
+"tip": "Activates the next window",
+"status": "Activates the next window"
+},
+"Std_ActivatePrevWindow": {
+"ctx": "StdCmdActivatePrevWindow",
+"menu": "&Previous",
+"tip": "Switches to the previously active window",
+"status": "Switches to the previously active window"
+},
+"Std_AddonMgr": {
+"ctx": "PythonCommand",
+"menu": "&Addon Manager",
+"tip": "Manages external workbenches, macros, and preference packs",
+"status": ""
+},
+"Std_AddonMgrPip": {
+"ctx": "PythonCommand",
+"menu": "Python Package Manager",
+"tip": "Opens the Python Package Manager",
+"status": ""
+},
+"Std_AlignToSelection": {
+"ctx": "StdCmdAlignToSelection",
+"menu": "&Align to Selection",
+"tip": "Aligns the camera view to the selected elements in the 3D view",
+"status": ""
+},
+"Std_Alignment": {
+"ctx": "StdCmdAlignment",
+"menu": "Ali&gn To…",
+"tip": "Aligns the selected objects",
+"status": "Aligns the selected objects"
+},
+"Std_AnnotationLabel": {
+"ctx": "StdCmdAnnotationLabel",
+"menu": "Annotation Label",
+"tip": "Creates a new annotation label at the picked location in the 3D view",
+"status": "Creates a new annotation label at the picked location in the 3D view"
+},
+"Std_AxisCross": {
+"ctx": "StdCmdAxisCross",
+"menu": "Toggle A&xis Cross",
+"tip": "Toggles the axis cross at the origin",
+"status": "Toggles the axis cross at the origin"
+},
+"Std_BoxElementSelection": {
+"ctx": "StdBoxElementSelection",
+"menu": "Bo&x Element Selection",
+"tip": "Activates box element selection",
+"status": "Activates box element selection"
+},
+"Std_BoxSelection": {
+"ctx": "StdBoxSelection",
+"menu": "&Box Selection",
+"tip": "Activates the box selection tool",
+"status": "Activates the box selection tool"
+},
+"Std_CascadeWindows": {
+"ctx": "StdCmdCascadeWindows",
+"menu": "&Cascade",
+"tip": "Tiles pragmatic",
+"status": "Tiles pragmatic"
+},
+"Std_ClarifySelection": {
+"ctx": "StdCmdClarifySelection",
+"menu": "Clarify Selection",
+"tip": "Displays a context menu at the mouse cursor to select overlapping or obstructed geometry in the 3D view.\n",
+"status": "Displays a context menu at the mouse cursor to select overlapping or obstructed geometry in the 3D view.\n"
+},
+"Std_CloseActiveWindow": {
+"ctx": "StdCmdCloseActiveWindow",
+"menu": "&Close",
+"tip": "Closes the active window",
+"status": "Closes the active window"
+},
+"Std_CloseAllWindows": {
+"ctx": "StdCmdCloseAllWindows",
+"menu": "Close A&ll",
+"tip": "Closes all windows",
+"status": "Closes all windows"
+},
+"Std_CommandLine": {
+"ctx": "StdCmdCommandLine",
+"menu": "Command &Line",
+"tip": "Opens a command line interface in the console",
+"status": "Opens a command line interface in the console"
+},
+"Std_Copy": {
+"ctx": "StdCmdCopy",
+"menu": "&Copy",
+"tip": "Copies the selection to the clipboard",
+"status": "Copies the selection to the clipboard"
+},
+"Std_Cut": {
+"ctx": "StdCmdCut",
+"menu": "Cu&t",
+"tip": "Removes the selection and copies it to the clipboard",
+"status": "Removes the selection and copies it to the clipboard"
+},
+"Std_Delete": {
+"ctx": "StdCmdDelete",
+"menu": "&Delete",
+"tip": "Deletes the selected objects",
+"status": "Deletes the selected objects"
+},
+"Std_DemoMode": {
+"ctx": "StdCmdDemoMode",
+"menu": "View &Turntable",
+"tip": "Opens a turntable view",
+"status": "Opens a turntable view"
+},
+"Std_DependencyGraph": {
+"ctx": "StdCmdDependencyGraph",
+"menu": "Dependency Gra&ph",
+"tip": "Shows the dependency graph of the objects in the active document",
+"status": "Shows the dependency graph of the objects in the active document"
+},
+"Std_DevHandbook": {
+"ctx": "StdCmdDevHandbook",
+"menu": "Developers Handbook",
+"tip": "Opens the FreeCAD developers handbook",
+"status": "Opens the FreeCAD developers handbook"
+},
+"Std_DlgCustomize": {
+"ctx": "StdCmdDlgCustomize",
+"menu": "Cu&stomize",
+"tip": "Opens a dialog to edit toolbars, shortcuts, and macros",
+"status": "Opens a dialog to edit toolbars, shortcuts, and macros"
+},
+"Std_DlgMacroExecute": {
+"ctx": "StdCmdDlgMacroExecute",
+"menu": "Ma&cros",
+"tip": "Opens a dialog to execute a recorded macro",
+"status": "Opens a dialog to execute a recorded macro"
+},
+"Std_DlgMacroExecuteDirect": {
+"ctx": "StdCmdDlgMacroExecuteDirect",
+"menu": "&Execute Macro",
+"tip": "Executes the macro in the editor",
+"status": "Executes the macro in the editor"
+},
+"Std_DlgMacroRecord": {
+"ctx": "StdCmdDlgMacroRecord",
+"menu": "Record &Macro",
+"tip": "Opens a dialog to record a macro",
+"status": "Opens a dialog to record a macro"
+},
+"Std_DlgParameter": {
+"ctx": "StdCmdDlgParameter",
+"menu": "E&dit Parameters",
+"tip": "Opens a dialog to edit the parameters",
+"status": "Opens a dialog to edit the parameters"
+},
+"Std_DlgPreferences": {
+"ctx": "StdCmdDlgPreferences",
+"menu": "Prefere&nces",
+"tip": "Opens a dialog to edit the preferences",
+"status": "Opens a dialog to edit the preferences"
+},
+"Std_DockOverlay": {
+"ctx": "StdCmdDockOverlay",
+"menu": "Overlay Docked Panel",
+"tip": "Sets the docked panel in overlay mode",
+"status": "Sets the docked panel in overlay mode"
+},
+"Std_DockOverlayAll": {
+"ctx": "StdCmdDockOverlayAll",
+"menu": "Toggle Overl&ay for All Panels",
+"tip": "Toggles overlay mode for all docked panels",
+"status": "Toggles overlay mode for all docked panels"
+},
+"Std_DockOverlayMouseTransparent": {
+"ctx": "StdCmdDockOverlayMouseTransparent",
+"menu": "Bypass &Mouse Events in Overlay Panels",
+"tip": "Bypasses all mouse events in docked overlay panels",
+"status": "Bypasses all mouse events in docked overlay panels"
+},
+"Std_DockOverlayToggle": {
+"ctx": "StdCmdDockOverlayToggle",
+"menu": "Toggle &Overlay",
+"tip": "Toggles overlay mode for the docked window under the cursor",
+"status": "Toggles overlay mode for the docked window under the cursor"
+},
+"Std_DockOverlayToggleBottom": {
+"ctx": "StdCmdDockOverlayToggleBottom",
+"menu": "Toggle &Bottom",
+"tip": "Toggles the visibility of the bottom overlay panel",
+"status": "Toggles the visibility of the bottom overlay panel"
+},
+"Std_DockOverlayToggleLeft": {
+"ctx": "StdCmdDockOverlayToggleLeft",
+"menu": "Toggle &Left",
+"tip": "Toggles the visibility of the left overlay panel",
+"status": "Toggles the visibility of the left overlay panel"
+},
+"Std_DockOverlayToggleRight": {
+"ctx": "StdCmdDockOverlayToggleRight",
+"menu": "Toggle &Right",
+"tip": "Toggles the visibility of the right overlay panel",
+"status": "Toggles the visibility of the right overlay panel"
+},
+"Std_DockOverlayToggleTop": {
+"ctx": "StdCmdDockOverlayToggleTop",
+"menu": "Toggle &Top",
+"tip": "Toggles the visibility of the top overlay panel",
+"status": "Toggles the visibility of the top overlay panel"
+},
+"Std_DockOverlayToggleTransparent": {
+"ctx": "StdCmdDockOverlayToggleTransparent",
+"menu": "Toggle Tran&sparent Mode",
+"tip": "Toggles transparent mode for the docked panel under cursor.\nThis makes the docked panel stay transparent at all times.",
+"status": "Toggles transparent mode for the docked panel under cursor.\nThis makes the docked panel stay transparent at all times."
+},
+"Std_DockOverlayTransparentAll": {
+"ctx": "StdCmdDockOverlayTransparentAll",
+"menu": "Toggle Tra&nsparent Panels",
+"tip": "Toggles transparent mode for all docked overlay panels.\nThis makes the docked panels stay transparent at all times.",
+"status": "Toggles transparent mode for all docked overlay panels.\nThis makes the docked panels stay transparent at all times."
+},
+"Std_DockViewMenu": {
+"ctx": "StdCmdDockViewMenu",
+"menu": "&Panels",
+"tip": "Lists available dock panels",
+"status": "Lists available dock panels"
+},
+"Std_DrawStyle": {
+"ctx": "StdCmdDrawStyle",
+"menu": "&Draw Style",
+"tip": "Changes the draw style of the objects",
+"status": "Changes the draw style of the objects"
+},
+"Std_DuplicateSelection": {
+"ctx": "StdCmdDuplicateSelection",
+"menu": "Duplicate Selecti&on",
+"tip": "Duplicates the selected objects to the active document",
+"status": "Duplicates the selected objects to the active document"
+},
+"Std_Edit": {
+"ctx": "StdCmdEdit",
+"menu": "Toggle &Edit Mode",
+"tip": "Toggles the selected object's edit mode",
+"status": "Toggles the selected object's edit mode"
+},
+"Std_Export": {
+"ctx": "StdCmdExport",
+"menu": "&Export…",
+"tip": "Exports an object in the active document",
+"status": "Exports an object in the active document"
+},
+"Std_ExportDependencyGraph": {
+"ctx": "StdCmdExportDependencyGraph",
+"menu": "Export Dependency &Graph…",
+"tip": "Exports the dependency graph as a Graphviz (.gv) file",
+"status": "Exports the dependency graph as a Graphviz (.gv) file"
+},
+"Std_Expressions": {
+"ctx": "StdCmdExpression",
+"menu": "Expression Actions",
+"tip": "Actions that apply to expressions",
+"status": "Actions that apply to expressions"
+},
+"Std_FreeCADDonation": {
+"ctx": "StdCmdFreeCADDonation",
+"menu": "Donate to FreeCA&D",
+"tip": "Opens the FreeCAD donation page",
+"status": "Opens the FreeCAD donation page"
+},
+"Std_FreeCADForum": {
+"ctx": "StdCmdFreeCADForum",
+"menu": "FreeCAD &Forum",
+"tip": "Opens the FreeCAD forum to find help from other users",
+"status": "Opens the FreeCAD forum to find help from other users"
+},
+"Std_FreeCADUserHub": {
+"ctx": "StdCmdFreeCADUserHub",
+"menu": "&User Documentation",
+"tip": "Opens the documentation for users",
+"status": "Opens the documentation for users"
+},
+"Std_FreeCADWebsite": {
+"ctx": "StdCmdFreeCADWebsite",
+"menu": "FreeCAD W&ebsite",
+"tip": "Navigates to the official FreeCAD website",
+"status": "Navigates to the official FreeCAD website"
+},
+"Std_FreezeViews": {
+"ctx": "StdCmdFreezeViews",
+"menu": "F&reeze Display",
+"tip": "Freezes the current view position",
+"status": "Freezes the current view position"
+},
+"Std_Group": {
+"ctx": "StdCmdGroup",
+"menu": "New Group",
+"tip": "Creates a group, which is a general-purpose container to group objects in the tree view, regardless of their data type. It is a simple folder to organize the objects in a model.",
+"status": "Creates a group, which is a general-purpose container to group objects in the tree view, regardless of their data type. It is a simple folder to organize the objects in a model."
+},
+"Std_HelpGroup": {
+"ctx": "StdCmdHelpGroup",
+"menu": "Help",
+"tip": "Opens the documentation corresponding to the selection",
+"status": "Opens the documentation corresponding to the selection"
+},
+"Std_HideObjects": {
+"ctx": "StdCmdHideObjects",
+"menu": "Hide All &Objects",
+"tip": "Hides all objects in the document",
+"status": "Hides all objects in the document"
+},
+"Std_HideSelection": {
+"ctx": "StdCmdHideSelection",
+"menu": "&Hide Selection",
+"tip": "Hides all selected objects",
+"status": "Hides all selected objects"
+},
+"Std_Import": {
+"ctx": "StdCmdImport",
+"menu": "&Import…",
+"tip": "Imports a file into the active document",
+"status": "Imports a file into the active document"
+},
+"Std_LinkActions": {
+"ctx": "StdCmdLinkActions",
+"menu": "Link Actions",
+"tip": "Commands that operate on link objects",
+"status": "Commands that operate on link objects"
+},
+"Std_LinkImport": {
+"ctx": "StdCmdLinkImport",
+"menu": "Import Links",
+"tip": "Imports selected external links",
+"status": "Imports selected external links"
+},
+"Std_LinkImportAll": {
+"ctx": "StdCmdLinkImportAll",
+"menu": "Import All Links",
+"tip": "Imports all links of the active document",
+"status": "Imports all links of the active document"
+},
+"Std_LinkMake": {
+"ctx": "StdCmdLinkMake",
+"menu": "Make Link",
+"tip": "A link is an object that references another object, either within the same or in another document. Unlike clones, links reference the original shape directly, making them more memory-efficient, which helps with the creation of complex assemblies.",
+"status": "A link is an object that references another object, either within the same or in another document. Unlike clones, links reference the original shape directly, making them more memory-efficient, which helps with the creation of complex assemblies."
+},
+"Std_LinkMakeGroup": {
+"ctx": "StdCmdLinkMakeGroup",
+"menu": "Link Group",
+"tip": "Creates a group of links",
+"status": "Creates a group of links"
+},
+"Std_LinkMakeRelative": {
+"ctx": "StdCmdLinkMakeRelative",
+"menu": "Make Sub-Link",
+"tip": "Creates a sub-object or sub-element link",
+"status": "Creates a sub-object or sub-element link"
+},
+"Std_LinkReplace": {
+"ctx": "StdCmdLinkReplace",
+"menu": "Replace With Link",
+"tip": "Replaces the selected objects with links",
+"status": "Replaces the selected objects with links"
+},
+"Std_LinkSelectActions": {
+"ctx": "StdCmdLinkSelectActions",
+"menu": "&Link Navigation",
+"tip": "Link navigation actions",
+"status": "Link navigation actions"
+},
+"Std_LinkSelectAllLinks": {
+"ctx": "StdCmdLinkSelectAllLinks",
+"menu": "Select &All Links",
+"tip": "Selects all links to the current selected object",
+"status": "Selects all links to the current selected object"
+},
+"Std_LinkSelectLinked": {
+"ctx": "StdCmdLinkSelectLinked",
+"menu": "&Go to Linked Object",
+"tip": "Selects the linked object and switches to its original document",
+"status": "Selects the linked object and switches to its original document"
+},
+"Std_LinkSelectLinkedFinal": {
+"ctx": "StdCmdLinkSelectLinkedFinal",
+"menu": "Go to &Deepest Linked Object",
+"tip": "Selects the deepest linked object and switches to its original document",
+"status": "Selects the deepest linked object and switches to its original document"
+},
+"Std_LinkUnlink": {
+"ctx": "StdCmdLinkUnlink",
+"menu": "Unlink",
+"tip": "Unlinks the object by placing it directly in the container",
+"status": "Unlinks the object by placing it directly in the container"
+},
+"Std_MDITest1": {
+"ctx": "CmdTestMDI1",
+"menu": "Remove MDI 1",
+"tip": "Remove MDI from main window",
+"status": "Remove MDI from main window"
+},
+"Std_MDITest2": {
+"ctx": "CmdTestMDI2",
+"menu": "Remove MDI 2",
+"tip": "Remove view from MDI area",
+"status": "Remove view from MDI area"
+},
+"Std_MDITest3": {
+"ctx": "CmdTestMDI3",
+"menu": "Remove MDI 3",
+"tip": "Unset parent and remove from main window",
+"status": "Unset parent and remove from main window"
+},
+"Std_MacroAttachDebugger": {
+"ctx": "StdCmdMacroAttachDebugger",
+"menu": "&Attach to Remote Debugger",
+"tip": "Attaches to a remotely running debugger",
+"status": "Attaches to a remotely running debugger"
+},
+"Std_MainFullscreen": {
+"ctx": "StdMainFullscreen",
+"menu": "Fullscreen",
+"tip": "Displays the main window in fullscreen mode",
+"status": "Displays the main window in fullscreen mode"
+},
+"Std_MassProperties": {
+"ctx": "StdCmdMassProperties",
+"menu": "Mass Properties",
+"tip": "Calculates mass properties of selected objects",
+"status": "Calculates mass properties of selected objects"
+},
+"Std_Measure": {
+"ctx": "StdCmdMeasure",
+"menu": "&Measure",
+"tip": "Measures a feature",
+"status": "Measures a feature"
+},
+"Std_MergeProjects": {
+"ctx": "StdCmdMergeProjects",
+"menu": "&Merge Document",
+"tip": "Merges another FreeCAD document into the active one",
+"status": "Merges another FreeCAD document into the active one"
+},
+"Std_New": {
+"ctx": "StdCmdNew",
+"menu": "&New Document",
+"tip": "Creates a new empty document",
+"status": "Creates a new empty document"
+},
+"Std_OnlineHelp": {
+"ctx": "StdCmdOnlineHelp",
+"menu": "&Help",
+"tip": "Opens the Help documentation",
+"status": "Opens the Help documentation"
+},
+"Std_OnlineHelpWebsite": {
+"ctx": "StdCmdOnlineHelpWebsite",
+"menu": "Help Website",
+"tip": "Opens the help documentation",
+"status": "Opens the help documentation"
+},
+"Std_Open": {
+"ctx": "StdCmdOpen",
+"menu": "&Open…",
+"tip": "Opens a document or imports files",
+"status": "Opens a document or imports files"
+},
+"Std_OpenGroup": {
+"ctx": "StdCmdOpenGroup",
+"menu": "&Open…",
+"tip": "Opens a document or imports files",
+"status": "Opens a document or imports files"
+},
+"Std_OpenMacrosFolder": {
+"ctx": "StdCmdMacrosFolder",
+"menu": "Open Macro Folder",
+"tip": "Opens the macros folder in the system file manager",
+"status": "Opens the macros folder in the system file manager"
+},
+"Std_OrthographicCamera": {
+"ctx": "StdOrthographicCamera",
+"menu": "Orthographic View",
+"tip": "Switches to orthographic view mode",
+"status": "Switches to orthographic view mode"
+},
+"Std_Part": {
+"ctx": "StdCmdPart",
+"menu": "New Part",
+"tip": "Creates a part, which is a general-purpose container to group objects so they act as a unit in the 3D view. It is intended to arrange objects that have a part TopoShape, like part primitives, Part Design bodies, and other parts.",
+"status": "Creates a part, which is a general-purpose container to group objects so they act as a unit in the 3D view. It is intended to arrange objects that have a part TopoShape, like part primitives, Part Design bodies, and other parts."
+},
+"Std_Paste": {
+"ctx": "StdCmdPaste",
+"menu": "&Paste",
+"tip": "Pastes the contents of the clipboard",
+"status": "Pastes the contents of the clipboard"
+},
+"Std_PerspectiveCamera": {
+"ctx": "StdPerspectiveCamera",
+"menu": "Perspective View",
+"tip": "Switches to perspective view mode",
+"status": "Switches to perspective view mode"
+},
+"Std_Placement": {
+"ctx": "StdCmdPlacement",
+"menu": "P&lacement",
+"tip": "Opens the placement editor to adjust the placement of the selected object",
+"status": "Opens the placement editor to adjust the placement of the selected object"
+},
+"Std_Print": {
+"ctx": "StdCmdPrint",
+"menu": "&Print",
+"tip": "Prints the active document",
+"status": "Prints the active document"
+},
+"Std_PrintPdf": {
+"ctx": "StdCmdPrintPdf",
+"menu": "Export P&DF",
+"tip": "Exports the active document as a PDF file",
+"status": "Exports the active document as a PDF file"
+},
+"Std_PrintPreview": {
+"ctx": "StdCmdPrintPreview",
+"menu": "Print Previe&w",
+"tip": "Previews the active document before printing",
+"status": "Previews the active document before printing"
+},
+"Std_ProjectInfo": {
+"ctx": "StdCmdProjectInfo",
+"menu": "Doc&ument Information",
+"tip": "Shows information about the active document",
+"status": "Shows information about the active document"
+},
+"Std_ProjectUtil": {
+"ctx": "StdCmdProjectUtil",
+"menu": "Do&cument Utility",
+"tip": "Extracts or creates document files",
+"status": "Extracts or creates document files"
+},
+"Std_Properties": {
+"ctx": "StdCmdProperties",
+"menu": "Propert&ies",
+"tip": "Shows the property view, which displays the properties of the selected object.",
+"status": "Shows the property view, which displays the properties of the selected object."
+},
+"Std_PythonHelp": {
+"ctx": "Gui::StdCmdPythonHelp",
+"menu": "Python &Modules Documentation",
+"tip": "Opens the Python Modules documentation",
+"status": "Opens the Python Modules documentation"
+},
+"Std_Quit": {
+"ctx": "StdCmdQuit",
+"menu": "E&xit",
+"tip": "Quits the application",
+"status": "Quits the application"
+},
+"Std_RandomColor": {
+"ctx": "StdCmdRandomColor",
+"menu": "Random &Color",
+"tip": "Assigns random diffuse colors for the selected objects",
+"status": "Assigns random diffuse colors for the selected objects"
+},
+"Std_RecallWorkingView": {
+"ctx": "StdRecallWorkingView",
+"menu": "R&ecall Working View",
+"tip": "Recalls a previously stored temporary working view",
+"status": "Recalls a previously stored temporary working view"
+},
+"Std_RecentFiles": {
+"ctx": "StdCmdRecentFiles",
+"menu": "Open &Recent",
+"tip": "Displays the list of recently opened files",
+"status": "Displays the list of recently opened files"
+},
+"Std_RecentMacros": {
+"ctx": "StdCmdRecentMacros",
+"menu": "&Recent Macros",
+"tip": "Displays the list of recently used macros",
+"status": "Displays the list of recently used macros"
+},
+"Std_Recompute": {
+"ctx": "StdCmdFeatRecompute",
+"menu": "&Recompute",
+"tip": "Recomputes a feature or document",
+"status": "Recomputes a feature or document"
+},
+"Std_Redo": {
+"ctx": "StdCmdRedo",
+"menu": "&Redo",
+"tip": "Redoes a previously undone action",
+"status": "Redoes a previously undone action"
+},
+"Std_Refresh": {
+"ctx": "StdCmdRefresh",
+"menu": "Recompute",
+"tip": "Recomputes the active document",
+"status": "Recomputes the active document"
+},
+"Std_ReloadStyleSheet": {
+"ctx": "StdCmdReloadStyleSheet",
+"menu": "&Reload Stylesheet",
+"tip": "Reloads the current stylesheet",
+"status": "Reloads the current stylesheet"
+},
+"Std_ReportBug": {
+"ctx": "StdCmdReportBug",
+"menu": "Report an &Issue",
+"tip": "Opens the bugtracker to report an issue",
+"status": "Opens the bugtracker to report an issue"
+},
+"Std_RestartInSafeMode": {
+"ctx": "StdCmdRestartInSafeMode",
+"menu": "Restart in Safe Mode",
+"tip": "Starts FreeCAD without any modules or plugins loaded",
+"status": "Starts FreeCAD without any modules or plugins loaded"
+},
+"Std_Revert": {
+"ctx": "StdCmdRevert",
+"menu": "Rever&t",
+"tip": "Reverts to the saved version of this file",
+"status": "Reverts to the saved version of this file"
+},
+"Std_Save": {
+"ctx": "StdCmdSave",
+"menu": "&Save",
+"tip": "Saves the active document",
+"status": "Saves the active document"
+},
+"Std_SaveAll": {
+"ctx": "StdCmdSaveAll",
+"menu": "Sa&ve All",
+"tip": "Saves all open documents",
+"status": "Saves all open documents"
+},
+"Std_SaveAs": {
+"ctx": "StdCmdSaveAs",
+"menu": "Save &As…",
+"tip": "Saves the active document under a new file name",
+"status": "Saves the active document under a new file name"
+},
+"Std_SaveCopy": {
+"ctx": "StdCmdSaveCopy",
+"menu": "Save a Cop&y…",
+"tip": "Saves a copy of the active document under a new file name",
+"status": "Saves a copy of the active document under a new file name"
+},
+"Std_SaveGroup": {
+"ctx": "StdCmdSaveGroup",
+"menu": "Save",
+"tip": "Saves the active document",
+"status": "Saves the active document"
+},
+"Std_SceneInspector": {
+"ctx": "StdCmdSceneInspector",
+"menu": "Scene I&nspector",
+"tip": "Opens the scene inspector",
+"status": "Opens the scene inspector"
+},
+"Std_SelBack": {
+"ctx": "StdCmdSelBack",
+"menu": "Selection &Back",
+"tip": "Restores the previous tree view selection. Only works if tree RecordSelection mode is switched on.",
+"status": "Restores the previous tree view selection. Only works if tree RecordSelection mode is switched on."
+},
+"Std_SelBoundingBox": {
+"ctx": "StdCmdSelBoundingBox",
+"menu": "&Bounding Box",
+"tip": "Shows selection bounding box",
+"status": "Shows selection bounding box"
+},
+"Std_SelForward": {
+"ctx": "StdCmdSelForward",
+"menu": "Selection &Forward",
+"tip": "Restores the next tree view selection. Only works if tree RecordSelection mode is switched on.",
+"status": "Restores the next tree view selection. Only works if tree RecordSelection mode is switched on."
+},
+"Std_SelectAll": {
+"ctx": "StdCmdSelectAll",
+"menu": "Select &All",
+"tip": "Selects all objects in the active document",
+"status": "Selects all objects in the active document"
+},
+"Std_SelectVisibleObjects": {
+"ctx": "StdCmdSelectVisibleObjects",
+"menu": "&Select Visible Objects",
+"tip": "Selects all visible objects in the active document",
+"status": "Selects all visible objects in the active document"
+},
+"Std_SendToPythonConsole": {
+"ctx": "StdCmdSendToPythonConsole",
+"menu": "&Send to Python Console",
+"tip": "Sends the selected objects to the Python console",
+"status": "Sends the selected objects to the Python console"
+},
+"Std_SetAppearance": {
+"ctx": "StdCmdSetAppearance",
+"menu": "&Appearance",
+"tip": "Sets the display properties of the selected object",
+"status": "Sets the display properties of the selected object"
+},
+"Std_SetMaterial": {
+"ctx": "StdCmdSetMaterial",
+"menu": "&Material",
+"tip": "Sets the material of the selected object",
+"status": "Sets the material of the selected object"
+},
+"Std_ShowObjects": {
+"ctx": "StdCmdShowObjects",
+"menu": "Show &All Objects",
+"tip": "Shows all objects in the document",
+"status": "Shows all objects in the document"
+},
+"Std_ShowSelection": {
+"ctx": "StdCmdShowSelection",
+"menu": "Sho&w Selection",
+"tip": "Shows all selected objects",
+"status": "Shows all selected objects"
+},
+"Std_StoreWorkingView": {
+"ctx": "StdStoreWorkingView",
+"menu": "St&ore Working View",
+"tip": "Stores a temporary working view for the current document",
+"status": "Stores a temporary working view for the current document"
+},
+"Std_Test1": {
+"ctx": "FCCmdTest1",
+"menu": "Test1",
+"tip": "Test function 1",
+"status": "Test function 1"
+},
+"Std_Test2": {
+"ctx": "FCCmdTest2",
+"menu": "Test2",
+"tip": "Test function 2",
+"status": "Test function 2"
+},
+"Std_Test3": {
+"ctx": "FCCmdTest3",
+"menu": "Test3",
+"tip": "Test function 3",
+"status": "Test function 3"
+},
+"Std_Test4": {
+"ctx": "FCCmdTest4",
+"menu": "Test4",
+"tip": "Test function 4",
+"status": "Test function 4"
+},
+"Std_Test5": {
+"ctx": "FCCmdTest5",
+"menu": "Test5",
+"tip": "Test function 5",
+"status": "Test function 5"
+},
+"Std_Test6": {
+"ctx": "FCCmdTest6",
+"menu": "Test6",
+"tip": "Test function 6",
+"status": "Test function 6"
+},
+"Std_TestCmdFuncs": {
+"ctx": "CmdTestCmdFuncs",
+"menu": "Test Functions",
+"tip": "Test functions",
+"status": "Test functions"
+},
+"Std_TestConsoleOutput": {
+"ctx": "CmdTestConsoleOutput",
+"menu": "Test Console Output",
+"tip": "Runs test cases to verify console messages",
+"status": "Runs test cases to verify console messages"
+},
+"Std_TestProgress1": {
+"ctx": "CmdTestProgress1",
+"menu": "Breakable Bar",
+"tip": "Test a breakable progress bar",
+"status": "Test a breakable progress bar"
+},
+"Std_TestProgress2": {
+"ctx": "CmdTestProgress2",
+"menu": "Unbreakable Bar",
+"tip": "Test a unbreakable progress bar",
+"status": "Test a unbreakable progress bar"
+},
+"Std_TestProgress3": {
+"ctx": "CmdTestProgress3",
+"menu": "Nested Progress Bar",
+"tip": "Test nested progress bar",
+"status": "Test nested progress bar"
+},
+"Std_TestProgress4": {
+"ctx": "CmdTestProgress4",
+"menu": "Mixed Nested Bar",
+"tip": "Test a mixed up nested progress bar",
+"status": "Test a mixed up nested progress bar"
+},
+"Std_TestProgress5": {
+"ctx": "CmdTestProgress5",
+"menu": "From Thread",
+"tip": "Test a progress bar from a thread",
+"status": "Test a progress bar from a thread"
+},
+"Std_TestQM": {
+"ctx": "Std_TestQM",
+"menu": "Test Translation Files",
+"tip": "Runs a test to verify .qm translation files",
+"status": "Runs a test to verify .qm translation files"
+},
+"Std_TestReloadQM": {
+"ctx": "Std_TestReloadQM",
+"menu": "Reload Translation Files",
+"tip": "Reloads the translation files",
+"status": "Reloads the translation files"
+},
+"Std_TextDocument": {
+"ctx": "StdCmdTextDocument",
+"menu": "Te&xt Document",
+"tip": "Adds a text document to the active document",
+"status": "Adds a text document to the active document"
+},
+"Std_TextureMapping": {
+"ctx": "StdCmdTextureMapping",
+"menu": "Text&ure Mapping",
+"tip": "Maps textures to shapes",
+"status": "Maps textures to shapes"
+},
+"Std_TileWindows": {
+"ctx": "StdCmdTileWindows",
+"menu": "&Tile",
+"tip": "Tiles the windows",
+"status": "Tiles the windows"
+},
+"Std_ToggleBottomPanels": {
+"ctx": "StdCmdToggleBottomPanels",
+"menu": "Toggle Bottom Panels",
+"tip": "Toggles the bottom dock panels",
+"status": "Toggles the bottom dock panels"
+},
+"Std_ToggleClipPlane": {
+"ctx": "StdCmdToggleClipPlane",
+"menu": "Clippin&g View",
+"tip": "Toggles clipping of the active view",
+"status": "Toggles clipping of the active view"
+},
+"Std_ToggleFreeze": {
+"ctx": "StdCmdToggleFreeze",
+"menu": "Toggle Freeze",
+"tip": "Toggles freeze state of the selected objects. A frozen object is not recomputed when its parents change.",
+"status": "Toggles freeze state of the selected objects. A frozen object is not recomputed when its parents change."
+},
+"Std_ToggleNavigation": {
+"ctx": "StdCmdToggleNavigation",
+"menu": "Toggle Navigation/&Edit Mode",
+"tip": "Toggles between navigation and edit mode",
+"status": "Toggles between navigation and edit mode"
+},
+"Std_ToggleObjects": {
+"ctx": "StdCmdToggleObjects",
+"menu": "To&ggle All Objects",
+"tip": "Toggles the visibility of all objects in the active document",
+"status": "Toggles the visibility of all objects in the active document"
+},
+"Std_ToggleSelectability": {
+"ctx": "StdCmdToggleSelectability",
+"menu": "Toggle Se&lectability",
+"tip": "Toggles the property of the objects to get selected in the 3D view",
+"status": "Toggles the property of the objects to get selected in the 3D view"
+},
+"Std_ToggleSkipRecompute": {
+"ctx": "StdCmdToggleSkipRecompute",
+"menu": "Skip Recomputes",
+"tip": "Enables or disables the recomputations of the document",
+"status": "Enables or disables the recomputations of the document"
+},
+"Std_ToggleSuppress": {
+"ctx": "StdCmdToggleSuppress",
+"menu": "Toggle Suppressed",
+"tip": "Toggles suppressed state of the selected objects. A suppressed object behaves like it was deleted.",
+"status": "Toggles suppressed state of the selected objects. A suppressed object behaves like it was deleted."
+},
+"Std_ToggleToolBarLock": {
+"ctx": "StdCmdToggleToolBarLock",
+"menu": "Lock Toolbars",
+"tip": "Locks toolbars so they are no longer moveable",
+"status": "Locks toolbars so they are no longer moveable"
+},
+"Std_ToggleTransparency": {
+"ctx": "StdCmdToggleTransparency",
+"menu": "Toggle Transparenc&y",
+"tip": "Toggles the transparency of the selected objects. Transparency can be fine-tuned in the appearance task dialog",
+"status": "Toggles the transparency of the selected objects. Transparency can be fine-tuned in the appearance task dialog"
+},
+"Std_ToggleVisibility": {
+"ctx": "StdCmdToggleVisibility",
+"menu": "Toggle &Visibility",
+"tip": "Toggles the visibility of the selection",
+"status": "Toggles the visibility of the selection"
+},
+"Std_ToolBarMenu": {
+"ctx": "StdCmdToolBarMenu",
+"menu": "&Toolbars",
+"tip": "Toggles this window",
+"status": "Toggles this window"
+},
+"Std_Transform": {
+"ctx": "StdCmdTransform",
+"menu": "Transform",
+"tip": "Transforms the selected object",
+"status": "Transforms the selected object"
+},
+"Std_TransformManip": {
+"ctx": "StdCmdTransformManip",
+"menu": "Trans&form",
+"tip": "Transforms the selected object in the 3D view",
+"status": "Transforms the selected object in the 3D view"
+},
+"Std_TreeCollapse": {
+"ctx": "StdCmdTreeCollapse",
+"menu": "Collapse Selected Items",
+"tip": "Collapses the currently selected tree items",
+"status": "Collapses the currently selected tree items"
+},
+"Std_TreeCollapseDocument": {
+"ctx": "StdTreeCollapseDocument",
+"menu": "Collapse/E&xpand",
+"tip": "Expands the active document and collapses all others",
+"status": "Expands the active document and collapses all others"
+},
+"Std_TreeDrag": {
+"ctx": "StdTreeDrag",
+"menu": "Initiate &Dragging",
+"tip": "Initiates dragging of the currently selected tree items",
+"status": "Initiates dragging of the currently selected tree items"
+},
+"Std_TreeExpand": {
+"ctx": "StdCmdTreeExpand",
+"menu": "Expand Selected Items",
+"tip": "Expands the currently selected tree items",
+"status": "Expands the currently selected tree items"
+},
+"Std_TreeMultiDocument": {
+"ctx": "StdTreeMultiDocument",
+"menu": "&Multi Document",
+"tip": "Displays all documents in the tree view",
+"status": "Displays all documents in the tree view"
+},
+"Std_TreePreSelection": {
+"ctx": "StdTreePreSelection",
+"menu": "Preselection",
+"tip": "Preselects the object in 3D view when hovering the cursor over the tree item",
+"status": "Preselects the object in 3D view when hovering the cursor over the tree item"
+},
+"Std_TreeRecordSelection": {
+"ctx": "StdTreeRecordSelection",
+"menu": "Record Selection",
+"tip": "Records the selection in the tree view in order to go back/forward using the navigation buttons",
+"status": "Records the selection in the tree view in order to go back/forward using the navigation buttons"
+},
+"Std_TreeSelectAllInstances": {
+"ctx": "StdCmdTreeSelectAllInstances",
+"menu": "Select All Instances",
+"tip": "Selects all instances of the currently selected object",
+"status": "Selects all instances of the currently selected object"
+},
+"Std_TreeSelection": {
+"ctx": "StdTreeSelection",
+"menu": "&Go to Selection",
+"tip": "Scrolls to the first selected item",
+"status": "Scrolls to the first selected item"
+},
+"Std_TreeSingleDocument": {
+"ctx": "StdTreeSingleDocument",
+"menu": "&Single Document",
+"tip": "Displays only the active document in the tree view",
+"status": "Displays only the active document in the tree view"
+},
+"Std_TreeSyncPlacement": {
+"ctx": "StdTreeSyncPlacement",
+"menu": "Sync Placement",
+"tip": "Adjusts the placement on drag-and-drop of objects across coordinate systems (e.g. in part containers)",
+"status": "Adjusts the placement on drag-and-drop of objects across coordinate systems (e.g. in part containers)"
+},
+"Std_TreeSyncSelection": {
+"ctx": "StdTreeSyncSelection",
+"menu": "Sync Selection",
+"tip": "Expands the tree item when the corresponding object is selected in the 3D view",
+"status": "Expands the tree item when the corresponding object is selected in the 3D view"
+},
+"Std_TreeSyncView": {
+"ctx": "StdTreeSyncView",
+"menu": "Sync View",
+"tip": "Switches to the 3D view containing the selected item from the tree view",
+"status": "Switches to the 3D view containing the selected item from the tree view"
+},
+"Std_TreeViewActions": {
+"ctx": "StdCmdTreeViewActions",
+"menu": "Tree View Actions",
+"tip": "Tree view behavior options and actions",
+"status": "Tree view behavior options and actions"
+},
+"Std_Undo": {
+"ctx": "StdCmdUndo",
+"menu": "&Undo",
+"tip": "Undoes the previous action",
+"status": "Undoes the previous action"
+},
+"Std_UnitsCalculator": {
+"ctx": "StdCmdUnitsCalculator",
+"menu": "&Units Converter",
+"tip": "Starts the units converter",
+"status": "Starts the units converter"
+},
+"Std_UserEditMode": {
+"ctx": "StdCmdUserEditMode",
+"menu": "Edit &Mode",
+"tip": "Defines behavior when editing an object from the tree view",
+"status": "Defines behavior when editing an object from the tree view"
+},
+"Std_UserInterface": {
+"ctx": "StdCmdUserInterface",
+"menu": "Dock Views",
+"tip": "Docks all top-level views",
+"status": "Docks all top-level views"
+},
+"Std_VarSet": {
+"ctx": "StdCmdVarSet",
+"menu": "Variable Set",
+"tip": "Creates a variable set, which is an object that maintains a set of properties to be used as variables",
+"status": "Creates a variable set, which is an object that maintains a set of properties to be used as variables"
+},
+"Std_ViewBottom": {
+"ctx": "StdCmdViewBottom",
+"menu": "Bottom",
+"tip": "Sets the camera to the bottom view",
+"status": "Sets the camera to the bottom view"
+},
+"Std_ViewBoxZoom": {
+"ctx": "StdViewBoxZoom",
+"menu": "&Box Zoom",
+"tip": "Activates the box zoom tool",
+"status": "Activates the box zoom tool"
+},
+"Std_ViewCreate": {
+"ctx": "StdCmdViewCreate",
+"menu": "New 3D View",
+"tip": "Opens a new 3D view window for the active document",
+"status": "Opens a new 3D view window for the active document"
+},
+"Std_ViewDimetric": {
+"ctx": "StdCmdViewDimetric",
+"menu": "&Dimetric",
+"tip": "Sets the camera to the dimetric view",
+"status": "Sets the camera to the dimetric view"
+},
+"Std_ViewDock": {
+"ctx": "StdViewDock",
+"menu": "&Docked",
+"tip": "Displays the active view either in fullscreen, undocked, or docked mode",
+"status": "Displays the active view either in fullscreen, undocked, or docked mode"
+},
+"Std_ViewDockUndockFullscreen": {
+"ctx": "StdViewDockUndockFullscreen",
+"menu": "D&ocument Window",
+"tip": "Displays the active view either in fullscreen, undocked, or docked mode",
+"status": "Displays the active view either in fullscreen, undocked, or docked mode"
+},
+"Std_ViewExample1": {
+"ctx": "StdCmdViewExample1",
+"menu": "Inventor Example #1",
+"tip": "Shows a 3D texture with manipulator",
+"status": "Shows a 3D texture with manipulator"
+},
+"Std_ViewExample2": {
+"ctx": "StdCmdViewExample2",
+"menu": "Inventor Example #2",
+"tip": "Shows spheres and drag-lights",
+"status": "Shows spheres and drag-lights"
+},
+"Std_ViewExample3": {
+"ctx": "StdCmdViewExample3",
+"menu": "Inventor Example #3",
+"tip": "Shows an animated texture",
+"status": "Shows an animated texture"
+},
+"Std_ViewFitAll": {
+"ctx": "StdCmdViewFitAll",
+"menu": "&Fit All",
+"tip": "Fits all content into the 3D view",
+"status": "Fits all content into the 3D view"
+},
+"Std_ViewFitSelection": {
+"ctx": "StdCmdViewFitSelection",
+"menu": "Fit &Selection",
+"tip": "Fits the selected content into the 3D view",
+"status": "Fits the selected content into the 3D view"
+},
+"Std_ViewFront": {
+"ctx": "StdCmdViewFront",
+"menu": "Front",
+"tip": "Sets the camera to the front view",
+"status": "Sets the camera to the front view"
+},
+"Std_ViewFullscreen": {
+"ctx": "StdViewFullscreen",
+"menu": "&Fullscreen",
+"tip": "Displays the active view either in fullscreen, undocked, or docked mode",
+"status": "Displays the active view either in fullscreen, undocked, or docked mode"
+},
+"Std_ViewGroup": {
+"ctx": "StdCmdViewGroup",
+"menu": "Standard &Views",
+"tip": "Changes to a standard view",
+"status": "Changes to a standard view"
+},
+"Std_ViewHome": {
+"ctx": "StdCmdViewHome",
+"menu": "&Home",
+"tip": "Sets the camera to the default home view",
+"status": "Sets the camera to the default home view"
+},
+"Std_ViewIsometric": {
+"ctx": "StdCmdViewIsometric",
+"menu": "&Isometric",
+"tip": "Sets the camera to the isometric view",
+"status": "Sets the camera to the isometric view"
+},
+"Std_ViewIvIssueCamPos": {
+"ctx": "StdCmdViewIvIssueCamPos",
+"menu": "Issue Camera &Position",
+"tip": "Issues the camera position to the console and to a macro, to easily recall this position",
+"status": "Issues the camera position to the console and to a macro, to easily recall this position"
+},
+"Std_ViewLeft": {
+"ctx": "StdCmdViewLeft",
+"menu": "Left",
+"tip": "Sets the camera to the left view",
+"status": "Sets the camera to the left view"
+},
+"Std_ViewLoadImage": {
+"ctx": "StdViewLoadImage",
+"menu": "&Load Image…",
+"tip": "Loads an image",
+"status": "Loads an image"
+},
+"Std_ViewRear": {
+"ctx": "StdCmdViewRear",
+"menu": "Rear",
+"tip": "Sets the camera to the rear view",
+"status": "Sets the camera to the rear view"
+},
+"Std_ViewRestoreCamera": {
+"ctx": "StdCmdViewRestoreCamera",
+"menu": "Restore Saved Camera",
+"tip": "Restores the saved camera settings",
+"status": "Restores the saved camera settings"
+},
+"Std_ViewRight": {
+"ctx": "StdCmdViewRight",
+"menu": "Right",
+"tip": "Sets the camera to the right view",
+"status": "Sets the camera to the right view"
+},
+"Std_ViewRotateLeft": {
+"ctx": "StdCmdViewRotateLeft",
+"menu": "Rotate &Left",
+"tip": "Rotates the view by 90° counter-clockwise",
+"status": "Rotates the view by 90° counter-clockwise"
+},
+"Std_ViewRotateRight": {
+"ctx": "StdCmdViewRotateRight",
+"menu": "Rotates &Right",
+"tip": "Rotates the view by 90° clockwise",
+"status": "Rotates the view by 90° clockwise"
+},
+"Std_ViewSaveCamera": {
+"ctx": "StdCmdViewSaveCamera",
+"menu": "Save Current Camera",
+"tip": "Saves the current camera settings",
+"status": "Saves the current camera settings"
+},
+"Std_ViewScreenShot": {
+"ctx": "StdViewScreenShot",
+"menu": "Save &Image…",
+"tip": "Creates a screenshot of the active view",
+"status": "Creates a screenshot of the active view"
+},
+"Std_ViewStatusBar": {
+"ctx": "StdCmdStatusBar",
+"menu": "Status Bar",
+"tip": "Toggles the status bar",
+"status": "Toggles the status bar"
+},
+"Std_ViewTop": {
+"ctx": "StdCmdViewTop",
+"menu": "Top",
+"tip": "Sets the camera to the top view",
+"status": "Sets the camera to the top view"
+},
+"Std_ViewTrimetric": {
+"ctx": "StdCmdViewTrimetric",
+"menu": "&Trimetric",
+"tip": "Sets the camera to the trimetric view",
+"status": "Sets the camera to the trimetric view"
+},
+"Std_ViewUndock": {
+"ctx": "StdViewUndock",
+"menu": "&Undocked",
+"tip": "Displays the active view either in fullscreen, undocked, or docked mode",
+"status": "Displays the active view either in fullscreen, undocked, or docked mode"
+},
+"Std_ViewZoomIn": {
+"ctx": "StdViewZoomIn",
+"menu": "Zoom &In",
+"tip": "Increases the zoom factor by a fixed amount",
+"status": "Increases the zoom factor by a fixed amount"
+},
+"Std_ViewZoomOut": {
+"ctx": "StdViewZoomOut",
+"menu": "Zoom &Out",
+"tip": "Decreases the zoom factor by a fixed amount",
+"status": "Decreases the zoom factor by a fixed amount"
+},
+"Std_WhatsThis": {
+"ctx": "StdCmdWhatsThis",
+"menu": "&What's This?",
+"tip": "Opens the documentation for the selected command",
+"status": "Opens the documentation for the selected command"
+},
+"Std_Windows": {
+"ctx": "StdCmdWindows",
+"menu": "Choose Open &Window",
+"tip": "Displays the open windows",
+"status": "Displays the open windows"
+},
+"Std_WindowsMenu": {
+"ctx": "StdCmdWindowsMenu",
+"menu": "Activate Window",
+"tip": "Activates this window",
+"status": "Activates this window"
+},
+"Std_Workbench": {
+"ctx": "StdCmdWorkbench",
+"menu": "&Workbench",
+"tip": "Switches between workbenches",
+"status": "Switches between workbenches"
+},
+"TechDraw_2LineCenterLine": {
+"ctx": "CmdTechDraw2LineCenterLine",
+"menu": "Centerline Between 2 Lines",
+"tip": "Adds a centerline between 2 selected lines",
+"status": "Adds a centerline between 2 selected lines"
+},
+"TechDraw_2PointCenterLine": {
+"ctx": "CmdTechDraw2PointCenterLine",
+"menu": "Centerline Between 2 Points",
+"tip": "Adds a centerline between 2 selected points",
+"status": "Adds a centerline between 2 selected points"
+},
+"TechDraw_2PointCosmeticLine": {
+"ctx": "CmdTechDraw2PointCosmeticLine",
+"menu": "Cosmetic Line Through 2 Points",
+"tip": "Adds a cosmetic line that passes through 2 selected points",
+"status": "Adds a cosmetic line that passes through 2 selected points"
+},
+"TechDraw_3PtAngleDimension": {
+"ctx": "CmdTechDraw3PtAngleDimension",
+"menu": "Angle Dimension From 3 Points",
+"tip": "Inserts an angle dimension between 3 selected points",
+"status": "Inserts an angle dimension between 3 selected points"
+},
+"TechDraw_ActiveView": {
+"ctx": "CmdTechDrawActiveView",
+"menu": "Active View",
+"tip": "Inserts an image of the open 3D view in the current page.\nIf multiple 3D views are open, a selection dialog will be shown.",
+"status": "Inserts an image of the open 3D view in the current page.\nIf multiple 3D views are open, a selection dialog will be shown."
+},
+"TechDraw_AlignVertexesHorizontally": {
+"ctx": "CmdTechDrawAlignVertexesHorizontally",
+"menu": "Align Vertices/Edge Horizontally",
+"tip": "Aligns the selected vertices or edges horizontally to the view rotation",
+"status": "Aligns the selected vertices or edges horizontally to the view rotation"
+},
+"TechDraw_AlignVertexesVertically": {
+"ctx": "CmdTechDrawAlignVertexesVertically",
+"menu": "Align Vertices/Edge Vertically",
+"tip": "Aligns the selected vertices or edges vertically to the view rotation",
+"status": "Aligns the selected vertices or edges vertically to the view rotation"
+},
+"TechDraw_AngleDimension": {
+"ctx": "CmdTechDrawAngleDimension",
+"menu": "Angle Dimension",
+"tip": "Inserts an angle dimension between two edges",
+"status": "Inserts an angle dimension between two edges"
+},
+"TechDraw_Annotation": {
+"ctx": "CmdTechDrawAnnotation",
+"menu": "Text Annotation",
+"tip": "Inserts an editable text block annotation to the current page",
+"status": "Inserts an editable text block annotation to the current page"
+},
+"TechDraw_ArchView": {
+"ctx": "CmdTechDrawArchView",
+"menu": "BIM View",
+"tip": "Inserts a view of a BIM section plane",
+"status": "Inserts a view of a BIM section plane"
+},
+"TechDraw_AreaDimension": {
+"ctx": "CmdTechDrawAreaDimension",
+"menu": "Area Annotation",
+"tip": "Inserts an annotation showing the area of a selected face",
+"status": "Inserts an annotation showing the area of a selected face"
+},
+"TechDraw_AxoLengthDimension": {
+"ctx": "PythonCommand",
+"menu": "Axonometric Length Dimension",
+"tip": "Creates a length dimension in with axonometric view, using selected edges or vertex pairs to define direction and measurement",
+"status": ""
+},
+"TechDraw_Balloon": {
+"ctx": "CmdTechDrawBalloon",
+"menu": "Balloon Annotation",
+"tip": "Inserts a new balloon annotation in the selected view",
+"status": "Inserts a new balloon annotation in the selected view"
+},
+"TechDraw_BrokenView": {
+"ctx": "CmdTechDrawBrokenView",
+"menu": "Broken View",
+"tip": "Inserts a new broken view for the selected objects or base view and break definition objects",
+"status": "Inserts a new broken view for the selected objects or base view and break definition objects"
+},
+"TechDraw_CenterLineGroup": {
+"ctx": "CmdTechDrawCenterLineGroup",
+"menu": "Centerline",
+"tip": "Inserts a centerline to a face, or between 2 lines or edges",
+"status": "Inserts a centerline to a face, or between 2 lines or edges"
+},
+"TechDraw_ClipGroup": {
+"ctx": "CmdTechDrawClipGroup",
+"menu": "Clip Group",
+"tip": "Inserts a new clip group for the selected view",
+"status": "Inserts a new clip group for the selected view"
+},
+"TechDraw_ClipGroupAdd": {
+"ctx": "CmdTechDrawClipGroupAdd",
+"menu": "Add View To Clip Group",
+"tip": "Adds the selected view to a clip group",
+"status": "Adds the selected view to a clip group"
+},
+"TechDraw_ClipGroupRemove": {
+"ctx": "CmdTechDrawClipGroupRemove",
+"menu": "Remove From Clip Group",
+"tip": "Removes a view based on the selected clip group",
+"status": "Removes a view based on the selected clip group"
+},
+"TechDraw_CommandAddOffsetVertex": {
+"ctx": "PythonCommand",
+"menu": "Offset Vertex",
+"tip": "Creates an offset from one selected vertex",
+"status": ""
+},
+"TechDraw_CommandVertexCreationGroup": {
+"ctx": "PythonGroupCommand",
+"menu": "Cosmetic Intersection Vertices",
+"tip": "Adds cosmetic vertices at the intersectionss of selected edges",
+"status": ""
+},
+"TechDraw_CompDimensionTools": {
+"ctx": "CmdTechDrawCompDimensionTools",
+"menu": "Dimension",
+"tip": "Dimension tools",
+"status": "Dimension tools"
+},
+"TechDraw_ComplexSection": {
+"ctx": "CmdTechDrawComplexSection",
+"menu": "Complex Section View",
+"tip": "Inserts a complex section view based on the selected view in the current page",
+"status": "Inserts a complex section view based on the selected view in the current page"
+},
+"TechDraw_CosmeticCircle": {
+"ctx": "CmdTechDrawCosmeticCircle",
+"menu": "Cosmetic 1 Point Circle",
+"tip": "Adds a cosmetic circle based on a selected centerpoint",
+"status": "Adds a cosmetic circle based on a selected centerpoint"
+},
+"TechDraw_CosmeticEraser": {
+"ctx": "CmdTechDrawCosmeticEraser",
+"menu": "Remove Cosmetic Object",
+"tip": "Removes the selected cosmetic object from the page",
+"status": "Removes the selected cosmetic object from the page"
+},
+"TechDraw_CosmeticVertex": {
+"ctx": "CmdTechDrawCosmeticVertex",
+"menu": "Cosmetic Vertex",
+"tip": "Adds a cosmetic vertex",
+"status": "Adds a cosmetic vertex"
+},
+"TechDraw_CosmeticVertexGroup": {
+"ctx": "CmdTechDrawCosmeticVertexGroup",
+"menu": "Cosmetic Vertex",
+"tip": "Inserts a cosmetic vertex",
+"status": "Inserts a cosmetic vertex"
+},
+"TechDraw_DecorateLine": {
+"ctx": "CmdTechDrawDecorateLine",
+"menu": "Edit Line Appearance",
+"tip": "Opens the 'Line decoration' dialog to edit the selected lines",
+"status": "Opens the 'Line decoration' dialog to edit the selected lines"
+},
+"TechDraw_DetailView": {
+"ctx": "CmdTechDrawDetailView",
+"menu": "Detail View",
+"tip": "Inserts a new detail view based on the selected view in the current page",
+"status": "Inserts a new detail view based on the selected view in the current page"
+},
+"TechDraw_DiameterDimension": {
+"ctx": "CmdTechDrawDiameterDimension",
+"menu": "Diameter Dimension",
+"tip": "Inserts a diameter dimension of a circular edge or arc",
+"status": "Inserts a diameter dimension of a circular edge or arc"
+},
+"TechDraw_Dimension": {
+"ctx": "CmdTechDrawDimension",
+"menu": "Dimension",
+"tip": "Inserts new contextual dimensions to the selection.\nDepending on your selection you might have several dimensions available. You can cycle through them using the M key.\nLeft clicking on empty space will validate the current dimension. Right clicking or pressing Esc will cancel.",
+"status": "Inserts new contextual dimensions to the selection.\nDepending on your selection you might have several dimensions available. You can cycle through them using the M key.\nLeft clicking on empty space will validate the current dimension. Right clicking or pressing Esc will cancel."
+},
+"TechDraw_DimensionRepair": {
+"ctx": "CmdTechDrawDimensionRepair",
+"menu": "Repair Dimension References",
+"tip": "Repairs broken or incorrect dimension references",
+"status": "Repairs broken or incorrect dimension references"
+},
+"TechDraw_DraftView": {
+"ctx": "CmdTechDrawDraftView",
+"menu": "Draft View",
+"tip": "Inserts a view of a Draft object",
+"status": "Inserts a view of a Draft object"
+},
+"TechDraw_ExportGroup": {
+"ctx": "CmdTechDrawExportGroup",
+"menu": "Print All Pages",
+"tip": "Print All Pages",
+"status": "Print All Pages"
+},
+"TechDraw_ExportPageDXF": {
+"ctx": "CmdTechDrawExportPageDXF",
+"menu": "Export Page as DXF",
+"tip": "Exports the current page as a DXF",
+"status": "Exports the current page as a DXF"
+},
+"TechDraw_ExportPagePDF": {
+"ctx": "CmdTechDrawExportPagePDF",
+"menu": "Export Page as PDF",
+"tip": "Exports the current page as a PDF",
+"status": "Exports the current page as a PDF"
+},
+"TechDraw_ExportPageSVG": {
+"ctx": "CmdTechDrawExportPageSVG",
+"menu": "Export Page as SVG",
+"tip": "Exports the current page as an SVG",
+"status": "Exports the current page as an SVG"
+},
+"TechDraw_ExtensionArcLengthAnnotation": {
+"ctx": "CmdTechDrawExtensionArcLengthAnnotation",
+"menu": "Arc Length Annotation",
+"tip": "Inserts an annotation with the calculated arc length of the selected edges",
+"status": "Inserts an annotation with the calculated arc length of the selected edges"
+},
+"TechDraw_ExtensionAreaAnnotation": {
+"ctx": "CmdTechDrawExtensionAreaAnnotation",
+"menu": "Area Annotation",
+"tip": "Calculates the area of multiple selected faces",
+"status": "Calculates the area of multiple selected faces"
+},
+"TechDraw_ExtensionCascadeDimensionGroup": {
+"ctx": "CmdTechDrawExtensionCascadeDimensionGroup",
+"menu": "Cascade Horizontal Dimensions",
+"tip": "Evenly spaces the selected horizontal dimensions:<br>- Specify the cascade spacing (optional)<br>- Select two or more horizontal dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Cascade Horizontal Dimensions"
+},
+"TechDraw_ExtensionCascadeHorizDimension": {
+"ctx": "CmdTechDrawExtensionCascadeHorizDimension",
+"menu": "Cascade Horizontal Dimensions",
+"tip": "Evenly spaces the selected horizontal dimensions:<br>- Specify the cascade spacing (optional)<br>- Select two or more horizontal dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Cascade Horizontal Dimensions"
+},
+"TechDraw_ExtensionCascadeObliqueDimension": {
+"ctx": "CmdTechDrawExtensionCascadeObliqueDimension",
+"menu": "Cascade Oblique Dimensions",
+"tip": "Evenly spaces the selected oblique dimensions:<br>- Specify the cascade spacing (optional)<br>- Select two or more parallel oblique dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Cascade Oblique Dimensions"
+},
+"TechDraw_ExtensionCascadeVertDimension": {
+"ctx": "CmdTechDrawExtensionCascadeVertDimension",
+"menu": "Cascade Vertical Dimensions",
+"tip": "Evenly spaces the selected vertical dimensions:<br>- Specify the cascade spacing (optional)<br>- Select two or more vertical dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Cascade Vertical Dimensions"
+},
+"TechDraw_ExtensionChamferDimensionGroup": {
+"ctx": "CmdTechDrawExtensionChamferDimensionGroup",
+"menu": "Horizontal Chamfer Dimension",
+"tip": "Inserts a horizontal size and angle dimension for a chamfer from 2 selected vertices",
+"status": "Horizontal Chamfer Dimension"
+},
+"TechDraw_ExtensionChangeLineAttributes": {
+"ctx": "CmdTechDrawExtensionChangeLineAttributes",
+"menu": "Change Line Attributes",
+"tip": "Changes the selected cosmetic lines and centerlines to the specified attributes",
+"status": "Change Line Attributes"
+},
+"TechDraw_ExtensionCircleCenterLines": {
+"ctx": "CmdTechDrawExtensionCircleCenterLines",
+"menu": "Circle Centerlines",
+"tip": "Adds centerlines to the selected circles and arcs",
+"status": "Circle Centerlines"
+},
+"TechDraw_ExtensionCircleCenterLinesGroup": {
+"ctx": "CmdTechDrawExtensionCircleCenterLinesGroup",
+"menu": "Circle Centerlines",
+"tip": "Adds centerlines to selected circles and arcs",
+"status": "Circle Centerlines"
+},
+"TechDraw_ExtensionCreateChainDimensionGroup": {
+"ctx": "CmdTechDrawExtensionCreateChainDimensionGroup",
+"menu": "Horizontal Chain Dimension",
+"tip": "Inserts a sequence of aligned horizontal dimensions to at least three selected vertices, where the first two define the direction",
+"status": "Horizontal Chain Dimension"
+},
+"TechDraw_ExtensionCreateCoordDimensionGroup": {
+"ctx": "CmdTechDrawExtensionCreateCoordDimensionGroup",
+"menu": "Horizontal Coordinate Dimension",
+"tip": "Adds evenly spaced horizontal dimensions between 3 or more vertices aligned to a shared baseline",
+"status": "Horizontal Coordinate Dimension"
+},
+"TechDraw_ExtensionCreateHorizChainDimension": {
+"ctx": "CmdTechDrawExtensionCreateHorizChainDimension",
+"menu": "Horizontal Chain Dimension",
+"tip": "Inserts a sequence of aligned horizontal dimensions to at least three selected vertices",
+"status": "Horizontal Chain Dimension"
+},
+"TechDraw_ExtensionCreateHorizChamferDimension": {
+"ctx": "CmdTechDrawExtensionCreateHorizChamferDimension",
+"menu": "Horizontal Chamfer Dimension",
+"tip": "Inserts a horizontal size and angle dimension for a chamfer from 2 selected vertices",
+"status": "Horizontal Chamfer Dimension"
+},
+"TechDraw_ExtensionCreateHorizCoordDimension": {
+"ctx": "CmdTechDrawExtensionCreateHorizCoordDimension",
+"menu": "Horizontal Coordinate Dimension",
+"tip": "Adds evenly spaced horizontal dimensions between 3 or more vertices aligned to a shared baseline",
+"status": "Horizontal Coordinate Dimension"
+},
+"TechDraw_ExtensionCreateLengthArc": {
+"ctx": "CmdTechDrawExtensionCreateLengthArc",
+"menu": "Arc Length Dimension",
+"tip": "Inserts an arc length dimension to the selected arc",
+"status": "Arc Length Dimension"
+},
+"TechDraw_ExtensionCreateObliqueChainDimension": {
+"ctx": "CmdTechDrawExtensionCreateObliqueChainDimension",
+"menu": "Oblique Chain Dimension",
+"tip": "Inserts a sequence of aligned oblique dimensions to at least three selected vertices, where the first two define the direction",
+"status": "Oblique Chain Dimension"
+},
+"TechDraw_ExtensionCreateObliqueCoordDimension": {
+"ctx": "CmdTechDrawExtensionCreateObliqueCoordDimension",
+"menu": "Oblique Coordinate Dimension",
+"tip": "Adds evenly spaced oblique dimensions between 3 or more vertices aligned to a shared baseline",
+"status": "Oblique Coordinate Dimension"
+},
+"TechDraw_ExtensionCreateVertChainDimension": {
+"ctx": "CmdTechDrawExtensionCreateVertChainDimension",
+"menu": "Vertical Chain Dimension",
+"tip": "Inserts a sequence of aligned vertical dimensions to at least three selected vertices",
+"status": "Vertical Chain Dimension"
+},
+"TechDraw_ExtensionCreateVertChamferDimension": {
+"ctx": "CmdTechDrawExtensionCreateVertChamferDimension",
+"menu": "Vertical Chamfer Dimension",
+"tip": "Inserts a vertical size and angle dimension for a chamfer from 2 selected vertices",
+"status": "Vertical Chamfer Dimension"
+},
+"TechDraw_ExtensionCreateVertCoordDimension": {
+"ctx": "CmdTechDrawExtensionCreateVertCoordDimension",
+"menu": "Vertical Coordinate Dimension",
+"tip": "Adds evenly spaced vertical dimensions between 3 or more vertices aligned to a shared baseline",
+"status": "Vertical Coordinate Dimension"
+},
+"TechDraw_ExtensionCustomizeFormat": {
+"ctx": "CmdTechDrawExtensionCustomizeFormat",
+"menu": "Customize Format Label",
+"tip": "Customizes the format label of a selected dimension or balloon",
+"status": "Customizes the format label of a selected dimension or balloon"
+},
+"TechDraw_ExtensionDecreaseDecimal": {
+"ctx": "CmdTechDrawExtensionDecreaseDecimal",
+"menu": "Decrease Decimal Places",
+"tip": "Decreases the number of decimal places of the dimension",
+"status": "Decrease Decimal Places"
+},
+"TechDraw_ExtensionDrawCirclesGroup": {
+"ctx": "CmdTechDrawExtensionDrawCirclesGroup",
+"menu": "Cosmetic 1 Point Circle",
+"tip": "Adds a cosmetic circle based on two vertices, where the first selection is the centerpoint and the second is the radius",
+"status": "Cosmetic 1 Point Circle"
+},
+"TechDraw_ExtensionDrawCosmArc": {
+"ctx": "CmdTechDrawExtensionDrawCosmArc",
+"menu": "Cosmetic Arc",
+"tip": "Adds a cosmetic counter clockwise arc based on three vertices, where the first selection is the center point and the second is the radius and start point",
+"status": "Cosmetic Arc"
+},
+"TechDraw_ExtensionDrawCosmCircle": {
+"ctx": "CmdTechDrawExtensionDrawCosmCircle",
+"menu": "Cosmetic 2 Point Circle",
+"tip": "Adds a cosmetic circle based on two selected vertices, where the first is the center point and the second is the radius",
+"status": "Adds a cosmetic circle based on two selected vertices, where the first is the center point and the second is the radius"
+},
+"TechDraw_ExtensionDrawCosmCircle3Points": {
+"ctx": "CmdTechDrawExtensionDrawCosmCircle3Points",
+"menu": "Cosmetic 3 Point Circle",
+"tip": "Adds a cosmetic circle that passes through 3 selected perimeter points",
+"status": "Cosmetic 3 Point Circle"
+},
+"TechDraw_ExtensionExtendLine": {
+"ctx": "CmdTechDrawExtensionExtendLine",
+"menu": "Extend Line",
+"tip": "Extends a selected cosmetic line or centerline at both ends by the specified delta distance",
+"status": "Extends a selected cosmetic line or centerline at both ends by the specified delta distance"
+},
+"TechDraw_ExtensionExtendShortenLineGroup": {
+"ctx": "CmdTechDrawExtendShortenLineGroup",
+"menu": "Extend Line",
+"tip": "Extends a selected cosmetic line or centerline at both ends by the specified delta distance",
+"status": "Extend Line"
+},
+"TechDraw_ExtensionHoleCircle": {
+"ctx": "CmdTechDrawExtensionHoleCircle",
+"menu": "Bolt Circle Centerlines",
+"tip": "Adds centerlines to a circular pattern of three or more selected circles",
+"status": "Bolt Circle Centerlines"
+},
+"TechDraw_ExtensionIncreaseDecimal": {
+"ctx": "CmdTechDrawExtensionIncreaseDecimal",
+"menu": "Increase Decimal Places",
+"tip": "Increases the number of decimal places of the dimension",
+"status": "Increase Decimal Places"
+},
+"TechDraw_ExtensionIncreaseDecreaseGroup": {
+"ctx": "CmdTechDrawExtensionIncreaseDecreaseGroup",
+"menu": "Increase Decimal Places",
+"tip": "Increases the number of decimal places of the dimension",
+"status": "Increase Decimal Places"
+},
+"TechDraw_ExtensionInsertDiameter": {
+"ctx": "CmdTechDrawExtensionInsertDiameter",
+"menu": "Insert '⌀' Prefix",
+"tip": "Inserts a '⌀' symbol at the beginning of the dimension",
+"status": "Insert '⌀' Prefix"
+},
+"TechDraw_ExtensionInsertPrefixGroup": {
+"ctx": "CmdTechDrawExtensionInsertPrefixGroup",
+"menu": "Insert '⌀' Prefix",
+"tip": "Inserts a '⌀' symbol at the beginning of the dimension text",
+"status": "Insert '⌀' Prefix"
+},
+"TechDraw_ExtensionInsertRepetition": {
+"ctx": "CmdTechDrawExtensionInsertRepetition",
+"menu": "Insert 'n×' Prefix",
+"tip": "Inserts a repeated feature count at the beginning of the dimension",
+"status": "Insert 'n×' Prefix"
+},
+"TechDraw_ExtensionInsertSquare": {
+"ctx": "CmdTechDrawExtensionInsertSquare",
+"menu": "Insert '□' Prefix",
+"tip": "Inserts a '□' symbol at the beginning of the dimension",
+"status": "Insert '□' Prefix"
+},
+"TechDraw_ExtensionLinePPGroup": {
+"ctx": "CmdTechDrawExtensionLinePPGroup",
+"menu": "Cosmetic Parallel Line",
+"tip": "Adds a cosmetic line parallel to the selected line through the selected vertex",
+"status": "Cosmetic Parallel Line"
+},
+"TechDraw_ExtensionLineParallel": {
+"ctx": "CmdTechDrawExtensionLineParallel",
+"menu": "Cosmetic Parallel Line",
+"tip": "Adds a cosmetic circle to 3 selected vertices",
+"status": "Cosmetic Parallel Line"
+},
+"TechDraw_ExtensionLinePerpendicular": {
+"ctx": "CmdTechDrawExtensionLinePerpendicular",
+"menu": "Cosmetic Perpendicular Line",
+"tip": "Adds a cosmetic line perpendicular to the selected line through the selected vertex",
+"status": "Cosmetic Perpendicular Line"
+},
+"TechDraw_ExtensionLockUnlockView": {
+"ctx": "CmdTechDrawExtensionLockUnlockView",
+"menu": "Toggle View Lock",
+"tip": "Locks or unlocks the position of the selected views",
+"status": "Toggle View Lock"
+},
+"TechDraw_ExtensionPosChainDimensionGroup": {
+"ctx": "CmdTechDrawExtensionPosChainDimensionGroup",
+"menu": "Align Horizontal Chain Dimensions",
+"tip": "Aligns the horizontal dimensions to create a chain dimension:<br>- Select two or more horizontal dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Align Horizontal Chain Dimensions"
+},
+"TechDraw_ExtensionPosHorizChainDimension": {
+"ctx": "CmdTechDrawExtensionPosHorizChainDimension",
+"menu": "Align Horizontal Chain Dimensions",
+"tip": "Aligns the horizontal dimensions to create a chain dimension:<br>- Select two or more horizontal dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Align Horizontal Chain Dimensions"
+},
+"TechDraw_ExtensionPosObliqueChainDimension": {
+"ctx": "CmdTechDrawExtensionPosObliqueChainDimension",
+"menu": "Align Oblique Chain Dimensions",
+"tip": "Aligns the oblique dimensions to create a chain dimension:<br>- Select two or more parallel oblique dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Align Oblique Chain Dimensions"
+},
+"TechDraw_ExtensionPosVertChainDimension": {
+"ctx": "CmdTechDrawExtensionPosVertChainDimension",
+"menu": "Align Vertical Chain Dimensions",
+"tip": "Aligns the vertical dimensions to create a chain dimension:<br>- Select two or more vertical dimensions<br>- The first dimension defines the position<br>- Click this tool",
+"status": "Align Vertical Chain Dimensions"
+},
+"TechDraw_ExtensionPositionSectionView": {
+"ctx": "PythonCommand",
+"menu": "Position Section View",
+"tip": "Aligns the selected section view with its source view orthogonally or the selected edge in the section view to the selected vertex in the base view",
+"status": ""
+},
+"TechDraw_ExtensionRemovePrefixChar": {
+"ctx": "CmdTechDrawExtensionRemovePrefixChar",
+"menu": "Remove Prefix",
+"tip": "Removes the prefix symbols at the beginning of the dimension",
+"status": "Remove Prefix"
+},
+"TechDraw_ExtensionSelectLineAttributes": {
+"ctx": "CmdTechDrawExtensionSelectLineAttributes",
+"menu": "Select Line Attributes, Cascade Spacing and Delta Distance",
+"tip": "Configures the default attributes for cosmetic lines and centerlines, including cascade spacing and delta distance",
+"status": "Select Line Attributes, Cascade Spacing and Delta Distance"
+},
+"TechDraw_ExtensionShortenLine": {
+"ctx": "CmdTechDrawExtensionShortenLine",
+"menu": "Shorten Line",
+"tip": "Shortens a selected cosmetic line or centerline at both ends by the specified delta distance",
+"status": "Shorten Line"
+},
+"TechDraw_ExtensionThreadBoltBottom": {
+"ctx": "CmdTechDrawExtensionThreadBoltBottom",
+"menu": "Cosmetic Thread Bolt Bottom View",
+"tip": "Adds a cosmetic thread to the top or bottom view of the selected bolts/screws/rods",
+"status": "Cosmetic Thread Bolt Bottom View"
+},
+"TechDraw_ExtensionThreadBoltSide": {
+"ctx": "CmdTechDrawExtensionThreadBoltSide",
+"menu": "Cosmetic Thread Bolt Side View",
+"tip": "Adds a cosmetic thread to the side view of a bolt/screw/rod between two selected parallel lines",
+"status": "Cosmetic Thread Bolt Side View"
+},
+"TechDraw_ExtensionThreadHoleBottom": {
+"ctx": "CmdTechDrawExtensionThreadHoleBottom",
+"menu": "Cosmetic Thread Hole Bottom View",
+"tip": "Adds a cosmetic thread to the top or bottom view of selected holes or circles",
+"status": "Cosmetic Thread Hole Bottom View"
+},
+"TechDraw_ExtensionThreadHoleSide": {
+"ctx": "CmdTechDrawExtensionThreadHoleSide",
+"menu": "Cosmetic Thread Hole Side View",
+"tip": "Adds a cosmetic thread to the side view of a hole or circle",
+"status": "Cosmetic Thread Hole Side View"
+},
+"TechDraw_ExtensionThreadsGroup": {
+"ctx": "CmdTechDrawExtensionThreadsGroup",
+"menu": "Cosmetic Thread Hole Side View",
+"tip": "Adds a cosmetic thread to the side view of a selected hole between two selected parallel lines",
+"status": "Cosmetic Thread Hole Side View"
+},
+"TechDraw_ExtensionVertexAtIntersection": {
+"ctx": "CmdTechDrawExtensionVertexAtIntersection",
+"menu": "Cosmetic Intersection Vertices",
+"tip": "Adds cosmetic vertices at the intersections of selected edges",
+"status": "Cosmetic Intersection Vertices"
+},
+"TechDraw_ExtentGroup": {
+"ctx": "CmdTechDrawExtentGroup",
+"menu": "Extent Dimension",
+"tip": "Inserts a dimension showing the extent (overall length) of an object or feature",
+"status": "Inserts a dimension showing the extent (overall length) of an object or feature"
+},
+"TechDraw_FaceCenterLine": {
+"ctx": "CmdTechDrawFaceCenterLine",
+"menu": "Centerline on Face",
+"tip": "Adds a centerline to selected faces",
+"status": "Adds a centerline to selected faces"
+},
+"TechDraw_FillTemplateFields": {
+"ctx": "PythonCommand",
+"menu": "Update Template Fields",
+"tip": "Uses document info to populate the template fields",
+"status": ""
+},
+"TechDraw_GeometricHatch": {
+"ctx": "CmdTechDrawGeometricHatch",
+"menu": "Geometric Hatch",
+"tip": "Applies a geometric hatch pattern to the selected faces",
+"status": "Applies a geometric hatch pattern to the selected faces"
+},
+"TechDraw_Hatch": {
+"ctx": "CmdTechDrawHatch",
+"menu": "Image Hatch",
+"tip": "Applies a hatch pattern to the selected faces using an image file",
+"status": "Applies a hatch pattern to the selected faces using an image file"
+},
+"TechDraw_HoleShaftFit": {
+"ctx": "PythonCommand",
+"menu": "Hole/Shaft Fit",
+"tip": "Adds a hole or shaft fit to a selected length or diameter dimension",
+"status": ""
+},
+"TechDraw_HorizontalDimension": {
+"ctx": "CmdTechDrawHorizontalDimension",
+"menu": "Horizontal Length Dimension",
+"tip": "Inserts a horizontal length dimension of an edge or distance between two points",
+"status": "Inserts a horizontal length dimension of an edge or distance between two points"
+},
+"TechDraw_HorizontalExtentDimension": {
+"ctx": "CmdTechDrawHorizontalExtentDimension",
+"menu": "Horizontal Extent Dimension",
+"tip": "Inserts a dimension showing the horizontal extent (overall length) of an object or feature",
+"status": "Inserts a dimension showing the horizontal extent (overall length) of an object or feature"
+},
+"TechDraw_Image": {
+"ctx": "CmdTechDrawImage",
+"menu": "Bitmap Image",
+"tip": "Inserts a bitmap from a file into the current page",
+"status": "Insert bitmap from a file into a page"
+},
+"TechDraw_LeaderLine": {
+"ctx": "CmdTechDrawLeaderLine",
+"menu": "Leader Line",
+"tip": "Adds a leader line",
+"status": "Adds a leader line"
+},
+"TechDraw_LengthDimension": {
+"ctx": "CmdTechDrawLengthDimension",
+"menu": "Length Dimension",
+"tip": "Inserts a length dimension of an edge or distance between two points",
+"status": "Inserts a length dimension of an edge or distance between two points"
+},
+"TechDraw_Midpoints": {
+"ctx": "CmdTechDrawMidpoints",
+"menu": "Midpoint Vertices",
+"tip": "Adds cosmetic vertices at the midpoint of the selected edges",
+"status": "Adds cosmetic vertices at the midpoint of the selected edges"
+},
+"TechDraw_MoveView": {
+"ctx": "PythonCommand",
+"menu": "Move View",
+"tip": "Moves a view to a new page",
+"status": ""
+},
+"TechDraw_PageDefault": {
+"ctx": "CmdTechDrawPageDefault",
+"menu": "New Page",
+"tip": "Creates a new page with the default template",
+"status": "Creates a new page with the default template"
+},
+"TechDraw_PageTemplate": {
+"ctx": "CmdTechDrawPageTemplate",
+"menu": "New Page From Template",
+"tip": "Creates a new page from a custom template",
+"status": "Creates a new page from a custom template"
+},
+"TechDraw_PrintAll": {
+"ctx": "CmdTechDrawPrintAll",
+"menu": "Print All Pages",
+"tip": "Prints all pages with the print dialog",
+"status": "Prints all pages with the print dialog"
+},
+"TechDraw_ProjectShape": {
+"ctx": "CmdTechDrawProjectShape",
+"menu": "Project Shape",
+"tip": "Creates a projected geometry of the selected object in the 3D view from the current camera angle",
+"status": "Creates a projected geometry of the selected object in the 3D view from the current camera angle"
+},
+"TechDraw_ProjectionGroup": {
+"ctx": "CmdTechDrawProjectionGroup",
+"menu": "Projection Group",
+"tip": "Inserts multiple new linked views of the selected objects in the current page",
+"status": "Inserts multiple new linked views of the selected objects in the current page"
+},
+"TechDraw_Quadrants": {
+"ctx": "CmdTechDrawQuadrants",
+"menu": "Quadrant Vertices",
+"tip": "Adds cosmetic vertices at the quadrant points of the selected circles",
+"status": "Adds cosmetic vertices at the quadrant points of the selected circles"
+},
+"TechDraw_RadiusDimension": {
+"ctx": "CmdTechDrawRadiusDimension",
+"menu": "Radius Dimension",
+"tip": "Inserts a radius dimension of a circular edge or arc",
+"status": "Inserts a radius dimension of a circular edge or arc"
+},
+"TechDraw_RedrawPage": {
+"ctx": "CmdTechDrawRedrawPage",
+"menu": "Redraw Page",
+"tip": "Redraws the current page",
+"status": "Redraws the current page"
+},
+"TechDraw_RichTextAnnotation": {
+"ctx": "CmdTechDrawRichTextAnnotation",
+"menu": "Rich Text Annotation",
+"tip": "Inserts a rich text annotation in the current page",
+"status": "Inserts a rich text annotation in the current page"
+},
+"TechDraw_SectionGroup": {
+"ctx": "CmdTechDrawSectionGroup",
+"menu": "Section View (Simple or Complex)",
+"tip": "Inserts a simple or complex section view in the current page",
+"status": "Inserts a simple or complex section view in the current page"
+},
+"TechDraw_SectionView": {
+"ctx": "CmdTechDrawSectionView",
+"menu": "Section View",
+"tip": "Inserts a new section view based on the selected view in the current page",
+"status": "Inserts a new section view based on the selected view in the current page"
+},
+"TechDraw_ShareView": {
+"ctx": "PythonCommand",
+"menu": "Share View",
+"tip": "Shares a view on a second page",
+"status": ""
+},
+"TechDraw_ShowAll": {
+"ctx": "CmdTechDrawShowAll",
+"menu": "Toggle Edge Visibility",
+"tip": "Toggles the visibility of the selected edges",
+"status": "Toggles the visibility of the selected edges"
+},
+"TechDraw_SpreadsheetView": {
+"ctx": "CmdTechDrawSpreadsheetView",
+"menu": "Spreadsheet View",
+"tip": "Inserts a view of a spreadsheet in the current page",
+"status": "Inserts a view of a spreadsheet in the current page"
+},
+"TechDraw_StackBottom": {
+"ctx": "CmdTechDrawStackBottom",
+"menu": "Stack Bottom",
+"tip": "Moves the selected view to the bottom of the stack",
+"status": "Moves the selected view to the bottom of the stack"
+},
+"TechDraw_StackDown": {
+"ctx": "CmdTechDrawStackDown",
+"menu": "Stack Down",
+"tip": "Moves the selected view down 1 level in the view stack",
+"status": "Moves the selected view down 1 level in the view stack"
+},
+"TechDraw_StackGroup": {
+"ctx": "CmdTechDrawStackGroup",
+"menu": "View Stacking Order",
+"tip": "Adjusts the stacking order of the selected views",
+"status": "Adjusts the stacking order of the selected views"
+},
+"TechDraw_StackTop": {
+"ctx": "CmdTechDrawStackTop",
+"menu": "Stack Top",
+"tip": "Moves the selected view to the top of the stack",
+"status": "Moves the selected view to the top of the stack"
+},
+"TechDraw_StackUp": {
+"ctx": "CmdTechDrawStackUp",
+"menu": "Stack Up",
+"tip": "Moves the selected view up 1 level in the view stack",
+"status": "Moves the selected view up 1 level in the view stack"
+},
+"TechDraw_SurfaceFinishSymbols": {
+"ctx": "CmdTechDrawSurfaceFinishSymbols",
+"menu": "Surface Finish Symbol",
+"tip": "Adds a surface finish symbol in the selected view",
+"status": "Adds a surface finish symbol in the selected view"
+},
+"TechDraw_Symbol": {
+"ctx": "CmdTechDrawSymbol",
+"menu": "Insert SVG",
+"tip": "Inserts a symbol from an SVG file",
+"status": "Inserts a symbol from an SVG file"
+},
+"TechDraw_ToggleFrame": {
+"ctx": "CmdTechDrawToggleFrame",
+"menu": "Toggle View Frames",
+"tip": "Toggles visibility of view frames and vertices",
+"status": "Toggles visibility of view frames and vertices"
+},
+"TechDraw_ToggleGrid": {
+"ctx": "CmdTechDrawToggleGrid",
+"menu": "Toggle Grid",
+"tip": "Toggles the grid on the active page",
+"status": "Toggles the grid on the active page"
+},
+"TechDraw_VerticalDimension": {
+"ctx": "CmdTechDrawVerticalDimension",
+"menu": "Vertical Length Dimension",
+"tip": "Inserts a vertical length dimension of an edge or distance between two points",
+"status": "Inserts a vertical length dimension of an edge or distance between two points"
+},
+"TechDraw_VerticalExtentDimension": {
+"ctx": "CmdTechDrawVerticalExtentDimension",
+"menu": "Vertical Extent Dimension",
+"tip": "Inserts a dimension showing the vertical extent (overall length) of an object or feature",
+"status": "Inserts a dimension showing the vertical extent (overall length) of an object or feature"
+},
+"TechDraw_View": {
+"ctx": "CmdTechDrawView",
+"menu": "New View",
+"tip": "Inserts a new view into the current page based on the selected object in the tree view or 3D view.\nIf no object is selected, a file browser opens to select an SVG or image file.",
+"status": "Inserts a new view into the current page based on the selected object in the tree view or 3D view.\nIf no object is selected, a file browser opens to select an SVG or image file."
+},
+"TechDraw_WeldSymbol": {
+"ctx": "CmdTechDrawWeldSymbol",
+"menu": "Weld Symbol",
+"tip": "Adds welding information to the selected leader line",
+"status": "Adds welding information to the selected leader line"
+},
+"Unified_AIChat": {
+"ctx": "PythonCommand",
+"menu": "AI",
+"tip": "Chat with an AI that looks at the model, changes it and checks the result. Needs your Anthropic API key",
+"status": ""
+},
+"Unified_AIChatAsk": {
+"ctx": "PythonCommand",
+"menu": "Ask AI",
+"tip": "Opens the AI chat to ask about what is picked, e.g. “make this hole 6 mm and add a counterbore”",
+"status": ""
+},
+"Unified_About": {
+"ctx": "PythonCommand",
+"menu": "About this edition (freecad-ja-unified)",
+"tip": "This FreeCAD is changed by freecad-ja-unified (one working environment, Japanese). Opens its page, with the list of changes and where to report problems",
+"status": ""
+},
+"Unified_Align": {
+"ctx": "PythonCommand",
+"menu": "Line up",
+"tip": "Line up the picked parts: left, center, right (front, back, bottom, top), equal gaps, side by side",
+"status": ""
+},
+"Unified_DesignCheck": {
+"ctx": "PythonCommand",
+"menu": "Design check",
+"tip": "Checks the whole model for mistakes, like the design rule check of a circuit board tool: failed steps, broken or split shapes, overlapping parts, sketch constraint problems, very short edges, floating parts and drawing dimensions that lost their geometry",
+"status": ""
+},
+"Unified_EditSourceSketch": {
+"ctx": "PythonCommand",
+"menu": "Edit Its Sketch",
+"tip": "Open the sketch the picked step was made from, to change its shape or sizes",
+"status": ""
+},
+"Unified_Export2D": {
+"ctx": "PythonCommand",
+"menu": "2D (DXF, PDF of a Drawing)…",
+"tip": "The drawing of this file as DXF or PDF (a drawing is made first if there is none)",
+"status": ""
+},
+"Unified_Export3DPrint": {
+"ctx": "PythonCommand",
+"menu": "For 3D Printing (3MF, STL)…",
+"tip": "Export the picked parts (all if none is picked) for a 3D printer, checked and fixed",
+"status": ""
+},
+"Unified_ExportCAD": {
+"ctx": "PythonCommand",
+"menu": "To Other CAD (STEP)…",
+"tip": "Export the picked parts (all if none is picked) as STEP",
+"status": ""
+},
+"Unified_FaceDiameter": {
+"ctx": "PythonCommand",
+"menu": "Diameter",
+"tip": "Changes the diameter of the picked hole or round boss: type the new diameter",
+"status": ""
+},
+"Unified_Hole": {
+"ctx": "PythonCommand",
+"menu": "Hole",
+"tip": "Makes a hole. Click a flat face where the hole should go, or pick a sketch with circles or points",
+"status": ""
+},
+"Unified_InsertHere": {
+"ctx": "PythonCommand",
+"menu": "Insert Here",
+"tip": "Move the blue line right after this step: the next step you make goes here, the steps below wait (greyed) until the line goes back down",
+"status": ""
+},
+"Unified_InsertScrew": {
+"ctx": "PythonCommand",
+"menu": "Insert Screw",
+"tip": "A screw for the picked hole: the size from its diameter (tap drill or clearance hole), the length from what it holds, on its axis",
+"status": ""
+},
+"Unified_LineToEnd": {
+"ctx": "PythonCommand",
+"menu": "Bring All Steps Back",
+"tip": "Move the blue line back to the bottom: every step is in effect again",
+"status": ""
+},
+"Unified_MovePointToPoint": {
+"ctx": "PythonCommand",
+"menu": "Move point to point",
+"tip": "Moves parts without turning them: click the point to move (it snaps to vertices, middles of edges, centers of circles and faces), then where it goes. Hold Ctrl for a copy",
+"status": ""
+},
+"Unified_NewAssembly": {
+"ctx": "PythonCommand",
+"menu": "New Assembly",
+"tip": "A new file to put parts together in",
+"status": ""
+},
+"Unified_NewDrawing": {
+"ctx": "PythonCommand",
+"menu": "Make Drawing",
+"tip": "A drawing sheet with the three views of the picked part (of all parts if none is picked); a picked face is the front",
+"status": ""
+},
+"Unified_NewPart": {
+"ctx": "PythonCommand",
+"menu": "New Part",
+"tip": "A new file with a part; then click where to draw",
+"status": ""
+},
+"Unified_OtherTools": {
+"ctx": "PythonCommand",
+"menu": "Other Tools",
+"tip": "Every other tool, by kind: shapes, meshes and STL, 2D drafting, drawings, and the specialist toolboxes (CAM, FEM, BIM…), loaded when first used",
+"status": ""
+},
+"Unified_PartsShelf": {
+"ctx": "PythonCommand",
+"menu": "Parts Shelf",
+"tip": "Screws, nuts and washers (JIS, M3–M12), aluminium profiles and the company's own parts: click a hole and the screw that fits goes in",
+"status": ""
+},
+"Unified_PlacePart": {
+"ctx": "PythonCommand",
+"menu": "Put Part",
+"tip": "Put a part into the assembly of this file (an assembly is made if there is none)",
+"status": ""
+},
+"Unified_PlaceProfile": {
+"ctx": "PythonCommand",
+"menu": "Aluminium Profile",
+"tip": "A generic aluminium extrusion profile (20/30/40 series, slot 6/8) between two clicked points",
+"status": ""
+},
+"Unified_PointToFace": {
+"ctx": "PythonCommand",
+"menu": "Point onto a face",
+"tip": "Moves a part straight (without turning it) until the picked point lies on the picked face. Pick the point first, then the face",
+"status": ""
+},
+"Unified_Properties": {
+"ctx": "PythonCommand",
+"menu": "Detailed Properties",
+"tip": "Show or fold away all the properties of what is picked, under the history",
+"status": ""
+},
+"Unified_PushPull": {
+"ctx": "PythonCommand",
+"menu": "Move face",
+"tip": "Moves the picked face along its normal: outward adds material, inward removes it. Type the distance (negative: inward), or drag the arrow that appears on a face under the cursor",
+"status": ""
+},
+"Unified_Search": {
+"ctx": "PythonCommand",
+"menu": "Search Tools…",
+"tip": "Find any tool by typing what you want to do, in Japanese or English",
+"status": ""
+},
+"Unified_SearchUsable": {
+"ctx": "PythonCommand",
+"menu": "All Tools for This",
+"tip": "Every tool that can be used with what is picked; type to narrow down",
+"status": ""
+},
+"Unified_SelectParallelEdges": {
+"ctx": "PythonCommand",
+"menu": "Also the Edges in the Same Direction",
+"tip": "Picks the other straight edges of this shape that run the same way",
+"status": ""
+},
+"Unified_SelectSameCircles": {
+"ctx": "PythonCommand",
+"menu": "Also the Circles of the Same Size",
+"tip": "Picks the other circles of this shape with the same radius",
+"status": ""
+},
+"Unified_Settings": {
+"ctx": "PythonCommand",
+"menu": "Preferences…",
+"tip": "Units, mouse, drawings, files, network and the AI, by what you want to set; changes take effect at once",
+"status": ""
+},
+"Unified_SnapAxes": {
+"ctx": "PythonCommand",
+"menu": "Line up the axes",
+"tip": "Puts a round part on the axis of another, e.g. a shaft into a hole. Click a round face or a circle of the part to move, then one of the other part",
+"status": ""
+},
+"Unified_SnapFaces": {
+"ctx": "PythonCommand",
+"menu": "Snap together",
+"tip": "Puts one part against another, face to face. Click a face of the part to move, then a face of the other part (or pick both with Ctrl and press this). The first one moves",
+"status": ""
+}
+}

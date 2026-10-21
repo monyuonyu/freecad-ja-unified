@@ -1,0 +1,647 @@
+{
+ "history_line": {
+  "line_shown": true,
+  "line_under_last_step": true,
+  "dragged_up_tip_is_pad": true,
+  "hole_not_in_effect": true,
+  "shape_without_hole": true,
+  "hole_row_grey": true,
+  "hole_row_italic": true,
+  "hole_row_says_not_in_effect": true,
+  "one_undo_step": true,
+  "undo_name": "「ここまで有効」の線を動かす",
+  "undo_named_in_words": true,
+  "new_step_at_the_line": true,
+  "line_under_new_step": true,
+  "back_at_bottom_all_in_effect": true,
+  "hole_and_boss_both_there": true,
+  "ctrl_z_puts_the_line_back": true,
+  "ctrl_y_again": true,
+  "menu_has_insert_here": true,
+  "menu_has_all_back": true,
+  "insert_here_moves_the_line": true,
+  "menu": [
+   "押し出しを編集",
+   "面の色を設定",
+   "",
+   "元のスケッチを編集",
+   "抑制状態を切り替え",
+   "",
+   "隠す・表示する",
+   "選択したものを表示(W)",
+   "選択したものを非表示(H)",
+   "",
+   "マテリアル(M)",
+   "外観(A)",
+   "ランダムな色(C)",
+   "透明度を切り替え(Y)",
+   "",
+   "切り取り(T)",
+   "コピー",
+   "貼り付け",
+   "削除(D)",
+   "",
+   "ここに差し込む",
+   "全部の手順を有効に戻す",
+   "形を次の後ろへ移動…",
+   "",
+   "詳しいプロパティ",
+   "プロパティー(I)",
+   "",
+   "式アクション",
+   "リンクアクション",
+   "ツリービューの非表示アイテムを表示",
+   "ツリー ビューでの表示を切り替え",
+   "依存オブジェクトを追加選択",
+   "",
+   "再計算を指定",
+   "オブジェクトを再計算",
+   "",
+   "名前の変更",
+   "",
+   "ツリー設定"
+  ],
+  "double_click_all_back": true,
+  "no_word_tip_shown": true
+ },
+ "panels": {
+  "Pad": {
+   "folded": true,
+   "fields": [
+    "lengthEdit",
+    "checkBoxReversed"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Pocket": {
+   "folded": true,
+   "fields": [
+    "changeMode",
+    "lengthEdit",
+    "checkBoxReversed"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Revolution": {
+   "folded": true,
+   "fields": [
+    "axis",
+    "revolveAngle",
+    "checkBoxReversed"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Hole": {
+   "folded": true,
+   "fields": [
+    "DepthType",
+    "Depth",
+    "Diameter"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Fillet": {
+   "folded": true,
+   "fields": [
+    "filletRadius"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Chamfer": {
+   "folded": true,
+   "fields": [
+    "chamferSize"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Thickness": {
+   "folded": true,
+   "fields": [
+    "Value",
+    "checkReverse"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "Mirrored": {
+   "folded": true,
+   "fields": [
+    "comboPlane"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "LinearPattern": {
+   "folded": true,
+   "fields": [
+    "comboDirection",
+    "spinExtent",
+    "spinOccurrences"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "PolarPattern": {
+   "folded": true,
+   "fields": [
+    "comboDirection",
+    "spinExtent",
+    "spinOccurrences"
+   ],
+   "at_most_three": true,
+   "details_button": true
+  },
+  "details_opens_more": true,
+  "details_text_open": true,
+  "recompute_switch_only_in_details": true,
+  "details_remembered_for_pad": true,
+  "other_tool_still_short": true,
+  "details_closes_again": true,
+  "fillet_list_in_words": [
+   "押し出しの縦の辺",
+   "押し出しの縦の辺",
+   "押し出しの縦の辺",
+   "押し出しの縦の辺"
+  ],
+  "fillet_list_words_ok": true,
+  "sketch_dimension": {
+   "dialog": true,
+   "name_hidden_first": true,
+   "details_button": true,
+   "details_show_name": true
+  },
+  "hole_fields_three": true
+ },
+ "words": {
+  "hover_top": "押し出しの上面（ダブルクリックで編集） (60.06 mm, 34.96 mm, 5.00 mm)",
+  "hover_top_in_words": true,
+  "hover_hole": "穴 ⌀6 の内側の面（ダブルクリックで編集） (19.19 mm, 22.87 mm, 3.54 mm)",
+  "hover_hole_in_words": true,
+  "edges_seen": 2,
+  "bar_title": "押し出しの縦の辺 ×2",
+  "bar_title_in_words": true,
+  "status_after_picks": "選択中: 押し出しの縦の辺 ×2",
+  "status_after_same_direction": "選択中: 押し出しの縦の辺 ×4",
+  "four_edges_in_words": true
+ },
+ "terms": {
+  "strip": [
+   "新しいスケッチ",
+   "押し出す",
+   "切り抜く",
+   "回す",
+   "穴",
+   "丸め",
+   "面取り",
+   "厚み",
+   "鏡に映す",
+   "まっすぐ並べる",
+   "円に並べる",
+   "動かす",
+   "くっつける",
+   "測る",
+   "図面を描く",
+   "部品を置く",
+   "部品の棚",
+   "その他の道具"
+  ],
+  "strip_problems": [],
+  "strip_has_table_words": true,
+  "band": {
+   "Sketcher_CreatePolyline": "線をつなげて描く",
+   "Sketcher_CreateRectangle": "長方形",
+   "Sketcher_CreateCircle": "円（中心から）",
+   "Sketcher_CreateArc": "円弧（中心から）",
+   "Sketcher_CreateHexagon": "六角形",
+   "Sketcher_Dimension": "寸法",
+   "Sketcher_ConstrainHorVer": "水平・垂直",
+   "Sketcher_ConstrainParallel": "平行",
+   "Sketcher_ConstrainPerpendicular": "直角",
+   "Sketcher_ConstrainEqual": "同じ大きさ",
+   "Sketcher_ConstrainCoincidentUnified": "点をつなぐ",
+   "Sketcher_ConstrainSymmetric": "対称",
+   "Sketcher_ConstrainLock": "位置を固定",
+   "Sketcher_Trimming": "はみ出しを切る",
+   "Sketcher_Extend": "延ばす",
+   "Sketcher_CreateFillet": "丸め",
+   "Sketcher_External": null
+  },
+  "band_as_table": true,
+  "band_mismatch": {},
+  "band_more_problems": [],
+  "bar_problems": [],
+  "search_top": {
+   "円": [
+    [
+     "Draft_Circle",
+     "円"
+    ],
+    [
+     "Sketcher_CreateCircle",
+     "円（中心から）"
+    ],
+    [
+     "PartDesign_PolarPattern",
+     "円に並べる"
+    ],
+    [
+     "Sketcher_CompCreateArc",
+     "円弧"
+    ],
+    [
+     "Sketcher_ArcOverlay",
+     "円弧の補助円を切り替え"
+    ]
+   ],
+   "長方形": [
+    [
+     "Sketcher_CompCreateRectangles",
+     "長方形"
+    ],
+    [
+     "Sketcher_CreateRectangle",
+     "長方形"
+    ],
+    [
+     "Sketcher_CreateRectangle_Center",
+     "長方形（中心から）"
+    ],
+    [
+     "Sketcher_CreateOblong",
+     "角の丸い長方形"
+    ],
+    [
+     "Draft_Rectangle",
+     "四角形"
+    ]
+   ],
+   "線": [
+    [
+     "Sketcher_CompLine",
+     "線"
+    ],
+    [
+     "Sketcher_CreateLine",
+     "線"
+    ],
+    [
+     "Sketcher_CreatePolyline",
+     "線をつなげて描く"
+    ],
+    [
+     "TechDraw_DecorateLine",
+     "線の外観を編集"
+    ],
+    [
+     "TechDraw_ExtensionSelectLineAttributes",
+     "線の属性、カスケード間隔、デルタ距離を選択"
+    ]
+   ],
+   "押し出し": [
+    [
+     "BIM_Extrude",
+     "押し出し"
+    ],
+    [
+     "PartDesign_Pad",
+     "押し出す"
+    ],
+    [
+     "Unified_PlaceProfile",
+     "アルミフレーム"
+    ],
+    [
+     "Part_Revolve",
+     "回す（形の外で）"
+    ],
+    [
+     "Part_Extrude",
+     "押し出す（形の外で）"
+    ]
+   ],
+   "回転": [
+    [
+     "Draft_Rotate",
+     "回転"
+    ],
+    [
+     "PartDesign_Revolution",
+     "回す"
+    ],
+    [
+     "Assembly_CreateJointRevolute",
+     "回るだけ（回転）"
+    ],
+    [
+     "Std_ViewRotateRight",
+     "右に回転"
+    ],
+    [
+     "Std_ViewRotateLeft",
+     "左に回転"
+    ]
+   ],
+   "鏡": [
+    [
+     "PartDesign_Mirrored",
+     "鏡に映す"
+    ],
+    [
+     "Sketcher_Symmetry",
+     "鏡に映す"
+    ],
+    [
+     "Part_Mirror",
+     "鏡に映す"
+    ],
+    [
+     "Draft_Mirror",
+     "鏡像"
+    ],
+    [
+     "CAM_DressupMirror",
+     "鏡像"
+    ]
+   ],
+   "配列": [
+    [
+     "CAM_Array",
+     "配列"
+    ],
+    [
+     "PartDesign_LinearPattern",
+     "まっすぐ並べる"
+    ],
+    [
+     "PartDesign_PolarPattern",
+     "円に並べる"
+    ],
+    [
+     "Part_LinkArrays",
+     "リンクで並べる"
+    ],
+    [
+     "CAM_DressupArray",
+     "整列"
+    ]
+   ],
+   "並べる": [
+    [
+     "Unified_Align",
+     "そろえる"
+    ],
+    [
+     "PartDesign_LinearPattern",
+     "まっすぐ並べる"
+    ],
+    [
+     "PartDesign_PolarPattern",
+     "円に並べる"
+    ],
+    [
+     "Sketcher_Translate",
+     "動かす・並べる"
+    ],
+    [
+     "Sketcher_Rotate",
+     "回す・円に並べる"
+    ]
+   ],
+   "穴": [
+    [
+     "PartDesign_Hole",
+     "穴"
+    ],
+    [
+     "Unified_Hole",
+     "穴"
+    ],
+    [
+     "Mesh_FillInteractiveHole",
+     "穴をふさぐ"
+    ],
+    [
+     "TechDraw_HoleShaftFit",
+     "穴及び軸のはめあい公差"
+    ],
+    [
+     "Mesh_FillupHoles",
+     "穴埋め"
+    ]
+   ],
+   "丸め": [
+    [
+     "PartDesign_Fillet",
+     "丸め"
+    ],
+    [
+     "Sketcher_CreateFillet",
+     "丸め"
+    ],
+    [
+     "Part_Fillet",
+     "丸め"
+    ],
+    [
+     "Sketcher_CompCreateFillets",
+     "丸め / 面取り"
+    ]
+   ],
+   "面取り": [
+    [
+     "PartDesign_Chamfer",
+     "面取り"
+    ],
+    [
+     "Sketcher_CreateChamfer",
+     "面取り"
+    ],
+    [
+     "Part_Chamfer",
+     "面取り"
+    ],
+    [
+     "Sketcher_CompCreateFillets",
+     "丸め / 面取り"
+    ],
+    [
+     "TechDraw_ExtensionCreateVertChamferDimension",
+     "垂直方向の面取り寸法"
+    ]
+   ],
+   "寸法": [
+    [
+     "Sketcher_CompDimensionTools",
+     "寸法"
+    ],
+    [
+     "Sketcher_Dimension",
+     "寸法"
+    ],
+    [
+     "TechDraw_CompDimensionTools",
+     "寸法"
+    ],
+    [
+     "TechDraw_Dimension",
+     "寸法"
+    ],
+    [
+     "Draft_Dimension",
+     "寸法"
+    ]
+   ],
+   "拘束": [
+    [
+     "Sketcher_CompConstrainTools",
+     "拘束"
+    ],
+    [
+     "Sketcher_CompToggleConstraints",
+     "拘束を一時的に外す・戻す"
+    ],
+    [
+     "Sketcher_ToggleActiveConstraint",
+     "拘束を一時的に外す・戻す"
+    ],
+    [
+     "Sketcher_DeleteAllConstraints",
+     "すべての拘束を削除"
+    ],
+    [
+     "Sketcher_SelectRedundantConstraints",
+     "冗長な拘束を選択"
+    ]
+   ],
+   "先端": [
+    [
+     "PartDesign_MoveTip",
+     "ここに差し込む（ここまで有効に）"
+    ]
+   ],
+   "測る": [
+    [
+     "Std_Measure",
+     "測る"
+    ]
+   ],
+   "動かす": [
+    [
+     "Std_TransformManip",
+     "動かす"
+    ],
+    [
+     "Sketcher_Translate",
+     "動かす・並べる"
+    ],
+    [
+     "Unified_MovePointToPoint",
+     "点から点へ動かす"
+    ],
+    [
+     "Unified_PushPull",
+     "面を動かす"
+    ],
+    [
+     "Unified_SnapFaces",
+     "くっつける"
+    ]
+   ],
+   "書き出し": [
+    [
+     "Mesh_Export",
+     "三角形の網（メッシュ）を書き出す…"
+    ],
+    [
+     "Std_Export",
+     "書き出す…"
+    ],
+    [
+     "TechDraw_ExportPagePDF",
+     "ページを PDF に書き出す"
+    ],
+    [
+     "Unified_Export3DPrint",
+     "3D プリント用（3MF・STL）…"
+    ],
+    [
+     "Unified_ExportCAD",
+     "ほかの CAD へ（STEP）…"
+    ]
+   ],
+   "読み込み": [
+    [
+     "Std_ViewLoadImage",
+     "画像を読み込み…"
+    ],
+    [
+     "Std_ReloadStyleSheet",
+     "スタイルシートを再読み込み"
+    ],
+    [
+     "Unified_OtherTools",
+     "その他の道具"
+    ],
+    [
+     "CAM_ToolBitLoad",
+     "ツールを読み込む"
+    ]
+   ],
+   "ブーリアン": [
+    [
+     "PartDesign_Boolean",
+     "部品の合成"
+    ],
+    [
+     "BIM_BooleanTools",
+     "ブーリアン操作ツール"
+    ],
+    [
+     "Part_XOR",
+     "どちらか一方だけ残す（XOR）"
+    ],
+    [
+     "Mesh_Intersection",
+     "共通集合"
+    ],
+    [
+     "Mesh_Difference",
+     "差集合"
+    ]
+   ],
+   "メッシュ": [
+    [
+     "MeshPart_CreateFlatMesh",
+     "メッシュを展開"
+    ],
+    [
+     "Reen_MeshBoundary",
+     "メッシュの境界からワイヤーを作成…"
+    ],
+    [
+     "OpenSCAD_ResizeMeshFeature",
+     "メッシュフィーチャーのサイズ変更"
+    ],
+    [
+     "OpenSCAD_ScaleMeshFeature",
+     "メッシュフィーチャーの拡大縮小"
+    ],
+    [
+     "Reen_Segmentation",
+     "メッシュ分割…"
+    ]
+   ]
+  },
+  "search_problems": [],
+  "search_clean": true,
+  "search_tip_first": true
+ },
+ "failed": [],
+ "passed": 71
+}

@@ -1,7 +1,7 @@
 From a79a721bbc4bcde24588ea12bd8dfd860a97e31b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:20:50 +0900
-Subject: [PATCH 245/286] Import: name parts and documents of STEP files
+Subject: [PATCH 245/288] Import: name parts and documents of STEP files
  without product names after the file
 
 A STEP file written without product names (by FreeCAD or Open CASCADE

@@ -145,7 +145,7 @@ def context():
     QtWidgets.QApplication.sendEvent(t.viewport(), ev)
     pump(1200)
     tr = QtCore.QCoreApplication.translate
-    want = [tr("Unified_EditSourceSketch", "Edit Its Sketch"), tr("CmdPartDesignMoveTip", "Set Tip")]
+    want = [tr("Unified_EditSourceSketch", "Edit Its Sketch"), tr("Unified_InsertHere", "Insert Here")]  # 0.7.0: the blue line moves there
     return {"ok": all(any(w in x for x in texts) for w in want), "menu": texts[:12], "want": want}
 
 

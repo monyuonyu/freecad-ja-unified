@@ -1,0 +1,2691 @@
+From 89fafd933079afe651616691b09bfe0547e4dd2e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 21:17:18 +0900
+Subject: [PATCH 287/288] Unified: the "in effect up to here" line, short tool
+ panels, picks in words
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- History: a blue line under the step where a part currently ends. Drag it
+  up to any earlier step (new steps go in there), back to the bottom or
+  double-click it to bring all steps back; one undo step each. Steps below
+  the line are greyed, slanted and say "not in effect" (Gui/Tree.cpp). The
+  word for the body's Tip is never shown. Right-click: "Insert Here" (also
+  on a sketch) and "Bring All Steps Back".
+- Tool panels show their few important fields (at most three: e.g. a pad's
+  length and "reverse", how it ends only when unusual); the rest is under
+  "Details", remembered per tool. Pad, pocket, revolve, groove, hole,
+  fillet, chamfer, shell, draft, mirror, patterns and the sketch's size.
+- Picks in words instead of internal names: "Pad: top face", "Hole ⌀6:
+  inner face", "Pad: vertical edge ×4" — from the step that made the
+  element, its role there and the kind of geometry, the same ones counted
+  together. In the status bar (under the cursor and picked), as the title
+  of the bar next to the picks and in the lists of fillet/chamfer panels.
+- "Also the edges in the same direction" no longer picks the seam of a
+  hole's wall.
+
+Tests: FreeCADCmd -t TestHistoryLine / TestSelectionWords / TestTaskPanels
+/ TestWording.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Selection/Selection.cpp          |  36 ++
+ src/Gui/Tree.cpp                         |  66 ++++
+ src/Mod/Sketcher/Gui/EditDatumDialog.cpp |  32 +-
+ src/Mod/Unified/CMakeLists.txt           |   9 +
+ src/Mod/Unified/Gui/Workbench.cpp        |   6 +-
+ src/Mod/Unified/HistoryLine.py           | 127 +++++++
+ src/Mod/Unified/HistoryLineGui.py        | 411 +++++++++++++++++++++
+ src/Mod/Unified/InitGui.py               |  12 +
+ src/Mod/Unified/MeasureBarGui.py         |   9 +
+ src/Mod/Unified/SelectionWords.py        | 452 +++++++++++++++++++++++
+ src/Mod/Unified/SelectionWordsGui.py     |  91 +++++
+ src/Mod/Unified/TaskPanels.py            | 154 ++++++++
+ src/Mod/Unified/TaskPanelsGui.py         | 342 +++++++++++++++++
+ src/Mod/Unified/TestHistoryLine.py       | 130 +++++++
+ src/Mod/Unified/TestSelectionWords.py    | 210 +++++++++++
+ src/Mod/Unified/TestTaskPanels.py        |  73 ++++
+ src/Mod/Unified/TestWording.py           |  70 ++++
+ src/Mod/Unified/UnifiedChrome.py         |   7 +-
+ src/Mod/Unified/Wording.py               | 188 ++++++++++
+ 19 files changed, 2419 insertions(+), 6 deletions(-)
+ create mode 100644 src/Mod/Unified/HistoryLine.py
+ create mode 100644 src/Mod/Unified/HistoryLineGui.py
+ create mode 100644 src/Mod/Unified/SelectionWords.py
+ create mode 100644 src/Mod/Unified/SelectionWordsGui.py
+ create mode 100644 src/Mod/Unified/TaskPanels.py
+ create mode 100644 src/Mod/Unified/TaskPanelsGui.py
+ create mode 100644 src/Mod/Unified/TestHistoryLine.py
+ create mode 100644 src/Mod/Unified/TestSelectionWords.py
+ create mode 100644 src/Mod/Unified/TestTaskPanels.py
+ create mode 100644 src/Mod/Unified/TestWording.py
+ create mode 100644 src/Mod/Unified/Wording.py
+
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index 13332cad8..204edca04 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -38,6 +38,7 @@
+ 
+ #include <App/SingleWorkbench.h>
+ #include <Base/Console.h>
++#include <Base/Interpreter.h>
+ #include <Base/Exception.h>
+ #include <Base/Tools.h>
+ #include <Base/PyWrapParseTupleAndKeywords.h>
+@@ -1069,6 +1070,35 @@ std::array<std::pair<double, std::string>, 3> schemaTranslatePoint(
+     return ret;
+ }
+ 
++namespace
++{
++// The words of the integrated environment for a pick, or empty (no Python module, an error)
++QString describePick(const char* documentName, const char* objectName, const char* subName)
++{
++    Base::PyGILStateLocker lock;
++    try {
++        Py::Module module(PyImport_ImportModule("SelectionWords"), true);
++        if (module.isNull()) {
++            PyErr_Clear();
++            return {};
++        }
++        Py::Tuple args(3);
++        args.setItem(0, Py::String(documentName ? documentName : ""));
++        args.setItem(1, Py::String(objectName ? objectName : ""));
++        args.setItem(2, Py::String(subName ? subName : ""));
++        Py::Object result = module.callMemberFunction("preselection_text", args);
++        if (result.isString()) {
++            return QString::fromStdString(Py::String(result).as_std_string("utf-8"));
++        }
++    }
++    catch (Py::Exception&) {
++        Base::PyException e;  // never in the way of the pick (the plain words are shown)
++        Base::Console().log("SelectionWords: {}\n", e.what());
++    }
++    return {};
++}
++}  // namespace
++
+ QString getPreselectionInfo(
+     const char* documentName,
+     const char* objectName,
+@@ -1113,6 +1143,12 @@ QString getPreselectionInfo(
+             if (!kindText.isEmpty()) {
+                 what = QApplication::translate("Gui::SelectionSingleton", "%1, %2")
+                            .arg(what, kindText);
++                // In words where it is on the model: "Pad: top face", "Hole ⌀6: inner face"
++                // (Mod/Unified/SelectionWords.py)
++                QString words = describePick(documentName, objectName, subElementName);
++                if (!words.isEmpty()) {
++                    what = words;
++                }
+             }
+             // The steps of a part and sketches open for editing on a double-click on one of
+             // their faces or edges in the view (not on a vertex)
+diff --git a/src/Gui/Tree.cpp b/src/Gui/Tree.cpp
+index c127e6e01..1f86451e3 100644
+--- a/src/Gui/Tree.cpp
++++ b/src/Gui/Tree.cpp
+@@ -54,6 +54,8 @@
+ #include <App/GeoFeatureGroupExtension.h>
+ #include <App/Link.h>
+ #include <App/SuppressibleExtension.h>
++#include <App/SingleWorkbench.h>
++#include <App/PropertyLinks.h>
+ 
+ #include "Tree.h"
+ #include "BitmapFactory.h"
+@@ -6561,8 +6563,72 @@ void DocumentObjectItem::testStatus(bool resetStatus, QIcon& icon1, QIcon& icon2
+     this->setIcon(0, icon);
+ }
+ 
++namespace
++{
++// The item's object as "Document#Object" (the integrated environment's Python helpers)
++constexpr int ObjectNameRole = Qt::UserRole + 1100;
++
++// A step of a part (PartDesign body) after the step where the part currently ends ("in effect
++// up to here", the body's Tip): it has no effect on the part's shape
++bool afterTheLine(App::DocumentObject* obj)
++{
++    if (!obj || !obj->isAttachedToDocument()) {
++        return false;
++    }
++    App::DocumentObject* group = App::GeoFeatureGroupExtension::getGroupOfObject(obj);
++    if (!group) {
++        return false;
++    }
++    auto tip = dynamic_cast<App::PropertyLink*>(group->getPropertyByName("Tip"));
++    auto members = dynamic_cast<App::PropertyLinkList*>(group->getPropertyByName("Group"));
++    if (!tip || !members) {
++        return false;
++    }
++    const auto& list = members->getValues();
++    auto at = std::find(list.begin(), list.end(), obj);
++    if (at == list.end()) {
++        return false;
++    }
++    if (!tip->getValue()) {
++        return true;  // the line is above the first step
++    }
++    auto tipAt = std::find(list.begin(), list.end(), tip->getValue());
++    return tipAt != list.end() && at > tipAt;
++}
++}  // namespace
++
+ QVariant DocumentObjectItem::data(int column, int role) const
+ {
++    // The integrated environment: steps below the "in effect up to here" line are greyed out
++    // and say so; its Python helpers find the object an item shows by this role
++    if (column == 0 && object() && App::isSingleWorkbench()) {
++        if (role == ObjectNameRole) {
++            auto obj = object()->getObject();
++            if (obj && obj->isAttachedToDocument()) {
++                return QString::fromUtf8(obj->getFullName().c_str());
++            }
++            return {};
++        }
++        if ((role == Qt::ForegroundRole || role == Qt::ToolTipRole || role == Qt::FontRole)
++            && afterTheLine(object()->getObject())) {
++            // Lighter than a hidden step and slanted: hidden steps are greyed too
++            if (role == Qt::ForegroundRole) {
++                return QBrush(QColor(160, 160, 160));
++            }
++            if (role == Qt::FontRole) {
++                QVariant base = QTreeWidgetItem::data(column, role);
++                QFont font = base.isValid() ? base.value<QFont>() : treeWidget()->font();
++                font.setItalic(true);
++                return font;
++            }
++            QString tip = object()->getToolTip();
++            QString note = QApplication::translate(
++                "Gui::TreeWidget",
++                "Not in effect: below the blue line. Drag the line down to include it."
++            );
++            return tip.isEmpty() ? note : tip + QStringLiteral("\n") + note;
++        }
++    }
+     if (column == 0 && role == Qt::ToolTipRole && object()) {
+         const QString tip = object()->getToolTip();
+         if (!tip.isEmpty()) {
+diff --git a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+index f41189e96..105bcd46c 100644
+--- a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
++++ b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+@@ -26,6 +26,8 @@
+ /// Qt Include Files
+ #include <Inventor/sensors/SoSensor.h>
+ #include <QTimer>
++#include <QToolButton>
++#include <QVBoxLayout>
+ #include <QApplication>
+ #include <QDialog>
+ 
+@@ -217,9 +219,33 @@ int EditDatumDialog::exec(bool atCursor)
+             // Esc or a click elsewhere leaves it as it was). Names and reference sizes are in
+             // the constraint's properties.
+             dlg.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+-            ui_ins_datum->label_2->hide();
+-            ui_ins_datum->name->hide();
+-            ui_ins_datum->cbDriving->hide();
++            // The name and "reference" are under "Details", closed unless the user left it open
++            // the last time (as in the tool panels, Mod/Unified/TaskPanelsGui.py)
++            auto fold = App::GetApplication().GetParameterGroupByPath(
++                "User parameter:BaseApp/Preferences/Mod/Unified/TaskFold"
++            );
++            auto* more = new QToolButton(&dlg);
++            more->setObjectName(QStringLiteral("UnifiedDetails"));
++            more->setCheckable(true);
++            more->setAutoRaise(true);
++            more->setChecked(fold->GetBool("Sketcher_Dimension", false));
++            auto* ui = ui_ins_datum.get();
++            auto showDetails = [ui, more, &dlg, fold](bool on) {
++                ui->label_2->setVisible(on);
++                ui->name->setVisible(on);
++                ui->cbDriving->setVisible(on);
++                more->setText(
++                    on ? QApplication::translate("Unified", "Details ▾")
++                       : QApplication::translate("Unified", "Details ▸")
++                );
++                fold->SetBool("Sketcher_Dimension", on);
++                dlg.adjustSize();
++            };
++            if (auto* box = qobject_cast<QVBoxLayout*>(dlg.layout())) {
++                box->insertWidget(box->indexOf(ui->buttonBox), more, 0, Qt::AlignLeft);
++            }
++            connect(more, &QToolButton::toggled, &dlg, showDetails);
++            showDetails(more->isChecked());
+             dlg.setStyleSheet(QStringLiteral(
+                 "QDialog { border: 1px solid palette(highlight); border-radius: 6px; }"
+             ));
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 6b8d37b80..79297bdcd 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -68,6 +68,15 @@ if(BUILD_GUI)
+     list(APPEND Unified_Scripts PushPullGui.py DimensionLabelsGui.py PushPull.svg)
+ endif(BUILD_GUI)
+ 
++# The "in effect up to here" line of a part's history (the body's Tip, never named so), what a
++# pick is called in words, and the short task panels: the logic tested headless
++# ("FreeCADCmd -t TestHistoryLine", "FreeCADCmd -t TestSelectionWords", "FreeCADCmd -t TestWording")
++list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py
++    TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py)
++endif(BUILD_GUI)
++
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+ fc_copy_sources(UnifiedScripts "${CMAKE_BINARY_DIR}/Mod/Unified" ${Unified_Scripts})
+ 
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index 9eb21c1cd..c5ae23916 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -563,7 +563,8 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
+     }
+     tidySeparators(item);
+ 
+-    // A step of a part: change it where it came from, put the next step after it, move it
++    // A step of a part: change it where it came from, put the next step after it (the blue
++        // line of the history moves there; HistoryLineGui.py), bring all steps back, move it
+     // (the commands are only active when they apply)
+     if (!classicChrome()) {
+         auto steps = Gui::Selection().getObjectsOfType(Base::Type::fromName("PartDesign::Feature"));
+@@ -575,7 +576,8 @@ void Workbench::setupContextMenu(const char* recipient, Gui::MenuItem* item) con
+                 item->appendItem(first);
+             }
+             *item << "Separator"
+-                  << "PartDesign_MoveTip"
++                  << "Unified_InsertHere"
++                  << "Unified_LineToEnd"
+                   << "PartDesign_MoveFeatureInTree";
+         }
+         // The properties of what is picked, folded away under the history until asked for
+diff --git a/src/Mod/Unified/HistoryLine.py b/src/Mod/Unified/HistoryLine.py
+new file mode 100644
+index 000000000..51d296d2a
+--- /dev/null
++++ b/src/Mod/Unified/HistoryLine.py
+@@ -0,0 +1,127 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""「ここまで有効」の線: 部品（PartDesign のボディ）の作った順のどこまでを形に効かせるか。
++
++画面では作った順（モデルの木）の青い線。線を上へ動かすとそれより後の手順は形に効かなくなり（灰色・未反映）、
++その位置で足した手順は線の所に入る。線を一番下へ戻すと全部が効く。中身は本家のボディの Tip（先端）で、
++画面には「先端」という言葉を出さない。
++
++App 側だけで動く（FreeCADCmd でも試験できる）。線を動かすのは 1 回の「元に戻す」で戻る。
++"""
++
++import FreeCAD as App
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++UNDO_NAME = QT_TRANSLATE_NOOP("Unified", "Move the “in effect up to here” line")
++
++
++def is_body(obj):
++    return obj is not None and obj.isDerivedFrom("PartDesign::Body")
++
++
++def body_of(obj):
++    """The part (body) the object is a step of, or None"""
++    if obj is None:
++        return None
++    if is_body(obj):
++        return obj
++    for parent in obj.InList:
++        if is_body(parent) and obj in parent.Group:
++            return parent
++    return None
++
++
++def steps(body):
++    """The steps of the part that make its shape, in the order they were made (the places the
++    line can be put after)"""
++    return [o for o in body.Group if o.isDerivedFrom("PartDesign::Feature")]
++
++
++def position(body):
++    """Where the line is: the number of steps above it (0 = above the first step)"""
++    tip = body.Tip
++    if tip is None:
++        return 0
++    s = steps(body)
++    return s.index(tip) + 1 if tip in s else len(s)
++
++
++def at_end(body):
++    return position(body) == len(steps(body))
++
++
++def after_line(obj):
++    """The object is below the line of its part: it has no effect on the shape (shown greyed)"""
++    body = body_of(obj)
++    if body is None or obj is body:
++        return False
++    group = body.Group
++    if obj not in group:
++        return False
++    tip = body.Tip
++    if tip is None:
++        return True
++    return tip in group and group.index(obj) > group.index(tip)
++
++
++def not_in_effect(body):
++    """The steps below the line"""
++    return [o for o in body.Group if after_line(o)]
++
++
++def _show_only(body, tip, old):
++    """Like the part's own command: the step where the part ends is the one shown"""
++    if not App.GuiUp:
++        return
++    if old is not None and old is not tip and old.ViewObject is not None:
++        old.ViewObject.Visibility = False
++    if tip is not None and tip.ViewObject is not None:
++        tip.ViewObject.Visibility = True
++        if body.ViewObject is not None:
++            body.ViewObject.Visibility = True
++
++
++def move_line(body, places):
++    """Put the line after the first `places` steps (0: above all; len(steps): at the end, all in
++    effect). One undo step. Returns True if the line moved."""
++    s = steps(body)
++    places = max(0, min(int(places), len(s)))
++    if places == position(body):
++        return False
++    tip = s[places - 1] if places > 0 else None
++    doc = body.Document
++    old = body.Tip
++    doc.openTransaction(translate("Unified", UNDO_NAME))
++    try:
++        body.Tip = tip
++        _show_only(body, tip, old)
++        doc.recompute()
++    except Exception:
++        doc.abortTransaction()
++        raise
++    doc.commitTransaction()
++    return True
++
++
++def to_end(body):
++    """The line back at the end: every step in effect"""
++    return move_line(body, len(steps(body)))
++
++
++def insert_after(step):
++    """Right-click 「ここに差し込む」: the line right after this step, so the next new step goes there"""
++    body = body_of(step)
++    if body is None:
++        return False
++    s = steps(body)
++    if step not in s:
++        # A sketch or a datum: the line after the last step made before it
++        group = body.Group
++        before = [o for o in group[: group.index(step)] if o in s]
++        return move_line(body, len(before))
++    return move_line(body, s.index(step) + 1)
+diff --git a/src/Mod/Unified/HistoryLineGui.py b/src/Mod/Unified/HistoryLineGui.py
+new file mode 100644
+index 000000000..7ec09aefd
+--- /dev/null
++++ b/src/Mod/Unified/HistoryLineGui.py
+@@ -0,0 +1,411 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""The "in effect up to here" line in the history (the model tree) — docs/ui-redesign/00-design.md 6.1, 7.2.
++
++Under the step where a part currently ends there is a blue line. Drag it up to any earlier step:
++the steps below it stop having an effect (greyed in the tree, see Gui/Tree.cpp), and a new step is
++put in at the line. Drag it back to the bottom (or double-click it) and every step is in effect
++again. Each move is one undo step. The word for the body's "Tip" is never shown.
++
++Right-click a step → 「ここに差し込む」 puts the line right after it (also on a sketch).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import HistoryLine as HL
++
++translate = App.Qt.translate
++
++# Gui/Tree.cpp: the role of an item that names its object, "Document#Object"
++OBJECT_ROLE = QtCore.Qt.UserRole + 1100
++LINE_COLOR = QtGui.QColor(47, 111, 208)
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++# Rows are reached through the model's indexes, never through QTreeWidgetItem wrappers: the tree
++# makes and deletes its items itself and a kept wrapper may outlive its item
++
++
++def object_of(index):
++    """The document object a row of the tree shows, or None"""
++    name = index.data(OBJECT_ROLE) if index.isValid() else None
++    if not name or "#" not in name:
++        return None
++    doc_name, obj_name = name.split("#", 1)
++    try:
++        doc = App.getDocument(doc_name)
++    except Exception:
++        return None
++    return doc.getObject(obj_name)
++
++
++def trees():
++    mw = Gui.getMainWindow()
++    return [t for t in mw.findChildren(QtWidgets.QTreeWidget) if t.metaObject().className() == "Gui::TreeWidget"]
++
++
++def children(tree, index):
++    """The rows shown under a row"""
++    model = tree.model()
++    return [
++        model.index(r, 0, index)
++        for r in range(model.rowCount(index))
++        if not tree.isRowHidden(r, index)
++    ]
++
++
++def last_shown(tree, index):
++    """The last row shown of a row and what is open under it"""
++    while tree.isExpanded(index):
++        rows = children(tree, index)
++        if not rows:
++            break
++        index = rows[-1]
++    return index
++
++
++def body_items(tree, closed=False):
++    """(row, body) of the parts shown open in the tree (and the closed ones too, if asked)"""
++    out = []
++    model = tree.model()
++
++    def walk(index, top):
++        obj = object_of(index)
++        if obj is not None and HL.is_body(obj):
++            if closed or tree.isExpanded(index):
++                out.append((QtCore.QPersistentModelIndex(index), obj))
++            return
++        if top or tree.isExpanded(index):
++            for r in range(model.rowCount(index)):
++                walk(model.index(r, 0, index), False)
++
++    for r in range(model.rowCount()):
++        walk(model.index(r, 0), True)
++    return out
++
++
++def _index(row):
++    return QtCore.QModelIndex(row) if isinstance(row, QtCore.QPersistentModelIndex) else row
++
++
++def slots(tree, body_row, body):
++    """The places of the line: [(y in the viewport, number of steps above)], top to bottom"""
++    body_index = _index(body_row)
++    steps = HL.steps(body)
++    rows = {}
++    first_member = None
++    group = body.Group
++    for child in children(tree, body_index):
++        obj = object_of(child)
++        if obj is None:
++            continue
++        rows[obj.Name] = child
++        if first_member is None and obj in group:
++            first_member = child
++    out = []
++    if first_member is not None:
++        out.append((tree.visualRect(first_member).top(), 0))
++    else:
++        out.append((tree.visualRect(last_shown(tree, body_index)).bottom() + 1, 0))
++    for k, step in enumerate(steps, 1):
++        index = rows.get(step.Name)
++        if index is None:
++            continue  # shown under another step: no place of its own
++        out.append((tree.visualRect(last_shown(tree, index)).bottom() + 1, k))
++    return out
++
++
++class Line(QtWidgets.QWidget):
++    """The line of one part, over the tree's viewport. Dragged to a place between steps."""
++
++    HEIGHT = 11
++
++    def __init__(self, manager, tree, body):
++        super().__init__(tree.viewport())
++        self.setObjectName("UnifiedHistoryLine")
++        self.manager = manager
++        self.tree = tree
++        self.doc_name = body.Document.Name
++        self.body_name = body.Name
++        self.dragging = False
++        self.drag_places = None
++        self.setCursor(QtCore.Qt.SizeVerCursor)
++        self.setMouseTracking(True)
++        self.setToolTip(
++            translate(
++                "Unified",
++                "In effect up to here. Drag the line up to add a step in between, "
++                "back to the bottom (or double-click it) to bring all steps back.",
++            )
++        )
++
++    def body(self):
++        try:
++            return App.getDocument(self.doc_name).getObject(self.body_name)
++        except Exception:
++            return None
++
++    def place_at(self, y, left):
++        vw = self.tree.viewport().width()
++        self.setGeometry(left, y - self.HEIGHT // 2, max(40, vw - left - 2), self.HEIGHT)
++
++    def paintEvent(self, _event):
++        p = QtGui.QPainter(self)
++        p.setRenderHint(QtGui.QPainter.Antialiasing)
++        mid = self.height() // 2
++        pen = QtGui.QPen(LINE_COLOR, 2.5 if self.dragging else 2)
++        p.setPen(pen)
++        p.drawLine(9, mid, self.width() - 2, mid)
++        p.setBrush(LINE_COLOR)
++        p.setPen(QtCore.Qt.NoPen)
++        p.drawEllipse(QtCore.QPointF(5, mid), 4.5, 4.5)
++        p.end()
++
++    def mousePressEvent(self, event):
++        if event.button() != QtCore.Qt.LeftButton:
++            return super().mousePressEvent(event)
++        self.dragging = True
++        self.drag_places = None
++        self.grabKeyboard()
++        self.update()
++        event.accept()
++
++    def mouseMoveEvent(self, event):
++        if not self.dragging:
++            return super().mouseMoveEvent(event)
++        body = self.body()
++        if body is None:
++            return
++        body_item = self.manager.item_of(self.tree, body)
++        if body_item is None:
++            return
++        y = self.mapTo(self.tree.viewport(), event.position().toPoint() if hasattr(event, "position") else event.pos()).y()
++        places = slots(self.tree, body_item, body)
++        if not places:
++            return
++        best = min(places, key=lambda s: abs(s[0] - y))
++        self.drag_places = best[1]
++        self.place_at(best[0], self.x())
++        steps = HL.steps(body)
++        n = best[1]
++        if n >= len(steps):
++            text = translate("Unified", "All steps in effect")
++        elif n == 0:
++            text = translate("Unified", "Before the first step")
++        else:
++            text = translate("Unified", "In effect up to “{}”").format(steps[n - 1].Label)
++        Gui.getMainWindow().statusBar().showMessage(text, 3000)
++        event.accept()
++
++    def mouseReleaseEvent(self, event):
++        if not self.dragging or event.button() != QtCore.Qt.LeftButton:
++            return super().mouseReleaseEvent(event)
++        self.dragging = False
++        self.releaseKeyboard()
++        places = self.drag_places
++        self.drag_places = None
++        self.update()
++        body = self.body()
++        if body is not None and places is not None:
++            self.manager.move(body, places)
++        self.manager.layout_lines()
++        event.accept()
++
++    def keyPressEvent(self, event):
++        if self.dragging and event.key() == QtCore.Qt.Key_Escape:
++            self.dragging = False
++            self.drag_places = None
++            self.releaseKeyboard()
++            self.manager.layout_lines()
++            event.accept()
++            return
++        super().keyPressEvent(event)
++
++    def mouseDoubleClickEvent(self, event):
++        body = self.body()
++        if body is not None:
++            self.manager.move(body, len(HL.steps(body)))
++        event.accept()
++
++
++class Manager(QtCore.QObject):
++    """Keeps a line under the last step in effect of every part open in the tree"""
++
++    def __init__(self):
++        super().__init__(Gui.getMainWindow())
++        self.lines = {}  # (id(tree), doc, body) -> Line
++        self.watched = set()
++        self.opened = set()
++        self.timer = QtCore.QTimer(self)
++        self.timer.setInterval(250)
++        self.timer.timeout.connect(self.layout_lines)
++        self.timer.start()
++
++    def item_of(self, tree, body):
++        for item, b in body_items(tree):
++            if b == body:
++                return item
++        return None
++
++    def watch(self, tree):
++        if id(tree) in self.watched:
++            return
++        self.watched.add(id(tree))
++        tree.verticalScrollBar().valueChanged.connect(lambda _v: self.layout_lines())
++        tree.expanded.connect(lambda _i: QtCore.QTimer.singleShot(0, self.layout_lines))
++        tree.collapsed.connect(lambda _i: QtCore.QTimer.singleShot(0, self.layout_lines))
++
++    def move(self, body, places):
++        try:
++            moved = HL.move_line(body, places)
++        except Exception as e:
++            App.Console.PrintError("Unified: {}\n".format(e))
++            return
++        if moved:
++            for tree in trees():
++                tree.viewport().update()
++            steps = HL.steps(body)
++            if HL.at_end(body):
++                text = translate("Unified", "All steps in effect")
++            else:
++                n = HL.position(body)
++                text = (
++                    translate("Unified", "In effect up to “{}”. New steps go in here.").format(steps[n - 1].Label)
++                    if n
++                    else translate("Unified", "Before the first step. New steps go in here.")
++                )
++            Gui.getMainWindow().statusBar().showMessage(text, 5000)
++        self.layout_lines()
++
++    def layout_lines(self):
++        seen = set()
++        try:
++            for tree in trees():
++                if not tree.isVisible():
++                    continue
++                self.watch(tree)
++                for item, body in body_items(tree, closed=True):
++                    if not HL.steps(body):
++                        continue
++                    if not tree.isExpanded(_index(item)):
++                        # Open a part once, when it gets its first step, so that its line is in
++                        # sight; closed again by the user, it stays closed
++                        once = (body.Document.Uid, body.Name)
++                        if once in self.opened:
++                            continue
++                        self.opened.add(once)
++                        tree.expand(_index(item))
++                    key = (id(tree), body.Document.Name, body.Name)
++                    seen.add(key)
++                    line = self.lines.get(key)
++                    if line is None:
++                        line = self.lines[key] = Line(self, tree, body)
++                    if line.dragging:
++                        continue
++                    place = dict((n, y) for y, n in slots(tree, item, body)).get(HL.position(body))
++                    if place is None:
++                        line.hide()
++                        continue
++                    rows = children(tree, _index(item))
++                    left = max(0, tree.visualRect(rows[0] if rows else _index(item)).left() - 2)
++                    line.place_at(place, left)
++                    line.show()
++                    line.raise_()
++        except Exception as e:  # never let the timer spam: report once
++            App.Console.PrintLog("History line: {}\n".format(e))
++        for key in list(self.lines):
++            if key not in seen:
++                line = self.lines.pop(key)
++                if not line.dragging:
++                    line.hide()
++                    line.deleteLater()
++                else:
++                    self.lines[key] = line
++
++
++_manager = None
++
++
++def manager():
++    return _manager
++
++
++def install():
++    global _manager
++    if _manager is None:
++        _manager = Manager()
++    return _manager
++
++
++# -- right-click: put the line here / back to the end
++
++
++def _picked_step():
++    sel = Gui.Selection.getSelection()
++    if len(sel) != 1:
++        return None
++    body = HL.body_of(sel[0])
++    if body is None or sel[0] is body:
++        return None
++    return sel[0]
++
++
++class InsertHereCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "PartDesign_MoveTip",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_InsertHere", "Insert Here"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_InsertHere",
++                "Move the blue line right after this step: the next step you make goes here, "
++                "the steps below wait (greyed) until the line goes back down",
++            ),
++        }
++
++    def IsActive(self):
++        return _picked_step() is not None
++
++    def Activated(self):
++        step = _picked_step()
++        if step is None:
++            return
++        body = HL.body_of(step)
++        if HL.insert_after(step) and _manager is not None:
++            _manager.move(body, HL.position(body))  # the message and the line
++
++
++class LineToEndCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "PartDesign_MoveTip",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_LineToEnd", "Bring All Steps Back"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_LineToEnd", "Move the blue line back to the bottom: every step is in effect again"
++            ),
++        }
++
++    def body(self):
++        sel = Gui.Selection.getSelection()
++        if len(sel) != 1:
++            return None
++        body = HL.body_of(sel[0])
++        return body if body is not None and not HL.at_end(body) else None
++
++    def IsActive(self):
++        return self.body() is not None
++
++    def Activated(self):
++        body = self.body()
++        if body is not None:
++            if _manager is not None:
++                _manager.move(body, len(HL.steps(body)))
++            else:
++                HL.to_end(body)
++
++
++Gui.addCommand("Unified_InsertHere", InsertHereCommand())
++Gui.addCommand("Unified_LineToEnd", LineToEndCommand())
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index d072290e9..b921a9ed5 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -72,6 +72,18 @@ class UnifiedWorkbench(Workbench):
+ 
+         UnifiedChrome.install()
+ 
++        # 作った順の木の「ここまで有効」の青い線（ドラッグで途中に足す・一番下へ戻すと全部有効）
++        import HistoryLineGui
++
++        if not UnifiedChrome.classic():
++            HistoryLineGui.install()
++            # 道具のパネルは大事な項目だけ（残りは「詳しく ▸」）、選んだ物は場所の言葉で
++            import TaskPanelsGui
++            import SelectionWordsGui
++
++            TaskPanelsGui.install()
++            SelectionWordsGui.install()
++
+         # 道具に重ねたマウスで、その道具の結果を半透明で下見する（文書は変えない）
+         import ToolPreviewGui
+ 
+diff --git a/src/Mod/Unified/MeasureBarGui.py b/src/Mod/Unified/MeasureBarGui.py
+index ae2b77730..6cafa503a 100644
+--- a/src/Mod/Unified/MeasureBarGui.py
++++ b/src/Mod/Unified/MeasureBarGui.py
+@@ -145,6 +145,15 @@ def decorate():
+         for b in bar.findChildren(QtWidgets.QToolButton):
+             if b.property("unifiedCommand") == "Std_Measure":
+                 b.hide()
++    # The title: what is picked, in words (「押し出しの縦の辺 ×4」)
++    try:
++        import SelectionWordsGui
++
++        title = SelectionWordsGui.title_label(bar)
++        if title is not None:
++            layout.insertWidget(0, title)
++    except Exception as e:
++        App.Console.PrintLog("Words on the bar: {}\n".format(e))
+     try:
+         import ToolPreviewGui
+ 
+diff --git a/src/Mod/Unified/SelectionWords.py b/src/Mod/Unified/SelectionWords.py
+new file mode 100644
+index 000000000..1324b3cce
+--- /dev/null
++++ b/src/Mod/Unified/SelectionWords.py
+@@ -0,0 +1,452 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What is picked, in words instead of internal names (docs/ui-redesign/00-design.md 6.8).
++
++"Pad.Face6" becomes 「押し出しの上面」, four vertical edges of a pad 「押し出しの縦の辺 ×4」, the wall of a
++hole 「穴 ⌀6 の内側の面」. The words come from the step that made the face or edge (the first step of
++the part whose shape has it), its role there (top / bottom / side, inside / outside, along the
++extrusion), the kind of geometry, and the picks that read the same are counted together.
++
++App side only (FreeCADCmd can test it): describe(obj, sub) and describe_picks(picks).
++"""
++
++import math
++from collections import OrderedDict
++
++import FreeCAD as App
++import Part
++
++translate = App.Qt.translate
++CONTEXT = "SelectionWords"
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def T(text):
++    return QT_TRANSLATE_NOOP(CONTEXT, text)
++
++
++# The phrase of each role; {name} is the step (or the object) that made the element
++PHRASES = {
++    "top": T("{name}: top face"),
++    "bottom": T("{name}: bottom face"),
++    "end": T("{name}: end face"),
++    "start": T("{name}: start face"),
++    "floor": T("{name}: floor"),
++    "side": T("{name}: side face"),
++    "slanted": T("{name}: slanted face"),
++    "inner": T("{name}: inner face"),
++    "outer": T("{name}: outer face"),
++    "face": T("{name}: face"),
++    "curved": T("{name}: curved face"),
++    "cone": T("{name}: conical face"),
++    "sphere": T("{name}: spherical face"),
++    "vertical edge": T("{name}: vertical edge"),
++    "top edge": T("{name}: top edge"),
++    "bottom edge": T("{name}: bottom edge"),
++    "horizontal edge": T("{name}: horizontal edge"),
++    "slanted edge": T("{name}: slanted edge"),
++    "along edge": T("{name}: edge along the extrusion"),
++    "rim": T("{name}: rim"),
++    "arc edge": T("{name}: arc edge"),
++    "curved edge": T("{name}: curved edge"),
++    "edge": T("{name}: edge"),
++    "corner": T("{name}: corner"),
++}
++
++TOL = 1e-6
++UP = App.Vector(0, 0, 1)
++
++EXTRUDE_TYPES = ("PartDesign::FeatureExtrude", "Part::Extrusion")
++CUT_TYPES = ("PartDesign::Pocket", "PartDesign::Groove", "PartDesign::Hole", "PartDesign::FeatureSubtractive")
++TRANSFORM_TYPES = ("PartDesign::Transformed",)
++
++
++def _is(obj, *types):
++    return any(obj.isDerivedFrom(t) for t in types)
++
++
++def num(value):
++    """6.0 → "6", 6.35 → "6.35" (millimetres, the way they are written on a drawing)"""
++    value = float(value)
++    text = "{:.2f}".format(value).rstrip("0").rstrip(".")
++    return text if text not in ("-0", "") else "0"
++
++
++# -- what is picked
++
++
++def resolve(obj, sub):
++    """(leaf object, element name like "Face6", or "")"""
++    sub = sub or ""
++    element = sub.split(".")[-1] if sub else ""
++    path = sub[: len(sub) - len(element)]
++    leaf = obj
++    if path:
++        try:
++            found = obj.getSubObject(path, retType=1)
++        except Exception:
++            found = None
++        if found is not None:
++            leaf = found
++    if element and leaf.isDerivedFrom("PartDesign::Body") and leaf.Tip is not None:
++        leaf = leaf.Tip  # a pick on the part is a pick on the step where it ends
++    return leaf, element
++
++
++def _element(leaf, element):
++    """The element as part of the whole shape of the object (so that its neighbours are found)"""
++    try:
++        shape = Part.getShape(leaf).getElement(element)
++    except Exception:
++        return None
++    return shape if not shape.isNull() else None
++
++
++def _face_sample(face):
++    """A point well inside the face, and the outward normal there"""
++    try:
++        pts, tris = face.tessellate(0.5)
++    except Exception:
++        pts, tris = [], []
++    best, area = None, -1.0
++    for a, b, c in tris:
++        pa, pb, pc = pts[a], pts[b], pts[c]
++        s = (pb - pa).cross(pc - pa).Length
++        if s > area:
++            best, area = (pa + pb + pc) * (1.0 / 3.0), s
++    if best is None:
++        best = face.CenterOfMass
++    u, v = face.Surface.parameter(best)
++    p = face.Surface.value(u, v)
++    try:
++        n = face.normalAt(u, v)
++    except Exception:
++        n = App.Vector(0, 0, 0)
++    return p, n
++
++
++def _edge_sample(edge):
++    a, b = edge.ParameterRange
++    t = (a + b) / 2.0
++    p = edge.valueAt(t)
++    try:
++        d = edge.tangentAt(t)
++    except Exception:
++        d = App.Vector(0, 0, 0)
++    return p, d
++
++
++def _near(box, p, tol=1e-4):
++    return (
++        box.XMin - tol <= p.x <= box.XMax + tol
++        and box.YMin - tol <= p.y <= box.YMax + tol
++        and box.ZMin - tol <= p.z <= box.ZMax + tol
++    )
++
++
++def _has_face(shape, p, n, kind):
++    v = Part.Vertex(p)
++    for f in shape.Faces:
++        if type(f.Surface).__name__ != kind or not _near(f.BoundBox, p):
++            continue
++        if f.distToShape(v)[0] > 1e-5:
++            continue
++        try:
++            u, w = f.Surface.parameter(p)
++            if f.normalAt(u, w).dot(n) < 0.999:
++                continue
++        except Exception:
++            continue
++        return True
++    return False
++
++
++def _has_edge(shape, p, d, kind):
++    v = Part.Vertex(p)
++    for e in shape.Edges:
++        if type(e.Curve).__name__ != kind or not _near(e.BoundBox, p):
++            continue
++        if e.distToShape(v)[0] > 1e-5:
++            continue
++        try:
++            t = e.Curve.parameter(p)
++            if abs(e.tangentAt(t).dot(d)) < 0.999:
++                continue
++        except Exception:
++            continue
++        return True
++    return False
++
++
++def _has_vertex(shape, p):
++    return any((x.Point - p).Length < 1e-5 for x in shape.Vertexes)
++
++
++def _steps_until(leaf):
++    """The steps of the leaf's part up to the leaf, in the order they were made"""
++    body = None
++    for parent in leaf.InList:
++        if parent.isDerivedFrom("PartDesign::Body") and leaf in parent.Group:
++            body = parent
++            break
++    if body is None or not leaf.isDerivedFrom("PartDesign::Feature"):
++        return [leaf]
++    steps = [o for o in body.Group if o.isDerivedFrom("PartDesign::Feature")]
++    return steps[: steps.index(leaf) + 1] if leaf in steps else [leaf]
++
++
++def producer(leaf, element, shape=None):
++    """The step that made the element: the first one whose shape has it"""
++    shape = shape if shape is not None else _element(leaf, element)
++    steps = _steps_until(leaf)
++    if shape is None or len(steps) == 1:
++        return steps[-1]
++    kind = element.rstrip("0123456789")
++    if kind == "Face":
++        p, n = _face_sample(shape)
++        test = lambda s: _has_face(s, p, n, type(shape.Surface).__name__)  # noqa: E731
++    elif kind == "Edge":
++        p, d = _edge_sample(shape)
++        test = lambda s: _has_edge(s, p, d, type(shape.Curve).__name__)  # noqa: E731
++    elif kind == "Vertex":
++        test = lambda s: _has_vertex(s, shape.Point)  # noqa: E731
++    else:
++        return steps[-1]
++    for step in steps:
++        try:
++            s = Part.getShape(step)
++        except Exception:
++            continue
++        if not s.isNull() and test(s):
++            return step
++    return steps[-1]
++
++
++# -- the role of the element in the step that made it
++
++
++def _origin_step(step):
++    """A copy (mirror, pattern) reads like what it copies"""
++    if _is(step, *TRANSFORM_TYPES):
++        originals = [o for o in getattr(step, "Originals", []) or [] if o is not None]
++        if originals:
++            return _origin_step(originals[0])
++    return step
++
++
++def _extrude_axis(step):
++    """The direction a pad / pocket / extrusion went in (world), or None"""
++    if step.isDerivedFrom("Part::Extrusion"):
++        d = App.Vector(step.Dir)
++        return d.normalize() if d.Length > TOL else None
++    if not step.isDerivedFrom("PartDesign::FeatureExtrude"):
++        return None
++    profile = getattr(step, "Profile", None)
++    sk = profile[0] if isinstance(profile, tuple) else profile
++    if sk is None:
++        return None
++    try:
++        n = sk.getGlobalPlacement().Rotation.multVec(UP)
++    except Exception:
++        return None
++    if getattr(step, "Reversed", False):
++        n = -n
++    if step.isDerivedFrom("PartDesign::Pocket"):
++        n = -n  # a pocket goes into the material, against the sketch's normal
++    return n
++
++
++def _name(step, extra=""):
++    label = step.Label
++    return "{} {}".format(label, extra) if extra else label
++
++
++def _cut(step):
++    return _is(step, *CUT_TYPES)
++
++
++def face_role(face, step, axis):
++    """(role, size text) of a face"""
++    kind = type(face.Surface).__name__
++    p, n = _face_sample(face)
++    if kind == "Plane":
++        if axis is not None and abs(n.dot(axis)) > 0.99:
++            if _cut(step):
++                return "floor", ""
++            if abs(axis.dot(UP)) > 0.9:
++                return ("top" if n.z > 0 else "bottom"), ""
++            return ("end" if n.dot(axis) > 0 else "start"), ""
++        if axis is not None:
++            return ("inner" if _cut(step) else "side"), ""
++        if n.z > 0.99:
++            return "top", ""
++        if n.z < -0.99:
++            return "bottom", ""
++        if abs(n.z) < 0.01:
++            return "side", ""
++        return "slanted", ""
++    if kind == "Cylinder":
++        c = face.Surface
++        a = App.Vector(c.Axis)
++        v = p - c.Center
++        radial = v - a * v.dot(a)
++        inner = radial.Length > TOL and n.dot(radial) < 0
++        if step.isDerivedFrom("PartDesign::Fillet"):
++            return "face", "R" + num(c.Radius)
++        return ("inner" if inner else "outer"), "⌀" + num(2 * c.Radius)
++    if kind == "Cone":
++        return "cone", ""
++    if kind == "Sphere":
++        return "sphere", "R" + num(face.Surface.Radius)
++    if step.isDerivedFrom("PartDesign::Fillet") and kind == "Toroid":
++        return "face", ""
++    return "curved", ""
++
++
++def edge_role(edge, step, axis, leaf_shape):
++    kind = type(edge.Curve).__name__
++    if kind == "Line":
++        d = App.Vector(edge.Curve.Direction)
++        if axis is not None and abs(d.dot(axis)) > 0.999 and abs(axis.dot(UP)) <= 0.9:
++            return "along edge", ""
++        if abs(d.z) > 0.999:
++            return "vertical edge", ""
++        if abs(d.z) < 1e-3:
++            # On the top or the bottom: by the flat faces around it
++            ups = []
++            if leaf_shape is not None:
++                try:
++                    for f in leaf_shape.ancestorsOfType(edge, Part.Face):
++                        if type(f.Surface).__name__ == "Plane":
++                            p, n = _face_sample(f)
++                            ups.append(n.z)
++                except Exception:
++                    pass
++            if any(z > 0.99 for z in ups):
++                return "top edge", ""
++            if any(z < -0.99 for z in ups):
++                return "bottom edge", ""
++            return "horizontal edge", ""
++        return "slanted edge", ""
++    if kind == "Circle":
++        r = edge.Curve.Radius
++        if edge.isClosed():
++            return "rim", "⌀" + num(2 * r)
++        return "arc edge", "R" + num(r)
++    return "curved edge", ""
++
++
++def _hole_name(step):
++    if step.isDerivedFrom("PartDesign::Hole"):
++        try:
++            return _name(step, "⌀" + num(step.Diameter.Value))
++        except Exception:
++            pass
++    return None
++
++
++def phrase(role, name):
++    text = translate(CONTEXT, PHRASES[role]).replace("{name}", name)
++    # 「穴 ⌀6 の内側の面」: a space after a number before the Japanese particle
++    if name and name[-1].isascii() and name[-1].isalnum():
++        text = text.replace(name + "の", name + " の", 1)
++    return text
++
++
++def words(obj, sub=""):
++    """(role, name) of the pick: ("top", "押し出し"), ("inner", "穴 ⌀6"); role None for a whole object"""
++    leaf, element = resolve(obj, sub)
++    if not element:
++        return None, leaf.Label
++    kind = element.rstrip("0123456789")
++    try:
++        leaf_shape = Part.getShape(leaf)
++        shape = leaf_shape.getElement(element)
++    except Exception:
++        leaf_shape = shape = None
++    if kind not in ("Face", "Edge", "Vertex") or shape is None or shape.isNull():
++        return None, leaf.Label
++    step = producer(leaf, element, shape)
++    origin = _origin_step(step)
++    axis = _extrude_axis(origin)
++    hole = _hole_name(origin)
++    if kind == "Face":
++        role, size = face_role(shape, origin, axis)
++        if hole and role in ("inner", "floor", "cone"):
++            return role, hole
++        return role, _name(origin, size)
++    if kind == "Edge":
++        role, size = edge_role(shape, origin, axis, leaf_shape)
++        if hole and role == "rim":
++            return role, hole
++        return role, _name(origin, size)
++    return "corner", _name(origin)
++
++
++def describe(obj, sub=""):
++    """The pick in words: 「押し出しの上面」"""
++    role, name = words(obj, sub)
++    return name if role is None else phrase(role, name)
++
++
++def describe_picks(picks, most=3):
++    """Several picks: the same words counted, 「押し出しの縦の辺 ×4」; picks = [(obj, sub), ...]"""
++    counts = OrderedDict()
++    for obj, sub in picks:
++        try:
++            text = describe(obj, sub)
++        except Exception:
++            text = obj.Label + (".{}".format(sub) if sub else "")
++        counts[text] = counts.get(text, 0) + 1
++    parts = ["{} ×{}".format(t, n) if n > 1 else t for t, n in counts.items()]
++    if len(parts) > most:
++        rest = sum(list(counts.values())[most - 1 :])
++        head = translate(CONTEXT, "{first}, … and {n} more").replace("{first}", "、".join(parts[: most - 1]))
++        return head.replace("{n}", str(rest))
++    return "、".join(parts)
++
++
++def selection_picks(selection):
++    """[(object, sub-element)] of Gui.Selection.getSelectionEx() (whole objects as (object, ""))"""
++    out = []
++    for s in selection:
++        subs = s.SubElementNames or ("",)
++        for sub in subs:
++            out.append((s.Object, sub))
++    return out
++
++
++# -- for the status bar while the cursor moves over the model: the same pick is asked again and
++# again; the answer is kept until the shape changes
++
++_cache = OrderedDict()
++
++
++def preselection_text(doc_name, obj_name, sub):
++    """The words for the element under the cursor ("" when there are none)"""
++    try:
++        obj = App.getDocument(doc_name).getObject(obj_name)
++    except Exception:
++        return ""
++    if obj is None or not sub:
++        return ""
++    leaf, element = resolve(obj, sub)
++    if not element:
++        return ""
++    try:
++        stamp = Part.getShape(leaf).hashCode()
++    except Exception:
++        return ""
++    key = (doc_name, obj_name, sub, stamp)
++    text = _cache.get(key)
++    if text is None:
++        try:
++            text = describe(obj, sub)
++        except Exception:
++            text = ""
++        _cache[key] = text
++        while len(_cache) > 500:
++            _cache.popitem(last=False)
++    return text
+diff --git a/src/Mod/Unified/SelectionWordsGui.py b/src/Mod/Unified/SelectionWordsGui.py
+new file mode 100644
+index 000000000..75c2b6dfb
+--- /dev/null
++++ b/src/Mod/Unified/SelectionWordsGui.py
+@@ -0,0 +1,91 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What is picked, in words, where the user looks: the status bar after each pick and the title
++of the bar of tools next to the picks (MeasureBarGui.decorate). The words: SelectionWords.py.
++The element under the cursor is said in words by Gui/Selection/Selection.cpp."""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import SelectionWords as W
++
++translate = App.Qt.translate
++
++
++def editing():
++    try:
++        return Gui.ActiveDocument is not None and Gui.ActiveDocument.getInEdit() is not None
++    except Exception:
++        return False
++
++
++def current_text():
++    """The words for what is picked now ("" for nothing)"""
++    try:
++        picks = W.selection_picks(Gui.Selection.getSelectionEx("", 0))
++    except Exception:
++        return ""
++    if not picks:
++        return ""
++    return W.describe_picks(picks)
++
++
++class Observer:
++    def __init__(self):
++        self.pending = False
++
++    def _later(self, *_args):
++        if not self.pending:
++            self.pending = True
++            QtCore.QTimer.singleShot(0, self.show)
++
++    addSelection = removeSelection = setSelection = _later
++
++    def clearSelection(self, *_args):
++        pass
++
++    def show(self):
++        self.pending = False
++        if editing():
++            return  # a sketch or a tool has its own words
++        text = current_text()
++        if text:
++            show_in_status(translate("Unified", "Picked: {}").format(text))
++
++
++def show_in_status(text):
++    """In the status bar's own place for what is under the cursor and picked (the one the
++    element under the cursor is said in), not over it"""
++    try:
++        sb = Gui.getMainWindow().statusBar()
++        label = sb.findChild(QtWidgets.QLabel, "actionLabel")
++        if label is not None:
++            label.setText(text)
++        else:
++            sb.showMessage(text, 8000)
++    except Exception:
++        pass
++
++
++_observer = None
++
++
++def install():
++    global _observer
++    if _observer is None:
++        _observer = Observer()
++        Gui.Selection.addObserver(_observer)
++    return _observer
++
++
++def title_label(parent):
++    """The title of the bar next to the picks"""
++    text = current_text()
++    if not text:
++        return None
++    label = QtWidgets.QLabel(text, parent)
++    label.setObjectName("UnifiedPickWords")
++    label.setStyleSheet("QLabel { font-weight: bold; padding: 0 6px; }")
++    label.setMaximumWidth(360)
++    label.setWordWrap(True)
++    return label
+diff --git a/src/Mod/Unified/TaskPanels.py b/src/Mod/Unified/TaskPanels.py
+new file mode 100644
+index 000000000..1f1463fa3
+--- /dev/null
++++ b/src/Mod/Unified/TaskPanels.py
+@@ -0,0 +1,154 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Short tool panels (docs/ui-redesign/00-design.md 5.5, 6.8): what each tool shows at first.
++
++A tool's panel shows its few most important fields (at most three: e.g. a pad's length and
++"reverse", and how it ends only when it is not the usual way); everything else is under
++「詳しく ▸」, closed until opened — and whether it was left open is remembered for each tool.
++
++This file is the table and the rule (tested headless, "FreeCADCmd -t TestTaskPanels");
++TaskPanelsGui.py hides and shows the rows of the panels.
++
++Each entry, by the class of the panel's box (the part after "::"):
++  first:     the fields shown at first (the Qt object names of their input widgets)
++  unusual:   fields shown at first only when not at their usual choice: name → usual index
++  with:      widgets that go with a shown field (the panel shows or hides them itself)
++  fold:      widgets under 「詳しく」 although they are in the row of a shown field
++"""
++
++PREVIEW_BOX = "TaskPreviewParameters"
++
++# Fields counted as "fields" for the at-most-three rule (labels, buttons and lists that go
++# with a field are not)
++EXTRUDE_WITH = [
++    # what the panel shows for the way it ends (two lengths, up to a face, offset…)
++    "lengthEdit2", "offsetEdit", "lineFaceName", "buttonFace", "upToShapeList",
++    "labelLength2", "labelOffset", "labelLength",
++]
++
++PANELS = {
++    "TaskPadParameters": {
++        "tool": "PartDesign_Pad",
++        "first": ["lengthEdit", "checkBoxReversed"],
++        "unusual": {"changeMode": 0, "sidesMode": 0},
++        "with": EXTRUDE_WITH,
++    },
++    "TaskPocketParameters": {
++        "tool": "PartDesign_Pocket",
++        # cutting through everything is as usual as a depth: the way it ends is always shown
++        "first": ["changeMode", "lengthEdit", "checkBoxReversed"],
++        "unusual": {"sidesMode": 0},
++        "with": EXTRUDE_WITH,
++    },
++    "TaskRevolutionParameters": {
++        "tool": "PartDesign_Revolution",
++        "first": ["axis", "revolveAngle", "checkBoxReversed"],
++        "unusual": {"changeMode": 0, "sidesMode": 0},
++        "with": ["revolveAngle2", "lineFaceName", "buttonFace", "labelAngle"],
++    },
++    "TaskGrooveParameters": {
++        "tool": "PartDesign_Groove",
++        "first": ["axis", "revolveAngle", "checkBoxReversed"],
++        "unusual": {"changeMode": 0, "sidesMode": 0},
++        "with": ["revolveAngle2", "lineFaceName", "buttonFace", "labelAngle"],
++    },
++    "TaskHoleParameters": {
++        "tool": "PartDesign_Hole",
++        "first": ["Diameter", "DepthType", "Depth"],
++        # a threaded hole shows its thread
++        "unusual": {"ThreadType": 0, "HoleCutType": 0},
++        "with": ["ThreadSize", "ThreadClass", "ThreadFit", "Threaded", "ModelThread", "labelThreadSize"],
++        # in the row of the depth, but rarely changed: the angle of the drill's tip
++        "fold": ["DrillFrame"],
++    },
++    "TaskFilletParameters": {
++        "tool": "PartDesign_Fillet",
++        "first": ["listWidgetReferences", "filletRadius"],
++        "with": ["buttonRefSel"],
++    },
++    "TaskChamferParameters": {
++        "tool": "PartDesign_Chamfer",
++        "first": ["listWidgetReferences", "chamferSize"],
++        "unusual": {"chamferType": 0},
++        "with": ["buttonRefSel", "stackedWidget", "chamferSize2", "chamferAngle"],
++    },
++    "TaskThicknessParameters": {
++        "tool": "PartDesign_Thickness",
++        "first": ["listWidgetReferences", "Value", "checkReverse"],
++        "unusual": {"modeComboBox": 0},
++        "with": ["buttonRefSel"],
++    },
++    "TaskDraftParameters": {
++        "tool": "PartDesign_Draft",
++        "first": ["listWidgetReferences", "draftAngle", "checkReverse"],
++        "with": ["buttonRefSel", "buttonPlane", "linePlane", "buttonLine", "lineLine"],
++    },
++    "TaskMirroredParameters": {
++        "tool": "PartDesign_Mirrored",
++        "first": ["listWidgetFeatures", "comboPlane"],
++        "with": ["buttonAddFeature", "buttonRemoveFeature"],
++    },
++    "TaskPatternParameters": {
++        # straight and round patterns share the panel
++        "tool": "PartDesign_LinearPattern",
++        "first": ["comboDirection", "spinExtent", "spinOccurrences"],
++        "unusual": {"comboMode": 0},
++        "with": ["PushButtonReverse", "spinOffset", "listWidgetFeatures", "buttonAddFeature", "buttonRemoveFeature"],
++    },
++    "TaskLinearPatternParameters": {
++        "tool": "PartDesign_LinearPattern",
++        "first": ["comboDirection", "spinLength", "spinOccurrences"],
++        "unusual": {"comboMode": 0},
++        "with": ["checkReverse", "spinOffset", "listWidgetFeatures", "buttonAddFeature", "buttonRemoveFeature"],
++    },
++    "TaskPolarPatternParameters": {
++        "tool": "PartDesign_PolarPattern",
++        "first": ["comboAxis", "polarAngle", "spinOccurrences"],
++        "unusual": {"comboMode": 0},
++        "with": ["checkReverse", "angleOffset", "listWidgetFeatures", "buttonAddFeature", "buttonRemoveFeature"],
++    },
++}
++
++# Always under 「詳しく」 (never one of the first fields): "recompute on change" is always on in
++# this environment and the preview switches are rarely needed (00-design.md 6.8)
++ALWAYS_FOLDED = ("checkBoxUpdateView",)
++
++# Inputs that count as fields (labels, buttons that pick, and lists of picks do not)
++NOT_FIELDS = ("buttonRefSel", "buttonAddFeature", "buttonRemoveFeature", "PushButtonReverse")
++
++
++def entry(box_class):
++    """The table entry of a panel's box, by its class name ("PartDesignGui::TaskPadParameters")"""
++    return PANELS.get(box_class.split("::")[-1])
++
++
++def shown_first(entry, current=None):
++    """The object names shown before 「詳しく」 is opened. current: name → the index chosen now
++    (for the fields that are shown only when unusual)"""
++    current = current or {}
++    names = list(entry["first"]) + list(entry.get("with", ()))
++    for name, usual in entry.get("unusual", {}).items():
++        if name in current and current[name] != usual:
++            names.append(name)
++    return [n for n in names if n not in ALWAYS_FOLDED]
++
++
++def field_count(entry, current=None):
++    """How many fields are shown at first (the at-most-three rule, usual choices)"""
++    current = current or {}
++    names = list(entry["first"])
++    for name, usual in entry.get("unusual", {}).items():
++        if name in current and current[name] != usual:
++            names.append(name)
++    return len([n for n in names if n not in NOT_FIELDS])
++
++
++def param_key(box_class, type_id=None):
++    """Where the open/closed state of 「詳しく」 is kept, per tool (by the kind of the step edited,
++    when known: straight and round patterns share a panel)"""
++    if type_id:
++        return type_id.replace("::", "_")
++    e = entry(box_class)
++    return e["tool"] if e else box_class.split("::")[-1]
++
++
++PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/Unified/TaskFold"
+diff --git a/src/Mod/Unified/TaskPanelsGui.py b/src/Mod/Unified/TaskPanelsGui.py
+new file mode 100644
+index 000000000..93305ef19
+--- /dev/null
++++ b/src/Mod/Unified/TaskPanelsGui.py
+@@ -0,0 +1,342 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Short tool panels: the few important fields first, the rest under 「詳しく ▸」 (TaskPanels.py).
++
++When a tool's panel opens, the rows of its box that hold none of the first fields are hidden
++and a 「詳しく ▸」 button opens them (remembered for each tool). The panel keeps showing and hiding
++its own rows (e.g. a second length for "two lengths"): what it asks for while folded is applied
++when 「詳しく」 opens. Lists of picked edges and faces read in words (SelectionWords.py).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import TaskPanels as TP
++
++translate = App.Qt.translate
++
++
++def params():
++    return App.ParamGet(TP.PARAM_PATH)
++
++
++def _rows(layout):
++    """The rows of a layout: lists of layout items"""
++    rows = []
++    if isinstance(layout, QtWidgets.QGridLayout):
++        by_row = {}
++        for i in range(layout.count()):
++            r, _c, _rs, _cs = layout.getItemPosition(i)
++            by_row.setdefault(r, []).append(layout.itemAt(i))
++        rows = [by_row[r] for r in sorted(by_row)]
++    elif isinstance(layout, QtWidgets.QFormLayout):
++        for r in range(layout.rowCount()):
++            items = [
++                layout.itemAt(r, role)
++                for role in (QtWidgets.QFormLayout.LabelRole, QtWidgets.QFormLayout.FieldRole,
++                             QtWidgets.QFormLayout.SpanningRole)
++            ]
++            items = [i for i in items if i is not None]
++            if items:
++                rows.append(items)
++    else:
++        rows = [[layout.itemAt(i)] for i in range(layout.count())]
++    return rows
++
++
++def _widgets_of_item(item):
++    """The widgets an item of a layout holds (directly or in its nested layouts)"""
++    w = item.widget()
++    if w is not None:
++        return [w]
++    lay = item.layout()
++    if lay is None:
++        return []
++    out = []
++    for i in range(lay.count()):
++        out += _widgets_of_item(lay.itemAt(i))
++    return out
++
++
++def _stacked(layout):
++    """A layout of rows (not one row of things side by side)"""
++    if layout is None:
++        return False
++    if isinstance(layout, QtWidgets.QBoxLayout):
++        return layout.direction() in (QtWidgets.QBoxLayout.TopToBottom, QtWidgets.QBoxLayout.BottomToTop)
++    return True
++
++
++def _with_labels(proxy, names):
++    """The kept fields and their labels (by buddy, or named "label" + the field's name)"""
++    out = set(names)
++    for label in proxy.findChildren(QtWidgets.QLabel):
++        buddy = label.buddy()
++        if buddy is not None and buddy.objectName() in names:
++            out.add(label.objectName())
++    for name in names:
++        out.add("label" + name)
++    return out
++
++
++def _names_inside(widget):
++    names = {widget.objectName()}
++    for c in widget.findChildren(QtWidgets.QWidget):
++        names.add(c.objectName())
++    return names
++
++
++class Fold(QtCore.QObject):
++    """The fold of one box of a panel"""
++
++    def __init__(self, box, entry, key):
++        super().__init__(box)
++        self.box = box
++        self.entry = entry
++        self.key = key
++        self.folded = []  # widgets hidden by the fold
++        self.wanted = {}  # widget → visible as the panel wants it
++        self.boxes = []  # whole boxes folded (the preview)
++        self.open = params().GetBool(key, False)
++        self.busy = False
++        self.button = None
++
++    # -- what is shown first
++
++    def current_choices(self):
++        out = {}
++        for name in self.entry.get("unusual", {}):
++            w = self.box.findChild(QtWidgets.QComboBox, name)
++            if w is not None:
++                out[name] = w.currentIndex()
++        return out
++
++    def proxy(self):
++        """The widget of the box that holds the fields (the box's own content)"""
++        for name in self.entry["first"]:
++            w = self.box.findChild(QtWidgets.QWidget, name)
++            if w is None:
++                continue
++            while w.parentWidget() is not None and w.parentWidget().parentWidget() is not self.box:
++                w = w.parentWidget()
++            if w.parentWidget() is not None and w.layout() is not None:
++                return w
++        return None
++
++    def collect(self, layout, keep, out):
++        for row in _rows(layout):
++            widgets = [w for item in row for w in _widgets_of_item(item)]
++            if not widgets:
++                continue
++            inside = set()
++            for w in widgets:
++                inside |= _names_inside(w)
++            if not (inside & keep):
++                out += widgets
++                continue
++            # A row with a kept field: look inside its containers for rows to fold (a row laid
++            # out side by side, like a label and its field, stays whole)
++            for w in widgets:
++                if w.objectName() in keep:
++                    continue
++                if _names_inside(w) & keep and _stacked(w.layout()):
++                    self.collect(w.layout(), keep, out)
++            for item in row:
++                if item.widget() is None and _stacked(item.layout()):
++                    self.collect(item.layout(), keep, out)
++
++    def apply(self):
++        proxy = self.proxy()
++        if proxy is None:
++            return False
++        keep = _with_labels(proxy, set(TP.shown_first(self.entry, self.current_choices())))
++        keep.discard("")
++        found = []
++        self.collect(proxy.layout(), keep, found)
++        for name in tuple(TP.ALWAYS_FOLDED) + tuple(self.entry.get("fold", ())):
++            w = proxy.findChild(QtWidgets.QWidget, name)
++            if w is not None and w not in found:
++                found.append(w)
++        self.folded = [w for w in found if w is not None]
++        for w in self.folded:
++            self.wanted[w] = not w.isHidden()
++            w.installEventFilter(self)
++        self.add_button(proxy)
++        self.update()
++        return True
++
++    def add_button(self, proxy):
++        if not self.folded:
++            return
++        b = QtWidgets.QToolButton(proxy)
++        b.setObjectName("UnifiedDetails")
++        b.setAutoRaise(True)
++        b.setCheckable(True)
++        b.setChecked(self.open)
++        b.toggled.connect(self.toggle)
++        lay = proxy.layout()
++        if isinstance(lay, QtWidgets.QGridLayout):
++            lay.addWidget(b, lay.rowCount(), 0, 1, max(1, lay.columnCount()), QtCore.Qt.AlignLeft)
++        elif isinstance(lay, QtWidgets.QFormLayout):
++            lay.addRow(b)
++        else:
++            lay.addWidget(b, 0, QtCore.Qt.AlignLeft)
++        self.button = b
++
++    def fold_box(self, other):
++        """A whole other box of the panel under 「詳しく」 (the preview)"""
++        self.boxes.append(other)
++        self.wanted[other] = not other.isHidden()
++        other.installEventFilter(self)
++        self.update()
++
++    def toggle(self, on):
++        self.open = on
++        params().SetBool(self.key, on)
++        self.update()
++
++    def update(self):
++        self.busy = True
++        try:
++            for w in self.folded + self.boxes:
++                try:
++                    w.setVisible(self.wanted.get(w, True) if self.open else False)
++                except RuntimeError:
++                    pass
++        finally:
++            self.busy = False
++        if self.button is not None:
++            self.button.setText(
++                translate("Unified", "Details ▾") if self.open else translate("Unified", "Details ▸")
++            )
++            self.button.setToolTip(
++                translate("Unified", "Close the other settings")
++                if self.open
++                else translate("Unified", "Show the other settings of this tool")
++            )
++
++    def eventFilter(self, obj, event):
++        if self.busy:
++            return False
++        t = event.type()
++        if t == QtCore.QEvent.Show or t == QtCore.QEvent.Hide:
++            if obj in self.wanted and obj.parentWidget() is not None and not obj.parentWidget().isHidden():
++                # The panel showed or hid it (its own logic): remember, and keep it folded
++                if t == QtCore.QEvent.Show:
++                    self.wanted[obj] = True
++                    if not self.open:
++                        QtCore.QTimer.singleShot(0, self.update)
++                elif obj.isHidden():
++                    self.wanted[obj] = False
++        return False
++
++
++# -- picked edges and faces in words
++
++
++def _words_for_list(box, edited):
++    lw = box.findChild(QtWidgets.QListWidget, "listWidgetReferences")
++    if lw is None or edited is None:
++        return
++    base = getattr(edited, "Base", None)
++    if not isinstance(base, tuple) or not base or base[0] is None:
++        return
++    import SelectionWords as W
++
++    obj = base[0]
++
++    def relabel(*_args):
++        for i in range(lw.count()):
++            item = lw.item(i)
++            sub = item.data(QtCore.Qt.UserRole)
++            if not sub:
++                continue
++            try:
++                text = W.describe(obj, sub)
++            except Exception:
++                continue
++            if text and item.text() != text:
++                item.setText(text)
++                item.setToolTip(sub)
++
++    relabel()
++    if not lw.property("unifiedWords"):
++        lw.setProperty("unifiedWords", True)
++        lw.model().rowsInserted.connect(lambda *_a: QtCore.QTimer.singleShot(0, relabel))
++
++
++# -- watching the panel
++
++
++class Watcher(QtCore.QObject):
++    def __init__(self):
++        super().__init__(Gui.getMainWindow())
++        self.timer = QtCore.QTimer(self)
++        self.timer.setInterval(120)
++        self.timer.timeout.connect(self.scan)
++        self.timer.start()
++        self.folds = []
++
++    def edited(self):
++        try:
++            vp = Gui.ActiveDocument.getInEdit() if Gui.ActiveDocument else None
++        except Exception:
++            vp = None
++        return vp.Object if vp is not None and hasattr(vp, "Object") else None
++
++    def scan(self):
++        if Gui.Control.activeDialog() is False or not Gui.Control.activeDialog():
++            return
++        panel = Gui.getMainWindow().findChild(QtWidgets.QWidget, "Tasks")
++        if panel is None:
++            return
++        boxes = [
++            w for w in panel.findChildren(QtWidgets.QWidget)
++            if w.metaObject().className().startswith(("PartDesignGui::Task", "PartGui::Task"))
++            and w.isVisible() is not None
++        ]
++        new = [b for b in boxes if not b.property("unifiedFold")]
++        if not new:
++            return
++        edited = self.edited()
++        type_id = edited.TypeId if edited is not None else None
++        main = None
++        for b in new:
++            b.setProperty("unifiedFold", True)
++            cls = b.metaObject().className()
++            e = TP.entry(cls)
++            if e is None:
++                continue
++            fold = Fold(b, e, TP.param_key(cls, type_id))
++            try:
++                if fold.apply():
++                    self.folds.append(fold)
++                    main = fold
++                _words_for_list(b, edited)
++            except Exception as err:
++                App.Console.PrintLog("Task panel fold: {}\n".format(err))
++        if main is not None:
++            for b in boxes:
++                if b.metaObject().className().endswith(TP.PREVIEW_BOX) and not b.property("unifiedFoldBox"):
++                    b.setProperty("unifiedFoldBox", True)
++                    main.fold_box(b)
++        self.folds = [f for f in self.folds if _alive(f.box)]
++
++
++def _alive(w):
++    try:
++        import shiboken6
++
++        return shiboken6.isValid(w)
++    except Exception:
++        return True
++
++
++_watcher = None
++
++
++def install():
++    global _watcher
++    if _watcher is None:
++        _watcher = Watcher()
++    return _watcher
+diff --git a/src/Mod/Unified/TestHistoryLine.py b/src/Mod/Unified/TestHistoryLine.py
+new file mode 100644
+index 000000000..e811697f5
+--- /dev/null
++++ b/src/Mod/Unified/TestHistoryLine.py
+@@ -0,0 +1,130 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of HistoryLine (the "in effect up to here" line of a part's history), headless:
++#   FreeCADCmd -t TestHistoryLine
++
++import unittest
++
++import FreeCAD as App
++import Part
++import Sketcher
++
++import HistoryLine as HL
++
++
++def rectangle(sk, x0, y0, x1, y1):
++    pts = [App.Vector(x0, y0, 0), App.Vector(x1, y0, 0), App.Vector(x1, y1, 0), App.Vector(x0, y1, 0)]
++    first = len(sk.Geometry)
++    for i in range(4):
++        sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++    for i in range(4):
++        sk.addConstraint(Sketcher.Constraint("Coincident", first + i, 2, first + (i + 1) % 4, 1))
++
++
++class HistoryLineTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("HistoryLineTest")
++        self.doc.UndoMode = 1
++        doc = self.doc
++        self.body = body = doc.addObject("PartDesign::Body", "Body")
++        sk = body.newObject("Sketcher::SketchObject", "Sketch")
++        sk.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk.MapMode = "FlatFace"
++        rectangle(sk, 0, 0, 40, 30)
++        self.pad = body.newObject("PartDesign::Pad", "Pad")
++        self.pad.Profile = sk
++        self.pad.Length = 5
++        doc.recompute()
++        sk2 = body.newObject("Sketcher::SketchObject", "Sketch001")
++        sk2.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk2.MapMode = "FlatFace"
++        sk2.addGeometry(Part.Circle(App.Vector(10, 10, 0), App.Vector(0, 0, 1), 3))
++        self.sk2 = sk2
++        self.pocket = body.newObject("PartDesign::Pocket", "Pocket")
++        self.pocket.Profile = sk2
++        self.pocket.Type = 1  # through all
++        self.pocket.Reversed = True
++        doc.recompute()
++        self.full = 40 * 30 * 5
++        self.hole = 3.141592653589793 * 9 * 5
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def test_at_the_end_after_modelling(self):
++        self.assertEqual(HL.steps(self.body), [self.pad, self.pocket])
++        self.assertEqual(HL.position(self.body), 2)
++        self.assertTrue(HL.at_end(self.body))
++        self.assertEqual(HL.not_in_effect(self.body), [])
++        self.assertAlmostEqual(self.body.Shape.Volume, self.full - self.hole, places=3)
++
++    def test_roll_back_greys_what_is_below(self):
++        self.assertTrue(HL.move_line(self.body, 1))
++        self.assertIs(self.body.Tip, self.pad)
++        self.assertFalse(HL.at_end(self.body))
++        self.assertTrue(HL.after_line(self.pocket))
++        self.assertTrue(HL.after_line(self.sk2))
++        self.assertFalse(HL.after_line(self.pad))
++        self.assertFalse(HL.after_line(self.body))
++        self.assertAlmostEqual(self.body.Shape.Volume, self.full, places=3)
++        # Moving to where it is already: nothing happens, no undo step
++        undo = self.doc.UndoCount
++        self.assertFalse(HL.move_line(self.body, 1))
++        self.assertEqual(self.doc.UndoCount, undo)
++
++    def test_one_undo_step(self):
++        undo = self.doc.UndoCount
++        HL.move_line(self.body, 1)
++        self.assertEqual(self.doc.UndoCount, undo + 1)
++        self.doc.undo()
++        self.doc.recompute()
++        self.assertIs(self.body.Tip, self.pocket)
++        self.assertTrue(HL.at_end(self.body))
++        self.doc.redo()
++        self.doc.recompute()
++        self.assertIs(self.body.Tip, self.pad)
++
++    def test_a_step_added_goes_to_the_line_and_the_end_brings_all_back(self):
++        HL.move_line(self.body, 1)
++        sk3 = self.body.newObject("Sketcher::SketchObject", "Sketch002")
++        sk3.AttachmentSupport = (self.pad, ["Face6"])  # the top face of the plate
++        sk3.MapMode = "FlatFace"
++        rectangle(sk3, 0, 0, 10, 10)
++        boss = self.body.newObject("PartDesign::Pad", "Pad001")
++        boss.Profile = sk3
++        boss.Length = 4
++        self.doc.recompute()
++        # The new step is right after the line's place, before the cut that was below it
++        self.assertEqual(HL.steps(self.body), [self.pad, boss, self.pocket])
++        self.assertIs(self.body.Tip, boss)
++        self.assertTrue(HL.after_line(self.pocket))
++        self.assertTrue(HL.to_end(self.body))
++        self.assertIs(self.body.Tip, self.pocket)
++        self.assertTrue(HL.at_end(self.body))
++        self.assertTrue(self.body.Shape.isValid())
++        self.assertGreater(self.body.Shape.Volume, self.full - self.hole + 1)
++
++    def test_above_all_steps(self):
++        self.assertTrue(HL.move_line(self.body, 0))
++        self.assertIsNone(self.body.Tip)
++        self.assertEqual(HL.position(self.body), 0)
++        self.assertEqual(set(HL.not_in_effect(self.body)), set(self.body.Group))
++        self.assertTrue(HL.to_end(self.body))
++        self.assertAlmostEqual(self.body.Shape.Volume, self.full - self.hole, places=3)
++
++    def test_insert_here_from_the_right_click(self):
++        self.assertTrue(HL.insert_after(self.pad))
++        self.assertEqual(HL.position(self.body), 1)
++        HL.to_end(self.body)
++        # On a sketch: after the last step made before it
++        self.assertTrue(HL.insert_after(self.sk2))
++        self.assertIs(self.body.Tip, self.pad)
++
++    def test_not_a_part(self):
++        box = self.doc.addObject("Part::Box", "Box")
++        self.assertIsNone(HL.body_of(box))
++        self.assertFalse(HL.after_line(box))
++        self.assertFalse(HL.insert_after(box))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestSelectionWords.py b/src/Mod/Unified/TestSelectionWords.py
+new file mode 100644
+index 000000000..76422317f
+--- /dev/null
++++ b/src/Mod/Unified/TestSelectionWords.py
+@@ -0,0 +1,210 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of SelectionWords (a pick in words instead of internal names), headless:
++#   FreeCADCmd -t TestSelectionWords
++
++import unittest
++
++import FreeCAD as App
++import Part
++import Sketcher
++
++import SelectionWords as W
++
++
++def rectangle(sk, x0, y0, x1, y1):
++    pts = [App.Vector(x0, y0, 0), App.Vector(x1, y0, 0), App.Vector(x1, y1, 0), App.Vector(x0, y1, 0)]
++    first = len(sk.Geometry)
++    for i in range(4):
++        sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++    for i in range(4):
++        sk.addConstraint(Sketcher.Constraint("Coincident", first + i, 2, first + (i + 1) % 4, 1))
++
++
++def find(shape, kind, test):
++    """Names of the elements of a kind ("Face", "Edge") that pass the test"""
++    items = shape.Faces if kind == "Face" else shape.Edges
++    return ["%s%d" % (kind, i + 1) for i, x in enumerate(items) if test(x)]
++
++
++def all_planes_around(shape, edge):
++    return all(type(f.Surface).__name__ == "Plane" for f in shape.ancestorsOfType(edge, Part.Face))
++
++
++def plane_normal(face):
++    u, v = face.Surface.parameter(face.CenterOfMass)
++    return face.normalAt(u, v)
++
++
++class SelectionWordsTest(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.doc = doc = App.newDocument("SelectionWordsTest")
++        body = doc.addObject("PartDesign::Body", "Body")
++        sk = body.newObject("Sketcher::SketchObject", "Sketch")
++        sk.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk.MapMode = "FlatFace"
++        rectangle(sk, 0, 0, 80, 50)
++        pad = body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sk
++        pad.Length = 5
++        pad.Label = "板"
++        doc.recompute()
++        # A through hole cut with a pocket from a circle
++        sk2 = body.newObject("Sketcher::SketchObject", "Sketch001")
++        sk2.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk2.MapMode = "FlatFace"
++        sk2.addGeometry(Part.Circle(App.Vector(20, 20, 0), App.Vector(0, 0, 1), 3))
++        pocket = body.newObject("PartDesign::Pocket", "Pocket")
++        pocket.Profile = sk2
++        pocket.Type = 1
++        pocket.Reversed = True
++        pocket.Label = "切り抜き"
++        doc.recompute()
++        # A blind square pocket (has a floor)
++        sk3 = body.newObject("Sketcher::SketchObject", "Sketch002")
++        sk3.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk3.MapMode = "FlatFace"
++        sk3.AttachmentOffset = App.Placement(App.Vector(0, 0, 5), App.Rotation())
++        rectangle(sk3, 50, 10, 70, 30)
++        pocket2 = body.newObject("PartDesign::Pocket", "Pocket001")
++        pocket2.Profile = sk3
++        pocket2.Length = 2
++        pocket2.Label = "くぼみ"
++        doc.recompute()
++        box = doc.addObject("Part::Box", "Box")
++        box.Label = "箱"
++        box.Placement.Base = App.Vector(200, 0, 0)
++        doc.recompute()
++        cls.body, cls.pad, cls.pocket, cls.pocket2, cls.box = body, pad, pocket, pocket2, box
++
++    @classmethod
++    def tearDownClass(cls):
++        App.closeDocument(cls.doc.Name)
++
++    def shape(self):
++        return self.pocket2.Shape
++
++    def test_top_and_bottom_of_the_plate(self):
++        s = self.shape()
++        top = find(s, "Face", lambda f: type(f.Surface).__name__ == "Plane" and plane_normal(f).z > 0.99
++                   and abs(f.CenterOfMass.z - 5) < 1e-6)
++        bottom = find(s, "Face", lambda f: type(f.Surface).__name__ == "Plane" and plane_normal(f).z < -0.99
++                      and abs(f.CenterOfMass.z) < 1e-6)
++        self.assertEqual(len(top), 1)
++        self.assertEqual(W.words(self.pocket2, top[0]), ("top", "板"))
++        self.assertEqual(W.words(self.pocket2, bottom[0]), ("bottom", "板"))
++        self.assertEqual(W.describe(self.pocket2, top[0]), "板: top face")
++
++    def test_the_picks_on_the_part_itself(self):
++        s = self.shape()
++        top = find(s, "Face", lambda f: type(f.Surface).__name__ == "Plane" and plane_normal(f).z > 0.99
++                   and abs(f.CenterOfMass.z - 5) < 1e-6)[0]
++        # Picked on the part (body): the step where it ends has the face
++        self.assertEqual(W.words(self.body, top), ("top", "板"))
++        self.assertEqual(W.words(self.body, ""), (None, self.body.Label))
++
++    def test_the_hole_wall_is_inside(self):
++        s = self.shape()
++        wall = find(s, "Face", lambda f: type(f.Surface).__name__ == "Cylinder")
++        self.assertEqual(len(wall), 1)
++        self.assertEqual(W.words(self.pocket2, wall[0]), ("inner", "切り抜き ⌀6"))
++
++    def test_the_pocket_floor_and_walls(self):
++        s = self.shape()
++        floor = find(s, "Face", lambda f: type(f.Surface).__name__ == "Plane" and abs(f.CenterOfMass.z - 3) < 1e-6)
++        self.assertEqual(len(floor), 1)
++        self.assertEqual(W.words(self.pocket2, floor[0]), ("floor", "くぼみ"))
++        walls = find(s, "Face", lambda f: type(f.Surface).__name__ == "Plane" and abs(plane_normal(f).z) < 1e-6
++                     and f.BoundBox.ZMin > 2.9)
++        self.assertEqual(len(walls), 4)
++        for w in walls:
++            self.assertEqual(W.words(self.pocket2, w), ("inner", "くぼみ"))
++
++    def test_four_vertical_edges_counted(self):
++        s = self.shape()
++        corners = find(s, "Edge", lambda e: type(e.Curve).__name__ == "Line"
++                       and abs(App.Vector(e.Curve.Direction).z) > 0.999 and e.Length > 4.9
++                       and all_planes_around(s, e))
++        self.assertEqual(len(corners), 4)
++        for e in corners:
++            self.assertEqual(W.words(self.pocket2, e), ("vertical edge", "板"))
++        text = W.describe_picks([(self.pocket2, e) for e in corners])
++        self.assertEqual(text, "板: vertical edge ×4")
++
++    def test_top_edges_and_the_rim_of_the_hole(self):
++        s = self.shape()
++        top_edges = find(s, "Edge", lambda e: type(e.Curve).__name__ == "Line" and e.Length > 49
++                         and abs(e.BoundBox.ZMin - 5) < 1e-6)
++        self.assertTrue(top_edges)
++        self.assertEqual(W.words(self.pocket2, top_edges[0])[0], "top edge")
++        rims = find(s, "Edge", lambda e: type(e.Curve).__name__ == "Circle")
++        self.assertEqual(len(rims), 2)
++        self.assertEqual(W.words(self.pocket2, rims[0]), ("rim", "切り抜き ⌀6"))
++
++    def test_mixed_picks(self):
++        s = self.shape()
++        wall = find(s, "Face", lambda f: type(f.Surface).__name__ == "Cylinder")[0]
++        corners = find(s, "Edge", lambda e: type(e.Curve).__name__ == "Line"
++                       and abs(App.Vector(e.Curve.Direction).z) > 0.999 and e.Length > 4.9
++                       and all_planes_around(s, e))
++        picks = [(self.pocket2, corners[0]), (self.pocket2, wall), (self.pocket2, corners[1])]
++        self.assertEqual(W.describe_picks(picks), "板: vertical edge ×2、切り抜き ⌀6: inner face")
++        many = [(self.pocket2, c) for c in corners] + [(self.pocket2, wall), (self.box, "Face1"), (self.box, "Face6")]
++        text = W.describe_picks(many)
++        self.assertTrue(text.startswith("板: vertical edge ×4、切り抜き ⌀6: inner face"), text)
++        self.assertIn("2 more", text)
++
++    def test_a_plain_solid_by_its_faces(self):
++        # Part::Box faces: 1..4 the sides, 5 bottom, 6 top
++        self.assertEqual(W.words(self.box, "Face6"), ("top", "箱"))
++        self.assertEqual(W.words(self.box, "Face5"), ("bottom", "箱"))
++        self.assertEqual(W.words(self.box, "Face1"), ("side", "箱"))
++        self.assertEqual(W.words(self.box, "Vertex1"), ("corner", "箱"))
++        self.assertEqual(W.words(self.box, ""), (None, "箱"))
++
++    def test_hole_feature_named_by_its_diameter(self):
++        doc = self.doc
++        body = doc.addObject("PartDesign::Body", "Body001")
++        sk = body.newObject("Sketcher::SketchObject", "SketchH")
++        sk.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk.MapMode = "FlatFace"
++        rectangle(sk, 0, 0, 30, 30)
++        pad = body.newObject("PartDesign::Pad", "PadH")
++        pad.Profile = sk
++        pad.Length = 8
++        doc.recompute()
++        top = find(pad.Shape, "Face", lambda f: type(f.Surface).__name__ == "Plane" and plane_normal(f).z > 0.99)[0]
++        skh = body.newObject("Sketcher::SketchObject", "SketchH2")
++        skh.AttachmentSupport = (pad, [top])
++        skh.MapMode = "FlatFace"
++        skh.addGeometry(Part.Circle(App.Vector(15, 15, 0), App.Vector(0, 0, 1), 2))
++        hole = body.newObject("PartDesign::Hole", "Hole")
++        hole.Profile = skh
++        hole.Diameter = 6
++        hole.DepthType = "ThroughAll"
++        hole.Label = "穴"
++        doc.recompute()
++        self.assertTrue(hole.Shape.isValid())
++        walls = find(hole.Shape, "Face", lambda f: type(f.Surface).__name__ == "Cylinder")
++        self.assertTrue(walls)
++        self.assertEqual(W.words(hole, walls[0]), ("inner", "穴 ⌀6"))
++        self.assertEqual(W.describe(hole, walls[0]), "穴 ⌀6: inner face")
++
++    def test_japanese_phrase_spacing(self):
++        saved = W.translate
++        try:
++            W.translate = lambda ctx, text: {"{name}: inner face": "{name}の内側の面",
++                                             "{name}: top face": "{name}の上面"}.get(text, text)
++            self.assertEqual(W.phrase("inner", "穴 ⌀6"), "穴 ⌀6 の内側の面")
++            self.assertEqual(W.phrase("top", "板"), "板の上面")
++        finally:
++            W.translate = saved
++
++    def test_numbers(self):
++        self.assertEqual(W.num(6.0), "6")
++        self.assertEqual(W.num(6.35), "6.35")
++        self.assertEqual(W.num(2.999999), "3")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestTaskPanels.py b/src/Mod/Unified/TestTaskPanels.py
+new file mode 100644
+index 000000000..2c61b7c38
+--- /dev/null
++++ b/src/Mod/Unified/TestTaskPanels.py
+@@ -0,0 +1,73 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of TaskPanels (what a tool's panel shows before 「詳しく」), headless:
++#   FreeCADCmd -t TestTaskPanels
++
++import unittest
++
++import TaskPanels as TP
++
++COMMON = [
++    "TaskPadParameters",
++    "TaskPocketParameters",
++    "TaskRevolutionParameters",
++    "TaskGrooveParameters",
++    "TaskHoleParameters",
++    "TaskFilletParameters",
++    "TaskChamferParameters",
++    "TaskThicknessParameters",
++    "TaskMirroredParameters",
++    "TaskPatternParameters",
++]
++
++
++class TaskPanelsTest(unittest.TestCase):
++    def test_the_common_tools_are_covered(self):
++        for name in COMMON:
++            self.assertIsNotNone(TP.entry("PartDesignGui::" + name), name)
++
++    def test_at_most_three_fields_first(self):
++        for name, e in TP.PANELS.items():
++            self.assertLessEqual(TP.field_count(e), 3, name)
++            self.assertGreaterEqual(TP.field_count(e), 2, name)
++
++    def test_pad(self):
++        e = TP.entry("PartDesignGui::TaskPadParameters")
++        first = TP.shown_first(e, {"changeMode": 0, "sidesMode": 0})
++        self.assertIn("lengthEdit", first)
++        self.assertIn("checkBoxReversed", first)
++        self.assertNotIn("changeMode", first)  # the usual way: up to a length
++        self.assertNotIn("taperEdit", first)
++        self.assertNotIn("checkBoxUpdateView", first)
++        # "up to a face": the way it ends is shown, and what goes with it
++        first = TP.shown_first(e, {"changeMode": 2, "sidesMode": 0})
++        self.assertIn("changeMode", first)
++        self.assertIn("buttonFace", first)
++        self.assertEqual(TP.field_count(e, {"changeMode": 2, "sidesMode": 0}), 3)
++
++    def test_pocket_shows_how_it_ends(self):
++        e = TP.entry("PartDesignGui::TaskPocketParameters")
++        self.assertEqual(TP.shown_first(e)[:3], ["changeMode", "lengthEdit", "checkBoxReversed"])
++
++    def test_hole_thread_only_when_threaded(self):
++        e = TP.entry("PartDesignGui::TaskHoleParameters")
++        self.assertNotIn("ThreadType", TP.shown_first(e, {"ThreadType": 0}))
++        self.assertIn("ThreadType", TP.shown_first(e, {"ThreadType": 1}))
++
++    def test_remembered_per_tool(self):
++        self.assertEqual(TP.param_key("PartDesignGui::TaskPadParameters"), "PartDesign_Pad")
++        # straight and round patterns share a panel, not the remembered state
++        self.assertEqual(
++            TP.param_key("PartDesignGui::TaskPatternParameters", "PartDesign::PolarPattern"),
++            "PartDesign_PolarPattern",
++        )
++        self.assertNotEqual(
++            TP.param_key("PartDesignGui::TaskPatternParameters", "PartDesign::LinearPattern"),
++            TP.param_key("PartDesignGui::TaskPatternParameters", "PartDesign::PolarPattern"),
++        )
++
++    def test_unknown_panel(self):
++        self.assertIsNone(TP.entry("SketcherGui::TaskSketcherConstraints"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestWording.py b/src/Mod/Unified/TestWording.py
+new file mode 100644
+index 000000000..01edbf8c3
+--- /dev/null
++++ b/src/Mod/Unified/TestWording.py
+@@ -0,0 +1,70 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of Wording (the tool names of the terminology table), headless:
++#   FreeCADCmd -t TestWording
++
++import unittest
++
++import Wording as W
++
++# The tool strip of the integrated environment (Gui/Workbench.cpp), the PartDesign ones
++STRIP = [
++    "PartDesign_NewSketch", "PartDesign_Pad", "PartDesign_Pocket", "PartDesign_Revolution",
++    "PartDesign_Fillet", "PartDesign_Chamfer", "PartDesign_Thickness", "PartDesign_Mirrored",
++    "PartDesign_LinearPattern", "PartDesign_PolarPattern", "Std_TransformManip", "Std_Measure",
++]
++# The sketch's step band (UnifiedChrome.SKETCH_TOOLS)
++SKETCH_BAND = [
++    "Sketcher_CreatePolyline", "Sketcher_CreateRectangle", "Sketcher_CreateCircle", "Sketcher_CreateArc",
++    "Sketcher_CreateHexagon", "Sketcher_Dimension", "Sketcher_ConstrainHorVer", "Sketcher_ConstrainParallel",
++    "Sketcher_ConstrainPerpendicular", "Sketcher_ConstrainEqual", "Sketcher_ConstrainCoincidentUnified",
++    "Sketcher_ConstrainSymmetric", "Sketcher_ConstrainLock", "Sketcher_Trimming", "Sketcher_Extend",
++    "Sketcher_CreateFillet",
++]
++
++
++class WordingTest(unittest.TestCase):
++    def test_no_stock_words_left(self):
++        for command, (name, _tip) in W.TOOLS.items():
++            self.assertEqual(W.problems(name), [], "{}: {}".format(command, name))
++
++    def test_the_words_of_the_table(self):
++        names = {c: n for c, (n, _t) in W.TOOLS.items()}
++        self.assertEqual(names["PartDesign_Pad"], "押し出す")
++        self.assertEqual(names["PartDesign_Pocket"], "切り抜く")
++        self.assertEqual(names["PartDesign_Revolution"], "回す")
++        self.assertEqual(names["PartDesign_Mirrored"], "鏡に映す")
++        self.assertEqual(names["Std_Measure"], "測る")
++        self.assertEqual(names["Std_TransformManip"], "動かす")
++        self.assertEqual(names["Sketcher_CreateCircle"], "円（中心から）")
++        self.assertEqual(names["Sketcher_ConstrainCoincidentUnified"], "点をつなぐ")
++        self.assertEqual(names["Sketcher_ConstrainParallel"], "平行")
++
++    def test_strip_and_band_have_names_and_tooltips(self):
++        for command in STRIP + SKETCH_BAND:
++            self.assertIn(command, W.TOOLS, command)
++            name, tip = W.TOOLS[command]
++            self.assertTrue(name)
++            self.assertTrue(tip, "{} has no tooltip saying what happens".format(command))
++            self.assertLessEqual(len(tip), 60, command)
++
++    def test_the_rule_catches_stock_names(self):
++        self.assertTrue(W.problems("中心点による円"))
++        self.assertTrue(W.problems("直線配列"))
++        self.assertTrue(W.problems("平行拘束"))
++        self.assertTrue(W.problems("先端を設定"))
++        self.assertTrue(W.problems("回転"))
++        self.assertFalse(W.problems("三角形の網（メッシュ）を書き出す…"))
++        self.assertFalse(W.problems("競合する拘束を選択"))
++        self.assertFalse(W.problems("左に回転"))  # the view turns: not a tool that makes a shape
++        self.assertFalse(W.problems("拘束"))
++
++    def test_the_same_tool_has_one_name(self):
++        # Two names for one meaning would be two words for one thing
++        by_name = {}
++        for command, (name, _tip) in W.TOOLS.items():
++            by_name.setdefault(name, []).append(command)
++        self.assertEqual(sorted(by_name["鏡に映す"]), ["PartDesign_Mirrored", "Part_Mirror", "Sketcher_Symmetry"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 9ad6e37d2..6fe80ea35 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -15,6 +15,7 @@ import os
+ 
+ import FreeCAD as App
+ import FreeCADGui as Gui
++import Part
+ from PySide import QtCore, QtGui, QtWidgets
+ 
+ import CommandSearchCore as core
+@@ -251,8 +252,12 @@ class SelectParallelEdgesCommand:
+         obj, edges = _picked_edges()
+         d0 = edges[0][1].Curve.Direction
+         doc = obj.Document
+-        for i, e in enumerate(obj.Shape.Edges, start=1):
++        shape = obj.Shape
++        for i, e in enumerate(shape.Edges, start=1):
+             if type(e.Curve).__name__ in ("Line", "LineSegment") and abs(abs(e.Curve.Direction.dot(d0)) - 1) < 1e-6:
++                # Not the seam of a round face (a hole's wall): it is no corner to round
++                if len(shape.ancestorsOfType(e, Part.Face)) < 2:
++                    continue
+                 Gui.Selection.addSelection(doc.Name, obj.Name, "Edge%d" % i)
+ 
+ 
+diff --git a/src/Mod/Unified/Wording.py b/src/Mod/Unified/Wording.py
+new file mode 100644
+index 000000000..6f4651e45
+--- /dev/null
++++ b/src/Mod/Unified/Wording.py
+@@ -0,0 +1,188 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""The names of the tools in the words of the terminology table (docs/ui-redesign/00-design.md 8).
++
++The stock Japanese names of FreeCAD's tools came from many translators: 「中心点による円」, 「鏡像」,
++「直線配列」, 「測定」, 「エクスポート」… This table is the one place where the names the user sees in the
++tool strip, the sketch's step band, the bar next to the picks and the tool search are decided.
++The translations in Gui/Resources/translations/UnifiedWording_ja.ts (which win over the modules'
++own) are made from it (tools/apply_wording.py of freecad-ja-unified) and the acceptance test
++compares what is shown with it. "FreeCADCmd -t TestWording" checks the table against the rules.
++
++TOOLS: command → (name, tooltip or None to keep the module's own tooltip)
++"""
++
++TOOLS = {
++    # -- the tool strip (Workbench.cpp)
++    "PartDesign_NewSketch": ("新しいスケッチ", "選んだ平らな面か床・正面・横に、新しいスケッチを描き始めます"),
++    "PartDesign_Pad": ("押し出す", "選んだスケッチの輪郭を押し出して、部品に足します"),
++    "PartDesign_Pocket": ("切り抜く", "選んだスケッチの輪郭の形に、部品を切り抜きます"),
++    "PartDesign_Revolution": ("回す", "選んだスケッチの輪郭を軸のまわりに回した形を、部品に足します"),
++    "PartDesign_Groove": ("回して削る", "選んだスケッチの輪郭を軸のまわりに回した形で、部品を削ります"),
++    "PartDesign_Fillet": ("丸め", "選んだ辺の角を丸めます"),
++    "PartDesign_Chamfer": ("面取り", "選んだ辺の角を斜めに落とします"),
++    "PartDesign_Thickness": ("厚み", "選んだ面を開けて、部品を決まった厚みの殻にします"),
++    "PartDesign_Mirrored": ("鏡に映す", "選んだ手順の形を、面を境に鏡に映した位置にもう 1 つ作ります"),
++    "PartDesign_LinearPattern": ("まっすぐ並べる", "選んだ手順の形を、まっすぐに決まった数だけ並べます"),
++    "PartDesign_PolarPattern": ("円に並べる", "選んだ手順の形を、軸のまわりに円く決まった数だけ並べます"),
++    "PartDesign_MultiTransform": ("並べ方を組み合わせる", "鏡に映す・並べるを組み合わせて、選んだ手順の形を写します"),
++    "PartDesign_Hole": ("穴", "選んだスケッチの円や点の位置に穴をあけます（ねじ穴・ざぐりも）"),
++    "Std_TransformManip": ("動かす", "選んだ物を、3D 画面の矢印と輪をドラッグして動かし・回します"),
++    "Std_Measure": ("測る", "選んだ物の長さ・距離・角度・面積を測ります"),
++    # -- the bar next to the picks and the tool search
++    "Part_Mirror": ("鏡に映す", "選んだ形を、面を境に鏡に映した位置にもう 1 つ作ります"),
++    "Part_Boolean": ("足し合わせ・引き算・重なり", "2 つの形を足し合わせる・引き算する・重なりだけ残す、を選んで行います"),
++    "Part_Fuse": ("足し合わせ", None),
++    "Part_Cut": ("引き算", None),
++    "Part_Common": ("重なり", None),
++    "Part_Extrude": ("押し出す（形の外で）", None),
++    "Part_Revolve": ("回す（形の外で）", None),
++    "Part_ShapeFromMesh": ("三角形の網（メッシュ）を立体にする", None),
++    "Std_Import": ("読み込む…", "ファイルを読み込んで、今の文書に入れます"),
++    "Std_Export": ("書き出す…", "選んだ物をほかの形式のファイルに書き出します"),
++    "Std_ToggleVisibility": ("隠す・表示する", "選んだ物を隠します（隠れている物は表示します）"),
++    "Mesh_Import": ("三角形の網（メッシュ）を読み込む…", None),
++    "Mesh_Export": ("三角形の網（メッシュ）を書き出す…", None),
++    "TechDraw_ExportPagePDF": ("ページを PDF に書き出す", None),
++    "TechDraw_ExportPageDXF": ("ページを DXF に書き出す", None),
++    "TechDraw_ExportPageSVG": ("ページを SVG に書き出す", None),
++    # -- the sketch's step band and its "More" (UnifiedChrome.SKETCH_TOOLS)
++    "Sketcher_CreateLine": ("線", "2 点をクリックして線を 1 本描きます"),
++    "Sketcher_CreatePolyline": ("線をつなげて描く", "クリックした点を順に線でつなぎます。始めの点をクリックすると閉じます"),
++    "Sketcher_CreateRectangle": ("長方形", "対角の 2 点をクリックして長方形を描きます"),
++    "Sketcher_CreateRectangle_Center": ("長方形（中心から）", "中心と角をクリックして長方形を描きます"),
++    "Sketcher_CreateOblong": ("角の丸い長方形", "角の丸い長方形を描きます"),
++    "Sketcher_CreateSquare": ("正方形", None),
++    "Sketcher_CreateCircle": ("円（中心から）", "中心と縁の点をクリックして円を描きます"),
++    "Sketcher_Create3PointCircle": ("円（3 点）", "縁の 3 点をクリックして円を描きます"),
++    "Sketcher_CreateArc": ("円弧（中心から）", "中心・始まり・終わりをクリックして円弧を描きます"),
++    "Sketcher_Create3PointArc": ("円弧（3 点）", "始まり・終わり・途中の点をクリックして円弧を描きます"),
++    "Sketcher_CreateEllipseByCenter": ("楕円（中心から）", None),
++    "Sketcher_CreateEllipseBy3Points": ("楕円（3 点）", None),
++    "Sketcher_CreateSlot": ("長穴", "両端の中心をクリックして長穴の形を描きます"),
++    "Sketcher_CreateArcSlot": ("円弧の長穴", None),
++    "Sketcher_CreateBSpline": ("自由曲線", None),
++    "Sketcher_CreateBSplineByInterpolation": ("点を通る自由曲線", None),
++    "Sketcher_CreatePeriodicBSpline": ("閉じた自由曲線", None),
++    "Sketcher_CreatePeriodicBSplineByInterpolation": ("点を通る閉じた自由曲線", None),
++    "Sketcher_CreateRegularPolygon": ("正多角形", None),
++    "Sketcher_CreateHexagon": ("六角形", "中心と角をクリックして正六角形を描きます"),
++    "Sketcher_CreateText": ("文字（試験中）", None),
++    "Sketcher_Dimension": ("寸法", "選んだ線・円・点に、長さ・距離・半径・角度の寸法を付けます"),
++    "Sketcher_ConstrainDistance": ("距離", None),
++    "Sketcher_ConstrainDistanceX": ("横の距離", None),
++    "Sketcher_ConstrainDistanceY": ("縦の距離", None),
++    "Sketcher_ConstrainAngle": ("角度", None),
++    "Sketcher_ConstrainRadius": ("半径", None),
++    "Sketcher_ConstrainDiameter": ("直径", None),
++    "Sketcher_ConstrainRadiam": ("半径・直径", None),
++    "Sketcher_ConstrainHorVer": ("水平・垂直", "選んだ線を水平か垂直にそろえる拘束（形の決まり）を付けます"),
++    "Sketcher_ConstrainHorizontal": ("水平", None),
++    "Sketcher_ConstrainVertical": ("垂直", None),
++    "Sketcher_ConstrainParallel": ("平行", "選んだ 2 本の線を平行にする拘束（形の決まり）を付けます"),
++    "Sketcher_ConstrainPerpendicular": ("直角", "選んだ 2 本の線を直角にする拘束（形の決まり）を付けます"),
++    "Sketcher_ConstrainEqual": ("同じ大きさ", "選んだ線どうし・円どうしを同じ長さ・大きさにする拘束を付けます"),
++    "Sketcher_ConstrainCoincidentUnified": ("点をつなぐ", "選んだ点どうしを重ねる（点を線の上に載せる）拘束を付けます"),
++    "Sketcher_ConstrainSymmetric": ("対称", "選んだ 2 点を、線か点を挟んで対称にする拘束を付けます"),
++    "Sketcher_ConstrainLock": ("位置を固定", "選んだ点の位置を、原点からの縦と横の寸法で決めます"),
++    "Sketcher_ConstrainBlock": ("動かない（固定）", None),
++    "Sketcher_ConstrainTangent": ("接する・一直線", None),
++    "Sketcher_Trimming": ("はみ出しを切る", "クリックした線の、ほかの線と交わるところまでを消します"),
++    "Sketcher_Extend": ("延ばす", "選んだ線を、ほかの線に届くまで延ばします"),
++    "Sketcher_Split": ("分ける", None),
++    "Sketcher_CreateFillet": ("丸め", "選んだ 2 本の線の角を円弧で丸めます"),
++    "Sketcher_CreateChamfer": ("面取り", None),
++    "Sketcher_Offset": ("一定の幅でずらす", None),
++    "Sketcher_Symmetry": ("鏡に映す", None),
++    "Sketcher_Rotate": ("回す・円に並べる", None),
++    "Sketcher_Translate": ("動かす・並べる", None),
++    "Sketcher_ToggleConstruction": ("補助線にする・戻す", None),
++    "Sketcher_ToggleDrivingConstraint": ("参照寸法にする・戻す", None),
++    "Sketcher_ToggleActiveConstraint": ("拘束を一時的に外す・戻す", None),
++    "Sketcher_RemoveAxesAlignment": ("軸とのそろえを外す", None),
++    "Sketcher_ViewSection": ("断面で見る", None),
++    "Sketcher_LeaveSketch": ("スケッチを終わる", None),
++    "Sketcher_CompCreateRectangles": ("長方形", None),
++    "Sketcher_CompHorVer": ("水平・垂直", None),
++    "Sketcher_CompLine": ("線", None),
++    "Sketcher_CompToggleConstraints": ("拘束を一時的に外す・戻す", None),
++    "Sketcher_ConstrainCoincident": ("点をつなぐ（点どうし）", None),
++    "Sketcher_ConstrainPointOnObject": ("点を線に載せる", None),
++    "Sketcher_ConstrainGroup": ("形ごと固定（グループ）", None),
++    "Sketcher_ConstrainSnellsLaw": ("屈折（スネルの法則）", None),
++    "Sketcher_CreatePolylineLegacy": ("線をつなげて描く（旧）", None),
++    "Sketcher_MirrorSketch": ("スケッチを鏡に映す", None),
++    "Sketcher_RectangularArray": ("格子に並べる", None),
++    # -- other tools found by the tool search
++    "Part_XOR": ("どちらか一方だけ残す（XOR）", None),
++    "Part_BooleanFragments": ("重なりで分ける（フラグメント）", None),
++    "Part_Export": ("CAD ファイルに書き出す", None),
++    "Part_Import": ("CAD ファイルを読み込む", None),
++    "Part_ImportCurveNet": ("曲線の網を読み込む", None),
++    "Part_LinkArrays": ("リンクで並べる", None),
++    "Part_LinkArrayLinear": ("リンクでまっすぐ並べる", None),
++    "Part_LinkArrayPolar": ("リンクで円に並べる", None),
++    "Part_LinkArrayCircular": ("リンクで同心円に並べる", None),
++    "Part_LinkArrayPath": ("リンクで線に沿って並べる", None),
++    "Part_LinkArrayPoint": ("リンクで点の位置に並べる", None),
++    "Mesh_PolyTrim": ("囲んだ所を切り取る", None),
++    "Mesh_TrimByPlane": ("平面で切り取る", None),
++    "Assembly_ExportASMT": ("ASMT ファイルに書き出す", None),
++    "Std_ExportDependencyGraph": ("つながりの図を書き出す…", None),
++    "Std_LinkImport": ("リンク先を読み込む", None),
++    "Std_LinkImportAll": ("全部のリンク先を読み込む", None),
++    "Std_PrintPdf": ("PDF に書き出す", None),
++}
++
++# Sources of commands of modules that are loaded only when first used (their command is not
++# there to ask): command → (translation context, menu text, tooltip)
++SOURCES = {
++    "Mesh_Import": ("CmdMeshImport", "Import Mesh…", "Imports a mesh from a file"),
++    "Mesh_Export": ("CmdMeshExport", "Export Mesh…", "Exports a mesh to a file"),
++}
++
++# Stock words that must not be left in a tool's name (left: why, by the terminology table)
++NOT_IN_NAMES = {
++    "中心点による": "「円（中心から）」のように括弧で",
++    "3点による": "「円（3 点）」のように括弧で",
++    "鏡像": "鏡に映す",
++    "配列": "まっすぐ並べる・円に並べる",
++    "測定": "測る",
++    "エクスポート": "書き出す",
++    "インポート": "読み込む",
++    "先端": "ここまで有効（線で見せる。言葉は出さない）",
++    "ポリライン": "線をつなげて描く",
++    "四角形": "長方形",
++    "ブーリアン": "足し合わせ・引き算・重なり",
++    "トリム": "はみ出しを切る・切り取る",
++    "並行": "平行",
++}
++# Words that may be in a name but not end a tool's name: 「平行拘束」 is 「平行」 (拘束 stays the
++# word, in the tooltips), 「回転」 as a tool that makes a shape is 「回す」
++NOT_AT_END = {
++    "拘束": "道具の名前は「平行」「直角」など。「拘束」は説明に",
++}
++# Whole names that are not the table's word (the turning of the view, 「左に回転」, stays)
++NOT_AS_NAME = {
++    "回転": "回す",
++    "回転切り抜き": "回して削る",
++    "回転押し出し": "回す",
++}
++# Whole names that are fine as they are
++ALLOWED = ("拘束",)
++
++
++def problems(name):
++    """The stock words left in a tool's name"""
++    out = []
++    plain = name.rstrip("…").strip()
++    if plain in ALLOWED:
++        return out
++    for word, why in NOT_IN_NAMES.items():
++        if word in name:
++            out.append((word, why))
++    for word, why in NOT_AT_END.items():
++        if plain.endswith(word):
++            out.append((word, why))
++    if plain in NOT_AS_NAME:
++        out.append((plain, NOT_AS_NAME[plain]))
++    return out
+-- 
+2.43.0
+

@@ -298,6 +298,22 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.0
+
+The last four items of the UI rebuild ([docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)); with them every stage (P0–P10) is done.
+Acceptance screenshots and results: [docs/ui-redesign/accept/P11](docs/ui-redesign/accept/P11) (`tests/ui/p11_check.py`, 71 checks with real mouse and key events).
+
+- **The "in effect up to here" line in the history**: a blue line under the last step of a part. Drag it up to an earlier step: the steps below stop having an effect
+  (grey italics, "not in effect") and new steps go in at the line. Drag it back to the bottom (or double-click it) and all steps are in effect again. One undo step each time.
+  Right-click: "Insert Here" (also on a sketch) and "Bring All Steps Back". It is the body's Tip, but the word is never shown
+- **Short tool panels**: a pad shows its length and "reverse" (how it ends only when it is not a length); pocket, revolve, hole, fillet, chamfer, shell, mirror and patterns
+  show at most three fields. The rest is under "Details ▸", remembered per tool. The sketch's size box keeps its name and "reference" under "Details ▸" too
+- **Picks in words**: not "Pad.Face6" but "the top face of Pad", "the inner face of Hole ⌀6", "vertical edges of Pad ×4" — from the step that made the element, its role
+  and its geometry; shown in the status bar, as the title of the bar next to the picks and in the fillet/chamfer lists
+- **Tool names follow the terminology table**: 115 stock Japanese names in the tool strip, the sketch band, the bar and the tool search, with one-sentence tooltips; old names still find them
+- "Also the edges in the same direction" no longer picks the seam of a hole's wall
+- Tests: `FreeCADCmd -t TestHistoryLine`, `-t TestSelectionWords`, `-t TestTaskPanels`, `-t TestWording`
+
 ## Changes in 0.6.9
 
 - **Clicking a face under the push/pull arrow picks it again** (bug in 0.6.7): the arrow in the middle of a hovered face took every left press, so the face could not be picked (for measuring, snapping, the context bar).

@@ -1,0 +1,5481 @@
+From abda4f27ff150bc7ae4a8e7cc27daf528ae60e7c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 21:17:18 +0900
+Subject: [PATCH 288/288] Unified: tool names in the words of the terminology
+ table
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The stock Japanese names left in the tool strip, the sketch's band, the bar
+next to the picks and the tool search follow the table (Wording.py, written
+into UnifiedWording_ja.ts by freecad-ja-unified's tools/apply_wording.py):
+押し出す・切り抜く・回す・鏡に映す・まっすぐ並べる・円に並べる・動かす・測る、
+円（中心から）・長方形・平行・点をつなぐ・はみ出しを切る、書き出す・読み込む…
+with tooltips that say what happens. The old names stay as search aliases.
+Translations of the history line, the panels and the words of picks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandAliases.py             |   16 +-
+ src/Mod/Unified/CommandCatalog.json           | 1633 +++++++++++++++--
+ .../translations/UnifiedWording_ja.ts         |  978 +++++++++-
+ .../Gui/Resources/translations/Unified_ja.ts  |   10 +-
+ 4 files changed, 2406 insertions(+), 231 deletions(-)
+
+diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
+index 97c00f4db..982f33b06 100644
+--- a/src/Mod/Unified/CommandAliases.py
++++ b/src/Mod/Unified/CommandAliases.py
+@@ -18,14 +18,16 @@ ALIASES = {
+     "PartDesign_Chamfer": ["面取り", "C 面", "C面", "Chamfer"],
+     "PartDesign_Thickness": ["厚み", "シェル", "殻", "中空", "Shell", "Thickness"],
+     "PartDesign_Draft": ["抜き勾配", "勾配", "Draft"],
+-    "PartDesign_Mirrored": ["鏡", "鏡に映す", "ミラー", "対称", "Mirror"],
+-    "PartDesign_LinearPattern": ["まっすぐ並べる", "直線パターン", "配列", "Linear pattern", "Array"],
+-    "PartDesign_PolarPattern": ["円に並べる", "円形パターン", "円形配列", "Circular pattern", "Polar array"],
++    "PartDesign_Mirrored": ["鏡", "鏡に映す", "鏡像", "ミラー", "対称", "Mirror"],
++    "PartDesign_LinearPattern": ["まっすぐ並べる", "直線配列", "直線パターン", "配列", "Linear pattern", "Array"],
++    "PartDesign_PolarPattern": ["円に並べる", "円周配列", "円形パターン", "円形配列", "Circular pattern", "Polar array"],
+     "PartDesign_MultiTransform": ["並べ方の組み合わせ", "マルチ変換", "Multi-transform"],
+     "PartDesign_AdditiveLoft": ["ロフト", "Loft"],
+     "PartDesign_AdditivePipe": ["スイープ", "なぞる", "パイプ", "Sweep", "Pipe"],
+     "PartDesign_AdditiveHelix": ["らせん", "ばね", "コイル", "Helix", "Spring", "Coil"],
+     "PartDesign_SubtractiveHelix": ["ねじ山", "ねじを切る", "Thread"],
++    "Unified_InsertHere": ["ここに差し込む", "途中に足す", "途中に手順", "ここまで有効", "ロールバック", "Rollback", "Insert here"],
++    "Unified_LineToEnd": ["全部有効", "最後まで", "ここまで有効を戻す", "Roll forward"],
+     "PartDesign_MoveTip": ["先端", "先端を設定", "ここに差し込む", "途中に足す", "途中に手順", "Tip", "Set tip", "Rollback", "ロールバック"],
+     "PartDesign_MoveFeatureInTree": ["手順を移動", "順番を変える", "Reorder"],
+     "PartDesign_Body": ["部品", "ボディ", "Body", "新しい部品"],
+@@ -51,7 +53,7 @@ ALIASES = {
+     "Part_CrossSections": ["輪切り", "等間隔の断面", "スライス", "Slice", "Cross sections"],
+     "Part_RefineShape": ["形を整える", "継ぎ目を消す", "Refine"],
+     "Part_CheckGeometry": ["形を調べる", "形状チェック", "Check geometry"],
+-    "Std_Measure": ["測る", "寸法を測る", "距離", "長さ", "Measure", "Distance"],
++    "Std_Measure": ["測る", "測定", "寸法を測る", "距離", "長さ", "Measure", "Distance"],
+     "Std_MassProperties": ["重さ", "質量", "重心", "体積", "Mass", "Weight", "Center of gravity"],
+     "Std_TransformManip": ["動かす", "移動", "回す", "Move", "Transform"],
+     "Std_Placement": ["配置", "位置を数値で", "Placement"],
+@@ -61,9 +63,9 @@ ALIASES = {
+     "Sketcher_ConstrainCoincidentUnified": ["点をつなぐ", "一致", "Coincident"],
+     "Sketcher_ConstrainLock": ["固定", "Lock", "Fix"],
+     "Sketcher_Dimension": ["寸法", "寸法を付ける", "Dimension", "Smart dimension"],
+-    "Sketcher_CreatePolyline": ["線", "折れ線", "Line", "Polyline"],
+-    "Sketcher_CreateRectangle": ["長方形", "四角", "矩形", "Rectangle"],
+-    "Sketcher_CreateCircle": ["円", "丸", "Circle"],
++    "Sketcher_CreatePolyline": ["線", "折れ線", "ポリライン", "Line", "Polyline"],
++    "Sketcher_CreateRectangle": ["長方形", "四角", "四角形", "矩形", "Rectangle"],
++    "Sketcher_CreateCircle": ["円", "丸", "中心点による円", "Circle"],
+     "Sketcher_Trimming": ["切る", "トリム", "Trim"],
+     "Sketcher_Extend": ["延ばす", "延長", "Extend"],
+     "Sketcher_External": ["外の形を写す", "外部ジオメトリ", "External geometry", "Project"],
+diff --git a/src/Mod/Unified/CommandCatalog.json b/src/Mod/Unified/CommandCatalog.json
+index e0da3f098..b90fdedba 100644
+--- a/src/Mod/Unified/CommandCatalog.json
++++ b/src/Mod/Unified/CommandCatalog.json
+@@ -1551,7 +1551,7 @@
+ "en": "Export ASMT File",
+ "en_raw": "Export ASMT File",
+ "icon": "Assembly_ExportASMT",
+-"ja": "ASMTファイルをエクスポート",
++"ja": "ASMT ファイルに書き出す",
+ "module": "組立",
+ "module_wb": "AssemblyWorkbench",
+ "name": "Assembly_ExportASMT",
+@@ -15206,7 +15206,7 @@
+ "en": "Export Mesh…",
+ "en_raw": "Export Mesh…",
+ "icon": "Mesh_Export",
+-"ja": "メッシュをエクスポート…",
++"ja": "三角形の網（メッシュ）を書き出す…",
+ "module": "メッシュ",
+ "module_wb": "MeshWorkbench",
+ "name": "Mesh_Export",
+@@ -15370,7 +15370,7 @@
+ "en": "Import Mesh…",
+ "en_raw": "Import Mesh…",
+ "icon": "Mesh_Import",
+-"ja": "メッシュをインポート…",
++"ja": "三角形の網（メッシュ）を読み込む…",
+ "module": "メッシュ",
+ "module_wb": "MeshWorkbench",
+ "name": "Mesh_Import",
+@@ -15500,7 +15500,7 @@
+ "en": "Trim",
+ "en_raw": "Trim",
+ "icon": "Mesh_PolyTrim",
+-"ja": "トリム",
++"ja": "囲んだ所を切り取る",
+ "module": "メッシュ",
+ "module_wb": "MeshWorkbench",
+ "name": "Mesh_PolyTrim",
+@@ -15755,7 +15755,7 @@
+ "en": "Trim With Plane",
+ "en_raw": "Trim With Plane",
+ "icon": "Mesh_TrimByPlane",
+-"ja": "平面でトリム",
++"ja": "平面で切り取る",
+ "module": "メッシュ",
+ "module_wb": "MeshWorkbench",
+ "name": "Mesh_TrimByPlane",
+@@ -16285,7 +16285,7 @@
+ }
+ ],
+ "tip_en": "Applies a chamfer to the selected edges or faces",
+-"tip_ja": "選択した辺または面に面取りを適用",
++"tip_ja": "選んだ辺の角を斜めに落とします",
+ "wb": ""
+ },
+ {
+@@ -16506,7 +16506,7 @@
+ }
+ ],
+ "tip_en": "Applies a fillet to the selected edges or faces",
+-"tip_ja": "選択した辺または面に丸めを適用",
++"tip_ja": "選んだ辺の角を丸めます",
+ "wb": ""
+ },
+ {
+@@ -16514,7 +16514,7 @@
+ "en": "Groove",
+ "en_raw": "Groove",
+ "icon": "PartDesign_Groove",
+-"ja": "回転切り抜き",
++"ja": "回して削る",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_Groove",
+@@ -16532,7 +16532,7 @@
+ }
+ ],
+ "tip_en": "Revolves the sketch or profile around a line or axis and removes it from the body",
+-"tip_ja": "スケッチまたは輪郭を、線または軸の周りに回転押し出しし、部品から削除",
++"tip_ja": "選んだスケッチの輪郭を軸のまわりに回した形で、部品を削ります",
+ "wb": ""
+ },
+ {
+@@ -16558,7 +16558,7 @@
+ }
+ ],
+ "tip_en": "Creates holes in the active body at the center points of circles or arcs of the selected sketch or profile",
+-"tip_ja": "アクティブな部品で、選択したスケッチまたは輪郭にある、円または円弧の中心点に穴を作成",
++"tip_ja": "選んだスケッチの円や点の位置に穴をあけます（ねじ穴・ざぐりも）",
+ "wb": ""
+ },
+ {
+@@ -16601,7 +16601,7 @@
+ "en": "Linear Pattern",
+ "en_raw": "Linear Pattern",
+ "icon": "PartDesign_LinearPattern",
+-"ja": "直線配列",
++"ja": "まっすぐ並べる",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_LinearPattern",
+@@ -16619,7 +16619,7 @@
+ }
+ ],
+ "tip_en": "Duplicates the selected features or the active body in a linear pattern",
+-"tip_ja": "選択した形またはアクティブな部品を直線配列で複製",
++"tip_ja": "選んだ手順の形を、まっすぐに決まった数だけ並べます",
+ "wb": ""
+ },
+ {
+@@ -16641,7 +16641,7 @@
+ "en": "Mirror",
+ "en_raw": "Mirror",
+ "icon": "PartDesign_Mirrored",
+-"ja": "鏡像",
++"ja": "鏡に映す",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_Mirrored",
+@@ -16659,7 +16659,7 @@
+ }
+ ],
+ "tip_en": "Mirrors the selected features or active body",
+-"tip_ja": "選択した形またはアクティブな部品を鏡像コピー",
++"tip_ja": "選んだ手順の形を、面を境に鏡に映した位置にもう 1 つ作ります",
+ "wb": ""
+ },
+ {
+@@ -16709,7 +16709,7 @@
+ "en": "Multi-Transform",
+ "en_raw": "Multi-Transform",
+ "icon": "PartDesign_MultiTransform",
+-"ja": "並べ方の組み合わせ",
++"ja": "並べ方を組み合わせる",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_MultiTransform",
+@@ -16727,7 +16727,7 @@
+ }
+ ],
+ "tip_en": "Applies multiple transformations to the selected features or active body",
+-"tip_ja": "選択した形またはアクティブな部品に複数の変換を適用",
++"tip_ja": "鏡に映す・並べるを組み合わせて、選んだ手順の形を写します",
+ "wb": ""
+ },
+ {
+@@ -16748,7 +16748,7 @@
+ }
+ ],
+ "tip_en": "Creates a new sketch",
+-"tip_ja": "新しいスケッチを作成",
++"tip_ja": "選んだ平らな面か床・正面・横に、新しいスケッチを描き始めます",
+ "wb": ""
+ },
+ {
+@@ -16756,7 +16756,7 @@
+ "en": "Pad",
+ "en_raw": "Pad",
+ "icon": "PartDesign_Pad",
+-"ja": "押し出し",
++"ja": "押し出す",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_Pad",
+@@ -16774,7 +16774,7 @@
+ }
+ ],
+ "tip_en": "Extrudes the selected sketch or profile and adds it to the body",
+-"tip_ja": "選択したスケッチまたは輪郭を押し出し、部品に追加",
++"tip_ja": "選んだスケッチの輪郭を押し出して、部品に足します",
+ "wb": ""
+ },
+ {
+@@ -16796,7 +16796,7 @@
+ "en": "Pocket",
+ "en_raw": "Pocket",
+ "icon": "PartDesign_Pocket",
+-"ja": "切り抜き",
++"ja": "切り抜く",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_Pocket",
+@@ -16814,7 +16814,7 @@
+ }
+ ],
+ "tip_en": "Extrudes the selected sketch or profile and removes it from the body",
+-"tip_ja": "選択したスケッチまたは輪郭を押し出し、部品から削除",
++"tip_ja": "選んだスケッチの輪郭の形に、部品を切り抜きます",
+ "wb": ""
+ },
+ {
+@@ -16836,7 +16836,7 @@
+ "en": "Polar Pattern",
+ "en_raw": "Polar Pattern",
+ "icon": "PartDesign_PolarPattern",
+-"ja": "円周配列",
++"ja": "円に並べる",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_PolarPattern",
+@@ -16854,7 +16854,7 @@
+ }
+ ],
+ "tip_en": "Duplicates the selected features or the active body in a circular pattern",
+-"tip_ja": "選択した形またはアクティブな部品を円形パターンで複製",
++"tip_ja": "選んだ手順の形を、軸のまわりに円く決まった数だけ並べます",
+ "wb": ""
+ },
+ {
+@@ -16862,7 +16862,7 @@
+ "en": "Revolve",
+ "en_raw": "Revolve",
+ "icon": "PartDesign_Revolution",
+-"ja": "回転",
++"ja": "回す",
+ "module": "Part Design",
+ "module_wb": "PartDesignWorkbench",
+ "name": "PartDesign_Revolution",
+@@ -16880,7 +16880,7 @@
+ }
+ ],
+ "tip_en": "Revolves the selected sketch or profile around a line or axis and adds it to the body",
+-"tip_ja": "選択したスケッチまたは輪郭を、線または軸の周りに回転押し出しし、部品に追加",
++"tip_ja": "選んだスケッチの輪郭を軸のまわりに回した形を、部品に足します",
+ "wb": ""
+ },
+ {
+@@ -17051,7 +17051,7 @@
+ }
+ ],
+ "tip_en": "Applies thickness and removes the selected faces",
+-"tip_ja": "厚みを適用し、選択した面を削除",
++"tip_ja": "選んだ面を開けて、部品を決まった厚みの殻にします",
+ "wb": ""
+ },
+ {
+@@ -17094,7 +17094,7 @@
+ "en": "Boolean Operation",
+ "en_raw": "Boolean Operation",
+ "icon": "Part_Booleans",
+-"ja": "ブーリアン演算",
++"ja": "足し合わせ・引き算・重なり",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Boolean",
+@@ -17112,7 +17112,7 @@
+ }
+ ],
+ "tip_en": "Applies a boolean operation with the selected shapes",
+-"tip_ja": "選択した形にブール演算を適用",
++"tip_ja": "2 つの形を足し合わせる・引き算する・重なりだけ残す、を選んで行います",
+ "wb": ""
+ },
+ {
+@@ -17120,7 +17120,7 @@
+ "en": "Boolean Fragments",
+ "en_raw": "Boolean Fragments",
+ "icon": "Part_BooleanFragments.svg",
+-"ja": "ブーリアン演算 フラグメント",
++"ja": "重なりで分ける（フラグメント）",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_BooleanFragments",
+@@ -17313,7 +17313,7 @@
+ "en": "Intersection",
+ "en_raw": "Intersection",
+ "icon": "Part_Common",
+-"ja": "共通集合",
++"ja": "重なり",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Common",
+@@ -17552,6 +17552,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -17750,7 +17763,7 @@
+ "en": "Cut",
+ "en_raw": "Cut",
+ "icon": "Part_Cut",
+-"ja": "切り取り",
++"ja": "引き算",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Cut",
+@@ -17869,6 +17882,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -18105,6 +18131,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -18341,6 +18380,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Part_Datums",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -18568,6 +18620,17 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -18820,7 +18883,7 @@
+ "en": "Export CAD File",
+ "en_raw": "Export CAD File",
+ "icon": "Part_Export",
+-"ja": "CADファイルをエクスポート",
++"ja": "CAD ファイルに書き出す",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Export",
+@@ -18834,7 +18897,7 @@
+ "en": "Extrude",
+ "en_raw": "Extrude",
+ "icon": "Part_Extrude",
+-"ja": "押し出し",
++"ja": "押し出す（形の外で）",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Extrude",
+@@ -18902,7 +18965,7 @@
+ "en": "Union",
+ "en_raw": "Union",
+ "icon": "Part_Fuse",
+-"ja": "結合",
++"ja": "足し合わせ",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Fuse",
+@@ -18932,7 +18995,7 @@
+ "en": "Import CAD File",
+ "en_raw": "Import CAD File",
+ "icon": "Part_Import",
+-"ja": "CADファイルをインポート",
++"ja": "CAD ファイルを読み込む",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Import",
+@@ -18946,7 +19009,7 @@
+ "en": "Import Curve Network",
+ "en_raw": "Import Curve Network",
+ "icon": "Part_Box_Parametric",
+-"ja": "曲線ネットワークをインポート",
++"ja": "曲線の網を読み込む",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_ImportCurveNet",
+@@ -19026,7 +19089,7 @@
+ "en": "Circular Link Array",
+ "en_raw": "Circular Link Array",
+ "icon": "Part_CircularLinkArray",
+-"ja": "円周のリンク配列",
++"ja": "リンクで同心円に並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrayCircular",
+@@ -19040,7 +19103,7 @@
+ "en": "Linear Link Array",
+ "en_raw": "Linear Link Array",
+ "icon": "LinkArray",
+-"ja": "直線のリンク配列",
++"ja": "リンクでまっすぐ並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrayLinear",
+@@ -19054,7 +19117,7 @@
+ "en": "Path Link Array",
+ "en_raw": "Path Link Array",
+ "icon": "Part_PathLinkArray",
+-"ja": "経路のリンク配列",
++"ja": "リンクで線に沿って並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrayPath",
+@@ -19068,7 +19131,7 @@
+ "en": "Point Link Array",
+ "en_raw": "Point Link Array",
+ "icon": "Part_PointLinkArray",
+-"ja": "点のリンク配列",
++"ja": "リンクで点の位置に並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrayPoint",
+@@ -19082,7 +19145,7 @@
+ "en": "Polar Link Array",
+ "en_raw": "Polar Link Array",
+ "icon": "Part_PolarLinkArray",
+-"ja": "円形のリンク配列",
++"ja": "リンクで円に並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrayPolar",
+@@ -19096,7 +19159,7 @@
+ "en": "Link Arrays",
+ "en_raw": "Link Arrays",
+ "icon": "LinkArray",
+-"ja": "リンク配列",
++"ja": "リンクで並べる",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_LinkArrays",
+@@ -19192,7 +19255,7 @@
+ "en": "Mirror",
+ "en_raw": "Mirror",
+ "icon": "Part_Mirror",
+-"ja": "鏡像",
++"ja": "鏡に映す",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Mirror",
+@@ -19209,7 +19272,7 @@
+ }
+ ],
+ "tip_en": "Mirrors the selected shape",
+-"tip_ja": "選択した形を鏡像コピー",
++"tip_ja": "選んだ形を、面を境に鏡に映した位置にもう 1 つ作ります",
+ "wb": ""
+ },
+ {
+@@ -19405,7 +19468,7 @@
+ "en": "Revolve",
+ "en_raw": "Revolve",
+ "icon": "Part_Revolve",
+-"ja": "回転",
++"ja": "回す（形の外で）",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_Revolve",
+@@ -19553,6 +19616,10 @@
+ },
+ {
+ "toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -19613,7 +19680,7 @@
+ "en": "Shape From Mesh",
+ "en_raw": "Shape From Mesh",
+ "icon": "Part_Shape_from_Mesh",
+-"ja": "メッシュから形へ",
++"ja": "三角形の網（メッシュ）を立体にする",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_ShapeFromMesh",
+@@ -19914,7 +19981,7 @@
+ "en": "Boolean XOR",
+ "en_raw": "Boolean XOR",
+ "icon": "Part_XOR.svg",
+-"ja": "ブーリアン演算 XOR",
++"ja": "どちらか一方だけ残す（XOR）",
+ "module": "Part",
+ "module_wb": "PartWorkbench",
+ "name": "Part_XOR",
+@@ -21163,7 +21230,7 @@
+ "en": "Rectangle",
+ "en_raw": "Rectangle",
+ "icon": "",
+-"ja": "四角形",
++"ja": "長方形",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CompCreateRectangles",
+@@ -21258,7 +21325,7 @@
+ "en": "Horizontal/Vertical Constraint",
+ "en_raw": "Horizontal/Vertical Constraint",
+ "icon": "",
+-"ja": "水平/垂直拘束",
++"ja": "水平・垂直",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CompHorVer",
+@@ -21277,7 +21344,7 @@
+ "en": "Polyline",
+ "en_raw": "Polyline",
+ "icon": "",
+-"ja": "ポリライン",
++"ja": "線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CompLine",
+@@ -21334,7 +21401,7 @@
+ "en": "Toggle Constraints",
+ "en_raw": "Toggle Constraints",
+ "icon": "",
+-"ja": "拘束を切り替え",
++"ja": "拘束を一時的に外す・戻す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CompToggleConstraints",
+@@ -21353,7 +21420,7 @@
+ "en": "Angle Dimension",
+ "en_raw": "Angle Dimension",
+ "icon": "Constraint_InternalAngle",
+-"ja": "角度寸法",
++"ja": "角度",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainAngle",
+@@ -21380,7 +21447,7 @@
+ "en": "Block Constraint",
+ "en_raw": "Block Constraint",
+ "icon": "Constraint_Block",
+-"ja": "固定拘束",
++"ja": "動かない（固定）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainBlock",
+@@ -21406,7 +21473,7 @@
+ "en": "Coincident Constraint",
+ "en_raw": "Coincident Constraint",
+ "icon": "Constraint_PointOnPoint",
+-"ja": "一致拘束",
++"ja": "点をつなぐ（点どうし）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainCoincident",
+@@ -21420,7 +21487,7 @@
+ "en": "Coincident Constraint",
+ "en_raw": "Coincident Constraint",
+ "icon": "Constraint_Coincident",
+-"ja": "一致拘束",
++"ja": "点をつなぐ",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainCoincidentUnified",
+@@ -21438,7 +21505,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected elements to be coincident",
+-"tip_ja": "選択した要素が一致するように拘束",
++"tip_ja": "選んだ点どうしを重ねる（点を線の上に載せる）拘束を付けます",
+ "wb": ""
+ },
+ {
+@@ -21446,7 +21513,7 @@
+ "en": "Diameter Dimension",
+ "en_raw": "Diameter Dimension",
+ "icon": "Constraint_Diameter",
+-"ja": "直径寸法",
++"ja": "直径",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainDiameter",
+@@ -21473,7 +21540,7 @@
+ "en": "Distance Dimension",
+ "en_raw": "Distance Dimension",
+ "icon": "Constraint_Length",
+-"ja": "距離寸法",
++"ja": "距離",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainDistance",
+@@ -21500,7 +21567,7 @@
+ "en": "Horizontal Dimension",
+ "en_raw": "Horizontal Dimension",
+ "icon": "Constraint_HorizontalDistance",
+-"ja": "水平寸法",
++"ja": "横の距離",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainDistanceX",
+@@ -21527,7 +21594,7 @@
+ "en": "Vertical Dimension",
+ "en_raw": "Vertical Dimension",
+ "icon": "Constraint_VerticalDistance",
+-"ja": "垂直寸法",
++"ja": "縦の距離",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainDistanceY",
+@@ -21554,7 +21621,7 @@
+ "en": "Equal Constraint",
+ "en_raw": "Equal Constraint",
+ "icon": "Constraint_EqualLength",
+-"ja": "等値拘束",
++"ja": "同じ大きさ",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainEqual",
+@@ -21572,7 +21639,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected edges or circles to be equal",
+-"tip_ja": "選択した辺または円が等しくなるように拘束",
++"tip_ja": "選んだ線どうし・円どうしを同じ長さ・大きさにする拘束を付けます",
+ "wb": ""
+ },
+ {
+@@ -21580,7 +21647,7 @@
+ "en": "Group Constraint",
+ "en_raw": "Group Constraint",
+ "icon": "Constraint_Group",
+-"ja": "グループ拘束",
++"ja": "形ごと固定（グループ）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainGroup",
+@@ -21606,7 +21673,7 @@
+ "en": "Horizontal/Vertical Constraint",
+ "en_raw": "Horizontal/Vertical Constraint",
+ "icon": "Constraint_HorVer",
+-"ja": "水平/垂直拘束",
++"ja": "水平・垂直",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainHorVer",
+@@ -21625,7 +21692,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected elements either horizontally or vertically, based on their closest alignment",
+-"tip_ja": "選択した要素を水平または垂直方向に、最近接配置となるよう拘束",
++"tip_ja": "選んだ線を水平か垂直にそろえる拘束（形の決まり）を付けます",
+ "wb": ""
+ },
+ {
+@@ -21633,7 +21700,7 @@
+ "en": "Horizontal Constraint",
+ "en_raw": "Horizontal Constraint",
+ "icon": "Constraint_Horizontal",
+-"ja": "水平拘束",
++"ja": "水平",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainHorizontal",
+@@ -21660,7 +21727,7 @@
+ "en": "Lock Position",
+ "en_raw": "Lock Position",
+ "icon": "Constraint_Lock",
+-"ja": "位置をロック",
++"ja": "位置を固定",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainLock",
+@@ -21679,7 +21746,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected vertices by adding horizontal and vertical distance constraints",
+-"tip_ja": "選択した頂点に水平方向と垂直方向の距離拘束を追加して拘束",
++"tip_ja": "選んだ点の位置を、原点からの縦と横の寸法で決めます",
+ "wb": ""
+ },
+ {
+@@ -21687,7 +21754,7 @@
+ "en": "Parallel Constraint",
+ "en_raw": "Parallel Constraint",
+ "icon": "Constraint_Parallel",
+-"ja": "平行拘束",
++"ja": "平行",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainParallel",
+@@ -21705,7 +21772,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected lines to be parallel",
+-"tip_ja": "選択した線同士が平行となるよう拘束",
++"tip_ja": "選んだ 2 本の線を平行にする拘束（形の決まり）を付けます",
+ "wb": ""
+ },
+ {
+@@ -21713,7 +21780,7 @@
+ "en": "Perpendicular Constraint",
+ "en_raw": "Perpendicular Constraint",
+ "icon": "Constraint_Perpendicular",
+-"ja": "直角拘束",
++"ja": "直角",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainPerpendicular",
+@@ -21731,7 +21798,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected lines to be perpendicular",
+-"tip_ja": "選択した線同士が直角となるよう拘束",
++"tip_ja": "選んだ 2 本の線を直角にする拘束（形の決まり）を付けます",
+ "wb": ""
+ },
+ {
+@@ -21739,7 +21806,7 @@
+ "en": "Point-On-Object Constraint",
+ "en_raw": "Point-On-Object Constraint",
+ "icon": "Constraint_PointOnObject",
+-"ja": "点をオブジェクト上へ拘束",
++"ja": "点を線に載せる",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainPointOnObject",
+@@ -21753,7 +21820,7 @@
+ "en": "Radius/Diameter Dimension",
+ "en_raw": "Radius/Diameter Dimension",
+ "icon": "Constraint_Radiam",
+-"ja": "半径/直径寸法",
++"ja": "半径・直径",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainRadiam",
+@@ -21780,7 +21847,7 @@
+ "en": "Radius Dimension",
+ "en_raw": "Radius Dimension",
+ "icon": "Constraint_Radius",
+-"ja": "半径寸法",
++"ja": "半径",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainRadius",
+@@ -21807,7 +21874,7 @@
+ "en": "Refraction Constraint",
+ "en_raw": "Refraction Constraint",
+ "icon": "Constraint_SnellsLaw",
+-"ja": "屈折拘束",
++"ja": "屈折（スネルの法則）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainSnellsLaw",
+@@ -21829,7 +21896,7 @@
+ "en": "Symmetric Constraint",
+ "en_raw": "Symmetric Constraint",
+ "icon": "Constraint_Symmetric",
+-"ja": "対称拘束",
++"ja": "対称",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainSymmetric",
+@@ -21847,7 +21914,7 @@
+ }
+ ],
+ "tip_en": "Constrains the selected elements to be symmetric",
+-"tip_ja": "選択した要素が対称となるように拘束",
++"tip_ja": "選んだ 2 点を、線か点を挟んで対称にする拘束を付けます",
+ "wb": ""
+ },
+ {
+@@ -21855,7 +21922,7 @@
+ "en": "Tangent/Collinear Constraint",
+ "en_raw": "Tangent/Collinear Constraint",
+ "icon": "Constraint_Tangent",
+-"ja": "接線/同一線拘束",
++"ja": "接する・一直線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainTangent",
+@@ -21881,7 +21948,7 @@
+ "en": "Vertical Constraint",
+ "en_raw": "Vertical Constraint",
+ "icon": "Constraint_Vertical",
+-"ja": "垂直拘束",
++"ja": "垂直",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ConstrainVertical",
+@@ -21944,7 +22011,7 @@
+ "en": "Arc From 3 Points",
+ "en_raw": "Arc From 3 Points",
+ "icon": "Sketcher_Create3PointArc",
+-"ja": "3点による円弧",
++"ja": "円弧（3 点）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Create3PointArc",
+@@ -21963,7 +22030,7 @@
+ }
+ ],
+ "tip_en": "Creates an arc defined by 2 end points and 1 point on the arc",
+-"tip_ja": "2端点と円周上の1点から円弧を作成",
++"tip_ja": "始まり・終わり・途中の点をクリックして円弧を描きます",
+ "wb": ""
+ },
+ {
+@@ -21971,7 +22038,7 @@
+ "en": "Circle From 3 Points",
+ "en_raw": "Circle From 3 Points",
+ "icon": "Sketcher_Create3PointCircle",
+-"ja": "3点による円",
++"ja": "円（3 点）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Create3PointCircle",
+@@ -21990,7 +22057,7 @@
+ }
+ ],
+ "tip_en": "Creates a circle from 3 perimeter points",
+-"tip_ja": "3つの境界点から円を作成",
++"tip_ja": "縁の 3 点をクリックして円を描きます",
+ "wb": ""
+ },
+ {
+@@ -21998,7 +22065,7 @@
+ "en": "Arc From Center",
+ "en_raw": "Arc From Center",
+ "icon": "Sketcher_CreateArc",
+-"ja": "中心点による円弧",
++"ja": "円弧（中心から）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateArc",
+@@ -22017,7 +22084,7 @@
+ }
+ ],
+ "tip_en": "Creates an arc defined by a center point and an end point",
+-"tip_ja": "中心点と端点で定義された円弧を作成",
++"tip_ja": "中心・始まり・終わりをクリックして円弧を描きます",
+ "wb": ""
+ },
+ {
+@@ -22106,7 +22173,7 @@
+ "en": "Arc Slot",
+ "en_raw": "Arc Slot",
+ "icon": "Sketcher_CreateArcSlot",
+-"ja": "円弧状の長円形",
++"ja": "円弧の長穴",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateArcSlot",
+@@ -22133,7 +22200,7 @@
+ "en": "B-Spline",
+ "en_raw": "B-Spline",
+ "icon": "Sketcher_CreateBSpline",
+-"ja": "B-スプライン",
++"ja": "自由曲線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateBSpline",
+@@ -22160,7 +22227,7 @@
+ "en": "B-Spline From Knots",
+ "en_raw": "B-Spline From Knots",
+ "icon": "Sketcher_CreateBSplineByInterpolation",
+-"ja": "ノットによるB-スプライン",
++"ja": "点を通る自由曲線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateBSplineByInterpolation",
+@@ -22214,7 +22281,7 @@
+ "en": "Circle From Center",
+ "en_raw": "Circle From Center",
+ "icon": "Sketcher_CreateCircle",
+-"ja": "中心点による円",
++"ja": "円（中心から）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateCircle",
+@@ -22233,7 +22300,7 @@
+ }
+ ],
+ "tip_en": "Creates a circle from a center and rim point",
+-"tip_ja": "中心点と円周上の点から円を作成",
++"tip_ja": "中心と縁の点をクリックして円を描きます",
+ "wb": ""
+ },
+ {
+@@ -22241,7 +22308,7 @@
+ "en": "Ellipse From 3 Points",
+ "en_raw": "Ellipse From 3 Points",
+ "icon": "Sketcher_CreateEllipse_3points",
+-"ja": "3点による楕円",
++"ja": "楕円（3 点）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateEllipseBy3Points",
+@@ -22268,7 +22335,7 @@
+ "en": "Ellipse From Center",
+ "en_raw": "Ellipse From Center",
+ "icon": "Sketcher_CreateEllipseByCenter",
+-"ja": "中心点による楕円",
++"ja": "楕円（中心から）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateEllipseByCenter",
+@@ -22314,7 +22381,7 @@
+ }
+ ],
+ "tip_en": "Creates a fillet between 2 selected curves or at coincident points",
+-"tip_ja": "選択した2曲線の間、または一致点に丸めを作成",
++"tip_ja": "選んだ 2 本の線の角を円弧で丸めます",
+ "wb": ""
+ },
+ {
+@@ -22368,7 +22435,7 @@
+ }
+ ],
+ "tip_en": "Creates a hexagon from a center and corner point",
+-"tip_ja": "中心点と角の点から六角形を作成",
++"tip_ja": "中心と角をクリックして正六角形を描きます",
+ "wb": ""
+ },
+ {
+@@ -22376,7 +22443,7 @@
+ "en": "Line",
+ "en_raw": "Line",
+ "icon": "Sketcher_CreateLine",
+-"ja": "直線",
++"ja": "線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateLine",
+@@ -22395,7 +22462,7 @@
+ }
+ ],
+ "tip_en": "Creates a line",
+-"tip_ja": "線を作成",
++"tip_ja": "2 点をクリックして線を 1 本描きます",
+ "wb": ""
+ },
+ {
+@@ -22403,7 +22470,7 @@
+ "en": "Rounded Rectangle",
+ "en_raw": "Rounded Rectangle",
+ "icon": "Sketcher_CreateOblong",
+-"ja": "角丸長方形",
++"ja": "角の丸い長方形",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateOblong",
+@@ -22422,7 +22489,7 @@
+ }
+ ],
+ "tip_en": "Creates a rounded rectangle from 2 corner points",
+-"tip_ja": "2つの角の点から角丸長方形を作成",
++"tip_ja": "角の丸い長方形を描きます",
+ "wb": ""
+ },
+ {
+@@ -22484,7 +22551,7 @@
+ "en": "Periodic B-Spline",
+ "en_raw": "Periodic B-Spline",
+ "icon": "Sketcher_Create_Periodic_BSpline",
+-"ja": "周期B-スプライン",
++"ja": "閉じた自由曲線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreatePeriodicBSpline",
+@@ -22511,7 +22578,7 @@
+ "en": "Periodic B-Spline From Knots",
+ "en_raw": "Periodic B-Spline From Knots",
+ "icon": "Sketcher_CreatePeriodicBSplineByInterpolation",
+-"ja": "ノットによる周期的なB-スプライン",
++"ja": "点を通る閉じた自由曲線",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreatePeriodicBSplineByInterpolation",
+@@ -22564,7 +22631,7 @@
+ "en": "Polyline",
+ "en_raw": "Polyline",
+ "icon": "Sketcher_CreatePolyline",
+-"ja": "ポリライン",
++"ja": "線をつなげて描く",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreatePolyline",
+@@ -22583,7 +22650,7 @@
+ }
+ ],
+ "tip_en": "Creates a polyline in the sketch. M key cycles through segment modes.",
+-"tip_ja": "スケッチにポリラインを作成します。Mキーでセグメントモードを循環的に切り替えられます。",
++"tip_ja": "クリックした点を順に線でつなぎます。始めの点をクリックすると閉じます",
+ "wb": ""
+ },
+ {
+@@ -22591,7 +22658,7 @@
+ "en": "Polyline",
+ "en_raw": "Polyline",
+ "icon": "Sketcher_CreatePolyline",
+-"ja": "ポリライン",
++"ja": "線をつなげて描く（旧）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreatePolylineLegacy",
+@@ -22605,7 +22672,7 @@
+ "en": "Rectangle",
+ "en_raw": "Rectangle",
+ "icon": "Sketcher_CreateRectangle",
+-"ja": "四角形",
++"ja": "長方形",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateRectangle",
+@@ -22624,7 +22691,7 @@
+ }
+ ],
+ "tip_en": "Creates a rectangle from 2 corner points",
+-"tip_ja": "2つの角の点から長方形を作成",
++"tip_ja": "対角の 2 点をクリックして長方形を描きます",
+ "wb": ""
+ },
+ {
+@@ -22632,7 +22699,7 @@
+ "en": "Centered Rectangle",
+ "en_raw": "Centered Rectangle",
+ "icon": "Sketcher_CreateRectangle_Center",
+-"ja": "中心配置長方形",
++"ja": "長方形（中心から）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateRectangle_Center",
+@@ -22651,7 +22718,7 @@
+ }
+ ],
+ "tip_en": "Creates a centered rectangle from a center and a corner point",
+-"tip_ja": "中心点と角の点から中心配置の長方形を作成",
++"tip_ja": "中心と角をクリックして長方形を描きます",
+ "wb": ""
+ },
+ {
+@@ -22659,7 +22726,7 @@
+ "en": "Polygon",
+ "en_raw": "Polygon",
+ "icon": "Sketcher_CreateRegularPolygon",
+-"ja": "多角形",
++"ja": "正多角形",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateRegularPolygon",
+@@ -22686,7 +22753,7 @@
+ "en": "Slot",
+ "en_raw": "Slot",
+ "icon": "Sketcher_CreateSlot",
+-"ja": "長円形",
++"ja": "長穴",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateSlot",
+@@ -22705,7 +22772,7 @@
+ }
+ ],
+ "tip_en": "Creates a slot",
+-"tip_ja": "長円形を作成",
++"tip_ja": "両端の中心をクリックして長穴の形を描きます",
+ "wb": ""
+ },
+ {
+@@ -22740,7 +22807,7 @@
+ "en": "Text",
+ "en_raw": "Text",
+ "icon": "Sketcher_CreateText",
+-"ja": "テキスト",
++"ja": "文字（試験中）",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_CreateText",
+@@ -22878,7 +22945,7 @@
+ }
+ ],
+ "tip_en": "Constrains contextually based on the selection. The type can be changed with the M key.",
+-"tip_ja": "選択対象に基づいて判定して拘束。種類は M キーで変更可能。",
++"tip_ja": "選んだ線・円・点に、長さ・距離・半径・角度の寸法を付けます",
+ "wb": ""
+ },
+ {
+@@ -22917,7 +22984,7 @@
+ "en": "Extend Edge",
+ "en_raw": "Extend Edge",
+ "icon": "Sketcher_Extend",
+-"ja": "辺を延長",
++"ja": "延ばす",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Extend",
+@@ -22936,7 +23003,7 @@
+ }
+ ],
+ "tip_en": "Extends an edge with respect to the selected position",
+-"tip_ja": "選択した位置で辺を延長",
++"tip_ja": "選んだ線を、ほかの線に届くまで延ばします",
+ "wb": ""
+ },
+ {
+@@ -23025,7 +23092,7 @@
+ "en": "Leave Sketch",
+ "en_raw": "Leave Sketch",
+ "icon": "Sketcher_LeaveSketch",
+-"ja": "スケッチを終了",
++"ja": "スケッチを終わる",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_LeaveSketch",
+@@ -23112,7 +23179,7 @@
+ "en": "Mirror Sketch",
+ "en_raw": "Mirror Sketch",
+ "icon": "Sketcher_MirrorSketch",
+-"ja": "スケッチを鏡像化",
++"ja": "スケッチを鏡に映す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_MirrorSketch",
+@@ -23192,7 +23259,7 @@
+ "en": "Offset",
+ "en_raw": "Offset",
+ "icon": "Sketcher_Offset",
+-"ja": "オフセット",
++"ja": "一定の幅でずらす",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Offset",
+@@ -23281,7 +23348,7 @@
+ "en": "Rectangular Array",
+ "en_raw": "Rectangular Array",
+ "icon": "Sketcher_RectangularArray",
+-"ja": "格子状配列",
++"ja": "格子に並べる",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_RectangularArray",
+@@ -23295,7 +23362,7 @@
+ "en": "Remove Axes Alignment",
+ "en_raw": "Remove Axes Alignment",
+ "icon": "Sketcher_RemoveAxesAlignment",
+-"ja": "軸配置を削除",
++"ja": "軸とのそろえを外す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_RemoveAxesAlignment",
+@@ -23392,7 +23459,7 @@
+ "en": "Rotate / Polar Transform",
+ "en_raw": "Rotate / Polar Transform",
+ "icon": "Sketcher_Rotate",
+-"ja": "回転 / 軸周変換",
++"ja": "回す・円に並べる",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Rotate",
+@@ -23670,7 +23737,7 @@
+ "en": "Split Edge",
+ "en_raw": "Split Edge",
+ "icon": "Sketcher_Split",
+-"ja": "辺を分割",
++"ja": "分ける",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Split",
+@@ -23744,7 +23811,7 @@
+ "en": "Mirror",
+ "en_raw": "Mirror",
+ "icon": "Sketcher_Symmetry",
+-"ja": "鏡像",
++"ja": "鏡に映す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Symmetry",
+@@ -23770,7 +23837,7 @@
+ "en": "Toggle Constraints",
+ "en_raw": "Toggle Constraints",
+ "icon": "Sketcher_ToggleActiveConstraint",
+-"ja": "拘束を切り替え",
++"ja": "拘束を一時的に外す・戻す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ToggleActiveConstraint",
+@@ -23797,7 +23864,7 @@
+ "en": "Toggle Construction Geometry",
+ "en_raw": "Toggle Construction Geometry",
+ "icon": "Sketcher_ToggleConstruction",
+-"ja": "構築図形の切り替え",
++"ja": "補助線にする・戻す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ToggleConstruction",
+@@ -23823,7 +23890,7 @@
+ "en": "Toggle Driving/Reference Constraints",
+ "en_raw": "Toggle Driving/Reference Constraints",
+ "icon": "Sketcher_ToggleConstraint",
+-"ja": "駆動拘束/参照拘束の切り替え",
++"ja": "参照寸法にする・戻す",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ToggleDrivingConstraint",
+@@ -23850,7 +23917,7 @@
+ "en": "Move / Array Transform",
+ "en_raw": "Move / Array Transform",
+ "icon": "Sketcher_Translate",
+-"ja": "移動 / 配列変換",
++"ja": "動かす・並べる",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Translate",
+@@ -23876,7 +23943,7 @@
+ "en": "Trim Edge",
+ "en_raw": "Trim Edge",
+ "icon": "Sketcher_Trimming",
+-"ja": "辺をトリム",
++"ja": "はみ出しを切る",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_Trimming",
+@@ -23895,7 +23962,7 @@
+ }
+ ],
+ "tip_en": "Trims an edge with respect to the selected position",
+-"tip_ja": "選択した位置で辺をトリム",
++"tip_ja": "クリックした線の、ほかの線と交わるところまでを消します",
+ "wb": ""
+ },
+ {
+@@ -23938,7 +24005,7 @@
+ "en": "Toggle Section View",
+ "en_raw": "Toggle Section View",
+ "icon": "Sketcher_ViewSection",
+-"ja": "断面ビューの切り替え",
++"ja": "断面で見る",
+ "module": "スケッチャー",
+ "module_wb": "SketcherWorkbench",
+ "name": "Sketcher_ViewSection",
+@@ -24413,6 +24480,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -24544,6 +24617,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -24661,6 +24740,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -24778,6 +24863,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -24930,6 +25021,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25078,7 +25180,7 @@
+ "en": "Align To…",
+ "en_raw": "Ali&gn To…",
+ "icon": "Std_Alignment",
+-"ja": "整列",
++"ja": "選んだ面に視点を向ける",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_Alignment",
+@@ -25111,6 +25213,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25233,6 +25341,13 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25362,6 +25477,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25479,6 +25600,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25596,6 +25723,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25713,6 +25846,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25830,6 +25969,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -25947,6 +26092,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26064,6 +26215,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26211,6 +26368,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "クリップボード",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26396,6 +26563,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "クリップボード",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26565,6 +26742,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26682,6 +26865,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26799,6 +26988,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -26916,6 +27111,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27033,6 +27234,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27166,6 +27373,16 @@
+ "menu": [
+ "マクロ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "マクロ",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"マクロ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27351,6 +27568,16 @@
+ "menu": [
+ "マクロ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "マクロ",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"マクロ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27536,6 +27763,16 @@
+ "menu": [
+ "マクロ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "マクロ",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"マクロ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27705,6 +27942,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27822,6 +28065,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -27939,6 +28188,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28061,6 +28316,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28195,6 +28457,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28329,6 +28598,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28463,6 +28739,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28597,6 +28880,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28731,6 +29021,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28865,6 +29162,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -28999,6 +29303,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29133,6 +29444,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_DockOverlay",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29262,6 +29580,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29395,6 +29719,16 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29564,6 +29898,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29675,6 +30015,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29759,7 +30105,7 @@
+ "en": "Export…",
+ "en_raw": "&Export…",
+ "icon": "Std_Export",
+-"ja": "エクスポート…",
++"ja": "書き出す…",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_Export",
+@@ -29792,6 +30138,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -29868,7 +30220,7 @@
+ }
+ ],
+ "tip_en": "Exports an object in the active document",
+-"tip_ja": "アクティブなドキュメント内のオブジェクトをエクスポート",
++"tip_ja": "選んだ物をほかの形式のファイルに書き出します",
+ "wb": ""
+ },
+ {
+@@ -29876,7 +30228,7 @@
+ "en": "Export Dependency Graph…",
+ "en_raw": "Export Dependency &Graph…",
+ "icon": "",
+-"ja": "依存関係グラフをエクスポート…",
++"ja": "つながりの図を書き出す…",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_ExportDependencyGraph",
+@@ -29909,6 +30261,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30040,6 +30398,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30157,6 +30521,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30274,6 +30644,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30391,6 +30767,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30508,6 +30890,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30646,6 +31034,17 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30846,6 +31245,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -30980,6 +31386,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -31076,7 +31489,7 @@
+ "en": "Import…",
+ "en_raw": "&Import…",
+ "icon": "Std_Import",
+-"ja": "インポート…",
++"ja": "読み込む…",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_Import",
+@@ -31109,6 +31522,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -31185,7 +31604,7 @@
+ }
+ ],
+ "tip_en": "Imports a file into the active document",
+-"tip_ja": "アクティブなドキュメントにファイルをインポート",
++"tip_ja": "ファイルを読み込んで、今の文書に入れます",
+ "wb": ""
+ },
+ {
+@@ -31247,6 +31666,17 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -31395,7 +31825,7 @@
+ "en": "Import Links",
+ "en_raw": "Import Links",
+ "icon": "LinkImport",
+-"ja": "リンクをインポート",
++"ja": "リンク先を読み込む",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_LinkImport",
+@@ -31458,6 +31888,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -31631,7 +32074,7 @@
+ "en": "Import All Links",
+ "en_raw": "Import All Links",
+ "icon": "LinkImportAll",
+-"ja": "全てのリンクをインポート",
++"ja": "全部のリンク先を読み込む",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_LinkImportAll",
+@@ -31694,6 +32137,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -31930,6 +32386,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -32180,6 +32649,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -32416,6 +32898,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -32622,6 +33117,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -32744,6 +33245,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkSelectActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -32878,6 +33386,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkSelectActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33012,6 +33527,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkSelectActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33171,6 +33693,19 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_LinkActions",
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33419,6 +33954,12 @@
+ "menu": [
+ "マクロ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"マクロ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33536,6 +34077,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33669,6 +34216,16 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33805,7 +34362,7 @@
+ "en": "Measure",
+ "en_raw": "&Measure",
+ "icon": "umf-measurement",
+-"ja": "測定",
++"ja": "測る",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_Measure",
+@@ -33854,6 +34411,16 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -33982,7 +34549,7 @@
+ }
+ ],
+ "tip_en": "Measures a feature",
+-"tip_ja": "形を測定",
++"tip_ja": "選んだ物の長さ・距離・角度・面積を測ります",
+ "wb": ""
+ },
+ {
+@@ -34023,6 +34590,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -34156,6 +34729,16 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ファイル",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -34369,6 +34952,16 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ファイル",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -34566,6 +35159,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -34704,6 +35303,17 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -34901,6 +35511,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "クリップボード",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35070,6 +35690,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35187,6 +35813,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35304,6 +35936,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35388,7 +36026,7 @@
+ "en": "Export PDF",
+ "en_raw": "Export P&DF",
+ "icon": "Std_PrintPdf",
+-"ja": "PDFをエクスポート",
++"ja": "PDF に書き出す",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_PrintPdf",
+@@ -35421,6 +36059,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35538,6 +36182,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35655,6 +36305,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35772,6 +36428,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -35889,6 +36551,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36006,6 +36674,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36123,6 +36797,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36240,6 +36920,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36362,6 +37048,13 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36491,6 +37184,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36608,6 +37307,12 @@
+ "menu": [
+ "マクロ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"マクロ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36755,6 +37460,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "編集",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -36940,6 +37655,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "編集",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37123,6 +37848,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37240,6 +37971,12 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37357,6 +38094,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37490,6 +38233,16 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ファイル",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37659,6 +38412,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37776,6 +38535,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -37893,6 +38658,12 @@
+ "menu": [
+ "ファイル"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ファイル"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38024,6 +38795,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38146,6 +38923,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38275,6 +39059,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38397,6 +39187,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38526,6 +39323,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38648,6 +39451,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38777,6 +39587,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -38927,6 +39743,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39061,6 +39884,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39195,6 +40025,13 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39539,6 +40376,13 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39668,6 +40512,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39785,6 +40635,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -39902,6 +40758,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40019,6 +40881,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40150,6 +41018,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40272,6 +41146,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40406,6 +41287,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40577,6 +41465,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40661,7 +41555,7 @@
+ "en": "Toggle Visibility",
+ "en_raw": "Toggle &Visibility",
+ "icon": "Std_ToggleVisibility",
+-"ja": "表示/非表示を切り替え",
++"ja": "隠す・表示する",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_ToggleVisibility",
+@@ -40699,6 +41593,13 @@
+ "表示",
+ "表示/非表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"表示/非表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40787,7 +41688,7 @@
+ }
+ ],
+ "tip_en": "Toggles the visibility of the selection",
+-"tip_ja": "選択範囲の表示を切り替え",
++"tip_ja": "選んだ物を隠します（隠れている物は表示します）",
+ "wb": ""
+ },
+ {
+@@ -40828,6 +41729,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -40926,7 +41833,7 @@
+ "en": "Transform",
+ "en_raw": "Trans&form",
+ "icon": "Std_TransformManip",
+-"ja": "動かす・回す",
++"ja": "動かす",
+ "module": "",
+ "module_wb": "",
+ "name": "Std_TransformManip",
+@@ -40959,6 +41866,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41035,7 +41948,7 @@
+ }
+ ],
+ "tip_en": "Transforms the selected object in the 3D view",
+-"tip_ja": "選んだものを 3D ビューの中で、つまんで動かしたり回したりする",
++"tip_ja": "選んだ物を、3D 画面の矢印と輪をドラッグして動かし・回します",
+ "wb": ""
+ },
+ {
+@@ -41095,6 +42008,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41229,6 +42149,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41377,6 +42304,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41511,6 +42445,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41645,6 +42586,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41793,6 +42741,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -41927,6 +42882,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42061,6 +43023,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42195,6 +43164,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42329,6 +43305,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_TreeViewActions",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42458,6 +43441,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42591,6 +43580,16 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "編集",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42760,6 +43759,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -42877,6 +43882,12 @@
+ "menu": [
+ "編集"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43029,6 +44040,17 @@
+ "編集",
+ "作成"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "構造体",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"編集",
++"作成"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43231,6 +44253,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43417,6 +44450,13 @@
+ "表示",
+ "ズーム"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"ズーム"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43546,6 +44586,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43673,6 +44719,14 @@
+ "決まった向きから見る",
+ "不等角投影"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る",
++"不等角投影"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43819,6 +44873,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_ViewDockUndockFullscreen",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -43948,6 +45009,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44128,6 +45195,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44330,6 +45408,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44532,6 +45621,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44718,6 +45818,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_ViewDockUndockFullscreen",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44837,6 +45944,10 @@
+ },
+ {
+ "toolbar": "ビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ビュー",
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -44935,6 +46046,13 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45090,6 +46208,18 @@
+ "決まった向きから見る",
+ "不等角投影"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る",
++"不等角投影"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45283,6 +46413,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45421,6 +46557,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45602,6 +46749,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45740,6 +46893,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -45956,6 +47120,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46142,6 +47317,13 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46276,6 +47458,13 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46419,6 +47608,12 @@
+ "menu": [
+ "ツール"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ツール"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46536,6 +47731,12 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46674,6 +47875,17 @@
+ "表示",
+ "決まった向きから見る"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "個々のビュー",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -46865,6 +48077,14 @@
+ "決まった向きから見る",
+ "不等角投影"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"決まった向きから見る",
++"不等角投影"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47011,6 +48231,13 @@
+ "menu": [
+ "表示"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"group": "Std_ViewDockUndockFullscreen",
++"menu": [
++"表示"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47145,6 +48372,13 @@
+ "表示",
+ "ズーム"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"ズーム"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47279,6 +48513,13 @@
+ "表示",
+ "ズーム"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"表示",
++"ズーム"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47424,6 +48665,16 @@
+ "menu": [
+ "ヘルプ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"toolbar": "ヘルプ",
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ヘルプ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47593,6 +48844,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -47710,6 +48967,12 @@
+ "menu": [
+ "ウィンドウ"
+ ],
++"wb": "FastenersWorkbench"
++},
++{
++"menu": [
++"ウィンドウ"
++],
+ "wb": "InspectionWorkbench"
+ },
+ {
+@@ -48687,7 +49950,7 @@
+ "en": "Export Page as DXF",
+ "en_raw": "Export Page as DXF",
+ "icon": "actions/TechDraw_ExportPageDXF",
+-"ja": "ページをDXFとしてエクスポート",
++"ja": "ページを DXF に書き出す",
+ "module": "TechDraw",
+ "module_wb": "TechDrawWorkbench",
+ "name": "TechDraw_ExportPageDXF",
+@@ -48713,7 +49976,7 @@
+ "en": "Export Page as PDF",
+ "en_raw": "Export Page as PDF",
+ "icon": "actions/TechDraw_ExportPagePDF",
+-"ja": "ページをPDFとしてエクスポート",
++"ja": "ページを PDF に書き出す",
+ "module": "TechDraw",
+ "module_wb": "TechDrawWorkbench",
+ "name": "TechDraw_ExportPagePDF",
+@@ -48735,7 +49998,7 @@
+ "en": "Export Page as SVG",
+ "en_raw": "Export Page as SVG",
+ "icon": "actions/TechDraw_ExportPageSVG",
+-"ja": "ページをSVGとしてエクスポート",
++"ja": "ページを SVG に書き出す",
+ "module": "TechDraw",
+ "module_wb": "TechDrawWorkbench",
+ "name": "TechDraw_ExportPageSVG",
+@@ -50860,6 +52123,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_Align",
++"en": "Line up",
++"en_raw": "Line up",
++"icon": "Std_Placement",
++"ja": "そろえる",
++"module": "",
++"module_wb": "",
++"name": "Unified_Align",
++"places": [],
++"tip_en": "Line up the picked parts: left, center, right (front, back, bottom, top), equal gaps, side by side",
++"tip_ja": "選んだ部品をそろえる: 左・中央・右（手前・奥・下・上）、等間隔、ぴったり並べる",
++"wb": ""
++},
++{
+ "ctx": "Unified_DesignCheck",
+ "en": "Design check",
+ "en_raw": "Design check",
+@@ -50930,6 +52207,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_FaceDiameter",
++"en": "Diameter",
++"en_raw": "Diameter",
++"icon": "/home/shota/freecad-src/build/release/Mod/Unified/PushPull.svg",
++"ja": "直径",
++"module": "",
++"module_wb": "",
++"name": "Unified_FaceDiameter",
++"places": [],
++"tip_en": "Changes the diameter of the picked hole or round boss: type the new diameter",
++"tip_ja": "選んだ穴・丸い出っ張りの直径を変えます。新しい直径を打ちます",
++"wb": ""
++},
++{
+ "ctx": "Unified_Hole",
+ "en": "Hole",
+ "en_raw": "Hole",
+@@ -50944,6 +52235,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_InsertHere",
++"en": "Insert Here",
++"en_raw": "Insert Here",
++"icon": "PartDesign_MoveTip",
++"ja": "ここに差し込む",
++"module": "",
++"module_wb": "",
++"name": "Unified_InsertHere",
++"places": [],
++"tip_en": "Move the blue line right after this step: the next step you make goes here, the steps below wait (greyed) until the line goes back down",
++"tip_ja": "この手順のすぐ後ろへ青い線を動かします。次に作る手順はここに入り、下の手順は線を戻すまで待ちます（灰色）",
++"wb": ""
++},
++{
+ "ctx": "Unified_InsertScrew",
+ "en": "Insert Screw",
+ "en_raw": "Insert Screw",
+@@ -50958,6 +52263,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_LineToEnd",
++"en": "Bring All Steps Back",
++"en_raw": "Bring All Steps Back",
++"icon": "PartDesign_MoveTip",
++"ja": "全部の手順を有効に戻す",
++"module": "",
++"module_wb": "",
++"name": "Unified_LineToEnd",
++"places": [],
++"tip_en": "Move the blue line back to the bottom: every step is in effect again",
++"tip_ja": "青い線を一番下へ戻し、全部の手順を効かせます",
++"wb": ""
++},
++{
+ "ctx": "Unified_MovePointToPoint",
+ "en": "Move point to point",
+ "en_raw": "Move point to point",
+@@ -50995,8 +52314,8 @@
+ "module_wb": "",
+ "name": "Unified_NewDrawing",
+ "places": [],
+-"tip_en": "A drawing sheet with the three views of the picked part (of all parts if none is picked)",
+-"tip_ja": "選んだ部品（選んでいなければ全部）の三面図の図面を作ります",
++"tip_en": "A drawing sheet with the three views of the picked part (of all parts if none is picked); a picked face is the front",
++"tip_ja": "選んだ部品（選んでいなければ全部）の三面図の図面を作ります。面を選んでいれば、その面が正面",
+ "wb": ""
+ },
+ {
+@@ -51098,6 +52417,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_PushPull",
++"en": "Move face",
++"en_raw": "Move face",
++"icon": "/home/shota/freecad-src/build/release/Mod/Unified/PushPull.svg",
++"ja": "面を動かす",
++"module": "",
++"module_wb": "",
++"name": "Unified_PushPull",
++"places": [],
++"tip_en": "Moves the picked face along its normal: outward adds material, inward removes it. Type the distance (negative: inward), or drag the arrow that appears on a face under the cursor",
++"tip_ja": "選んだ面をまっすぐ外へ・内へ動かします。外へ動かすと足し、内へ動かすと削ります。距離を打つ（内へはマイナス）か、カーソルの下の面に出る矢印をドラッグします",
++"wb": ""
++},
++{
+ "ctx": "Unified_Search",
+ "en": "Search Tools…",
+ "en_raw": "Search Tools…",
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 8a5cc6ec5..1ec02908b 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -555,7 +555,11 @@ so that self intersection is avoided.</source>
+     <name>CmdPartBoolean</name>
+     <message>
+         <source>Applies a boolean operation with the selected shapes</source>
+-        <translation>選択した形にブール演算を適用</translation>
++        <translation>2 つの形を足し合わせる・引き算する・重なりだけ残す、を選んで行います</translation>
++    </message>
++    <message>
++        <source>Boolean Operation</source>
++        <translation>足し合わせ・引き算・重なり</translation>
+     </message>
+ </context>
+ <context>
+@@ -599,6 +603,10 @@ so that self intersection is avoided.</source>
+         <source>Intersects the selected shapes</source>
+         <translation>選択した形を交差</translation>
+     </message>
++    <message>
++        <source>Intersection</source>
++        <translation>重なり</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdPartCompCompoundTools</name>
+@@ -652,6 +660,10 @@ so that self intersection is avoided.</source>
+         <source>Cuts 2 selected shapes</source>
+         <translation>選択した2つの形を切断</translation>
+     </message>
++    <message>
++        <source>Cut</source>
++        <translation>引き算</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdPartCylinder</name>
+@@ -730,7 +742,11 @@ so that self intersection is avoided.</source>
+     <name>CmdPartDesignChamfer</name>
+     <message>
+         <source>Applies a chamfer to the selected edges or faces</source>
+-        <translation>選択した辺または面に面取りを適用</translation>
++        <translation>選んだ辺の角を斜めに落とします</translation>
++    </message>
++    <message>
++        <source>Chamfer</source>
++        <translation>面取り</translation>
+     </message>
+ </context>
+ <context>
+@@ -770,7 +786,7 @@ so that self intersection is avoided.</source>
+     <name>CmdPartDesignFillet</name>
+     <message>
+         <source>Applies a fillet to the selected edges or faces</source>
+-        <translation>選択した辺または面に丸めを適用</translation>
++        <translation>選んだ辺の角を丸めます</translation>
+     </message>
+     <message>
+         <source>Fillet</source>
+@@ -781,18 +797,18 @@ so that self intersection is avoided.</source>
+     <name>CmdPartDesignGroove</name>
+     <message>
+         <source>Groove</source>
+-        <translation>回転切り抜き</translation>
++        <translation>回して削る</translation>
+     </message>
+     <message>
+         <source>Revolves the sketch or profile around a line or axis and removes it from the body</source>
+-        <translation>スケッチまたは輪郭を、線または軸の周りに回転押し出しし、部品から削除</translation>
++        <translation>選んだスケッチの輪郭を軸のまわりに回した形で、部品を削ります</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignHole</name>
+     <message>
+         <source>Creates holes in the active body at the center points of circles or arcs of the selected sketch or profile</source>
+-        <translation>アクティブな部品で、選択したスケッチまたは輪郭にある、円または円弧の中心点に穴を作成</translation>
++        <translation>選んだスケッチの円や点の位置に穴をあけます（ねじ穴・ざぐりも）</translation>
+     </message>
+     <message>
+         <source>Hole</source>
+@@ -803,18 +819,22 @@ so that self intersection is avoided.</source>
+     <name>CmdPartDesignLinearPattern</name>
+     <message>
+         <source>Duplicates the selected features or the active body in a linear pattern</source>
+-        <translation>選択した形またはアクティブな部品を直線配列で複製</translation>
++        <translation>選んだ手順の形を、まっすぐに決まった数だけ並べます</translation>
+     </message>
+     <message>
+         <source>Linear Pattern</source>
+-        <translation>直線配列</translation>
++        <translation>まっすぐ並べる</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignMirrored</name>
+     <message>
+         <source>Mirrors the selected features or active body</source>
+-        <translation>選択した形またはアクティブな部品を鏡像コピー</translation>
++        <translation>選んだ手順の形を、面を境に鏡に映した位置にもう 1 つ作ります</translation>
++    </message>
++    <message>
++        <source>Mirror</source>
++        <translation>鏡に映す</translation>
+     </message>
+ </context>
+ <context>
+@@ -850,51 +870,55 @@ so that self intersection is avoided.</source>
+     <name>CmdPartDesignMultiTransform</name>
+     <message>
+         <source>Applies multiple transformations to the selected features or active body</source>
+-        <translation>選択した形またはアクティブな部品に複数の変換を適用</translation>
++        <translation>鏡に映す・並べるを組み合わせて、選んだ手順の形を写します</translation>
+     </message>
+     <message>
+         <source>Multi-Transform</source>
+-        <translation>並べ方の組み合わせ</translation>
++        <translation>並べ方を組み合わせる</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignPad</name>
+     <message>
+         <source>Extrudes the selected sketch or profile and adds it to the body</source>
+-        <translation>選択したスケッチまたは輪郭を押し出し、部品に追加</translation>
++        <translation>選んだスケッチの輪郭を押し出して、部品に足します</translation>
+     </message>
+     <message>
+         <source>Pad</source>
+-        <translation>押し出し</translation>
++        <translation>押し出す</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignPocket</name>
+     <message>
+         <source>Extrudes the selected sketch or profile and removes it from the body</source>
+-        <translation>選択したスケッチまたは輪郭を押し出し、部品から削除</translation>
++        <translation>選んだスケッチの輪郭の形に、部品を切り抜きます</translation>
+     </message>
+     <message>
+         <source>Pocket</source>
+-        <translation>切り抜き</translation>
++        <translation>切り抜く</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignPolarPattern</name>
+     <message>
+         <source>Duplicates the selected features or the active body in a circular pattern</source>
+-        <translation>選択した形またはアクティブな部品を円形パターンで複製</translation>
++        <translation>選んだ手順の形を、軸のまわりに円く決まった数だけ並べます</translation>
+     </message>
+     <message>
+         <source>Polar Pattern</source>
+-        <translation>円周配列</translation>
++        <translation>円に並べる</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdPartDesignRevolution</name>
+     <message>
+         <source>Revolves the selected sketch or profile around a line or axis and adds it to the body</source>
+-        <translation>選択したスケッチまたは輪郭を、線または軸の周りに回転押し出しし、部品に追加</translation>
++        <translation>選んだスケッチの輪郭を軸のまわりに回した形を、部品に足します</translation>
++    </message>
++    <message>
++        <source>Revolve</source>
++        <translation>回す</translation>
+     </message>
+ </context>
+ <context>
+@@ -976,6 +1000,10 @@ so that self intersection is avoided.</source>
+         <source>Extrudes the selected sketch or profile</source>
+         <translation>選択したスケッチまたは輪郭を押し出し</translation>
+     </message>
++    <message>
++        <source>Extrude</source>
++        <translation>押し出す（形の外で）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdPartFillet</name>
+@@ -994,12 +1022,16 @@ so that self intersection is avoided.</source>
+         <source>Unites the selected shapes</source>
+         <translation>選択した形を結合</translation>
+     </message>
++    <message>
++        <source>Union</source>
++        <translation>足し合わせ</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdPartLinkArrayCircular</name>
+     <message>
+         <source>Circular Link Array</source>
+-        <translation>円周のリンク配列</translation>
++        <translation>リンクで同心円に並べる</translation>
+     </message>
+     <message>
+         <source>Creates a concentric circular array of linked objects</source>
+@@ -1018,7 +1050,7 @@ so that self intersection is avoided.</source>
+     </message>
+     <message>
+         <source>Linear Link Array</source>
+-        <translation>直線のリンク配列</translation>
++        <translation>リンクでまっすぐ並べる</translation>
+     </message>
+     <message>
+         <source>Part</source>
+@@ -1037,7 +1069,7 @@ so that self intersection is avoided.</source>
+     </message>
+     <message>
+         <source>Path Link Array</source>
+-        <translation>経路のリンク配列</translation>
++        <translation>リンクで線に沿って並べる</translation>
+     </message>
+ </context>
+ <context>
+@@ -1052,7 +1084,7 @@ so that self intersection is avoided.</source>
+     </message>
+     <message>
+         <source>Point Link Array</source>
+-        <translation>点のリンク配列</translation>
++        <translation>リンクで点の位置に並べる</translation>
+     </message>
+ </context>
+ <context>
+@@ -1067,7 +1099,7 @@ so that self intersection is avoided.</source>
+     </message>
+     <message>
+         <source>Polar Link Array</source>
+-        <translation>円形のリンク配列</translation>
++        <translation>リンクで円に並べる</translation>
+     </message>
+ </context>
+ <context>
+@@ -1078,7 +1110,7 @@ so that self intersection is avoided.</source>
+     </message>
+     <message>
+         <source>Link Arrays</source>
+-        <translation>リンク配列</translation>
++        <translation>リンクで並べる</translation>
+     </message>
+     <message>
+         <source>Part</source>
+@@ -1107,7 +1139,11 @@ so that self intersection is avoided.</source>
+     <name>CmdPartMirror</name>
+     <message>
+         <source>Mirrors the selected shape</source>
+-        <translation>選択した形を鏡像コピー</translation>
++        <translation>選んだ形を、面を境に鏡に映した位置にもう 1 つ作ります</translation>
++    </message>
++    <message>
++        <source>Mirror</source>
++        <translation>鏡に映す</translation>
+     </message>
+ </context>
+ <context>
+@@ -1169,7 +1205,11 @@ of the projection.</source>
+     <name>CmdPartRevolve</name>
+     <message>
+         <source>Revolves the selected shape</source>
+-        <translation>選択した形を回転押し出し</translation>
++        <translation>選んだ形を軸のまわりに回した形を作ります</translation>
++    </message>
++    <message>
++        <source>Revolve</source>
++        <translation>回す（形の外で）</translation>
+     </message>
+ </context>
+ <context>
+@@ -1201,7 +1241,7 @@ of the projection.</source>
+     </message>
+     <message>
+         <source>Shape From Mesh</source>
+-        <translation>メッシュから形へ</translation>
++        <translation>三角形の網（メッシュ）を立体にする</translation>
+     </message>
+ </context>
+ <context>
+@@ -1317,12 +1357,20 @@ of the projection.</source>
+         <source>Constrains the selected edges as fixed</source>
+         <translation>選択した辺を固定拘束</translation>
+     </message>
++    <message>
++        <source>Block Constraint</source>
++        <translation>動かない（固定）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherConstrainEqual</name>
+     <message>
+         <source>Constrains the selected edges or circles to be equal</source>
+-        <translation>選択した辺または円が等しくなるように拘束</translation>
++        <translation>選んだ線どうし・円どうしを同じ長さ・大きさにする拘束を付けます</translation>
++    </message>
++    <message>
++        <source>Equal Constraint</source>
++        <translation>同じ大きさ</translation>
+     </message>
+ </context>
+ <context>
+@@ -1331,6 +1379,10 @@ of the projection.</source>
+         <source>Constrains the selected geometries together as a single entity.The position and size of the grouped geometries can be defined by constraining the construction line that is generated.Constraints applied to grouped edges are ignored as long as the Group constraint is here.</source>
+         <translation>選択図形を単一エンティティーとして拘束します。 グループ化された図形の位置と大きさは、生成された構築線を拘束することで定義できます。 グループ化された辺に適用されている拘束はグループ拘束が存在する限り無視されます。</translation>
+     </message>
++    <message>
++        <source>Group Constraint</source>
++        <translation>形ごと固定（グループ）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherConvertToNURBS</name>
+@@ -1361,7 +1413,7 @@ of the projection.</source>
+     <name>CmdSketcherCreateFillet</name>
+     <message>
+         <source>Creates a fillet between 2 selected curves or at coincident points</source>
+-        <translation>選択した2曲線の間、または一致点に丸めを作成</translation>
++        <translation>選んだ 2 本の線の角を円弧で丸めます</translation>
+     </message>
+     <message>
+         <source>Fillet</source>
+@@ -1382,6 +1434,10 @@ Note: While the Text constraint is active, any constraints applied directly to t
+ 注意：テキスト拘束が有効な間はテキスト図形に直接適用された拘束はすべて無視されます。
+ </translation>
+     </message>
++    <message>
++        <source>Text</source>
++        <translation>文字（試験中）</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherCut</name>
+@@ -1405,11 +1461,11 @@ Note: While the Text constraint is active, any constraints applied directly to t
+     <name>CmdSketcherExtend</name>
+     <message>
+         <source>Extend Edge</source>
+-        <translation>辺を延長</translation>
++        <translation>延ばす</translation>
+     </message>
+     <message>
+         <source>Extends an edge with respect to the selected position</source>
+-        <translation>選択した位置で辺を延長</translation>
++        <translation>選んだ線を、ほかの線に届くまで延ばします</translation>
+     </message>
+ </context>
+ <context>
+@@ -1429,6 +1485,10 @@ Note: While the Text constraint is active, any constraints applied directly to t
+         <source>Finishes editing the active sketch. Press Escape to exit.</source>
+         <translation>アクティブなスケッチの編集を終了します。</translation>
+     </message>
++    <message>
++        <source>Leave Sketch</source>
++        <translation>スケッチを終わる</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherMapSketch</name>
+@@ -1479,6 +1539,10 @@ Note: While the Text constraint is active, any constraints applied directly to t
+         <source>Adds an equidistant closed contour around selected geometry: positive values offset outward, negative values inward</source>
+         <translation>選択した図形の周りに等距離の閉じた輪郭を追加: 正の値で外側に、負の値で内部にオフセット</translation>
+     </message>
++    <message>
++        <source>Offset</source>
++        <translation>一定の幅でずらす</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherPaste</name>
+@@ -1504,6 +1568,10 @@ Note: While the Text constraint is active, any constraints applied directly to t
+         <source>Creates a rectangular array pattern of the geometry taking as reference the last selected point</source>
+         <translation>最後に選択された点を参照位置として図形の格子状整列パターンを作成</translation>
+     </message>
++    <message>
++        <source>Rectangular Array</source>
++        <translation>格子に並べる</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherReorientSketch</name>
+@@ -1531,6 +1599,10 @@ This will clear the AttachmentSupport property.</source>
+         <source>Rotates the selected geometry by creating 'n' total elements, enabling circular pattern creation</source>
+         <translation>円状パターン作成を有効化し、合計「n」個の要素を作成して選択した図形を回転</translation>
+     </message>
++    <message>
++        <source>Rotate / Polar Transform</source>
++        <translation>回す・円に並べる</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherScale</name>
+@@ -1568,7 +1640,7 @@ This will clear the AttachmentSupport property.</source>
+     <name>CmdSketcherSplit</name>
+     <message>
+         <source>Split Edge</source>
+-        <translation>辺を分割</translation>
++        <translation>分ける</translation>
+     </message>
+     <message>
+         <source>Splits an edge into 2 segments while preserving constraints</source>
+@@ -1579,14 +1651,18 @@ This will clear the AttachmentSupport property.</source>
+     <name>CmdSketcherSymmetry</name>
+     <message>
+         <source>Creates a mirrored copy of the selected geometry</source>
+-        <translation>選択した図形の鏡像コピーを作成</translation>
++        <translation>選んだ図形を、線を境に鏡に映した写しを作ります</translation>
++    </message>
++    <message>
++        <source>Mirror</source>
++        <translation>鏡に映す</translation>
+     </message>
+ </context>
+ <context>
+     <name>CmdSketcherToggleConstruction</name>
+     <message>
+         <source>Toggle Construction Geometry</source>
+-        <translation>構築図形の切り替え</translation>
++        <translation>補助線にする・戻す</translation>
+     </message>
+     <message>
+         <source>Toggles between defining geometry and construction geometry modes</source>
+@@ -1599,16 +1675,20 @@ This will clear the AttachmentSupport property.</source>
+         <source>Translates the selected geometries and enables the creation of 'i' * 'j' total elements</source>
+         <translation>選択した図形を移動し、合計「i」*「j」個の要素に作成を有効化</translation>
+     </message>
++    <message>
++        <source>Move / Array Transform</source>
++        <translation>動かす・並べる</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdSketcherTrimming</name>
+     <message>
+         <source>Trim Edge</source>
+-        <translation>辺をトリム</translation>
++        <translation>はみ出しを切る</translation>
+     </message>
+     <message>
+         <source>Trims an edge with respect to the selected position</source>
+-        <translation>選択した位置で辺をトリム</translation>
++        <translation>クリックした線の、ほかの線と交わるところまでを消します</translation>
+     </message>
+ </context>
+ <context>
+@@ -1697,6 +1777,10 @@ invalid constraints, and degenerate geometry</source>
+         <source>Exports the current page as a PDF</source>
+         <translation>今のページを PDF として書き出します</translation>
+     </message>
++    <message>
++        <source>Export Page as PDF</source>
++        <translation>ページを PDF に書き出す</translation>
++    </message>
+ </context>
+ <context>
+     <name>CmdTechDrawExtensionArcLengthAnnotation</name>
+@@ -1951,7 +2035,7 @@ invalid constraints, and degenerate geometry</source>
+     </message>
+     <message>
+         <source>Linear Pattern</source>
+-        <translation>直線配列</translation>
++        <translation>直線の並び</translation>
+     </message>
+     <message>
+         <source>Merge sketches</source>
+@@ -1987,7 +2071,7 @@ invalid constraints, and degenerate geometry</source>
+     </message>
+     <message>
+         <source>Polar Pattern</source>
+-        <translation>円周配列</translation>
++        <translation>円の並び</translation>
+     </message>
+     <message>
+         <source>Project on surface</source>
+@@ -2253,7 +2337,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed for m
+     </message>
+     <message>
+         <source>No features selected to be mirrored.</source>
+-        <translation>鏡像コピーする形が選択されていません。</translation>
++        <translation>鏡に映す形が選ばれていません。</translation>
+     </message>
+     <message>
+         <source>No features selected to be patterned.</source>
+@@ -2265,7 +2349,7 @@ Intersecting sketch entities or multiple faces in a sketch are not allowed for m
+     </message>
+     <message>
+         <source>No revolution geometry was generated</source>
+-        <translation>回転押し出し図形は生成されませんでした。</translation>
++        <translation>回した形ができませんでした。</translation>
+     </message>
+     <message>
+         <source>Only additive and subtractive features can be transformed</source>
+@@ -3113,7 +3197,7 @@ Adjust the parameters and try again.</source>
+     <name>PartDesignGui::TaskDlgGrooveParameters</name>
+     <message>
+         <source>Groove Parameters</source>
+-        <translation>回転切り抜きの設定</translation>
++        <translation>回して削った形の設定</translation>
+     </message>
+ </context>
+ <context>
+@@ -3127,7 +3211,7 @@ Adjust the parameters and try again.</source>
+     <name>PartDesignGui::TaskDlgRevolutionParameters</name>
+     <message>
+         <source>Revolution Parameters</source>
+-        <translation>回転押し出しの設定</translation>
++        <translation>回した形の設定</translation>
+     </message>
+ </context>
+ <context>
+@@ -3285,11 +3369,11 @@ Adjust the parameters and try again.</source>
+     <name>PartDesignGui::TaskMultiTransformParameters</name>
+     <message>
+         <source>Add Linear Pattern</source>
+-        <translation>直線配列を追加</translation>
++        <translation>直線の並びを追加</translation>
+     </message>
+     <message>
+         <source>Add Polar Pattern</source>
+-        <translation>円周配列を追加</translation>
++        <translation>円の並びを追加</translation>
+     </message>
+ </context>
+ <context>
+@@ -3651,7 +3735,7 @@ the sketch plane's normal vector will be used</source>
+     <name>PartDesignGui::ViewProviderLinearPattern</name>
+     <message>
+         <source>Linear Pattern Parameters</source>
+-        <translation>直線配列の設定</translation>
++        <translation>直線の並びの設定</translation>
+     </message>
+ </context>
+ <context>
+@@ -3665,7 +3749,7 @@ the sketch plane's normal vector will be used</source>
+     <name>PartDesignGui::ViewProviderPolarPattern</name>
+     <message>
+         <source>Polar Pattern Parameters</source>
+-        <translation>円周配列の設定</translation>
++        <translation>円の並びの設定</translation>
+     </message>
+ </context>
+ <context>
+@@ -3686,7 +3770,7 @@ the sketch plane's normal vector will be used</source>
+     <name>PartDesignGuii::ViewProviderMirrored</name>
+     <message>
+         <source>Mirror Parameters</source>
+-        <translation>鏡像の設定</translation>
++        <translation>鏡に映した形の設定</translation>
+     </message>
+ </context>
+ <context>
+@@ -4812,6 +4896,10 @@ in the 3D view for the sweep path.</source>
+         <source>Creates a boolean union which is sliced at the intersections of the selected shapes</source>
+         <translation>選択した形の交差でスライスされたブーリアン和を作成</translation>
+     </message>
++    <message>
++        <source>Boolean Fragments</source>
++        <translation>重なりで分ける（フラグメント）</translation>
++    </message>
+ </context>
+ <context>
+     <name>Part_CompoundFilter</name>
+@@ -4905,6 +4993,10 @@ Overlapping volumes of the shapes will be removed.</source>
+         <translation>選択した2つ以上のオブジェクト、またはコンパウンド内の形による「排他的論理和」ブーリアン演算を実行。
+ 形の間の重なった体積が取り除かれます。</translation>
+     </message>
++    <message>
++        <source>Boolean XOR</source>
++        <translation>どちらか一方だけ残す（XOR）</translation>
++    </message>
+ </context>
+ <context>
+     <name>QObject</name>
+@@ -5106,15 +5198,15 @@ This feature is broken and cannot be edited.</source>
+     </message>
+     <message>
+         <source>Edit Groove</source>
+-        <translation>回転切り抜きを編集</translation>
++        <translation>回して削った形を編集</translation>
+     </message>
+     <message>
+         <source>Edit Linear Pattern</source>
+-        <translation>直線配列を編集</translation>
++        <translation>直線の並びを編集</translation>
+     </message>
+     <message>
+         <source>Edit Mirror</source>
+-        <translation>鏡像を編集</translation>
++        <translation>鏡に映した形を編集</translation>
+     </message>
+     <message>
+         <source>Edit Pad</source>
+@@ -5126,7 +5218,7 @@ This feature is broken and cannot be edited.</source>
+     </message>
+     <message>
+         <source>Edit Polar Pattern</source>
+-        <translation>円周配列を編集</translation>
++        <translation>円の並びを編集</translation>
+     </message>
+     <message>
+         <source>Edit Shape Binder</source>
+@@ -6674,7 +6766,11 @@ Select the method to attach this sketch to selected objects.</source>
+     <name>StdCmdMeasure</name>
+     <message>
+         <source>Measures a feature</source>
+-        <translation>形を測定</translation>
++        <translation>選んだ物の長さ・距離・角度・面積を測ります</translation>
++    </message>
++    <message>
++        <source>&amp;Measure</source>
++        <translation>測る</translation>
+     </message>
+ </context>
+ <context>
+@@ -6768,11 +6864,11 @@ Select the method to attach this sketch to selected objects.</source>
+     <name>StdCmdTransformManip</name>
+     <message>
+         <source>Trans&amp;form</source>
+-        <translation>動かす・回す(&amp;F)</translation>
++        <translation>動かす</translation>
+     </message>
+     <message>
+         <source>Transforms the selected object in the 3D view</source>
+-        <translation>選んだものを 3D ビューの中で、つまんで動かしたり回したりする</translation>
++        <translation>選んだ物を、3D 画面の矢印と輪をドラッグして動かし・回します</translation>
+     </message>
+ </context>
+ <context>
+@@ -7082,7 +7178,7 @@ BFGS ソルバーはブロイデン・フレッチャー・ゴールドファー
+     </message>
+     <message>
+         <source>Removes the original geometry and keeps only the mirrored result.</source>
+-        <translation>元の図形を削除し、鏡像化の結果のみを保持します。</translation>
++        <translation>元の図形を消し、鏡に映した結果だけを残します。</translation>
+     </message>
+ </context>
+ <context>
+@@ -7966,7 +8062,7 @@ for ProjectionGroups</source>
+     </message>
+     <message>
+         <source>Could not extract generated groove tool!</source>
+-        <translation>回転切り抜きの形を取り出せません</translation>
++        <translation>回して削る形を取り出せません</translation>
+     </message>
+     <message>
+         <source>Could not extract generated revolution tool!</source>
+@@ -8102,7 +8198,7 @@ for ProjectionGroups</source>
+     </message>
+     <message>
+         <source>Failed to extract mirror plane</source>
+-        <translation>鏡像の面を取り出せません</translation>
++        <translation>鏡の面を取り出せません</translation>
+     </message>
+     <message>
+         <source>Failed to extract neutral plane reference edge</source>
+@@ -8302,11 +8398,11 @@ for ProjectionGroups</source>
+     </message>
+     <message>
+         <source>Mirror face must be planar</source>
+-        <translation>鏡像の面には平らな面を選んでください</translation>
++        <translation>鏡の面には平らな面を選んでください</translation>
+     </message>
+     <message>
+         <source>Mirror plane reference must be a sketch axis, a face of a feature or a datum plane</source>
+-        <translation>鏡像の面には、スケッチの軸か、形の面か、基準面を選んでください</translation>
++        <translation>鏡の面には、スケッチの軸か、形の面か、基準面を選んでください</translation>
+     </message>
+     <message>
+         <source>Missing external geometry reference</source>
+@@ -8382,7 +8478,7 @@ for ProjectionGroups</source>
+     </message>
+     <message>
+         <source>No mirror plane reference specified</source>
+-        <translation>鏡像の面が選ばれていません</translation>
++        <translation>鏡の面が選ばれていません</translation>
+     </message>
+     <message>
+         <source>No neutral plane reference specified</source>
+@@ -9512,6 +9608,10 @@ for ProjectionGroups</source>
+         <source>Export currently active assembly as a ASMT file.</source>
+         <translation>現在アクティブな組立をASMTファイルとしてエクスポート。</translation>
+     </message>
++    <message>
++        <source>Export ASMT File</source>
++        <translation>ASMT ファイルに書き出す</translation>
++    </message>
+ </context>
+ <context>
+     <name>Assembly_SolveAssembly</name>
+@@ -9965,7 +10065,11 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+     <name>CmdSketcherConstrainParallel</name>
+     <message>
+         <source>Parallel Constraint</source>
+-        <translation>平行拘束</translation>
++        <translation>平行</translation>
++    </message>
++    <message>
++        <source>Constrains the selected lines to be parallel</source>
++        <translation>選んだ 2 本の線を平行にする拘束（形の決まり）を付けます</translation>
+     </message>
+ </context>
+ <context>
+@@ -10067,6 +10171,54 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>New to CAD? (5 minutes)</source>
+         <translation>はじめての人へ（5 分）</translation>
+     </message>
++    <message>
++        <source>Move the “in effect up to here” line</source>
++        <translation>「ここまで有効」の線を動かす</translation>
++    </message>
++    <message>
++        <source>In effect up to here. Drag the line up to add a step in between, back to the bottom (or double-click it) to bring all steps back.</source>
++        <translation>ここまで有効。線を上へドラッグすると途中に手順を足せます。一番下へ戻す（またはダブルクリック）と全部の手順が効きます。</translation>
++    </message>
++    <message>
++        <source>All steps in effect</source>
++        <translation>全部の手順が有効</translation>
++    </message>
++    <message>
++        <source>Before the first step</source>
++        <translation>最初の手順より前</translation>
++    </message>
++    <message>
++        <source>In effect up to “{}”</source>
++        <translation>「{}」まで有効</translation>
++    </message>
++    <message>
++        <source>In effect up to “{}”. New steps go in here.</source>
++        <translation>「{}」まで有効。新しい手順はここに入ります。</translation>
++    </message>
++    <message>
++        <source>Before the first step. New steps go in here.</source>
++        <translation>最初の手順より前。新しい手順はここに入ります。</translation>
++    </message>
++    <message>
++        <source>Details ▸</source>
++        <translation>詳しく ▸</translation>
++    </message>
++    <message>
++        <source>Details ▾</source>
++        <translation>詳しく ▾</translation>
++    </message>
++    <message>
++        <source>Close the other settings</source>
++        <translation>ほかの設定を閉じる</translation>
++    </message>
++    <message>
++        <source>Show the other settings of this tool</source>
++        <translation>この道具のほかの設定を出す</translation>
++    </message>
++    <message>
++        <source>Picked: {}</source>
++        <translation>選択中: {}</translation>
++    </message>
+ </context>
+ <context>
+     <name>CommandSearch</name>
+@@ -11047,14 +11199,6 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Radius</source>
+         <translation>半径</translation>
+     </message>
+-    <message>
+-        <source>Diameter</source>
+-        <translation>直径</translation>
+-    </message>
+-    <message>
+-        <source>Radius</source>
+-        <translation>半径</translation>
+-    </message>
+     <message>
+         <source>Center distance</source>
+         <translation>中心間</translation>
+@@ -11779,4 +11923,700 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>クリックで変えられます。数・単位付き（10 mm、1/2 in）・計算式、または = のあとに式</translation>
+     </message>
+ </context>
++<context>
++    <name>CmdPartDesignNewSketch</name>
++    <message>
++        <source>New Sketch</source>
++        <translation>新しいスケッチ</translation>
++    </message>
++    <message>
++        <source>Creates a new sketch</source>
++        <translation>選んだ平らな面か床・正面・横に、新しいスケッチを描き始めます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdPartDesignThickness</name>
++    <message>
++        <source>Thickness</source>
++        <translation>厚み</translation>
++    </message>
++    <message>
++        <source>Applies thickness and removes the selected faces</source>
++        <translation>選んだ面を開けて、部品を決まった厚みの殻にします</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdImport</name>
++    <message>
++        <source>&amp;Import…</source>
++        <translation>読み込む…</translation>
++    </message>
++    <message>
++        <source>Imports a file into the active document</source>
++        <translation>ファイルを読み込んで、今の文書に入れます</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdExport</name>
++    <message>
++        <source>&amp;Export…</source>
++        <translation>書き出す…</translation>
++    </message>
++    <message>
++        <source>Exports an object in the active document</source>
++        <translation>選んだ物をほかの形式のファイルに書き出します</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdToggleVisibility</name>
++    <message>
++        <source>Toggle &amp;Visibility</source>
++        <translation>隠す・表示する</translation>
++    </message>
++    <message>
++        <source>Toggles the visibility of the selection</source>
++        <translation>選んだ物を隠します（隠れている物は表示します）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdMeshImport</name>
++    <message>
++        <source>Import Mesh…</source>
++        <translation>三角形の網（メッシュ）を読み込む…</translation>
++    </message>
++</context>
++<context>
++    <name>CmdMeshExport</name>
++    <message>
++        <source>Export Mesh…</source>
++        <translation>三角形の網（メッシュ）を書き出す…</translation>
++    </message>
++</context>
++<context>
++    <name>CmdTechDrawExportPageDXF</name>
++    <message>
++        <source>Export Page as DXF</source>
++        <translation>ページを DXF に書き出す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdTechDrawExportPageSVG</name>
++    <message>
++        <source>Export Page as SVG</source>
++        <translation>ページを SVG に書き出す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateLine</name>
++    <message>
++        <source>Line</source>
++        <translation>線</translation>
++    </message>
++    <message>
++        <source>Creates a line</source>
++        <translation>2 点をクリックして線を 1 本描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreatePolyline</name>
++    <message>
++        <source>Polyline</source>
++        <translation>線をつなげて描く</translation>
++    </message>
++    <message>
++        <source>Creates a polyline in the sketch. M key cycles through segment modes.</source>
++        <translation>クリックした点を順に線でつなぎます。始めの点をクリックすると閉じます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateRectangle</name>
++    <message>
++        <source>Rectangle</source>
++        <translation>長方形</translation>
++    </message>
++    <message>
++        <source>Creates a rectangle from 2 corner points</source>
++        <translation>対角の 2 点をクリックして長方形を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateRectangleCenter</name>
++    <message>
++        <source>Centered Rectangle</source>
++        <translation>長方形（中心から）</translation>
++    </message>
++    <message>
++        <source>Creates a centered rectangle from a center and a corner point</source>
++        <translation>中心と角をクリックして長方形を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateOblong</name>
++    <message>
++        <source>Rounded Rectangle</source>
++        <translation>角の丸い長方形</translation>
++    </message>
++    <message>
++        <source>Creates a rounded rectangle from 2 corner points</source>
++        <translation>角の丸い長方形を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateSquare</name>
++    <message>
++        <source>Square</source>
++        <translation>正方形</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateCircle</name>
++    <message>
++        <source>Circle From Center</source>
++        <translation>円（中心から）</translation>
++    </message>
++    <message>
++        <source>Creates a circle from a center and rim point</source>
++        <translation>中心と縁の点をクリックして円を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreate3PointCircle</name>
++    <message>
++        <source>Circle From 3 Points</source>
++        <translation>円（3 点）</translation>
++    </message>
++    <message>
++        <source>Creates a circle from 3 perimeter points</source>
++        <translation>縁の 3 点をクリックして円を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateArc</name>
++    <message>
++        <source>Arc From Center</source>
++        <translation>円弧（中心から）</translation>
++    </message>
++    <message>
++        <source>Creates an arc defined by a center point and an end point</source>
++        <translation>中心・始まり・終わりをクリックして円弧を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreate3PointArc</name>
++    <message>
++        <source>Arc From 3 Points</source>
++        <translation>円弧（3 点）</translation>
++    </message>
++    <message>
++        <source>Creates an arc defined by 2 end points and 1 point on the arc</source>
++        <translation>始まり・終わり・途中の点をクリックして円弧を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateEllipseByCenter</name>
++    <message>
++        <source>Ellipse From Center</source>
++        <translation>楕円（中心から）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateEllipseBy3Points</name>
++    <message>
++        <source>Ellipse From 3 Points</source>
++        <translation>楕円（3 点）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateSlot</name>
++    <message>
++        <source>Slot</source>
++        <translation>長穴</translation>
++    </message>
++    <message>
++        <source>Creates a slot</source>
++        <translation>両端の中心をクリックして長穴の形を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateArcSlot</name>
++    <message>
++        <source>Arc Slot</source>
++        <translation>円弧の長穴</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateBSpline</name>
++    <message>
++        <source>B-Spline</source>
++        <translation>自由曲線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateBSplineByInterpolation</name>
++    <message>
++        <source>B-Spline From Knots</source>
++        <translation>点を通る自由曲線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreatePeriodicBSpline</name>
++    <message>
++        <source>Periodic B-Spline</source>
++        <translation>閉じた自由曲線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreatePeriodicBSplineByInterpolation</name>
++    <message>
++        <source>Periodic B-Spline From Knots</source>
++        <translation>点を通る閉じた自由曲線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateRegularPolygon</name>
++    <message>
++        <source>Polygon</source>
++        <translation>正多角形</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateHexagon</name>
++    <message>
++        <source>Hexagon</source>
++        <translation>六角形</translation>
++    </message>
++    <message>
++        <source>Creates a hexagon from a center and corner point</source>
++        <translation>中心と角をクリックして正六角形を描きます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherDimension</name>
++    <message>
++        <source>Dimension</source>
++        <translation>寸法</translation>
++    </message>
++    <message>
++        <source>Constrains contextually based on the selection. The type can be changed with the M key.</source>
++        <translation>選んだ線・円・点に、長さ・距離・半径・角度の寸法を付けます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainDistance</name>
++    <message>
++        <source>Distance Dimension</source>
++        <translation>距離</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainDistanceX</name>
++    <message>
++        <source>Horizontal Dimension</source>
++        <translation>横の距離</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainDistanceY</name>
++    <message>
++        <source>Vertical Dimension</source>
++        <translation>縦の距離</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainAngle</name>
++    <message>
++        <source>Angle Dimension</source>
++        <translation>角度</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainRadius</name>
++    <message>
++        <source>Radius Dimension</source>
++        <translation>半径</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainDiameter</name>
++    <message>
++        <source>Diameter Dimension</source>
++        <translation>直径</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainRadiam</name>
++    <message>
++        <source>Radius/Diameter Dimension</source>
++        <translation>半径・直径</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainHorVer</name>
++    <message>
++        <source>Horizontal/Vertical Constraint</source>
++        <translation>水平・垂直</translation>
++    </message>
++    <message>
++        <source>Constrains the selected elements either horizontally or vertically, based on their closest alignment</source>
++        <translation>選んだ線を水平か垂直にそろえる拘束（形の決まり）を付けます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainHorizontal</name>
++    <message>
++        <source>Horizontal Constraint</source>
++        <translation>水平</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainVertical</name>
++    <message>
++        <source>Vertical Constraint</source>
++        <translation>垂直</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainPerpendicular</name>
++    <message>
++        <source>Perpendicular Constraint</source>
++        <translation>直角</translation>
++    </message>
++    <message>
++        <source>Constrains the selected lines to be perpendicular</source>
++        <translation>選んだ 2 本の線を直角にする拘束（形の決まり）を付けます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainCoincidentUnified</name>
++    <message>
++        <source>Coincident Constraint</source>
++        <translation>点をつなぐ</translation>
++    </message>
++    <message>
++        <source>Constrains the selected elements to be coincident</source>
++        <translation>選んだ点どうしを重ねる（点を線の上に載せる）拘束を付けます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainSymmetric</name>
++    <message>
++        <source>Symmetric Constraint</source>
++        <translation>対称</translation>
++    </message>
++    <message>
++        <source>Constrains the selected elements to be symmetric</source>
++        <translation>選んだ 2 点を、線か点を挟んで対称にする拘束を付けます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainLock</name>
++    <message>
++        <source>Lock Position</source>
++        <translation>位置を固定</translation>
++    </message>
++    <message>
++        <source>Constrains the selected vertices by adding horizontal and vertical distance constraints</source>
++        <translation>選んだ点の位置を、原点からの縦と横の寸法で決めます</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainTangent</name>
++    <message>
++        <source>Tangent/Collinear Constraint</source>
++        <translation>接する・一直線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreateChamfer</name>
++    <message>
++        <source>Chamfer</source>
++        <translation>面取り</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherToggleDrivingConstraint</name>
++    <message>
++        <source>Toggle Driving/Reference Constraints</source>
++        <translation>参照寸法にする・戻す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherToggleActiveConstraint</name>
++    <message>
++        <source>Toggle Constraints</source>
++        <translation>拘束を一時的に外す・戻す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherRemoveAxesAlignment</name>
++    <message>
++        <source>Remove Axes Alignment</source>
++        <translation>軸とのそろえを外す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherViewSection</name>
++    <message>
++        <source>Toggle Section View</source>
++        <translation>断面で見る</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_InsertHere</name>
++    <message>
++        <source>Insert Here</source>
++        <translation>ここに差し込む</translation>
++    </message>
++    <message>
++        <source>Move the blue line right after this step: the next step you make goes here, the steps below wait (greyed) until the line goes back down</source>
++        <translation>この手順のすぐ後ろへ青い線を動かします。次に作る手順はここに入り、下の手順は線を戻すまで待ちます（灰色）</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_LineToEnd</name>
++    <message>
++        <source>Bring All Steps Back</source>
++        <translation>全部の手順を有効に戻す</translation>
++    </message>
++    <message>
++        <source>Move the blue line back to the bottom: every step is in effect again</source>
++        <translation>青い線を一番下へ戻し、全部の手順を効かせます</translation>
++    </message>
++</context>
++<context>
++    <name>Gui::TreeWidget</name>
++    <message>
++        <source>Not in effect: below the blue line. Drag the line down to include it.</source>
++        <translation>未反映: 青い線より下です。線を下へドラッグすると効きます。</translation>
++    </message>
++</context>
++<context>
++    <name>SelectionWords</name>
++    <message>
++        <source>{name}: top face</source>
++        <translation>{name}の上面</translation>
++    </message>
++    <message>
++        <source>{name}: bottom face</source>
++        <translation>{name}の下面</translation>
++    </message>
++    <message>
++        <source>{name}: end face</source>
++        <translation>{name}の先の面</translation>
++    </message>
++    <message>
++        <source>{name}: start face</source>
++        <translation>{name}の元の面</translation>
++    </message>
++    <message>
++        <source>{name}: floor</source>
++        <translation>{name}の底の面</translation>
++    </message>
++    <message>
++        <source>{name}: side face</source>
++        <translation>{name}の側面</translation>
++    </message>
++    <message>
++        <source>{name}: slanted face</source>
++        <translation>{name}の斜めの面</translation>
++    </message>
++    <message>
++        <source>{name}: inner face</source>
++        <translation>{name}の内側の面</translation>
++    </message>
++    <message>
++        <source>{name}: outer face</source>
++        <translation>{name}の外側の面</translation>
++    </message>
++    <message>
++        <source>{name}: face</source>
++        <translation>{name}の面</translation>
++    </message>
++    <message>
++        <source>{name}: curved face</source>
++        <translation>{name}の曲面</translation>
++    </message>
++    <message>
++        <source>{name}: conical face</source>
++        <translation>{name}の円すいの面</translation>
++    </message>
++    <message>
++        <source>{name}: spherical face</source>
++        <translation>{name}の球の面</translation>
++    </message>
++    <message>
++        <source>{name}: vertical edge</source>
++        <translation>{name}の縦の辺</translation>
++    </message>
++    <message>
++        <source>{name}: top edge</source>
++        <translation>{name}の上の辺</translation>
++    </message>
++    <message>
++        <source>{name}: bottom edge</source>
++        <translation>{name}の下の辺</translation>
++    </message>
++    <message>
++        <source>{name}: horizontal edge</source>
++        <translation>{name}の横の辺</translation>
++    </message>
++    <message>
++        <source>{name}: slanted edge</source>
++        <translation>{name}の斜めの辺</translation>
++    </message>
++    <message>
++        <source>{name}: edge along the extrusion</source>
++        <translation>{name}の押し出した向きの辺</translation>
++    </message>
++    <message>
++        <source>{name}: rim</source>
++        <translation>{name}の縁</translation>
++    </message>
++    <message>
++        <source>{name}: arc edge</source>
++        <translation>{name}の円弧の辺</translation>
++    </message>
++    <message>
++        <source>{name}: curved edge</source>
++        <translation>{name}の曲線の辺</translation>
++    </message>
++    <message>
++        <source>{name}: edge</source>
++        <translation>{name}の辺</translation>
++    </message>
++    <message>
++        <source>{name}: corner</source>
++        <translation>{name}の角</translation>
++    </message>
++    <message>
++        <source>{first}, … and {n} more</source>
++        <translation>{first} ほか {n} 個</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCompCreateRectangles</name>
++    <message>
++        <source>Rectangle</source>
++        <translation>長方形</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCompHorizontalVertical</name>
++    <message>
++        <source>Horizontal/Vertical Constraint</source>
++        <translation>水平・垂直</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCompLine</name>
++    <message>
++        <source>Polyline</source>
++        <translation>線</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCompToggleConstraints</name>
++    <message>
++        <source>Toggle Constraints</source>
++        <translation>拘束を一時的に外す・戻す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainCoincident</name>
++    <message>
++        <source>Coincident Constraint</source>
++        <translation>点をつなぐ（点どうし）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainPointOnObject</name>
++    <message>
++        <source>Point-On-Object Constraint</source>
++        <translation>点を線に載せる</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherConstrainSnellsLaw</name>
++    <message>
++        <source>Refraction Constraint</source>
++        <translation>屈折（スネルの法則）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherCreatePolylineLegacy</name>
++    <message>
++        <source>Polyline</source>
++        <translation>線をつなげて描く（旧）</translation>
++    </message>
++</context>
++<context>
++    <name>CmdSketcherMirrorSketch</name>
++    <message>
++        <source>Mirror Sketch</source>
++        <translation>スケッチを鏡に映す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdPartExport</name>
++    <message>
++        <source>Export CAD File</source>
++        <translation>CAD ファイルに書き出す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdPartImport</name>
++    <message>
++        <source>Import CAD File</source>
++        <translation>CAD ファイルを読み込む</translation>
++    </message>
++</context>
++<context>
++    <name>CmdPartImportCurveNet</name>
++    <message>
++        <source>Import Curve Network</source>
++        <translation>曲線の網を読み込む</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdExportDependencyGraph</name>
++    <message>
++        <source>Export Dependency &amp;Graph…</source>
++        <translation>つながりの図を書き出す…</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdLinkImport</name>
++    <message>
++        <source>Import Links</source>
++        <translation>リンク先を読み込む</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdLinkImportAll</name>
++    <message>
++        <source>Import All Links</source>
++        <translation>全部のリンク先を読み込む</translation>
++    </message>
++</context>
++<context>
++    <name>StdCmdPrintPdf</name>
++    <message>
++        <source>Export P&amp;DF</source>
++        <translation>PDF に書き出す</translation>
++    </message>
++</context>
++<context>
++    <name>CmdMeshPolyTrim</name>
++    <message>
++        <source>Trim</source>
++        <translation>囲んだ所を切り取る</translation>
++    </message>
++</context>
++<context>
++    <name>CmdMeshTrimByPlane</name>
++    <message>
++        <source>Trim With Plane</source>
++        <translation>平面で切り取る</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 1cb8f7ddb..aa50c11ad 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -41,7 +41,7 @@
+     </message>
+     <message>
+         <source>Unified Arrange</source>
+-        <translation>並べる・鏡像</translation>
++        <translation>並べる・鏡に映す</translation>
+     </message>
+     <message>
+         <source>Standard Views</source>
+@@ -205,7 +205,7 @@
+     </message>
+     <message>
+         <source>Groove</source>
+-        <translation>回転切り抜き</translation>
++        <translation>回して削った形</translation>
+     </message>
+     <message>
+         <source>Hole</source>
+@@ -229,15 +229,15 @@
+     </message>
+     <message>
+         <source>Mirrored</source>
+-        <translation>鏡像</translation>
++        <translation>鏡に映した形</translation>
+     </message>
+     <message>
+         <source>LinearPattern</source>
+-        <translation>直線配列</translation>
++        <translation>直線の並び</translation>
+     </message>
+     <message>
+         <source>PolarPattern</source>
+-        <translation>円周配列</translation>
++        <translation>円の並び</translation>
+     </message>
+     <message>
+         <source>MultiTransform</source>
+-- 
+2.43.0
+

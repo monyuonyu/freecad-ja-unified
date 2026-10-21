@@ -1,7 +1,7 @@
 From e5528d9095e18f0934e8caead3e00b1f7f7e012c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:57:30 +0900
-Subject: [PATCH 269/286] FreeCADCmd: printing never fails because of the
+Subject: [PATCH 269/288] FreeCADCmd: printing never fails because of the
  console's code page
 
 A Windows console with a legacy code page (cp1252, cp932), or a C locale on
