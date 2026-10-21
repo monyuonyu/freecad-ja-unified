@@ -1,0 +1,51 @@
+From ae5db92963af4eb7d373a7713a93e15a6609ea51 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:30:08 +0900
+Subject: [PATCH 283/285] Unified: why a part does not move by dragging is said
+ at the cursor
+
+The status bar is overwritten by what the cursor is over; the message
+(placed by a formula, locked, grounded) also shows as a tip next to it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/MagnetDragGui.py | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/MagnetDragGui.py b/src/Mod/Unified/MagnetDragGui.py
+index 5135396a7..dd20df5a1 100644
+--- a/src/Mod/Unified/MagnetDragGui.py
++++ b/src/Mod/Unified/MagnetDragGui.py
+@@ -50,6 +50,12 @@ def magnet_pixels():
+     return max(2, params().GetInt("MagnetPixels", 12))
+ 
+ 
++def tell(text):
++    """A message at the cursor (the status bar is overwritten by what the cursor is over)."""
++    status(text, 8000)
++    QtWidgets.QToolTip.showText(QtGui.QCursor.pos() + QtCore.QPoint(16, 12), text)
++
++
+ def status(text, ms=6000):
+     mw = Gui.getMainWindow()
+     if mw is not None:
+@@ -705,14 +711,11 @@ class Handler:
+             return False
+         problem = S.check_movable(movable)
+         if problem in ("expression", "readonly"):
+-            status(
+-                tr("{} does not move by dragging: its place is set by a formula or locked").format(movable.obj.Label),
+-                8000,
+-            )
++            tell(tr("{} does not move by dragging: its place is set by a formula or locked").format(movable.obj.Label))
+             self.swallow = True
+             return True
+         if _grounded(movable.obj):
+-            status(tr("{} is fixed in its assembly (grounded): it does not move by dragging").format(movable.obj.Label), 8000)
++            tell(tr("{} is fixed in its assembly (grounded): it does not move by dragging").format(movable.obj.Label))
+             self.swallow = True
+             return True
+         Gui.Selection.clearPreselection()
+-- 
+2.43.0
+

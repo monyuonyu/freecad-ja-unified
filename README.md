@@ -298,6 +298,20 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.7
+
+**Push/pull faces and dimensions on the model** — change the shape by grabbing it, without picking a tool first. Screens: [docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull).
+
+- **Drag the arrow on a face**: hovering a flat face of a solid (or a full round face) shows a small arrow; dragging it moves the face along its normal — outward adds material, inward removes it.
+  The model follows live, a label at the cursor tells the distance and what changes; the distance snaps to round numbers and to the levels of other flat faces (flush), Shift drags freely.
+  Releasing keeps it (one undo step); Esc while dragging puts everything back
+- **What changes follows how the face was made**: the end face of a Pad/Pocket → its length, a hole floor → its depth, a side face of a sketch-based Pad/Pocket → the sketch dimension that moves only that line
+  (otherwise a new Pad/Pocket from the face), holes and round bosses → their diameter, boxes and cylinders → their sizes. Imported solids (STEP …) get a "push/pull" step that keeps the base solid, the face and the distance, editable later
+- **Or type it**: picking a face puts "Move face" with a distance field (negative: inward) first in the context bar; a round face gets a "Diameter" field
+- **Dimensions on the model**: picking a part or a step shows the numbers that drive it (Pad length and its sketch dimensions, hole diameter and depth, fillet radius, pattern count and spacing, box/cylinder sizes, push/pull distance)
+  as labels where they act; click one, type, Enter recomputes. Units (10 mm, 1/2 in), arithmetic and `=` expressions work. Nothing picked: no labels
+- Tests: `FreeCADCmd -t TestPushPull` (26), `FreeCADCmd -t TestDimensionLabels` (11), and `tests/ui/pushpull_check.py` with real xdotool drags on a virtual screen (37 checks)
+
 ## Changes in 0.6.6
 
 **Parts shelf** ("Parts Shelf" on the tool strip; Ctrl+K: ねじ, ボルト, ナット, 座金, ワッシャ, 六角穴付き, M6, screw, nut, washer). Details: [docs/parts-shelf.md](docs/parts-shelf.md);

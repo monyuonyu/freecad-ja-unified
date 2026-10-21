@@ -1,0 +1,102 @@
+{
+ "pad_top": {
+  "arrow_shown": true,
+  "arrow_on_face_center": true,
+  "arrow_points_up": true,
+  "readouts": [
+   "<span style='font-size:13pt; font-weight:600; color:#1d1d1f'>+4.5 mm</span><br><span style='color:#555'>押し出し の長さ 5 → 9.5 mm</span>",
+   "<span style='font-size:13pt; font-weight:600; color:#1d1d1f'>+5 mm</span><br><span style='color:#555'>押し出し の長さ 5 → 10 mm</span>"
+  ],
+  "pad_length_after": 10.0,
+  "length_grew": true,
+  "snapped_to_round_number": true,
+  "no_new_feature": true,
+  "one_undo_step": true,
+  "undo_back_to_5": true,
+  "redo_again": true,
+  "pushed_in_length": 8.5,
+  "pushed_in_shorter": true
+ },
+ "escape": {
+  "moved_while_dragging": true,
+  "length_back": true,
+  "same_objects": true,
+  "no_undo_step": true
+ },
+ "side_face": {
+  "arrow_shown": true,
+  "arrow_points_x": true,
+  "width_after": 42.5,
+  "sketch_width_changed": true,
+  "readout_names_the_sketch_dimension": true,
+  "no_new_feature": true
+ },
+ "flush": {
+  "pad_length_after": 12.0,
+  "flush_with_the_block": true,
+  "readout_says_flush": true
+ },
+ "plain_solid": {
+  "pushpull_feature_made": true,
+  "distance": -2.0,
+  "face_moved_in": true,
+  "base_hidden": true,
+  "hole_arrow_shown": true,
+  "hole_arrow_radial": true,
+  "hole_radii": [
+   5.0,
+   7.5
+  ],
+  "hole_wider": true
+ },
+ "context_bar": {
+  "bar_shown": true,
+  "buttons": [
+   "面を動かす",
+   "スケッチ",
+   "押し出す",
+   "切り抜く",
+   "穴",
+   "厚み",
+   "くっつける",
+   "AI に頼む",
+   "…",
+   "面積 1200 mm²",
+   "寸法を残す"
+  ],
+  "field_shown": true,
+  "field_default": "5 mm",
+  "typed_went_into_field": true,
+  "pad_length_after": 8.0,
+  "typed_3_made_it_8": true
+ },
+ "dimension_labels": {
+  "labels": [
+   "30 mm",
+   "40 mm",
+   "5 mm"
+  ],
+  "length_label": true,
+  "sketch_labels": true,
+  "length_label_near_its_point_px": 6.0,
+  "field_opened": true,
+  "field_text": "5 mm",
+  "pad_length_after": 12.0,
+  "edited_to_12": true,
+  "labels_after": [
+   "12 mm",
+   "30 mm",
+   "40 mm"
+  ],
+  "expression_length": 10.0,
+  "expression_works": true,
+  "expression_label": [
+   "30 mm",
+   "40 mm",
+   "ƒ 10 mm"
+  ],
+  "hidden_on_deselect": true
+ },
+ "failed": [],
+ "passed": 37
+}

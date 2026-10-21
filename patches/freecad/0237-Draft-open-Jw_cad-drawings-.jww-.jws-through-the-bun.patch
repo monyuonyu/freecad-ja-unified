@@ -1,7 +1,7 @@
 From 8206e945675d40820401acbf01057f1ccc9cca3c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 09:04:36 +0900
-Subject: [PATCH 237/281] Draft: open Jw_cad drawings (.jww/.jws) through the
+Subject: [PATCH 237/285] Draft: open Jw_cad drawings (.jww/.jws) through the
  bundled jww2dxf
 
 importJWW converts with jww2dxf (github.com/monyuonyu/jww-tools) to a

@@ -1,0 +1,3901 @@
+From 73e06dea49378bac1544876107adcdd89bfaa723 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:31:27 +0900
+Subject: [PATCH 284/285] Unified: push/pull a face with the arrow under the
+ cursor; the driving numbers on the model
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+面を動かす: hovering a flat face of a solid (or a full round face) shows an arrow on it; dragging
+the arrow moves the face along its normal, outward adds material, inward removes it. The model
+follows as it goes in one open transaction (one undo step, Esc puts everything back); the label at
+the cursor says how far and what changes; the distance snaps to round numbers and to the levels of
+other flat faces (flush), Shift drags freely. The context bar of a picked flat face offers it first
+with the distance field; a round face offers its diameter.
+
+What changes is decided the most parametric way (PushPull.py, headless tests TestPushPull):
+the end face of a Pad/Pocket or the floor of a flat hole → its Length/Depth; a side or round face
+of a sketch-based Pad/Pocket → the sketch dimension that moves that line or circle alone (found by
+trying each dimension); a Hole's round face → its Diameter; Part/PartDesign boxes and cylinders →
+their sizes; other flat faces of a body → a new Pad/Pocket from the face; plain solids (STEP) → a
+"push/pull" feature that keeps the base, the face and the distance (editable; full round faces
+change their radius).
+
+形の上の寸法: picking a part or a step shows its driving numbers (a Pad's length and its sketch's
+dimensions, a hole's diameter and depth, a fillet's radius, a pattern's count and spacing,
+primitive sizes, the push/pull distance) as labels next to what they drive; click, type a number,
+a unit, arithmetic or "=expression", Enter recomputes (one undo step). Nothing picked: no labels.
+(DimensionLabels.py, headless tests TestDimensionLabels.)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |    7 +
+ src/Mod/Unified/ContextRules.py               |   23 +
+ src/Mod/Unified/DimensionLabels.py            |  504 ++++++++
+ src/Mod/Unified/DimensionLabelsGui.py         |  327 +++++
+ .../translations/UnifiedWording_ja.ts         |  184 +++
+ src/Mod/Unified/PushPull.py                   | 1047 +++++++++++++++++
+ src/Mod/Unified/PushPull.svg                  |    9 +
+ src/Mod/Unified/PushPullGui.py                |  973 +++++++++++++++
+ src/Mod/Unified/TestDimensionLabels.py        |  196 +++
+ src/Mod/Unified/TestPushPull.py               |  450 +++++++
+ src/Mod/Unified/UnifiedCommands.py            |    8 +
+ 11 files changed, 3728 insertions(+)
+ create mode 100644 src/Mod/Unified/DimensionLabels.py
+ create mode 100644 src/Mod/Unified/DimensionLabelsGui.py
+ create mode 100644 src/Mod/Unified/PushPull.py
+ create mode 100644 src/Mod/Unified/PushPull.svg
+ create mode 100644 src/Mod/Unified/PushPullGui.py
+ create mode 100644 src/Mod/Unified/TestDimensionLabels.py
+ create mode 100644 src/Mod/Unified/TestPushPull.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index c35094ef7..6b8d37b80 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -61,6 +61,13 @@ if(BUILD_GUI)
+     list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
+ endif(BUILD_GUI)
+ 
++# Push/pull a face (面を動かす) and the dimensions on the model (形の上の寸法): what changes,
++# tested headless ("FreeCADCmd -t TestPushPull", "FreeCADCmd -t TestDimensionLabels")
++list(APPEND Unified_Scripts PushPull.py TestPushPull.py DimensionLabels.py TestDimensionLabels.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts PushPullGui.py DimensionLabelsGui.py PushPull.svg)
++endif(BUILD_GUI)
++
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+ fc_copy_sources(UnifiedScripts "${CMAKE_BINARY_DIR}/Mod/Unified" ${Unified_Scripts})
+ 
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 55bcd4f13..183056a64 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -27,6 +27,8 @@ def A(command, label, field=None):
+ 
+ 
+ LENGTH = ("Length", "mm", 10.0)
++DISTANCE = ("Distance", "mm", 5.0)  # push/pull: how far the face moves (negative: inward)
++DIAMETER = ("Diameter", "mm", 10.0)
+ RADIUS = ("Radius", "mm", 2.0)
+ SIZE = ("Size", "mm", 1.0)
+ THICK = ("Value", "mm", 1.0)
+@@ -43,6 +45,7 @@ RULES = {
+         A("Sketcher_EditSketch", T("Edit")),
+     ],
+     "flat face": [
++        A("Unified_PushPull", T("Move face"), DISTANCE),
+         A("PartDesign_NewSketch", T("Sketch")),
+         A("PartDesign_Pad", T("Extrude"), LENGTH),
+         A("PartDesign_Pocket", T("Cut in"), LENGTH),
+@@ -52,6 +55,7 @@ RULES = {
+     ],
+     "round face": [
+         A("Unified_InsertScrew", T("Insert screw")),
++        A("Unified_FaceDiameter", T("Diameter"), DIAMETER),
+         A("Std_Measure", T("Measure")),
+         A("Unified_SnapAxes", T("Line up axes")),
+         A("PartDesign_Fillet", T("Fillet"), RADIUS),
+@@ -355,8 +359,22 @@ def field_of(command):
+     return None
+ 
+ 
++# Tools that take the bar's number themselves (registered by their GUI modules, e.g.
++# PushPullGui): command -> function(text), and the number to show first: command -> function()
++VALUE_HANDLERS = {}
++VALUE_DEFAULTS = {}
++
++
+ def default_value(command):
+     """The number shown in the field: the last one used with this tool, else the default"""
++    hook = VALUE_DEFAULTS.get(command)
++    if hook is not None:
++        try:
++            text = hook()
++            if text:
++                return text
++        except Exception:
++            pass
+     field = field_of(command)
+     if not field:
+         return ""
+@@ -369,6 +387,11 @@ def run_with_value(command, text):
+     import FreeCADGui as Gui
+     from PySide import QtWidgets
+ 
++    handler = VALUE_HANDLERS.get(command)
++    if handler is not None:
++        handler(text)
++        return
++
+     field = field_of(command)
+     run(command)
+     QtWidgets.QApplication.processEvents()
+diff --git a/src/Mod/Unified/DimensionLabels.py b/src/Mod/Unified/DimensionLabels.py
+new file mode 100644
+index 000000000..5d5ae744a
+--- /dev/null
++++ b/src/Mod/Unified/DimensionLabels.py
+@@ -0,0 +1,504 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""形の上の寸法 (dimensions on the model): the numbers that drive the picked thing, and where on
++the model each one belongs.
++
++Pick a part or a step of it (a face in the 3D view, or the step in the history): its driving
++numbers (a Pad's length, the dimensions of its sketch, a hole's diameter and depth, a fillet's
++radius, a pattern's count and spacing, a box's sizes, a push/pull's distance) are shown as labels
++on the model next to the geometry they drive (DimensionLabelsGui.py). Click one, type, Enter: the
++model is recomputed. A number, a quantity with a unit, arithmetic, or "=" and an expression.
++
++No Qt here: TestDimensionLabels.py tests it headless.
++"""
++
++import FreeCAD as App
++import Part
++
++import PushPull as PP
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++# Names of the numbers (translated by the GUI in the context "Unified_Dimensions")
++NAMES = {
++    "Length": QT_TRANSLATE_NOOP("Unified_Dimensions", "Length"),
++    "Length2": QT_TRANSLATE_NOOP("Unified_Dimensions", "Second length"),
++    "Depth": QT_TRANSLATE_NOOP("Unified_Dimensions", "Depth"),
++    "Diameter": QT_TRANSLATE_NOOP("Unified_Dimensions", "Diameter"),
++    "Radius": QT_TRANSLATE_NOOP("Unified_Dimensions", "Radius"),
++    "Radius1": QT_TRANSLATE_NOOP("Unified_Dimensions", "Bottom radius"),
++    "Radius2": QT_TRANSLATE_NOOP("Unified_Dimensions", "Top radius"),
++    "Size": QT_TRANSLATE_NOOP("Unified_Dimensions", "Chamfer size"),
++    "Value": QT_TRANSLATE_NOOP("Unified_Dimensions", "Thickness"),
++    "Width": QT_TRANSLATE_NOOP("Unified_Dimensions", "Width"),
++    "Height": QT_TRANSLATE_NOOP("Unified_Dimensions", "Height"),
++    "Angle": QT_TRANSLATE_NOOP("Unified_Dimensions", "Angle"),
++    "Occurrences": QT_TRANSLATE_NOOP("Unified_Dimensions", "Count"),
++    "Offset": QT_TRANSLATE_NOOP("Unified_Dimensions", "Spacing"),
++    "LengthFwd": QT_TRANSLATE_NOOP("Unified_Dimensions", "Length"),
++    "Distance": QT_TRANSLATE_NOOP("Unified_Dimensions", "Distance"),
++    "constraint": QT_TRANSLATE_NOOP("Unified_Dimensions", "Sketch dimension"),
++}
++QT_TRANSLATE_NOOP("Unified_Dimensions", "Change a dimension")  # the undo step
++
++MAX_LABELS = 16
++
++
++class Dim:
++    """One driving number: the object and its property (or the sketch and its constraint),
++    the kind ("length", "angle", "count"), the prefix shown before it, and where it goes."""
++
++    def __init__(self, obj, prop, anchor, kind="length", prefix="", index=None, name=""):
++        self.obj = obj
++        self.prop = prop
++        self.index = index
++        self.anchor = App.Vector(anchor)
++        self.kind = kind
++        self.prefix = prefix
++        self.name = name  # a sketch dimension's own name, if it has one
++        if index is not None:
++            c = obj.Constraints[index]
++            self.path = ".Constraints." + c.Name if c.Name else ".Constraints[{}]".format(index)
++        else:
++            self.path = prop
++
++    @property
++    def value(self):
++        if self.index is not None:
++            return float(self.obj.getDatum(self.index).Value)
++        v = getattr(self.obj, self.prop)
++        return float(getattr(v, "Value", v))
++
++    @property
++    def expression(self):
++        try:
++            for path, expr in self.obj.ExpressionEngine:
++                if path.lstrip(".") == self.path.lstrip("."):
++                    return expr
++                if self.index is not None and path.lstrip(".") == "Constraints[{}]".format(self.index):
++                    return expr
++        except Exception:
++            pass
++        return None
++
++    def text(self):
++        """What the label shows: ⌀10, R2, 30°, ×4, 12.5 mm (ƒ in front when an expression sets it)."""
++        v = self.value
++        if self.kind == "count":
++            body = "×{}".format(int(round(v)))
++        elif self.kind == "angle":
++            body = "{}°".format(_fmt(v))
++        elif self.prefix:
++            body = "{}{}".format(self.prefix, _fmt(v))
++        else:
++            body = "{} mm".format(_fmt(v))
++        return ("ƒ " + body) if self.expression else body
++
++    def edit_text(self):
++        """What the field starts with when the label is clicked."""
++        expr = self.expression
++        if expr:
++            return "=" + expr
++        v = self.value
++        if self.kind == "count":
++            return str(int(round(v)))
++        if self.kind == "angle":
++            return "{} °".format(_fmt(v))
++        return "{} mm".format(_fmt(v))
++
++    def __repr__(self):
++        return "<Dim {}.{} {}>".format(self.obj.Name, self.path, self.text())
++
++
++def _fmt(value):
++    text = "{:.3f}".format(value).rstrip("0").rstrip(".")
++    return "0" if text in ("-0", "") else text
++
++
++def _is(obj, type_name):
++    try:
++        return obj.isDerivedFrom(type_name)
++    except Exception:
++        return False
++
++
++def shape_frame(obj):
++    """Placement from the coordinates of the object's shape (a body's coordinates for its steps
++    and sketches) to the global ones."""
++    body = PP._body_of(obj)
++    if body is not None and body is not obj:
++        try:
++            return body.getGlobalPlacement()
++        except Exception:
++            return App.Placement()
++    try:
++        return obj.getGlobalPlacement().multiply(obj.Placement.inverse())
++    except Exception:
++        return App.Placement()
++
++
++# --------------------------------------------------------------------------- per kind of object
++
++
++def _sketch_dims(sketch, frame=None):
++    """The driving dimensions of a sketch, each in the middle of what it measures."""
++    if frame is None:
++        frame = shape_frame(sketch)
++    to_global = frame.multiply(sketch.Placement)
++    out = []
++
++    def point(geo, pos):
++        if pos == 0:  # the line itself: its middle
++            a = App.Vector(sketch.getPoint(geo, 1))
++            b = App.Vector(sketch.getPoint(geo, 2))
++            return (a + b) * 0.5
++        return App.Vector(sketch.getPoint(geo, pos))
++
++    for i, c in enumerate(sketch.Constraints):
++        if c.Type not in ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter", "Angle"):
++            continue
++        if not c.Driving or getattr(c, "InVirtualSpace", False) or not getattr(c, "IsActive", True):
++            continue
++        try:
++            if c.Type in ("Radius", "Diameter"):
++                g = sketch.Geometry[c.First]
++                r = g.Radius
++                p = App.Vector(g.Center) + App.Vector(0.7071, 0.7071, 0) * r
++                prefix = "R" if c.Type == "Radius" else "⌀"
++                out.append(Dim(sketch, "Constraints", to_global.multVec(p), "length", prefix, i, c.Name))
++                continue
++            if c.Type == "Angle":
++                p = point(c.First, 0) if c.FirstPos == 0 else point(c.First, c.FirstPos)
++                out.append(Dim(sketch, "Constraints", to_global.multVec(p), "angle", "", i, c.Name))
++                continue
++            if c.Second == -2000:
++                if c.FirstPos == 0:
++                    p = point(c.First, 0)
++                else:
++                    p = point(c.First, c.FirstPos) * 0.5
++            else:
++                a = point(c.First, c.FirstPos)
++                if c.SecondPos == 0:
++                    s = App.Vector(sketch.getPoint(c.Second, 1))
++                    e = App.Vector(sketch.getPoint(c.Second, 2))
++                    d = e - s
++                    t = 0.0 if d.Length < 1e-12 else (a - s).dot(d) / d.dot(d)
++                    b = s + d * t
++                else:
++                    b = point(c.Second, c.SecondPos)
++                p = (a + b) * 0.5
++            out.append(Dim(sketch, "Constraints", to_global.multVec(p), "length", "", i, c.Name))
++        except Exception:
++            continue
++    return out
++
++
++def _profile(feature):
++    try:
++        obj, subs = feature.Profile
++    except Exception:
++        return None, None
++    if obj is None:
++        return None, None
++    if _is(obj, "Sketcher::SketchObject") and not any(subs):
++        return obj, obj.Shape
++    try:
++        return obj, obj.Shape.getElement(subs[0])
++    except Exception:
++        return obj, None
++
++
++def _extrusion_dims(feature, frame, with_sketch=True):
++    out = []
++    sketch, profile = _profile(feature)
++    plane = PP._profile_plane(feature)
++    if profile is not None and plane is not None and profile.Edges:
++        p0, n0 = plane
++        try:
++            tool = feature.AddSubShape
++            side = (tool.CenterOfMass - p0).dot(n0) if not tool.isNull() else 1.0
++        except Exception:
++            side = 1.0
++        e = n0 * (1 if side >= 0 else -1)
++        edge = max(profile.Edges, key=lambda ed: ed.BoundBox.XMax + ed.BoundBox.YMax + ed.BoundBox.ZMax)
++        mid = edge.valueAt(sum(edge.ParameterRange) / 2)
++        if feature.Type in ("Length", "TwoLengths") or feature.Type == "?TwoLengths":
++            length = float(feature.Length.Value)
++            if getattr(feature, "Midplane", False):
++                anchor = mid + e * (length / 4)
++            else:
++                anchor = mid + e * (length / 2)
++            out.append(Dim(feature, "Length", frame.multVec(anchor)))
++            if "TwoLengths" in feature.Type:
++                out.append(Dim(feature, "Length2", frame.multVec(mid - e * (float(feature.Length2.Value) / 2))))
++    if with_sketch and sketch is not None and _is(sketch, "Sketcher::SketchObject"):
++        out += _sketch_dims(sketch, frame)
++    return out
++
++
++def _hole_dims(hole, frame):
++    out = []
++    sketch, _profile_shape = _profile(hole)
++    if sketch is None or not _is(sketch, "Sketcher::SketchObject"):
++        return out
++    pl = sketch.Placement
++    n = pl.Rotation.multVec(App.Vector(0, 0, 1))
++    down = n * (1 if hole.Reversed else -1)
++    centers = [App.Vector(g.Center) for i, g in enumerate(sketch.Geometry) if hasattr(g, "Center") and not sketch.getConstruction(i)]
++    centers += [App.Vector(g.X, g.Y, 0) for i, g in enumerate(sketch.Geometry) if type(g).__name__ == "Point"]
++    if not centers:
++        return out
++    c = pl.multVec(centers[0])
++    r = float(hole.Diameter.Value) / 2
++    across = pl.Rotation.multVec(App.Vector(0.7071, 0.7071, 0))
++    out.append(Dim(hole, "Diameter", frame.multVec(c + across * r), "length", "⌀"))
++    if hole.DepthType == "Dimension":
++        out.append(Dim(hole, "Depth", frame.multVec(c + across * r + down * float(hole.Depth.Value) / 2)))
++    return out
++
++
++def _edge_mid(obj, names):
++    for name in names or []:
++        if not name.startswith("Edge"):
++            continue
++        try:
++            edge = obj.Shape.getElement(name)
++            return edge.valueAt(sum(edge.ParameterRange) / 2)
++        except Exception:
++            continue
++    return None
++
++
++def _dress_up_dims(feature, frame, prop, prefix=""):
++    try:
++        base, subs = feature.Base
++    except Exception:
++        return []
++    p = _edge_mid(base, subs)
++    if p is None:
++        try:
++            p = base.Shape.getElement(subs[0]).CenterOfMass
++        except Exception:
++            p = feature.Shape.BoundBox.Center
++    return [Dim(feature, prop, frame.multVec(p), "length", prefix)]
++
++
++def _pattern_dims(feature, frame):
++    try:
++        center = feature.Originals[0].AddSubShape.BoundBox.Center
++    except Exception:
++        center = feature.Shape.BoundBox.Center
++    out = [Dim(feature, "Occurrences", frame.multVec(center), "count")]
++    if _is(feature, "PartDesign::LinearPattern"):
++        mode = getattr(feature, "Mode", "Extent")
++        prop = "Offset" if mode == "Spacing" and hasattr(feature, "Offset") else "Length"
++        out.append(Dim(feature, prop, frame.multVec(center)))
++    elif _is(feature, "PartDesign::PolarPattern"):
++        out.append(Dim(feature, "Angle", frame.multVec(center), "angle"))
++    return out
++
++
++def _box_dims(obj, frame):
++    pl = obj.Placement
++    l, w, h = float(obj.Length.Value), float(obj.Width.Value), float(obj.Height.Value)
++    to = frame.multiply(pl)
++    return [
++        Dim(obj, "Length", to.multVec(App.Vector(l / 2, 0, 0))),
++        Dim(obj, "Width", to.multVec(App.Vector(0, w / 2, 0))),
++        Dim(obj, "Height", to.multVec(App.Vector(0, 0, h / 2))),
++    ]
++
++
++def _cylinder_dims(obj, frame):
++    to = frame.multiply(obj.Placement)
++    r, h = float(obj.Radius.Value), float(obj.Height.Value)
++    return [
++        Dim(obj, "Radius", to.multVec(App.Vector(r * 0.7071, r * 0.7071, h)), "length", "R"),
++        Dim(obj, "Height", to.multVec(App.Vector(r, 0, h / 2))),
++    ]
++
++
++def dimensions_of(obj, with_sketch=True):
++    """The driving numbers of one object (a step of a part, a sketch, a primitive, a part)."""
++    frame = shape_frame(obj)
++    try:
++        if _is(obj, "Sketcher::SketchObject"):
++            return _sketch_dims(obj, frame)
++        if _is(obj, "PartDesign::Body"):
++            out = []
++            for f in obj.Group:
++                if _is(f, "PartDesign::Feature") and not _is(f, "Sketcher::SketchObject"):
++                    out += dimensions_of(f, with_sketch=False)
++            return out[:MAX_LABELS]
++        if _is(obj, "PartDesign::Hole"):
++            return _hole_dims(obj, frame)
++        if _is(obj, "PartDesign::Pad") or _is(obj, "PartDesign::Pocket"):
++            return _extrusion_dims(obj, frame, with_sketch)
++        if _is(obj, "PartDesign::Revolution") or _is(obj, "PartDesign::Groove"):
++            sketch, profile = _profile(obj)
++            p = profile.BoundBox.Center if profile is not None else obj.Shape.BoundBox.Center
++            out = [Dim(obj, "Angle", frame.multVec(p), "angle")]
++            if with_sketch and sketch is not None and _is(sketch, "Sketcher::SketchObject"):
++                out += _sketch_dims(sketch, frame)
++            return out
++        if _is(obj, "PartDesign::Fillet"):
++            return _dress_up_dims(obj, frame, "Radius", "R")
++        if _is(obj, "PartDesign::Chamfer"):
++            return _dress_up_dims(obj, frame, "Size")
++        if _is(obj, "PartDesign::Thickness"):
++            return _dress_up_dims(obj, frame, "Value")
++        if _is(obj, "PartDesign::LinearPattern") or _is(obj, "PartDesign::PolarPattern"):
++            return _pattern_dims(obj, frame)
++        if _is(obj, "PartDesign::AdditiveBox") or _is(obj, "PartDesign::SubtractiveBox") or _is(obj, "Part::Box"):
++            return _box_dims(obj, frame)
++        if _is(obj, "PartDesign::AdditiveCylinder") or _is(obj, "PartDesign::SubtractiveCylinder") or _is(obj, "Part::Cylinder"):
++            return _cylinder_dims(obj, frame)
++        if _is(obj, "Part::Sphere") or _is(obj, "PartDesign::AdditiveSphere"):
++            to = frame.multiply(obj.Placement)
++            return [Dim(obj, "Radius", to.multVec(App.Vector(float(obj.Radius.Value), 0, 0)), "length", "R")]
++        if _is(obj, "Part::Cone"):
++            to = frame.multiply(obj.Placement)
++            h = float(obj.Height.Value)
++            return [
++                Dim(obj, "Radius1", to.multVec(App.Vector(float(obj.Radius1.Value), 0, 0)), "length", "R"),
++                Dim(obj, "Radius2", to.multVec(App.Vector(float(obj.Radius2.Value), 0, h)), "length", "R"),
++                Dim(obj, "Height", to.multVec(App.Vector(0, 0, h / 2))),
++            ]
++        if _is(obj, "Part::Extrusion"):
++            try:
++                c = obj.Base.Shape.BoundBox.Center
++                d = App.Vector(obj.Dir)
++                d.normalize()
++                return [Dim(obj, "LengthFwd", frame.multVec(c + d * float(obj.LengthFwd.Value) / 2))]
++            except Exception:
++                return []
++        if PP._is_pushpull(obj):
++            base, subs = obj.Base
++            info = PP.FaceInfo(base.Shape.getElement(subs[0]))
++            dist = float(obj.Distance.Value)
++            return [Dim(obj, "Distance", frame.multVec(info.origin + info.normal * dist))]
++    except Exception as e:
++        App.Console.PrintLog("Dimensions on the model: {}: {}\n".format(obj.Name, e))
++    return []
++
++
++def owner_of_pick(root, sub, point=None):
++    """The object whose numbers belong to a pick: for a face or edge of a part, the step that
++    made it; for a whole object, the object."""
++    import SnapMath as S
++
++    pick = S.Pick(root, sub, point)
++    objs = pick.objects()
++    owner = objs[-1] if objs else root
++    element = pick.element
++    body = PP._body_of(owner)
++    shape_owner = owner.Tip if _is(owner, "PartDesign::Body") else owner
++    if not element or body is None or shape_owner is None or not _is(shape_owner, "PartDesign::Feature"):
++        return owner
++    try:
++        shape = shape_owner.Shape
++        sel = shape.getElement(element)
++    except Exception:
++        return owner
++    faces = []
++    if element.startswith("Face"):
++        faces = [sel]
++    elif element.startswith("Edge"):
++        faces = [f for f in shape.Faces if any(e.isSame(sel) for e in f.Edges)]
++    probe = None
++    if point is not None:
++        frame = PP._frame(pick, shape_owner, element)
++        if frame is not None:
++            probe = frame.inverse().multVec(point)
++    for face in faces:
++        p = probe if probe is not None and PP._on_face(face, probe, 1e-3) else PP._inner_point(face)
++        maker = _dress_up_maker(body, shape_owner, face, p)
++        if maker is not None:
++            return maker
++    for face in faces:
++        p = probe if probe is not None and PP._on_face(face, probe, 1e-3) else PP._inner_point(face)
++        maker = PP.creator(body, shape_owner, face, p)
++        if maker is not None:
++            return maker
++    return shape_owner
++
++
++def _dress_up_maker(body, last, face, probe):
++    """The fillet, chamfer or shell that made the face: it is in its result, not in what it
++    started from."""
++    for f in reversed(PP._features_up_to(body, last)):
++        if not any(_is(f, t) for t in ("PartDesign::Fillet", "PartDesign::Chamfer", "PartDesign::Thickness")):
++            continue
++        base = getattr(f, "BaseFeature", None)
++        try:
++            now = any(PP._same_surface(face, ff) and PP._on_face(ff, probe, 1e-3) for ff in f.Shape.Faces)
++            before = base is not None and any(
++                PP._same_surface(face, ff) and PP._on_face(ff, probe, 1e-3) for ff in base.Shape.Faces
++            )
++        except Exception:
++            continue
++        if now and not before:
++            return f
++    return None
++
++
++def dimensions_for(picks):
++    """The labels for the selection: one object picked (maybe several elements of it)."""
++    if not picks:
++        return []
++    roots = {(r.Document.Name, r.Name) for r, _s, _p in picks}
++    if len(roots) != 1:
++        return []
++    owners = []
++    for root, sub, point in picks:
++        o = owner_of_pick(root, sub, point)
++        if o is not None and o not in owners:
++            owners.append(o)
++    if len(owners) != 1:
++        return []
++    return dimensions_of(owners[0])[:MAX_LABELS]
++
++
++def set_dimension(dim, text, title="Change a dimension"):
++    """Give the number a new value (or an expression after "="), recompute; one undo step.
++    Returns None, or what went wrong."""
++    text = (text or "").strip().replace("−", "-").replace("，", ".").replace("．", ".")
++    if not text:
++        return "empty"
++    obj = dim.obj
++    doc = obj.Document
++    broken = PP.broken(doc)
++    doc.openTransaction(title)
++    try:
++        if text.startswith("="):
++            obj.setExpression(dim.path, text[1:].strip())
++        else:
++            if dim.expression:
++                obj.setExpression(dim.path, None)
++            q = App.Units.Quantity(text)
++            if dim.kind == "count":
++                setattr(obj, dim.prop, int(round(q.Value)))
++            else:
++                unit = App.Units.Angle if dim.kind == "angle" else App.Units.Length
++                if q.Unit == App.Units.Unit():
++                    q = App.Units.Quantity(q.Value, unit)
++                elif q.Unit != unit:
++                    raise ValueError("unit")
++                if dim.index is not None:
++                    obj.setDatum(dim.index, q)
++                else:
++                    setattr(obj, dim.prop, q)
++        doc.recompute()
++        if not PP.broken(doc) <= broken:
++            raise ValueError("the model cannot be made with this value")
++    except Exception as e:
++        doc.abortTransaction()
++        try:
++            doc.recompute()
++        except Exception:
++            pass
++        return str(e) or "error"
++    doc.commitTransaction()
++    return None
+diff --git a/src/Mod/Unified/DimensionLabelsGui.py b/src/Mod/Unified/DimensionLabelsGui.py
+new file mode 100644
+index 000000000..0dea9c802
+--- /dev/null
++++ b/src/Mod/Unified/DimensionLabelsGui.py
+@@ -0,0 +1,327 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""形の上の寸法 in the 3D view: pick a part or a step, its driving numbers appear on the model
++next to what they drive; click one, type, Enter. Nothing picked: no labels (they never clutter
++the model). What the numbers are and where they go: DimensionLabels.py."""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import DimensionLabels as DL
++
++CTX = "Unified_Dimensions"
++
++STYLE = (
++    "QLabel { background: rgba(255,255,255,235); color: #0b3d91; border: 1px solid #5b8def;"
++    " border-radius: 3px; padding: 1px 5px; }"
++    "QLabel:hover { background: #fff4e0; border-color: #f5a623; }"
++)
++STYLE_EXPR = STYLE.replace("#0b3d91", "#6a1b9a")
++FIELD_STYLE = "QLineEdit { border: 2px solid #f5a623; border-radius: 3px; padding: 0px 3px; background: white; }"
++
++
++def tr(text):
++    return App.Qt.translate(CTX, text)
++
++
++def _view():
++    gdoc = Gui.ActiveDocument
++    view = gdoc.ActiveView if gdoc else None
++    if view is None or not hasattr(view, "getPointOnViewport") or not hasattr(view, "graphicsView"):
++        return None
++    return view
++
++
++def _busy():
++    if Gui.Control.activeDialog():
++        return True
++    gdoc = Gui.ActiveDocument
++    if gdoc is None:
++        return True
++    try:
++        return gdoc.getInEdit() is not None
++    except Exception:
++        return True
++
++
++class DimLabel(QtWidgets.QLabel):
++    def __init__(self, manager, parent):
++        super().__init__(parent)
++        self.manager = manager
++        self.dim = None
++        self.setObjectName("UnifiedDimensionLabel")
++        self.setCursor(QtCore.Qt.PointingHandCursor)
++        font = self.font()
++        font.setPointSizeF(font.pointSizeF() * 0.95)
++        self.setFont(font)
++
++    def set_dim(self, dim):
++        self.dim = dim
++        self.setText(dim.text())
++        self.setStyleSheet(STYLE_EXPR if dim.expression else STYLE)
++        name = tr(DL.NAMES.get(dim.prop if dim.index is None else "constraint", dim.prop))
++        if dim.name:
++            name = "{} ({})".format(name, dim.name)
++        tip = "{}: {}".format(dim.obj.Label, name)
++        if dim.expression:
++            tip += "\n= " + dim.expression
++        tip += "\n" + tr("Click to change. A number, a unit (10 mm, 1/2 in), arithmetic, or = and an expression")
++        self.setToolTip(tip)
++        self.adjustSize()
++
++    def mousePressEvent(self, event):
++        if event.button() == QtCore.Qt.LeftButton:
++            self.manager.edit(self)
++            event.accept()
++            return
++        super().mousePressEvent(event)
++
++
++class DimField(QtWidgets.QLineEdit):
++    def __init__(self, manager, label):
++        super().__init__(label.parentWidget())
++        self.manager = manager
++        self.label = label
++        self.dim = label.dim
++        self.setObjectName("UnifiedDimensionField")
++        self.setStyleSheet(FIELD_STYLE)
++        self.setText(self.dim.edit_text())
++        self.setMinimumWidth(max(label.width() + 30, self.fontMetrics().horizontalAdvance("0000.00 mm") + 12))
++        self.adjustSize()
++        self.move(label.pos())
++        self.returnPressed.connect(self._enter)
++        self.closed = False
++        self.show()
++        self.raise_()
++        self.setFocus()
++        self.selectAll()
++
++    def _enter(self):
++        error = DL.set_dimension(self.dim, self.text(), tr("Change a dimension"))
++        if error:
++            self.setStyleSheet(FIELD_STYLE.replace("#f5a623", "#d32f2f"))
++            QtWidgets.QToolTip.showText(
++                self.mapToGlobal(QtCore.QPoint(0, self.height())), tr("Cannot use this value") + ": " + error, self
++            )
++            return
++        self.close_field()
++        self.manager.refresh()
++
++    def keyPressEvent(self, event):
++        if event.key() == QtCore.Qt.Key_Escape:
++            self.close_field()
++            return
++        super().keyPressEvent(event)
++
++    def focusOutEvent(self, event):
++        super().focusOutEvent(event)
++        QtCore.QTimer.singleShot(0, self.close_field)
++
++    def close_field(self):
++        if self.closed:
++            return
++        self.closed = True
++        self.manager.field_closed(self)
++        self.hide()
++        self.deleteLater()
++
++
++class _SelectionObserver:
++    def __init__(self, manager):
++        self.manager = manager
++
++    def addSelection(self, doc, obj, sub, pnt):
++        self.manager.later()
++
++    def removeSelection(self, doc, obj, sub):
++        self.manager.later()
++
++    def setSelection(self, doc):
++        self.manager.later()
++
++    def clearSelection(self, doc):
++        self.manager.later()
++
++
++class _DocObserver:
++    def __init__(self, manager):
++        self.manager = manager
++
++    def slotRecomputedDocument(self, doc):
++        self.manager.later()
++
++    def slotUndoDocument(self, doc):
++        self.manager.later()
++
++    def slotRedoDocument(self, doc):
++        self.manager.later()
++
++
++class Manager(QtCore.QObject):
++    def __init__(self):
++        super().__init__()
++        self.labels = []
++        self.dims = []
++        self.view = None
++        self.viewport = None
++        self.field = None
++        self.camera = None
++        self.pending = QtCore.QTimer(self)
++        self.pending.setSingleShot(True)
++        self.pending.setInterval(30)
++        self.pending.timeout.connect(self.refresh)
++        self.follow = QtCore.QTimer(self)
++        self.follow.setInterval(60)
++        self.follow.timeout.connect(self._follow)
++        self.sel = _SelectionObserver(self)
++        Gui.Selection.addObserver(self.sel)
++        self.docs = _DocObserver(self)
++        App.addDocumentObserver(self.docs)
++
++    def later(self):
++        self.pending.start()
++
++    def _picks(self):
++        picks = []
++        for s in Gui.Selection.getSelectionEx("", 0):
++            names = list(s.SubElementNames) or [""]
++            points = list(s.PickedPoints)
++            for i, name in enumerate(names):
++                point = points[i] if i < len(points) else None
++                picks.append((s.Object, name, App.Vector(point) if point is not None else None))
++        return picks
++
++    def refresh(self):
++        if self.field is not None:
++            return  # a number is being typed: leave the labels where they are
++        view = _view()
++        dims = []
++        if view is not None and not _busy():
++            picks = self._picks()
++            if picks and all(p[0].Document == App.ActiveDocument for p in picks):
++                try:
++                    dims = DL.dimensions_for(picks)
++                except Exception as e:
++                    App.Console.PrintLog("Dimensions on the model: {}\n".format(e))
++        self._show(view, dims)
++
++    def _show(self, view, dims):
++        viewport = None
++        if view is not None and dims:
++            try:
++                viewport = view.graphicsView().viewport()
++            except Exception:
++                viewport = None
++        if viewport is not self.viewport:
++            self._clear_widgets()
++            self.viewport = viewport
++            if viewport is not None:
++                viewport.destroyed.connect(self._view_gone)
++        self.view = view
++        self.dims = dims if viewport is not None else []
++        while len(self.labels) < len(self.dims):
++            self.labels.append(DimLabel(self, viewport))
++        for label, dim in zip(self.labels, self.dims):
++            label.set_dim(dim)
++        for label in self.labels[len(self.dims):]:
++            label.hide()
++        if self.dims:
++            self.camera = None
++            self._follow()
++            self.follow.start()
++        else:
++            self.follow.stop()
++
++    def _view_gone(self, *_args):
++        """The view closed: its labels went with it."""
++        self.follow.stop()
++        self.labels = []
++        self.dims = []
++        self.view = None
++        self.viewport = None
++        self.field = None
++
++    def _clear_widgets(self):
++        for label in self.labels:
++            try:
++                label.hide()
++                label.deleteLater()
++            except RuntimeError:
++                pass
++        self.labels = []
++
++    def _camera_key(self):
++        cam = self.view.getCameraNode()
++        key = [tuple(cam.position.getValue().getValue()), tuple(cam.orientation.getValue().getValue())]
++        for field in ("height", "heightAngle"):
++            if hasattr(cam, field):
++                key.append(getattr(cam, field).getValue())
++        key.append((self.viewport.width(), self.viewport.height()))
++        return tuple(key)
++
++    def _follow(self):
++        """Put each label where its point is on the screen (again when the view turns)."""
++        if not self.dims or self.viewport is None or _view() is not self.view:
++            if self.dims and _view() is not self.view:
++                self.later()
++            return
++        try:
++            key = self._camera_key()
++        except Exception:
++            self._show(None, [])
++            return
++        if key == self.camera:
++            return
++        self.camera = key
++        dpr = self.viewport.devicePixelRatioF()
++        h = self.viewport.height() * dpr
++        placed = []
++        cam = self.view.getCameraNode()
++        eye = App.Vector(*cam.position.getValue().getValue())
++        look = App.Vector(*self.view.getViewDirection())
++        perspective = self.view.getCameraType() == "Perspective"
++        for label, dim in zip(self.labels, self.dims):
++            if label is self._editing_label():
++                continue
++            if perspective and (dim.anchor - eye).dot(look) <= 0:
++                label.hide()
++                continue
++            x, y = self.view.getPointOnViewport(dim.anchor)
++            pos = QtCore.QPoint(int(x / dpr) + 6, int((h - 1 - y) / dpr) - label.height() // 2)
++            rect = QtCore.QRect(pos, label.size())
++            for _ in range(6):
++                if not any(rect.intersects(r) for r in placed):
++                    break
++                rect.translate(0, label.height() + 2)
++            if not self.viewport.rect().intersects(rect):
++                label.hide()
++                continue
++            placed.append(rect)
++            label.move(rect.topLeft())
++            label.show()
++            label.raise_()
++
++    def _editing_label(self):
++        return self.field.label if self.field is not None else None
++
++    def edit(self, label):
++        if self.field is not None:
++            self.field.close_field()
++        label.hide()
++        self.field = DimField(self, label)
++
++    def field_closed(self, field):
++        if self.field is field:
++            self.field = None
++        self.camera = None
++        self.refresh()
++
++
++_manager = None
++
++
++def install():
++    global _manager
++    if _manager is None:
++        _manager = Manager()
++    return _manager
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 4b8bbb4db..cf713825e 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -11039,6 +11039,14 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>R</source>
+         <translation>R</translation>
+     </message>
++    <message>
++        <source>Diameter</source>
++        <translation>直径</translation>
++    </message>
++    <message>
++        <source>Radius</source>
++        <translation>半径</translation>
++    </message>
+     <message>
+         <source>Center distance</source>
+         <translation>中心間</translation>
+@@ -11587,4 +11595,180 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>汎用のアルミフレーム（20・30・40 シリーズ、溝 6・8）を、クリックした 2 点の間に置きます</translation>
+     </message>
+ </context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Move face</source>
++        <translation>面を動かす</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_PushPull</name>
++    <message>
++        <source>Move face</source>
++        <translation>面を動かす</translation>
++    </message>
++    <message>
++        <source>Moves the picked face along its normal: outward adds material, inward removes it. Type the distance (negative: inward), or drag the arrow that appears on a face under the cursor</source>
++        <translation>選んだ面をまっすぐ外へ・内へ動かします。外へ動かすと足し、内へ動かすと削ります。距離を打つ（内へはマイナス）か、カーソルの下の面に出る矢印をドラッグします</translation>
++    </message>
++    <message>
++        <source>Type how far the face moves (negative: inward) and press Enter. Esc puts it back</source>
++        <translation>面を動かす距離（内へはマイナス）を打って Enter。Esc で元に戻ります</translation>
++    </message>
++    <message>
++        <source>flush with a face</source>
++        <translation>面とそろう</translation>
++    </message>
++    <message>
++        <source>This face cannot be moved</source>
++        <translation>この面は動かせません</translation>
++    </message>
++    <message>
++        <source>Cannot go further</source>
++        <translation>これ以上は動かせません</translation>
++    </message>
++    <message>
++        <source>{what} {value} mm</source>
++        <translation>{what} {value} mm</translation>
++    </message>
++    <message>
++        <source>{object}: {what} {old} → {new} mm</source>
++        <translation>{object} の{what} {old} → {new} mm</translation>
++    </message>
++    <message>
++        <source>length</source>
++        <translation>長さ</translation>
++    </message>
++    <message>
++        <source>depth</source>
++        <translation>深さ</translation>
++    </message>
++    <message>
++        <source>diameter</source>
++        <translation>直径</translation>
++    </message>
++    <message>
++        <source>radius</source>
++        <translation>半径</translation>
++    </message>
++    <message>
++        <source>width</source>
++        <translation>幅</translation>
++    </message>
++    <message>
++        <source>height</source>
++        <translation>高さ</translation>
++    </message>
++    <message>
++        <source>distance</source>
++        <translation>距離</translation>
++    </message>
++    <message>
++        <source>sketch dimension</source>
++        <translation>スケッチの寸法</translation>
++    </message>
++    <message>
++        <source>new extrusion</source>
++        <translation>新しい押し出し</translation>
++    </message>
++    <message>
++        <source>new cut</source>
++        <translation>新しい切り抜き</translation>
++    </message>
++    <message>
++        <source>face moved</source>
++        <translation>面を動かした量</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_FaceDiameter</name>
++    <message>
++        <source>Diameter</source>
++        <translation>直径</translation>
++    </message>
++    <message>
++        <source>Changes the diameter of the picked hole or round boss: type the new diameter</source>
++        <translation>選んだ穴・丸い出っ張りの直径を変えます。新しい直径を打ちます</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Dimensions</name>
++    <message>
++        <source>Length</source>
++        <translation>長さ</translation>
++    </message>
++    <message>
++        <source>Second length</source>
++        <translation>反対側の長さ</translation>
++    </message>
++    <message>
++        <source>Depth</source>
++        <translation>深さ</translation>
++    </message>
++    <message>
++        <source>Diameter</source>
++        <translation>直径</translation>
++    </message>
++    <message>
++        <source>Radius</source>
++        <translation>半径</translation>
++    </message>
++    <message>
++        <source>Bottom radius</source>
++        <translation>下の半径</translation>
++    </message>
++    <message>
++        <source>Top radius</source>
++        <translation>上の半径</translation>
++    </message>
++    <message>
++        <source>Chamfer size</source>
++        <translation>面取りの大きさ</translation>
++    </message>
++    <message>
++        <source>Thickness</source>
++        <translation>厚み</translation>
++    </message>
++    <message>
++        <source>Width</source>
++        <translation>幅</translation>
++    </message>
++    <message>
++        <source>Height</source>
++        <translation>高さ</translation>
++    </message>
++    <message>
++        <source>Angle</source>
++        <translation>角度</translation>
++    </message>
++    <message>
++        <source>Count</source>
++        <translation>個数</translation>
++    </message>
++    <message>
++        <source>Spacing</source>
++        <translation>間隔</translation>
++    </message>
++    <message>
++        <source>Distance</source>
++        <translation>距離</translation>
++    </message>
++    <message>
++        <source>Sketch dimension</source>
++        <translation>スケッチの寸法</translation>
++    </message>
++    <message>
++        <source>Change a dimension</source>
++        <translation>寸法を変える</translation>
++    </message>
++    <message>
++        <source>Cannot use this value</source>
++        <translation>この値は使えません</translation>
++    </message>
++    <message>
++        <source>Click to change. A number, a unit (10 mm, 1/2 in), arithmetic, or = and an expression</source>
++        <translation>クリックで変えられます。数・単位付き（10 mm、1/2 in）・計算式、または = のあとに式</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/PushPull.py b/src/Mod/Unified/PushPull.py
+new file mode 100644
+index 000000000..f522be164
+--- /dev/null
++++ b/src/Mod/Unified/PushPull.py
+@@ -0,0 +1,1047 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Push/pull a face of a solid along its normal (面を動かす): what to change, and the change.
++
++Outward adds material, inward removes it. What changes is decided from where the face came from,
++the most parametric way first (docs/ui-redesign/00-design.md, "no modes, direct manipulation"):
++
++- the end face of a Pad or a Pocket (or the floor of a flat hole) → its Length / Depth;
++- a side face of a sketch-based Pad or Pocket → the sketch dimension that moves that line (found
++  by trying each dimension; a circle's dimension for a round face → hole or boss diameter);
++- a hole made by the Hole tool → its Diameter;
++- a face of a box or cylinder (Part or PartDesign primitive) → its size;
++- the face moved earlier by push/pull → that push/pull's distance;
++- any other flat face of a part (PartDesign body) → a new Pad or Pocket from the face itself
++  (parametric: its length stays editable);
++- any other face of a plain solid (Part, STEP) → a "push/pull" feature (PushPullFeature below) that
++  keeps the base solid, the face and the distance, so it stays editable; round faces of full
++  cylinders change their radius (hole or boss).
++
++No Qt here: TestPushPull.py tests all of it headless (FreeCADCmd -t TestPushPull). The handle in
++the 3D view, the drag and the context bar's number are in PushPullGui.py. Changes are made in the
++caller's open transaction: one drag (or one typed number) is one undo step, and aborting the
++transaction (Esc) puts everything back, also the features that were added.
++"""
++
++import math
++
++import FreeCAD as App
++import Part
++
++import SnapMath as S
++
++LIN = 1e-4  # mm: same plane, same radius
++ANG = 1e-6  # parallel normals (1 - |cos|)
++MIN_SIZE = 0.01  # mm: smallest length, radius or distance left by a push/pull
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++# What changes, said in the readout (translated by the GUI in the context "Unified_PushPull")
++WORDS = {
++    "Length": QT_TRANSLATE_NOOP("Unified_PushPull", "length"),
++    "Depth": QT_TRANSLATE_NOOP("Unified_PushPull", "depth"),
++    "Diameter": QT_TRANSLATE_NOOP("Unified_PushPull", "diameter"),
++    "Radius": QT_TRANSLATE_NOOP("Unified_PushPull", "radius"),
++    "Width": QT_TRANSLATE_NOOP("Unified_PushPull", "width"),
++    "Height": QT_TRANSLATE_NOOP("Unified_PushPull", "height"),
++    "Distance": QT_TRANSLATE_NOOP("Unified_PushPull", "distance"),
++    "dimension": QT_TRANSLATE_NOOP("Unified_PushPull", "sketch dimension"),
++    "new pad": QT_TRANSLATE_NOOP("Unified_PushPull", "new extrusion"),
++    "new pocket": QT_TRANSLATE_NOOP("Unified_PushPull", "new cut"),
++    "new pushpull": QT_TRANSLATE_NOOP("Unified_PushPull", "face moved"),
++}
++
++
++# --------------------------------------------------------------------------- small helpers
++
++
++def _is(obj, type_name):
++    try:
++        return obj.isDerivedFrom(type_name)
++    except Exception:
++        return False
++
++
++def _value(q):
++    return float(getattr(q, "Value", q))
++
++
++def _has_expression(obj, path):
++    try:
++        names = [e[0] for e in obj.ExpressionEngine]
++    except Exception:
++        return False
++    path = path.lstrip(".")
++    return any(n.lstrip(".") == path for n in names)
++
++
++def _parallel(a, b):
++    return abs(abs(a.dot(b)) - 1.0) < ANG
++
++
++def _body_of(obj):
++    if _is(obj, "PartDesign::Body"):
++        return obj
++    for parent in obj.InList:
++        if _is(parent, "PartDesign::Body") and obj in parent.Group:
++            return parent
++    return None
++
++
++def _is_pushpull(obj):
++    return type(getattr(obj, "Proxy", None)).__name__ == "PushPullFeature"
++
++
++def _on_face(face, point, tol=1e-4):
++    try:
++        return face.distToShape(Part.Vertex(point))[0] < tol
++    except Exception:
++        return False
++
++
++def _normal_at(face, point):
++    """The outward normal of the face at the point (the face's orientation counts)."""
++    u, v = face.Surface.parameter(point)
++    n = face.normalAt(u, v)
++    n.normalize()
++    return n
++
++
++def _inner_point(face):
++    """A point on the face, as central as possible."""
++    c = face.CenterOfMass
++    if _on_face(face, c):
++        return App.Vector(c)
++    u0, u1, v0, v1 = face.ParameterRange
++    for fu, fv in ((0.5, 0.5), (0.3, 0.3), (0.7, 0.7), (0.3, 0.7), (0.7, 0.3), (0.1, 0.5), (0.5, 0.1)):
++        p = face.valueAt(u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv)
++        if _on_face(face, p):
++            return p
++    return App.Vector(face.Vertexes[0].Point) if face.Vertexes else App.Vector(c)
++
++
++class FaceInfo:
++    """A picked face in the coordinates of its owner's shape.
++
++    kind "plane": origin (on the face) and outward normal.
++    kind "cylinder": origin (on the face) and outward normal there, axis point and direction,
++    radius, sign +1 for a boss (outward is away from the axis) or -1 for a hole, and whether the
++    face goes all the way round."""
++
++    def __init__(self, face, probe=None):
++        self.face = face
++        surface = face.Surface
++        self.surface = type(surface).__name__
++        if probe is None or not _on_face(face, probe, 1e-3):
++            probe = _inner_point(face)
++        else:
++            probe = App.Vector(face.Surface.value(*face.Surface.parameter(probe)))
++        self.kind = None
++        self.probe = App.Vector(probe)
++        if self.surface == "Plane":
++            # The arrow sits in the middle of the face when that is on it
++            self.kind = "plane"
++            c = face.CenterOfMass
++            self.origin = App.Vector(c) if _on_face(face, c) else App.Vector(probe)
++            self.normal = _normal_at(face, self.origin)
++        elif self.surface == "Cylinder":
++            self.kind = "cylinder"
++            self.origin = App.Vector(probe)
++            self.normal = _normal_at(face, probe)
++            self.axis = App.Vector(surface.Axis)
++            self.axis.normalize()
++            self.center = App.Vector(surface.Center)
++            self.radius = surface.Radius
++            radial = probe - self.center
++            radial = radial - self.axis * radial.dot(self.axis)
++            self.sign = 1 if radial.dot(self.normal) > 0 else -1
++            u0, u1 = face.ParameterRange[:2]
++            self.full = abs((u1 - u0) - 2 * math.pi) < 1e-6
++            v0, v1 = face.ParameterRange[2:]
++            self.v_range = (v0, v1)
++
++    def level(self):
++        return self.origin.dot(self.normal)
++
++
++def _frame(pick, owner, element):
++    """The placement from the coordinates of owner.Shape to the global ones, from the picked face
++    (global, as SnapMath.Pick gives it) and the same face of the owner."""
++    try:
++        gface = pick.shape()
++        lface = owner.Shape.getElement(element)
++    except Exception:
++        return None
++    if gface is None or lface is None:
++        return None
++    candidates = []
++    try:
++        candidates.append(gface.Placement.multiply(lface.Placement.inverse()))
++    except Exception:
++        pass
++    try:
++        # The placement of the path down to the owner, without the owner's own (its shape has it)
++        tokens = pick.tokens
++        if tokens:
++            m = pick.root.getSubObject(".".join(tokens) + ".", retType=3)
++            last = pick.objects()[-1]
++            candidates.append(m)
++            if hasattr(last, "Placement"):
++                candidates.append(m.multiply(last.Placement.inverse()))
++    except Exception:
++        pass
++    candidates.append(App.Placement())
++    lc = lface.CenterOfMass
++    gc = gface.CenterOfMass
++    for g in candidates:
++        if (g.multVec(lc) - gc).Length < 1e-3 * max(1.0, gface.BoundBox.DiagonalLength):
++            return g
++    return None
++
++
++def _thickness_behind(shape, info):
++    """How far the face can be pushed in before the cut leaves nothing behind it."""
++    lowest = min(v.Point.dot(info.normal) for v in shape.Vertexes) if shape.Vertexes else 0.0
++    return max(0.0, info.level() - lowest)
++
++
++# --------------------------------------------------------------------------- the plans
++
++
++class Plan:
++    """What a push/pull of one face changes. origin/normal are global (the arrow); apply(d)
++    moves the face d mm along its outward normal (negative: inward) and recomputes."""
++
++    kind = ""
++
++    def __init__(self, owner, element, info, frame):
++        self.owner = owner
++        self.element = element
++        self.info = info
++        self.frame = frame
++        self.doc = owner.Document
++        self.origin = frame.multVec(info.origin)
++        self.normal = frame.Rotation.multVec(info.normal)
++        self.radial = info.kind == "cylinder"
++        self.d_min = -math.inf
++        self.d_max = math.inf
++        self.target = owner  # the object whose number changes (or that is made)
++        self.word = "Distance"  # key of WORDS
++        self.value0 = 0.0
++
++    def begin(self):
++        """Called once before the first apply, in the open transaction. Returns the plan to
++        use (itself, or another one when this one cannot do it), or None."""
++        return self
++
++    def apply(self, d):
++        raise NotImplementedError
++
++    def clamp(self, d):
++        return min(max(d, self.d_min), self.d_max)
++
++    def value_after(self, d):
++        """The number that changes: (word key, before, after) — after is None for new things."""
++        return self.word, self.value0, None
++
++    def __repr__(self):
++        return "<{} {} {}>".format(type(self).__name__, self.owner.Name, self.element)
++
++
++class PropertyPlan(Plan):
++    """Change a number of an object: value = value0 + k * d; a primitive's face on the negative
++    side also moves its placement (shift: parent coordinates per mm of d)."""
++
++    kind = "property"
++
++    def __init__(self, owner, element, info, frame, target, prop, k, word=None, shift=None, minimum=MIN_SIZE):
++        super().__init__(owner, element, info, frame)
++        self.target = target
++        self.prop = prop
++        self.k = k
++        self.word = word or prop
++        self.shift = shift
++        self.value0 = _value(getattr(target, prop))
++        self.placement0 = App.Placement(target.Placement) if shift is not None else None
++        if minimum is not None:
++            limit = (minimum - self.value0) / k
++            if k > 0:
++                self.d_min = limit
++            else:
++                self.d_max = limit
++
++    def value(self, d):
++        return self.value0 + self.k * d
++
++    def value_after(self, d):
++        return self.word, self.value0, self.value(d)
++
++    def apply(self, d):
++        d = self.clamp(d)
++        setattr(self.target, self.prop, self.value(d))
++        if self.shift is not None:
++            p = App.Placement(self.placement0)
++            p.Base = p.Base + self.shift * d
++            self.target.Placement = p
++        self.doc.recompute()
++
++
++class ConstraintPlan(Plan):
++    """Change a dimension of a sketch: value = value0 + d / k (k: how far the face moves when the
++    dimension grows by 1)."""
++
++    kind = "sketch"
++
++    def __init__(self, base_plan, sketch, index, k, positive):
++        super().__init__(base_plan.owner, base_plan.element, base_plan.info, base_plan.frame)
++        self.target = sketch
++        self.index = index
++        self.k = k
++        c = sketch.Constraints[index]
++        self.value0 = c.Value
++        self.angle = c.Type == "Angle"
++        self.name = c.Name
++        self.word = "dimension"
++        if positive:
++            limit = (MIN_SIZE - self.value0) * k
++            if k > 0:
++                self.d_min = limit
++            else:
++                self.d_max = limit
++
++    def value(self, d):
++        return self.value0 + d / self.k
++
++    def value_after(self, d):
++        return self.word, self.value0, self.value(d)
++
++    def apply(self, d):
++        d = self.clamp(d)
++        self.target.setDatum(self.index, App.Units.Quantity(self.value(d), App.Units.Length))
++        self.doc.recompute()
++
++
++class SketchPlan(Plan):
++    """A side face (or round face) of a sketch-based Pad/Pocket: find the sketch dimension that
++    moves the line (or changes the circle) the face was made from, by trying each one."""
++
++    kind = "sketch?"
++
++    def __init__(self, owner, element, info, frame, feature, sketch, geo, measure, fallback):
++        super().__init__(owner, element, info, frame)
++        self.feature = feature
++        self.sketch = sketch
++        self.geo = geo
++        self.measure = measure  # measure(sketch) -> position of the face (mm along its normal)
++        self.fallback = fallback
++        self.target = sketch
++        self.word = "dimension"
++
++    def begin(self):
++        found = find_driving_constraint(self.sketch, self.geo, self.measure)
++        if found is None:
++            return self.fallback.begin() if self.fallback is not None else None
++        index, k = found
++        c = self.sketch.Constraints[index]
++        plan = ConstraintPlan(self, self.sketch, index, k, positive=c.Type in ("Distance", "Radius", "Diameter"))
++        return plan
++
++    def apply(self, d):
++        raise RuntimeError("begin() first")
++
++
++def _geo_points(sketch, geo):
++    """Start, end and center of a geometry (sketch coordinates), those that exist."""
++    name = type(sketch.Geometry[geo]).__name__
++    if name == "LineSegment":
++        positions = (1, 2)
++    elif name in ("Circle", "Ellipse"):
++        positions = (3,)
++    elif name == "Point":
++        positions = (1,)
++    else:
++        positions = (1, 2, 3)
++    out = []
++    for pos in positions:
++        try:
++            out.append(App.Vector(sketch.getPoint(geo, pos)))
++        except Exception:
++            pass
++    return out
++
++
++def find_driving_constraint(sketch, geo, measure, delta=0.5):
++    """(index, k) of the dimension of the sketch that moves the face the most cleanly: change
++    each driving dimension a little, solve, see how far the face moved (k per unit) and how much
++    else moved. A dimension that moves other lines or circles as a whole (the corner of a
++    rectangle that places all of it, a width kept symmetric) is not used: the face would not move
++    alone. The sketch is put back after each try."""
++    candidates = []
++    others = [
++        i
++        for i in range(len(sketch.Geometry))
++        if i != geo and not sketch.getConstruction(i)
++    ]
++    before_others = {i: _geo_points(sketch, i) for i in others}
++    m0 = measure(sketch)
++    for index, c in enumerate(sketch.Constraints):
++        if c.Type not in ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter"):
++            continue
++        if not c.Driving or not getattr(c, "IsActive", True):
++            continue
++        if _has_expression(sketch, ".Constraints[{}]".format(index)) or (
++            c.Name and _has_expression(sketch, ".Constraints." + c.Name)
++        ):
++            continue
++        v = c.Value
++        try:
++            sketch.setDatum(index, App.Units.Quantity(v + delta, App.Units.Length))
++            ok = sketch.solve() == 0
++            m1 = measure(sketch)
++            moved = 0.0
++            for i, pts in before_others.items():
++                shifts = [(a - b).Length for a, b in zip(pts, _geo_points(sketch, i))]
++                moved += sum(shifts)
++                if shifts and min(shifts) > 0.5 * delta:
++                    ok = False  # moves something else along: not this face alone
++        except Exception:
++            ok = False
++        finally:
++            try:
++                sketch.setDatum(index, App.Units.Quantity(v, App.Units.Length))
++                sketch.solve()
++            except Exception:
++                pass
++        if not ok:
++            continue
++        k = (m1 - m0) / delta
++        if abs(k) < 0.3:
++            continue
++        candidates.append((moved / delta, abs(abs(k) - 1.0), index, k))
++    try:
++        sketch.purgeTouched()
++    except Exception:
++        pass
++    if not candidates:
++        return None
++    candidates.sort()
++    _moved, _off, index, k = candidates[0]
++    return index, k
++
++
++class PDFacePlan(Plan):
++    """Any flat face of the last step of a PartDesign body: a new Pad (outward) or Pocket
++    (inward) from the face itself."""
++
++    kind = "new feature"
++
++    def __init__(self, owner, element, info, frame, body, shape):
++        super().__init__(owner, element, info, frame)
++        self.body = body
++        self.feature = None
++        self.word = "new pad"
++        self.d_min = -(_thickness_behind(shape, info) - MIN_SIZE)
++
++    def value_after(self, d):
++        return ("new pad" if d >= 0 else "new pocket"), 0.0, abs(d)
++
++    def _remove(self):
++        if self.feature is None:
++            return
++        f = self.feature
++        self.feature = None
++        try:
++            self.body.removeObject(f)
++        except Exception:
++            pass
++        self.doc.removeObject(f.Name)
++        _show(self.owner, True)
++
++    def apply(self, d):
++        d = self.clamp(d)
++        if abs(d) < 1e-7:
++            self._remove()
++            self.doc.recompute()
++            return
++        want = "PartDesign::Pad" if d > 0 else "PartDesign::Pocket"
++        if self.feature is not None and self.feature.TypeId != want:
++            self._remove()
++        if self.feature is None:
++            name = "Pad" if d > 0 else "Pocket"
++            f = self.body.newObject(want, name)
++            f.Profile = (self.owner, [self.element])
++            self.feature = f
++            self.target = f
++            _show(self.owner, False)
++            _show(f, True)
++        self.feature.Length = abs(d)
++        self.doc.recompute()
++
++
++class PartFacePlan(Plan):
++    """A face of a plain solid: a push/pull feature on it (made at the first apply)."""
++
++    kind = "new pushpull"
++
++    def __init__(self, owner, element, info, frame, shape):
++        super().__init__(owner, element, info, frame)
++        self.feature = None
++        self.word = "new pushpull"
++        self.mode = "Radius" if info.kind == "cylinder" else "Face"
++        if self.mode == "Face":
++            self.d_min = -(_thickness_behind(shape, info) - MIN_SIZE)
++        elif info.sign > 0:
++            self.d_min = -(info.radius - MIN_SIZE)
++        else:
++            self.d_max = info.radius - MIN_SIZE
++
++    def value_after(self, d):
++        if self.mode == "Radius":
++            return "Radius", self.info.radius, self.info.radius + self.info.sign * d
++        return self.word, 0.0, d
++
++    def apply(self, d):
++        d = self.clamp(d)
++        if self.feature is None:
++            self.feature = make_pushpull(self.owner, self.element, d, self.mode)
++            self.target = self.feature
++        else:
++            self.feature.Distance = d
++        self.doc.recompute()
++
++
++def _show(obj, visible):
++    vo = getattr(obj, "ViewObject", None)
++    if vo is not None:
++        try:
++            vo.Visibility = visible
++        except Exception:
++            pass
++
++
++# --------------------------------------------------------------------------- deciding
++
++
++def _profile_plane(feature):
++    """(point, unit normal) of the profile of a sketch-based feature, in body coordinates."""
++    try:
++        prof = feature.Profile
++    except Exception:
++        return None
++    if not prof or prof[0] is None:
++        return None
++    obj, subs = prof[0], prof[1]
++    if _is(obj, "Sketcher::SketchObject") and not any(subs):
++        pl = obj.Placement
++        return App.Vector(pl.Base), pl.Rotation.multVec(App.Vector(0, 0, 1))
++    try:
++        face = obj.Shape.getElement(subs[0])
++        if type(face.Surface).__name__ == "Plane":
++            p = _inner_point(face)
++            return p, _normal_at(face, p)
++    except Exception:
++        pass
++    return None
++
++
++def _features_up_to(body, last):
++    out = []
++    for obj in body.Group:
++        if _is(obj, "PartDesign::Feature") and not _is(obj, "PartDesign::Body"):
++            out.append(obj)
++        if obj == last:
++            break
++    return out
++
++
++def _same_surface(a, b):
++    """Two faces lie on the same plane, or the same cylinder."""
++    sa, sb = a.Surface, b.Surface
++    ta, tb = type(sa).__name__, type(sb).__name__
++    if ta != tb:
++        return False
++    if ta == "Plane":
++        na, nb = sa.Axis, sb.Axis
++        return _parallel(na, nb) and abs((App.Vector(sb.Position) - App.Vector(sa.Position)).dot(na)) < LIN
++    if ta == "Cylinder":
++        if abs(sa.Radius - sb.Radius) > LIN or not _parallel(sa.Axis, sb.Axis):
++            return False
++        d = App.Vector(sb.Center) - App.Vector(sa.Center)
++        d = d - App.Vector(sa.Axis) * d.dot(sa.Axis)
++        return d.Length < LIN
++    return False
++
++
++def creator(body, last, face, probe):
++    """The feature of the body (up to last) that made this part of the face: the newest one
++    whose added or removed shape has a face on the same surface through the probe point."""
++    for f in reversed(_features_up_to(body, last)):
++        try:
++            tool = f.AddSubShape
++        except Exception:
++            continue
++        if tool is None or tool.isNull():
++            continue
++        for tf in tool.Faces:
++            if _same_surface(tf, face) and _on_face(tf, probe, 1e-3):
++                return f
++    return None
++
++
++def _cap_plan(owner, element, info, frame, feature, prop):
++    """The end face of a Pad/Pocket (Length) or the floor of a flat hole (Depth)."""
++    if info.kind != "plane":
++        return None
++    plane = _profile_plane(feature)
++    if plane is None:
++        return None
++    p0, n0 = plane
++    if not _parallel(info.normal, n0):
++        return None
++    length = _value(getattr(feature, prop))
++    s = (info.origin - p0).dot(n0)
++    if abs(abs(s) - length) > 1e-3 * max(1.0, length):
++        return None
++    if abs(s) < LIN:
++        return None
++    e = n0 * (1 if s > 0 else -1)
++    k = 1.0 / e.dot(info.normal)
++    return PropertyPlan(owner, element, info, frame, feature, prop, k)
++
++
++def _sketch_plan(owner, element, info, frame, feature, fallback):
++    """A side face (line) or a round face (circle) of a sketch-based Pad/Pocket."""
++    plane = _profile_plane(feature)
++    sketch = feature.Profile[0] if plane is not None else None
++    if sketch is None or not _is(sketch, "Sketcher::SketchObject"):
++        return None
++    p0, n0 = plane
++    to_sketch = sketch.Placement.inverse()
++    if info.kind == "plane":
++        if abs(info.normal.dot(n0)) > 1e-6:
++            return None
++        n_loc = to_sketch.Rotation.multVec(info.normal)
++        n_loc.z = 0
++        if n_loc.Length < 1e-9:
++            return None
++        n_loc.normalize()
++        o_loc = to_sketch.multVec(info.origin)
++        level = App.Vector(o_loc.x, o_loc.y, 0).dot(n_loc)
++        best = None
++        for i, g in enumerate(sketch.Geometry):
++            if sketch.getConstruction(i) or type(g).__name__ != "LineSegment":
++                continue
++            a, b = App.Vector(g.StartPoint), App.Vector(g.EndPoint)
++            if abs(a.dot(n_loc) - level) > 1e-3 or abs(b.dot(n_loc) - level) > 1e-3:
++                continue
++            mid = (a + b) * 0.5
++            dist = (App.Vector(mid.x, mid.y, 0) - App.Vector(o_loc.x, o_loc.y, 0)).Length
++            if best is None or dist < best[0]:
++                best = (dist, i)
++        if best is None:
++            return None
++        geo = best[1]
++
++        def measure(sk, geo=geo, n=n_loc):
++            a, b = App.Vector(sk.getPoint(geo, 1)), App.Vector(sk.getPoint(geo, 2))
++            return ((a + b) * 0.5).dot(n)
++
++        return SketchPlan(owner, element, info, frame, feature, sketch, geo, measure, fallback)
++    if info.kind == "cylinder":
++        if not _parallel(info.axis, n0):
++            return None
++        c_loc = to_sketch.multVec(info.center)
++        for i, g in enumerate(sketch.Geometry):
++            if sketch.getConstruction(i) or type(g).__name__ not in ("Circle", "ArcOfCircle"):
++                continue
++            center = App.Vector(g.Center)
++            if abs(g.Radius - info.radius) > 1e-3 or (App.Vector(center.x - c_loc.x, center.y - c_loc.y, 0)).Length > 1e-3:
++                continue
++
++            def measure(sk, geo=i, sign=info.sign):
++                return sign * sk.Geometry[geo].Radius
++
++            return SketchPlan(owner, element, info, frame, feature, sketch, i, measure, fallback)
++    return None
++
++
++def _primitive_plan(owner, element, info, frame, prim, shiftable):
++    """A face of a box or a cylinder: its size (and its placement for the faces on the
++    negative side)."""
++    rot = prim.Placement.Rotation
++    if _is(prim, "Part::Box") or _is(prim, "PartDesign::AdditiveBox"):
++        if info.kind != "plane":
++            return None
++        n_loc = rot.inverted().multVec(info.normal)
++        for axis, prop in ((App.Vector(1, 0, 0), "Length"), (App.Vector(0, 1, 0), "Width"), (App.Vector(0, 0, 1), "Height")):
++            c = n_loc.dot(axis)
++            if abs(abs(c) - 1) > ANG:
++                continue
++            if _has_expression(prim, prop):
++                return None
++            if c > 0:
++                return PropertyPlan(owner, element, info, frame, prim, prop, 1.0)
++            if not shiftable:
++                return None
++            return PropertyPlan(owner, element, info, frame, prim, prop, 1.0, shift=App.Vector(info.normal))
++        return None
++    if _is(prim, "Part::Cylinder") or _is(prim, "PartDesign::AdditiveCylinder"):
++        if abs(_value(prim.Angle) - 360) > 1e-6:
++            return None
++        if info.kind == "cylinder" and info.sign > 0:
++            if _has_expression(prim, "Radius"):
++                return None
++            return PropertyPlan(owner, element, info, frame, prim, "Radius", 1.0)
++        if info.kind == "plane":
++            c = rot.inverted().multVec(info.normal).dot(App.Vector(0, 0, 1))
++            if abs(abs(c) - 1) > ANG or _has_expression(prim, "Height"):
++                return None
++            if c > 0:
++                return PropertyPlan(owner, element, info, frame, prim, "Height", 1.0)
++            if shiftable:
++                return PropertyPlan(owner, element, info, frame, prim, "Height", 1.0, shift=App.Vector(info.normal))
++    return None
++
++
++def _pushpull_edit_plan(owner, element, info, frame):
++    """The face that this push/pull feature moved: change its distance."""
++    try:
++        base, subs = owner.Base
++        bface = base.Shape.getElement(subs[0])
++    except Exception:
++        return None
++    binfo = FaceInfo(bface)
++    dist = _value(owner.Distance)
++    if owner.Mode == "Face":
++        if binfo.kind != "plane" or info.kind != "plane":
++            return None
++        if info.normal.dot(binfo.normal) < 1 - ANG:
++            return None
++        if abs(info.level() - (binfo.level() + dist)) > 1e-3:
++            return None
++    else:
++        if binfo.kind != "cylinder" or info.kind != "cylinder":
++            return None
++        if not _parallel(info.axis, binfo.axis) or abs(info.radius - (binfo.radius + binfo.sign * dist)) > 1e-3:
++            return None
++    plan = PropertyPlan(owner, element, info, frame, owner, "Distance", 1.0, minimum=None)
++    if owner.Mode == "Face":
++        plan.d_min = -(_thickness_behind(base.Shape, binfo) - MIN_SIZE) - dist
++    elif binfo.sign > 0:
++        plan.d_min = -(binfo.radius - MIN_SIZE) - dist
++    else:
++        plan.d_max = binfo.radius - MIN_SIZE - dist
++    return plan
++
++
++def plan_for(root, sub, point=None):
++    """What a push/pull of the picked face changes (a Plan), or None if this face cannot be
++    pushed or pulled. root/sub as in the selection (root is a top-level object, sub the path
++    to the face), point: the picked point (global), if any."""
++    pick = S.Pick(root, sub, point)
++    element = pick.element
++    if not element.startswith("Face"):
++        return None
++    objs = pick.objects()
++    owner = objs[-1]
++    body = _body_of(owner)
++    if _is(owner, "PartDesign::Body"):
++        owner = owner.Tip
++        if owner is None:
++            return None
++    if _is(owner, "Sketcher::SketchObject") or not hasattr(owner, "Shape"):
++        return None
++    shape = owner.Shape
++    if shape.isNull() or not shape.Solids:
++        return None
++    try:
++        face = shape.getElement(element)
++    except Exception:
++        return None
++    frame = _frame(pick, owner, element)
++    if frame is None:
++        return None
++    probe = frame.inverse().multVec(point) if point is not None else None
++    info = FaceInfo(face, probe)
++    if info.kind is None:
++        return None
++
++    if _is_pushpull(owner):
++        plan = _pushpull_edit_plan(owner, element, info, frame)
++        if plan is not None:
++            return plan
++
++    if body is not None and _is(owner, "PartDesign::Feature"):
++        tip = body.Tip
++        fallback = None
++        if owner == tip and info.kind == "plane":
++            fallback = PDFacePlan(owner, element, info, frame, body, shape)
++        maker = creator(body, owner, face, info.probe)
++        plan = None
++        if maker is not None:
++            if _is(maker, "PartDesign::Hole"):
++                if info.kind == "cylinder" and info.sign < 0 and not _has_expression(maker, "Diameter"):
++                    plan = PropertyPlan(owner, element, info, frame, maker, "Diameter", -2.0)
++                elif info.kind == "plane" and maker.DepthType == "Dimension" and not _has_expression(maker, "Depth"):
++                    plan = _cap_plan(owner, element, info, frame, maker, "Depth")
++            elif _is(maker, "PartDesign::Pad") or _is(maker, "PartDesign::Pocket"):
++                # the end face: its length (not when it is set from both sides)
++                if maker.Type == "Length" and not getattr(maker, "Midplane", False) and not _has_expression(maker, "Length"):
++                    plan = _cap_plan(owner, element, info, frame, maker, "Length")
++                if plan is None:
++                    plan = _sketch_plan(owner, element, info, frame, maker, fallback)
++            elif _is(maker, "PartDesign::AdditiveBox") or _is(maker, "PartDesign::AdditiveCylinder"):
++                plan = _primitive_plan(owner, element, info, frame, maker, False)
++        if plan is not None:
++            return plan
++        return fallback
++
++    if _is(owner, "PartDesign::Feature"):
++        return None  # a PartDesign feature outside a body: leave it alone
++
++    plan = None
++    if _is(owner, "Part::Box") or _is(owner, "Part::Cylinder"):
++        plan = _primitive_plan(owner, element, info, frame, owner, True)
++    if plan is not None:
++        return plan
++    if info.kind == "cylinder" and not info.full:
++        return None
++    return PartFacePlan(owner, element, info, frame, shape)
++
++
++# --------------------------------------------------------------------------- the operation
++
++
++def pushpull_shape(shape, element, distance, mode="Face"):
++    """The solid with its face moved: a flat face by distance along its outward normal (the
++    prism of the face added or cut), a full round face to radius + distance (a hole or a boss)."""
++    face = shape.getElement(element)
++    info = FaceInfo(face)
++    if abs(distance) < 1e-9:
++        return shape.copy()
++    if mode == "Face":
++        if info.kind != "plane":
++            raise ValueError("push/pull: {} is not flat".format(element))
++        prism = face.extrude(info.normal * distance)
++        result = shape.fuse(prism) if distance > 0 else shape.cut(prism)
++    else:
++        if info.kind != "cylinder" or not info.full:
++            raise ValueError("push/pull: {} is not a full round face".format(element))
++        v0, v1 = info.v_range
++        base = info.center + info.axis * v0
++        height = v1 - v0
++        r0 = info.radius
++        r1 = r0 + info.sign * distance
++        if r1 < MIN_SIZE:
++            raise ValueError("push/pull: radius {:g} too small".format(r1))
++
++        def cyl(r):
++            return Part.makeCylinder(r, height, base, info.axis)
++
++        if info.sign < 0:  # a hole
++            result = shape.cut(cyl(r1)) if r1 > r0 else shape.fuse(cyl(r0)).cut(cyl(r1))
++        else:  # a boss
++            if r1 > r0:
++                result = shape.fuse(cyl(r1))
++            else:
++                result = shape.cut(cyl(r0 + max(0.01, r0 * 1e-3)).cut(cyl(r1)))
++    try:
++        refined = result.removeSplitter()
++        if refined.isValid():
++            result = refined
++    except Exception:
++        pass
++    if not result.Solids:
++        raise ValueError("push/pull: nothing left")
++    if len(result.Solids) == 1:
++        result = result.Solids[0]
++    return result
++
++
++class PushPullFeature:
++    """A solid with one face moved (push/pull on a plain solid). Keeps the base solid, the face
++    and the distance: the distance stays editable, the base can be shown again."""
++
++    def __init__(self, obj):
++        obj.addProperty("App::PropertyLinkSub", "Base", "Push/pull", "The solid and its face that is moved")
++        obj.addProperty("App::PropertyDistance", "Distance", "Push/pull", "How far the face moves along its outward normal (negative: inward)")
++        obj.addProperty("App::PropertyEnumeration", "Mode", "Push/pull", "Face: moves a flat face; Radius: changes the radius of a round face")
++        obj.Mode = ["Face", "Radius"]
++        obj.Proxy = self
++
++    def execute(self, obj):
++        base, subs = obj.Base
++        if base is None or not subs:
++            raise ValueError("push/pull: no face")
++        obj.Shape = pushpull_shape(base.Shape, subs[0], _value(obj.Distance), obj.Mode)
++
++    def onDocumentRestored(self, obj):
++        obj.Proxy = self
++
++    def dumps(self):
++        return None
++
++    def loads(self, state):
++        return None
++
++
++class ViewProviderPushPull:
++    """Shows the push/pull feature with its base under it in the tree."""
++
++    def __init__(self, vobj):
++        vobj.Proxy = self
++
++    def attach(self, vobj):
++        self.Object = vobj.Object
++
++    def getIcon(self):
++        return ":/icons/Part_Extrude.svg"
++
++    def claimChildren(self):
++        base = getattr(self, "Object", None)
++        base = base.Base[0] if base is not None and base.Base else None
++        return [base] if base is not None else []
++
++    def onDelete(self, vobj, subelements):
++        try:
++            base = vobj.Object.Base[0]
++            if base is not None and base.ViewObject is not None:
++                base.ViewObject.Visibility = True
++        except Exception:
++            pass
++        return True
++
++    def dumps(self):
++        return None
++
++    def loads(self, state):
++        return None
++
++
++def make_pushpull(base, element, distance=0.0, mode="Face"):
++    """A push/pull feature on a face of the base solid, in the same container, looking like it;
++    the base is hidden."""
++    doc = base.Document
++    obj = doc.addObject("Part::FeaturePython", "PushPull")
++    PushPullFeature(obj)
++    obj.Base = (base, [element])
++    obj.Mode = mode
++    obj.Distance = distance
++    try:
++        obj.Label = base.Label
++    except Exception:
++        pass
++    for parent in base.InList:
++        if (_is(parent, "App::Part") or _is(parent, "App::DocumentObjectGroup")) and base in parent.Group:
++            parent.addObject(obj)
++            break
++    if getattr(obj, "ViewObject", None) is not None:
++        ViewProviderPushPull(obj.ViewObject)
++        try:
++            for prop in ("ShapeAppearance", "LineColor", "PointColor", "Transparency", "DisplayMode"):
++                if hasattr(base.ViewObject, prop):
++                    setattr(obj.ViewObject, prop, getattr(base.ViewObject, prop))
++        except Exception:
++            pass
++        _show(base, False)
++    return obj
++
++
++def broken(doc):
++    """What cannot be made: objects in error, and solids that have become flat (no volume).
++    A change is kept only when this does not grow."""
++    out = set()
++    for o in doc.Objects:
++        if not o.isValid():
++            out.add(o.Name)
++            continue
++        try:
++            if o.isDerivedFrom("Part::Feature") and not o.isDerivedFrom("Part::Part2DObject"):
++                solids = o.Shape.Solids
++                if solids and sum(abs(x.Volume) for x in solids) < 1e-6:
++                    out.add(o.Name)
++        except Exception:
++            pass
++    return out
++
++
++# --------------------------------------------------------------------------- drag helpers
++
++
++def drag_param(origin, direction, ray_origin, ray_dir):
++    """How far along the line (origin, unit direction) the point nearest to the view ray is,
++    or None when the line points along the ray."""
++    d = App.Vector(direction)
++    r = App.Vector(ray_dir)
++    if d.Length < 1e-12 or r.Length < 1e-12:
++        return None
++    d.normalize()
++    r.normalize()
++    w0 = App.Vector(origin) - App.Vector(ray_origin)
++    b = d.dot(r)
++    denom = 1.0 - b * b
++    if denom < 1e-6:
++        return None
++    dd = d.dot(w0)
++    e = r.dot(w0)
++    return (b * e - dd) / denom
++
++
++STEPS = (0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000, 5000)
++
++
++def round_step(mm_per_pixel, pixels=6):
++    """The step of the round numbers to snap to: the smallest that is at least a few pixels."""
++    for s in STEPS:
++        if s >= mm_per_pixel * pixels:
++            return s
++    return STEPS[-1]
++
++
++def snap_distance(d, step, levels=(), tolerance=0.0):
++    """(snapped distance, the level it is flush with or None): a level (where the face is flush
++    with another face) within the tolerance wins, else the nearest multiple of step."""
++    best = None
++    for level in levels:
++        gap = abs(d - level)
++        if gap <= tolerance and (best is None or gap < best[0]):
++            best = (gap, level)
++    if best is not None:
++        return best[1], best[1]
++    if step > 0:
++        return round(d / step) * step, None
++    return d, None
++
++
++def flush_levels(origin, normal, shapes):
++    """The distances along the normal at which the moved face would be flush with a flat face
++    of the shapes (parallel to it), nearest first; 0 (where it is now) left out."""
++    out = []
++    n = App.Vector(normal)
++    n.normalize()
++    for shape in shapes:
++        for f in shape.Faces:
++            try:
++                s = f.Surface
++                if type(s).__name__ != "Plane" or not _parallel(App.Vector(s.Axis), n):
++                    continue
++                level = (App.Vector(s.Position) - origin).dot(n)
++            except Exception:
++                continue
++            if abs(level) < LIN:
++                continue
++            if all(abs(level - x) > LIN for x in out):
++                out.append(level)
++    out.sort(key=abs)
++    return out
++
++
++def apply_distance(plan, distance):
++    """A typed number: the whole push/pull in one go (the caller opens the transaction)."""
++    plan = plan.begin()
++    if plan is None:
++        return None
++    plan.apply(distance)
++    return plan
+diff --git a/src/Mod/Unified/PushPull.svg b/src/Mod/Unified/PushPull.svg
+new file mode 100644
+index 000000000..dcd887ba5
+--- /dev/null
++++ b/src/Mod/Unified/PushPull.svg
+@@ -0,0 +1,9 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
++  <path d="M6 40l18-10h34l-18 10z" fill="#9ec5f8" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M6 40h34v16H6z" fill="#5b8def" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M40 40l18-10v16l-18 10z" fill="#3f6fc9" stroke="#2f5fb3" stroke-width="2" stroke-linejoin="round"/>
++  <path d="M14 36l10-6h22l-10 6z" fill="#ffd28a" stroke="#b36b00" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="3 2"/>
++  <path d="M32 33V10" stroke="#f57c00" stroke-width="4" stroke-linecap="round"/>
++  <path d="M23 15l9-11 9 11z" fill="#f57c00" stroke="#b36b00" stroke-width="1.5" stroke-linejoin="round"/>
++  <circle cx="32" cy="33" r="3.5" fill="#f57c00"/>
++</svg>
+diff --git a/src/Mod/Unified/PushPullGui.py b/src/Mod/Unified/PushPullGui.py
+new file mode 100644
+index 000000000..471ea5bbd
+--- /dev/null
++++ b/src/Mod/Unified/PushPullGui.py
+@@ -0,0 +1,973 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""面を動かす (push/pull) in the 3D view: no tool to start, no mode.
++
++- Hover a flat face of a solid (or a full round face): a small arrow appears on it. Drag the arrow:
++  the face follows the cursor along its normal, the model changes as it goes (the real model, in
++  one open transaction), a label next to the cursor says how far and what changes. The distance
++  snaps to round numbers and to the levels of other flat faces (flush); Shift drags freely.
++  Releasing keeps it (one undo step), Esc while dragging puts everything back.
++- Or pick the face and type the distance in the context bar (Unified_PushPull), or the new
++  diameter of a round face (Unified_FaceDiameter).
++
++What changes (a Pad's length, a sketch dimension, a new feature...) is decided in PushPull.py.
++"""
++
++import os
++
++import FreeCAD as App
++import FreeCADGui as Gui
++import Part
++from PySide import QtCore, QtGui, QtWidgets
++
++import PushPull as PP
++import SnapMath as S
++
++CTX = "Unified_PushPull"
++HERE = os.path.dirname(os.path.abspath(__file__))
++QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
++
++HANDLE_PX = 56  # length of the arrow on the screen
++HIT_PX = 10  # how near the arrow the cursor has to be to take it
++FLUSH_PX = 8  # how near another face's level the face snaps to it
++APPLY_MS = 15  # the model follows the cursor at most this often (each step recomputes)
++
++
++def tr(text):
++    return App.Qt.translate(CTX, text)
++
++
++def _fmt(value):
++    """A length for the label: no trailing zeros."""
++    text = "{:.3f}".format(value).rstrip("0").rstrip(".")
++    return "0" if text in ("-0", "") else text
++
++
++# --------------------------------------------------------------------------- the view
++
++
++def _view():
++    gdoc = Gui.ActiveDocument
++    view = gdoc.ActiveView if gdoc else None
++    if view is None or not hasattr(view, "getObjectInfo") or not hasattr(view, "graphicsView"):
++        return None
++    return view
++
++
++def _viewport(view):
++    try:
++        return view.graphicsView().viewport()
++    except Exception:
++        return None
++
++
++def _busy():
++    """Something else is going on: a sketch or a feature is edited, a tool's panel is open."""
++    if Gui.Control.activeDialog():
++        return True
++    gdoc = Gui.ActiveDocument
++    if gdoc is None:
++        return True
++    try:
++        return gdoc.getInEdit() is not None
++    except Exception:
++        return True
++
++
++def _coin_xy(viewport, pos):
++    """Qt position in the viewport → Coin's pixel (device pixels, y up)."""
++    dpr = viewport.devicePixelRatioF()
++    return pos.x() * dpr, viewport.height() * dpr - 1 - pos.y() * dpr
++
++
++def _qt_pos(viewport, xy):
++    dpr = viewport.devicePixelRatioF()
++    return QtCore.QPoint(int(xy[0] / dpr), int((viewport.height() * dpr - 1 - xy[1]) / dpr))
++
++
++def _on_screen(view, point):
++    x, y = view.getPointOnViewport(App.Vector(point))
++    return float(x), float(y)
++
++
++def _px_per_mm(view, point, along):
++    """How many pixels one mm is at the point, across the view."""
++    vdir = App.Vector(*view.getViewDirection())
++    u = App.Vector(along).cross(vdir)
++    if u.Length < 1e-9:
++        u = vdir.cross(App.Vector(1, 0, 0))
++        if u.Length < 1e-9:
++            u = vdir.cross(App.Vector(0, 1, 0))
++    u.normalize()
++    a = _on_screen(view, point)
++    b = _on_screen(view, point + u * 10)
++    px = ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 / 10
++    return max(px, 1e-6)
++
++
++def _ray(view, xy):
++    """The view ray through the pixel: (origin, direction)."""
++    q = App.Vector(view.getPoint(int(xy[0]), int(xy[1])))
++    if view.getCameraType() == "Perspective":
++        p = App.Vector(*view.getCameraNode().position.getValue().getValue())
++        return p, q - p
++    return q, App.Vector(*view.getViewDirection())
++
++
++def _pick_at(view, xy):
++    """(root, sub, point) of the face under the pixel, or None."""
++    info = view.getObjectInfo((int(xy[0]), int(xy[1])))
++    if not info:
++        return None
++    root = info.get("ParentObject")
++    sub = info.get("SubName")
++    if root is None or not sub:
++        try:
++            root = App.getDocument(info["Document"]).getObject(info["Object"])
++        except Exception:
++            return None
++        sub = info.get("Component")
++    if root is None or not sub or not sub.split(".")[-1].startswith("Face"):
++        return None
++    return root, sub, App.Vector(info["x"], info["y"], info["z"])
++
++
++def _visible_shapes(doc):
++    out = []
++    for obj in doc.RootObjects:
++        vo = getattr(obj, "ViewObject", None)
++        if vo is None or not vo.Visibility:
++            continue
++        try:
++            shape = Part.getShape(obj)
++        except Exception:
++            continue
++        if shape is not None and not shape.isNull() and shape.Faces:
++            out.append(shape)
++    return out
++
++
++class Arrow:
++    """The handle: an arrow drawn over the model (always on top, not pickable)."""
++
++    def __init__(self, view):
++        from pivy import coin
++
++        self.view = view
++        self.root = coin.SoSeparator()
++        style = coin.SoPickStyle()
++        style.style = coin.SoPickStyle.UNPICKABLE
++        self.root.addChild(style)
++        top = coin.SoAnnotation()
++        self.root.addChild(top)
++        self.switch = coin.SoSwitch()
++        self.switch.whichChild = -1
++        top.addChild(self.switch)
++        sep = coin.SoSeparator()
++        self.switch.addChild(sep)
++        light = coin.SoLightModel()
++        light.model = coin.SoLightModel.BASE_COLOR
++        sep.addChild(light)
++        self.transform = coin.SoTransform()
++        sep.addChild(self.transform)
++        self.color = coin.SoBaseColor()
++        sep.addChild(self.color)
++        dot = coin.SoSphere()
++        dot.radius = 0.07
++        sep.addChild(dot)
++        shaft = coin.SoSeparator()
++        move = coin.SoTranslation()
++        move.translation = (0, 0.5, 0)
++        cyl = coin.SoCylinder()
++        cyl.radius = 0.035
++        cyl.height = 1.0
++        shaft.addChild(move)
++        shaft.addChild(cyl)
++        sep.addChild(shaft)
++        head = coin.SoSeparator()
++        move = coin.SoTranslation()
++        move.translation = (0, 1.14, 0)
++        cone = coin.SoCone()
++        cone.bottomRadius = 0.12
++        cone.height = 0.28
++        head.addChild(move)
++        head.addChild(cone)
++        sep.addChild(head)
++        view.getSceneGraph().addChild(self.root)
++        self.base = None
++        self.direction = None
++        self.length = 0.0
++
++    def show(self, base, direction, hot=False):
++        from pivy import coin
++
++        self.base = App.Vector(base)
++        self.direction = App.Vector(direction)
++        self.length = HANDLE_PX / _px_per_mm(self.view, self.base, self.direction)
++        self.transform.translation.setValue(tuple(self.base))
++        self.transform.rotation.setValue(coin.SbRotation(coin.SbVec3f(0, 1, 0), coin.SbVec3f(*tuple(self.direction))))
++        self.transform.scaleFactor.setValue(self.length, self.length, self.length)
++        self.color.rgb = (1.0, 0.45, 0.0) if hot else (0.1, 0.4, 0.95)
++        self.switch.whichChild = 0
++
++    def hide(self):
++        self.switch.whichChild = -1
++        self.base = None
++
++    def visible(self):
++        return self.base is not None
++
++    def hit(self, xy, dpr=1.0):
++        """The pixel is on the arrow."""
++        if self.base is None:
++            return False
++        a = _on_screen(self.view, self.base)
++        b = _on_screen(self.view, self.base + self.direction * self.length * 1.28)
++        ax, ay = b[0] - a[0], b[1] - a[1]
++        px, py = xy[0] - a[0], xy[1] - a[1]
++        seg = ax * ax + ay * ay
++        t = 0.0 if seg < 1e-9 else max(0.0, min(1.0, (px * ax + py * ay) / seg))
++        dx, dy = px - ax * t, py - ay * t
++        return (dx * dx + dy * dy) ** 0.5 <= HIT_PX * dpr
++
++    def remove(self):
++        try:
++            self.view.getSceneGraph().removeChild(self.root)
++        except Exception:
++            pass
++
++
++class Readout(QtWidgets.QLabel):
++    """How far, and what changes, next to the cursor."""
++
++    def __init__(self, parent):
++        super().__init__(parent)
++        self.setObjectName("UnifiedPushPullReadout")
++        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
++        self.setTextFormat(QtCore.Qt.RichText)
++        self.setStyleSheet(
++            "QLabel { background: rgba(255,255,255,240); color: #1d1d1f; border: 1px solid #2f5fb3;"
++            " border-radius: 4px; padding: 3px 7px; }"
++        )
++        self.hide()
++
++    def say(self, pos, main, detail="", warn=False):
++        color = "#b3261e" if warn else "#1d1d1f"
++        html = "<span style='font-size:13pt; font-weight:600; color:{}'>{}</span>".format(color, main.replace("<", "&lt;"))
++        if detail:
++            html += "<br><span style='color:#555'>{}</span>".format(detail.replace("<", "&lt;"))
++        self.setText(html)
++        self.adjustSize()
++        parent = self.parentWidget()
++        x = min(pos.x() + 18, max(0, parent.width() - self.width() - 2))
++        y = min(pos.y() + 18, max(0, parent.height() - self.height() - 2))
++        self.move(x, y)
++        self.show()
++        self.raise_()
++
++
++def describe(plan, d, flush=None):
++    """(main text, detail text) of the readout for moving the face by d."""
++    word, before, after = plan.value_after(d)
++    what = tr(PP.WORDS.get(word, word))
++    target = getattr(plan.target, "Label", "")
++    if plan.radial and word in ("Radius", "Diameter", "dimension") and getattr(plan.info, "radius", None):
++        r = plan.info.radius + plan.info.sign * d
++        main = "⌀{} mm".format(_fmt(2 * r))
++    else:
++        main = "{}{} mm".format("+" if d > 0 else "", _fmt(d))
++    if after is None:
++        detail = target
++    elif word in ("new pad", "new pocket", "new pushpull"):
++        detail = tr("{what} {value} mm").format(what=what, value=_fmt(after))
++    else:
++        name = getattr(plan, "name", "") or ""
++        if name:
++            what = "{} ({})".format(what, name)
++        detail = tr("{object}: {what} {old} → {new} mm").format(object=target, what=what, old=_fmt(before), new=_fmt(after))
++    if flush is not None:
++        detail += "  ·  " + tr("flush with a face")
++    return main, detail
++
++
++# --------------------------------------------------------------------------- the drag
++
++
++class CannotMove(Exception):
++    pass
++
++
++class Session:
++    """One push/pull: the open transaction, the plan in use and the distance so far."""
++
++    def __init__(self, plan, title):
++        self.doc = plan.doc
++        self.doc.openTransaction(title)
++        try:
++            used = plan.begin()
++        except Exception as e:
++            App.Console.PrintWarning("Push/pull: {}\n".format(e))
++            used = None
++        if used is None:
++            self.doc.abortTransaction()
++            raise CannotMove()
++        self.plan = used
++        self.broken = self._broken()  # what was broken already does not count
++        self.applied = 0.0
++        self.good = 0.0
++        self.error = False
++        self.closed = False
++
++    def _broken(self):
++        return PP.broken(self.doc)
++
++    def apply(self, d):
++        """Move the face to d (from where it was); a step that fails goes back to the last
++        good one."""
++        d = self.plan.clamp(d)
++        if abs(d - self.applied) < 1e-9:
++            return
++        try:
++            self.plan.apply(d)
++            ok = self._broken() <= self.broken
++        except Exception as e:
++            App.Console.PrintLog("Push/pull: {}\n".format(e))
++            ok = False
++        self.applied = d
++        if ok:
++            self.good = d
++            self.error = False
++        else:
++            self.error = True
++            try:
++                self.plan.apply(self.good)
++                self.applied = self.good
++            except Exception:
++                pass
++
++    def commit(self):
++        if self.closed:
++            return
++        self.closed = True
++        if abs(self.good) < 1e-9:
++            self.doc.abortTransaction()
++            return
++        if abs(self.applied - self.good) > 1e-9:
++            self.plan.apply(self.good)
++        self.doc.commitTransaction()
++
++    def cancel(self):
++        if self.closed:
++            return
++        self.closed = True
++        self.doc.abortTransaction()
++        try:
++            self.doc.recompute()
++        except Exception:
++            pass
++
++
++class Drag:
++    def __init__(self, manager, view, viewport, plan, xy):
++        self.manager = manager
++        self.view = view
++        self.viewport = viewport
++        self.session = Session(plan, tr("Move face"))
++        self.plan = self.session.plan
++        self.origin = App.Vector(plan.origin)
++        self.normal = App.Vector(plan.normal)
++        self.mm_per_px = 1.0 / _px_per_mm(view, self.origin, self.normal)
++        self.step = PP.round_step(self.mm_per_px)
++        self.levels = [] if self.plan.radial else PP.flush_levels(self.origin, self.normal, _visible_shapes(self.plan.doc))
++        self.start_xy = xy
++        self.t0 = self._param(xy)
++        self.d = 0.0
++        self.flush = None
++        self.pos = _qt_pos(viewport, xy)
++        self.timer = QtCore.QTimer()
++        self.timer.setSingleShot(True)
++        self.timer.setInterval(APPLY_MS)
++        self.timer.timeout.connect(self._apply)
++
++    def _param(self, xy):
++        ray = _ray(self.view, xy)
++        t = PP.drag_param(self.origin, self.normal, ray[0], ray[1])
++        if t is not None:
++            return t
++        # The arrow points at the eye: up and down on the screen move the face
++        return (xy[1] - self.start_xy[1]) * self.mm_per_px
++
++    def move(self, xy, free=False):
++        t = self._param(xy) - self.t0
++        d = self.plan.clamp(t)
++        self.flush = None
++        if not free:
++            d, self.flush = PP.snap_distance(d, self.step, self.levels, FLUSH_PX * self.mm_per_px)
++            d = self.plan.clamp(d)
++        self.d = d
++        self.pos = _qt_pos(self.viewport, xy)
++        if not self.timer.isActive():
++            self.timer.start()
++
++    def _apply(self):
++        self.session.apply(self.d)
++        self.manager.show_progress(self)
++
++    def finish(self):
++        self.timer.stop()
++        self.session.apply(self.d)
++        self.session.commit()
++
++    def cancel(self):
++        self.timer.stop()
++        self.session.cancel()
++
++
++class TypedEdit(QtWidgets.QLineEdit):
++    """The distance (or diameter) typed next to the face: the model follows as it is typed,
++    Enter keeps it, Esc puts it back."""
++
++    def __init__(self, manager, view, viewport, plan, diameter=False):
++        super().__init__(viewport)
++        self.manager = manager
++        self.view = view
++        self.diameter = diameter
++        self.session = Session(plan, tr("Move face"))
++        self.plan = self.session.plan
++        self.setObjectName("UnifiedPushPullField")
++        self.setFixedWidth(self.fontMetrics().horizontalAdvance("0000.000 mm") + 14)
++        if diameter:
++            self.setText("{} mm".format(_fmt(2 * plan.info.radius)))
++        else:
++            self.setText(ContextDefaults.distance())
++        self.selectAll()
++        self.setToolTip(tr("Type how far the face moves (negative: inward) and press Enter. Esc puts it back"))
++        xy = _on_screen(view, plan.origin)
++        pos = _qt_pos(viewport, xy)
++        self.move(min(pos.x() + 14, max(0, viewport.width() - self.width())), max(0, pos.y() - 30))
++        self.timer = QtCore.QTimer(self)
++        self.timer.setSingleShot(True)
++        self.timer.setInterval(250)
++        self.timer.timeout.connect(self._preview)
++        self.textEdited.connect(lambda _t: self.timer.start())
++        self.returnPressed.connect(self._enter)
++        self.done = False
++        self.show()
++        self.setFocus()
++        self._preview()
++
++    def distance(self):
++        d = parse_length(self.text())
++        if d is None:
++            return None
++        if self.diameter:
++            return self.plan.info.sign * (d / 2 - self.plan.info.radius)
++        return d
++
++    def _preview(self):
++        d = self.distance()
++        if d is None:
++            return
++        self.session.apply(d)
++        self.manager.show_typed(self)
++
++    def _enter(self):
++        d = self.distance()
++        if d is None:
++            return
++        self.timer.stop()
++        self.session.apply(d)
++        if not self.diameter:
++            ContextDefaults.remember(self.text())
++        self._close(True)
++
++    def keyPressEvent(self, event):
++        if event.key() == QtCore.Qt.Key_Escape:
++            self._close(False)
++            return
++        super().keyPressEvent(event)
++
++    def focusOutEvent(self, event):
++        super().focusOutEvent(event)
++        QtCore.QTimer.singleShot(0, lambda: self._close(False))
++
++    def _close(self, keep):
++        if self.done:
++            return
++        self.done = True
++        if keep:
++            self.session.commit()
++        else:
++            self.session.cancel()
++        self.manager.typed_closed(self)
++        self.hide()
++        self.deleteLater()
++
++
++def parse_length(text):
++    """mm from what was typed: a number (mm), a quantity with a unit, or arithmetic."""
++    text = (text or "").strip().replace("−", "-").replace("，", ".").replace("．", ".")
++    if not text:
++        return None
++    try:
++        q = App.Units.Quantity(text)
++    except Exception:
++        return None
++    if q.Unit == App.Units.Unit():
++        return float(q.Value)
++    if q.Unit != App.Units.Length:
++        return None
++    return float(q.getValueAs("mm"))
++
++
++class ContextDefaults:
++    PARAM = "User parameter:BaseApp/Preferences/Mod/Unified/ContextBar"
++
++    @classmethod
++    def distance(cls):
++        return App.ParamGet(cls.PARAM).GetString("Unified_PushPull", "5 mm")
++
++    @classmethod
++    def remember(cls, text):
++        App.ParamGet(cls.PARAM).SetString("Unified_PushPull", text)
++
++
++# --------------------------------------------------------------------------- the watcher
++
++
++class _DocObserver:
++    def __init__(self, manager):
++        self.manager = manager
++
++    def slotRecomputedDocument(self, doc):
++        self.manager.forget()
++
++    def slotUndoDocument(self, doc):
++        self.manager.forget()
++
++    def slotRedoDocument(self, doc):
++        self.manager.forget()
++
++    def slotDeletedDocument(self, doc):
++        self.manager.forget()
++
++
++class Manager(QtCore.QObject):
++    """Watches the mouse over the 3D views: shows the arrow on the face under the cursor and
++    runs the drag. Nothing is started by a command: hovering is enough."""
++
++    def __init__(self):
++        super().__init__()
++        self.cache = {}
++        self.view = None
++        self.viewport = None
++        self.arrow = None
++        self.readout = None
++        self.plan = None
++        self.drag = None
++        self.typed = None
++        self.hover_xy = None
++        self.hot = False
++        self.saved_cursor = None
++        self.hover_timer = QtCore.QTimer(self)
++        self.hover_timer.setSingleShot(True)
++        self.hover_timer.setInterval(25)
++        self.hover_timer.timeout.connect(self._hover_now)
++        self.poll = QtCore.QTimer(self)
++        self.poll.setInterval(400)
++        self.poll.timeout.connect(self._attach)
++        self.poll.start()
++        self.observer = _DocObserver(self)
++        App.addDocumentObserver(self.observer)
++
++    # views ---------------------------------------------------------------------------------
++
++    def _attach(self):
++        """Watch the active 3D view (views come and go with documents)."""
++        if self.drag is not None or self.typed is not None:
++            return
++        if not self._alive():
++            self._view_gone()
++        if _busy() and self.arrow is not None:
++            self._hide()
++        view = _view()
++        if view is None:
++            return
++        viewport = _viewport(view)
++        if viewport is None:
++            return
++        if not viewport.property("unifiedPushPull"):
++            viewport.setProperty("unifiedPushPull", True)
++            viewport.installEventFilter(self)
++            viewport.destroyed.connect(self._view_gone)
++        if self.viewport is not viewport:
++            self._set_view(view, viewport)
++
++    def _view_gone(self, *_args):
++        """The view closed (with its document): forget it without touching it."""
++        self.view = None
++        self.viewport = None
++        self.arrow = None
++        self.readout = None
++        self.plan = None
++        self.hover_xy = None
++        self.hot = False
++        self.saved_cursor = None
++
++    def _alive(self):
++        if self.viewport is None:
++            return False
++        try:
++            import shiboken6
++
++            return shiboken6.isValid(self.viewport)
++        except Exception:
++            return True
++
++    def _set_view(self, view, viewport):
++        if self._alive():
++            self._hide()
++            if self.arrow is not None:
++                self.arrow.remove()
++        self.arrow = None
++        self.view = view
++        self.viewport = viewport
++        if self.readout is not None:
++            try:
++                self.readout.deleteLater()
++            except RuntimeError:
++                pass
++        self.readout = Readout(viewport)
++
++    def forget(self):
++        self.cache.clear()
++
++    # what is under the cursor --------------------------------------------------------------
++
++    def plan_at(self, root, sub, point):
++        key = (root.Document.Name, root.Name, sub)
++        if key not in self.cache:
++            try:
++                plan = PP.plan_for(root, sub, point)
++            except Exception as e:
++                App.Console.PrintLog("Push/pull: {}\n".format(e))
++                plan = None
++            if len(self.cache) > 200:
++                self.cache.clear()
++            self.cache[key] = plan
++        return self.cache[key]
++
++    def _hover_now(self):
++        if self.drag is not None or self.typed is not None or self.hover_xy is None:
++            return
++        viewport, xy = self.hover_xy
++        if not self._alive() or viewport is not self.viewport or _busy() or _view() is not self.view:
++            self._hide()
++            return
++        view = self.view
++        dpr = viewport.devicePixelRatioF()
++        if self.arrow is not None and self.arrow.visible() and self.arrow.hit(xy, dpr):
++            self._set_hot(True)
++            return
++        self._set_hot(False)
++        try:
++            hit = _pick_at(view, xy)
++        except Exception:
++            hit = None
++        plan = None
++        if hit is not None:
++            root, sub, point = hit
++            if root.Document == App.ActiveDocument:
++                plan = self.plan_at(root, sub, point)
++        if plan is None:
++            self._hide()
++            return
++        self.plan = plan
++        if self.arrow is None:
++            self.arrow = Arrow(view)
++        self.arrow.show(plan.origin, plan.normal)
++
++    def _set_hot(self, hot):
++        if hot == self.hot:
++            return
++        self.hot = hot
++        if self.arrow is not None and self.arrow.visible():
++            self.arrow.show(self.arrow.base, self.arrow.direction, hot)
++        if self.viewport is not None:
++            if hot:
++                self.saved_cursor = self.viewport.cursor()
++                self.viewport.setCursor(QtCore.Qt.OpenHandCursor)
++            elif self.saved_cursor is not None:
++                self.viewport.setCursor(self.saved_cursor)
++                self.saved_cursor = None
++
++    def _hide(self):
++        self._set_hot(False)
++        if self.arrow is not None:
++            self.arrow.hide()
++        self.plan = None
++
++    # the events ---------------------------------------------------------------------------
++
++    def eventFilter(self, obj, event):
++        try:
++            return self._event(obj, event)
++        except Exception as e:  # never break the view
++            App.Console.PrintWarning("Push/pull: {}\n".format(e))
++            return False
++
++    def _event(self, obj, event):
++        t = event.type()
++        if t == QtCore.QEvent.KeyPress:
++            if self.drag is not None and event.key() == QtCore.Qt.Key_Escape:
++                self._end_drag(cancel=True)
++                return True
++            return False
++        if obj is not self.viewport:
++            return False
++        if t == QtCore.QEvent.MouseMove:
++            xy = _coin_xy(obj, event.position() if hasattr(event, "position") else event.pos())
++            if self.drag is not None:
++                self.drag.move(xy, free=bool(event.modifiers() & QtCore.Qt.ShiftModifier))
++                return True
++            if event.buttons() == QtCore.Qt.NoButton:
++                self.hover_xy = (obj, xy)
++                self.hover_timer.start()
++            return False
++        if t == QtCore.QEvent.MouseButtonPress:
++            if self.drag is not None:
++                return True
++            if event.button() != QtCore.Qt.LeftButton or self.plan is None or self.arrow is None:
++                return False
++            if event.modifiers() & (QtCore.Qt.ControlModifier | QtCore.Qt.AltModifier):
++                return False
++            xy = _coin_xy(obj, event.position() if hasattr(event, "position") else event.pos())
++            if not self.arrow.hit(xy, obj.devicePixelRatioF()) or _busy():
++                return False
++            self._start_drag(xy)
++            return True
++        if t == QtCore.QEvent.MouseButtonRelease and self.drag is not None:
++            if event.button() == QtCore.Qt.LeftButton:
++                self._end_drag(cancel=False)
++            return True
++        if t == QtCore.QEvent.MouseButtonDblClick and self.drag is not None:
++            return True
++        if t == QtCore.QEvent.Leave and self.drag is None:
++            self.hover_xy = None
++            self._hide()
++        return False
++
++    def _start_drag(self, xy):
++        try:
++            self.drag = Drag(self, self.view, self.viewport, self.plan, xy)
++        except CannotMove:
++            self.readout.say(_qt_pos(self.viewport, xy), tr("This face cannot be moved"), warn=True)
++            QtCore.QTimer.singleShot(1500, self.readout.hide)
++            return
++        _hide_context_bar()
++        QtWidgets.QApplication.instance().installEventFilter(self)
++        self.viewport.setCursor(QtCore.Qt.ClosedHandCursor)
++        self.arrow.show(self.drag.origin, self.drag.normal, True)
++        self.show_progress(self.drag)
++
++    def _end_drag(self, cancel):
++        drag = self.drag
++        self.drag = None
++        QtWidgets.QApplication.instance().removeEventFilter(self)
++        try:
++            if cancel:
++                drag.cancel()
++            else:
++                drag.finish()
++        except Exception as e:
++            App.Console.PrintWarning("Push/pull: {}\n".format(e))
++            drag.session.cancel()
++        self.forget()
++        self.readout.hide()
++        self.saved_cursor = None
++        self.hot = False
++        self.viewport.unsetCursor()
++        self._hide()
++
++    def show_progress(self, drag):
++        if self.drag is not drag:
++            return
++        d = drag.session.applied
++        self.arrow.show(drag.origin + drag.normal * d, drag.normal, True)
++        main, detail = describe(drag.plan, d, drag.flush)
++        if drag.session.error:
++            detail = tr("Cannot go further") + ("  ·  " + detail if detail else "")
++        self.readout.say(drag.pos, main, detail, warn=drag.session.error)
++
++    # typed numbers ---------------------------------------------------------------------------
++
++    def start_typed(self, plan, diameter=False):
++        self._attach()
++        if self.view is None or self.drag is not None:
++            return
++        if self.typed is not None:
++            self.typed._close(False)
++        try:
++            self.typed = TypedEdit(self, self.view, self.viewport, plan, diameter)
++        except CannotMove:
++            return
++        if self.arrow is None:
++            self.arrow = Arrow(self.view)
++        self.show_typed(self.typed)
++
++    def show_typed(self, typed):
++        d = typed.session.applied
++        self.arrow.show(typed.plan.origin + typed.plan.normal * d, typed.plan.normal)
++        main, detail = describe(typed.plan, d)
++        pos = typed.pos() + QtCore.QPoint(-18, typed.height() - 14)
++        self.readout.say(pos, detail or main, "", warn=typed.session.error)
++
++    def typed_closed(self, typed):
++        if self.typed is typed:
++            self.typed = None
++        self.forget()
++        if self.readout is not None:
++            self.readout.hide()
++        self._hide()
++
++
++def _hide_context_bar():
++    main = Gui.getMainWindow()
++    bar = main.findChild(QtWidgets.QFrame, "UnifiedContextBar") if main else None
++    if bar is not None:
++        bar.hide()
++
++
++_manager = None
++
++
++def manager():
++    global _manager
++    if _manager is None:
++        _manager = Manager()
++    return _manager
++
++
++def install():
++    manager()
++
++
++# --------------------------------------------------------------------------- commands
++
++
++def _selected_face():
++    """(root, sub, point) of the one face picked, or None."""
++    sel = Gui.Selection.getSelectionEx("", 0)
++    if len(sel) != 1 or len(sel[0].SubElementNames) != 1:
++        return None
++    sub = sel[0].SubElementNames[0]
++    if not sub.split(".")[-1].startswith("Face"):
++        return None
++    points = list(sel[0].PickedPoints)
++    point = points[0] if points else None
++    pick = S.Pick(sel[0].Object, sub, point)
++    try:
++        face = pick.shape()
++        if point is not None and face.distToShape(Part.Vertex(point))[0] > 1e-3 * max(1.0, face.BoundBox.DiagonalLength):
++            point = None
++    except Exception:
++        point = None
++    return sel[0].Object, sub, point
++
++
++def selected_plan():
++    hit = _selected_face()
++    if hit is None or hit[0].Document != App.ActiveDocument:
++        return None
++    return manager().plan_at(*hit)
++
++
++def apply_typed(text, diameter=False):
++    """The number typed in the context bar: the whole push/pull at once (one undo step)."""
++    plan = selected_plan()
++    value = parse_length(text)
++    if plan is None or value is None:
++        return
++    if diameter:
++        if not plan.radial:
++            return
++        value = plan.info.sign * (value / 2 - plan.info.radius)
++    try:
++        session = Session(plan, tr("Move face"))
++    except CannotMove:
++        return
++    session.apply(value)
++    session.commit()
++    if not diameter:
++        ContextDefaults.remember(text)
++    manager().forget()
++
++
++def current_diameter():
++    plan = selected_plan()
++    if plan is None or not plan.radial:
++        return ""
++    return "{} mm".format(_fmt(2 * plan.info.radius))
++
++
++class PushPullCommand:
++    """面を動かす: the picked face, by a typed distance."""
++
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "PushPull.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_PushPull", "Move face"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_PushPull",
++                "Moves the picked face along its normal: outward adds material, inward removes it. "
++                "Type the distance (negative: inward), or drag the arrow that appears on a face under the cursor",
++            ),
++        }
++
++    def IsActive(self):
++        if App.ActiveDocument is None or _view() is None or _busy():
++            return False
++        plan = selected_plan()
++        return plan is not None and not plan.radial
++
++    def Activated(self):
++        plan = selected_plan()
++        if plan is not None:
++            manager().start_typed(plan)
++
++
++class FaceDiameterCommand(PushPullCommand):
++    """径: a hole's or a boss's diameter, by the picked round face."""
++
++    def GetResources(self):
++        return {
++            "Pixmap": os.path.join(HERE, "PushPull.svg"),
++            "MenuText": QT_TRANSLATE_NOOP("Unified_FaceDiameter", "Diameter"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_FaceDiameter",
++                "Changes the diameter of the picked hole or round boss: type the new diameter",
++            ),
++        }
++
++    def IsActive(self):
++        if App.ActiveDocument is None or _view() is None or _busy():
++            return False
++        plan = selected_plan()
++        return plan is not None and plan.radial
++
++    def Activated(self):
++        plan = selected_plan()
++        if plan is not None:
++            manager().start_typed(plan, diameter=True)
++
++
++Gui.addCommand("Unified_PushPull", PushPullCommand())
++Gui.addCommand("Unified_FaceDiameter", FaceDiameterCommand())
++
++try:
++    import ContextRules
++
++    ContextRules.VALUE_HANDLERS["Unified_PushPull"] = apply_typed
++    ContextRules.VALUE_HANDLERS["Unified_FaceDiameter"] = lambda text: apply_typed(text, diameter=True)
++    ContextRules.VALUE_DEFAULTS["Unified_FaceDiameter"] = current_diameter
++except Exception as e:  # an older ContextRules: the bar's buttons still work
++    App.Console.PrintLog("Push/pull: {}\n".format(e))
+diff --git a/src/Mod/Unified/TestDimensionLabels.py b/src/Mod/Unified/TestDimensionLabels.py
+new file mode 100644
+index 000000000..b9b202c58
+--- /dev/null
++++ b/src/Mod/Unified/TestDimensionLabels.py
+@@ -0,0 +1,196 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of DimensionLabels (形の上の寸法: dimensions on the model), headless:
++#   FreeCADCmd -t TestDimensionLabels
++
++import unittest
++
++import FreeCAD as App
++import Part
++import Sketcher
++
++import DimensionLabels as DL
++import TestPushPull as TP
++
++_face_with = TP._face_with
++_round_face = TP._round_face
++
++
++class DimensionLabelsTest(unittest.TestCase):
++    setUp = TP.PushPullTest.setUp
++    tearDown = TP.PushPullTest.tearDown
++    body = TP.PushPullTest.body
++    sketch = TP.PushPullTest.sketch
++    rectangle = TP.PushPullTest.rectangle
++    padded_plate = TP.PushPullTest.padded_plate
++
++    def by_path(self, dims):
++        return {(d.obj.Name, d.path): d for d in dims}
++
++    def assertNear(self, a, b, tol=1e-6):
++        self.assertLess((App.Vector(a) - App.Vector(b)).Length, tol, "{} != {}".format(a, b))
++
++    def test_pad_face_shows_length_and_sketch_dimensions(self):
++        body, sk, pad = self.padded_plate(5)
++        top = _face_with(pad.Shape, (0, 0, 1), 5)
++        dims = DL.dimensions_for([(body, "Pad." + top, None)])
++        paths = self.by_path(dims)
++        self.assertIn(("Pad", "Length"), paths)
++        self.assertIn(("Sketch", ".Constraints.Width"), paths)
++        self.assertIn(("Sketch", ".Constraints.Height"), paths)
++        length = paths[("Pad", "Length")]
++        self.assertEqual(length.text(), "5 mm")
++        self.assertAlmostEqual(length.anchor.z, 2.5)  # half way up the side
++        width = paths[("Sketch", ".Constraints.Width")]
++        self.assertNear(width.anchor, (20, 0, 0))  # the middle of the bottom line
++        self.assertEqual(width.text(), "40 mm")
++
++    def test_labels_follow_a_moved_part(self):
++        part = self.doc.addObject("App::Part", "Part")
++        part.Placement.Base = App.Vector(100, 0, 0)
++        body, sk, pad = self.padded_plate(5, container=part)
++        dims = self.by_path(DL.dimensions_of(pad))
++        self.assertNear(dims[("Sketch", ".Constraints.Width")].anchor, (120, 0, 0))
++
++    def test_edit_a_length(self):
++        body, sk, pad = self.padded_plate(5)
++        dims = self.by_path(DL.dimensions_of(pad))
++        self.assertIsNone(DL.set_dimension(dims[("Pad", "Length")], "12"))
++        self.assertAlmostEqual(pad.Length.Value, 12)
++        self.assertAlmostEqual(body.Shape.BoundBox.ZMax, 12)
++        # with a unit and arithmetic
++        self.assertIsNone(DL.set_dimension(dims[("Pad", "Length")], "1 cm + 2 mm"))
++        self.assertAlmostEqual(pad.Length.Value, 12)
++        self.assertIsNone(DL.set_dimension(dims[("Pad", "Length")], "0.5 in"))
++        self.assertAlmostEqual(pad.Length.Value, 12.7)
++        # one undo step each
++        self.doc.undo()
++        self.doc.recompute()
++        self.assertAlmostEqual(pad.Length.Value, 12)
++
++    def test_edit_a_sketch_dimension(self):
++        body, sk, pad = self.padded_plate(5)
++        dims = self.by_path(DL.dimensions_of(pad))
++        self.assertIsNone(DL.set_dimension(dims[("Sketch", ".Constraints.Width")], "50 mm"))
++        self.assertAlmostEqual(body.Shape.BoundBox.XMax, 50)
++
++    def test_expressions(self):
++        body, sk, pad = self.padded_plate(5)
++        dims = self.by_path(DL.dimensions_of(pad))
++        length = dims[("Pad", "Length")]
++        self.assertIsNone(DL.set_dimension(length, "=Sketch.Constraints.Width / 4"))
++        self.assertAlmostEqual(pad.Length.Value, 10)
++        self.assertEqual(length.text(), "ƒ 10 mm")
++        self.assertEqual(length.edit_text(), "=Sketch.Constraints.Width / 4")
++        # a number again: the expression goes
++        self.assertIsNone(DL.set_dimension(length, "7"))
++        self.assertAlmostEqual(pad.Length.Value, 7)
++        self.assertIsNone(length.expression)
++        # an unnamed sketch dimension by expression
++        self.assertIsNone(DL.set_dimension(dims[("Sketch", ".Constraints.Height")], "=20 mm + 5 mm"))
++        self.assertAlmostEqual(body.Shape.BoundBox.YMax, 25)
++
++    def test_bad_values_change_nothing(self):
++        body, sk, pad = self.padded_plate(5)
++        dims = self.by_path(DL.dimensions_of(pad))
++        self.assertIsNotNone(DL.set_dimension(dims[("Pad", "Length")], "abc"))
++        self.assertIsNotNone(DL.set_dimension(dims[("Pad", "Length")], "30 deg"))
++        self.assertIsNotNone(DL.set_dimension(dims[("Sketch", ".Constraints.Width")], "0"))
++        self.assertAlmostEqual(pad.Length.Value, 5)
++        self.assertAlmostEqual(sk.getDatum("Width").Value, 40)
++        self.assertTrue(pad.isValid())
++
++    def test_hole_fillet_and_pattern(self):
++        body, sk, pad = self.padded_plate(10)
++        sk2 = self.sketch(body, 10)
++        sk2.addGeometry(Part.Circle(App.Vector(10, 15, 0), App.Vector(0, 0, 1), 2))
++        hole = body.newObject("PartDesign::Hole", "Hole")
++        hole.Profile = sk2
++        hole.Diameter = 6
++        hole.Depth = 4
++        hole.DepthType = "Dimension"
++        self.doc.recompute()
++        dims = self.by_path(DL.dimensions_for([(body, "Hole." + _round_face(hole.Shape, 3), None)]))
++        self.assertEqual(dims[("Hole", "Diameter")].text(), "⌀6")
++        self.assertEqual(dims[("Hole", "Depth")].text(), "4 mm")
++        self.assertAlmostEqual(dims[("Hole", "Depth")].anchor.z, 8)
++        self.assertIsNone(DL.set_dimension(dims[("Hole", "Diameter")], "8"))
++        self.assertAlmostEqual(hole.Diameter.Value, 8)
++
++        pattern = body.newObject("PartDesign::LinearPattern", "LinearPattern")
++        pattern.Originals = [hole]
++        pattern.Direction = (sk2, ["H_Axis"])
++        pattern.Length = 20
++        pattern.Occurrences = 3
++        self.doc.recompute()
++        dims = self.by_path(DL.dimensions_of(pattern))
++        self.assertEqual(dims[("LinearPattern", "Occurrences")].text(), "×3")
++        self.assertIsNone(DL.set_dimension(dims[("LinearPattern", "Occurrences")], "4"))
++        self.assertEqual(pattern.Occurrences, 4)
++
++    def test_fillet_face_shows_its_radius(self):
++        body, sk, pad = self.padded_plate(10)
++        edge = next(
++            "Edge%d" % (i + 1)
++            for i, e in enumerate(pad.Shape.Edges)
++            if type(e.Curve).__name__ == "Line" and abs(e.BoundBox.ZMin) < 1e-6 and abs(e.BoundBox.ZMax - 10) < 1e-6
++        )
++        fillet = body.newObject("PartDesign::Fillet", "Fillet")
++        fillet.Base = (pad, [edge])
++        fillet.Radius = 2
++        self.doc.recompute()
++        self.assertTrue(fillet.isValid())
++        round_face = next(
++            "Face%d" % (i + 1)
++            for i, f in enumerate(fillet.Shape.Faces)
++            if type(f.Surface).__name__ == "Cylinder" and abs(f.Surface.Radius - 2) < 1e-6
++        )
++        self.assertIs(DL.owner_of_pick(body, "Fillet." + round_face), fillet)
++        dims = self.by_path(DL.dimensions_for([(body, "Fillet." + round_face, None)]))
++        self.assertEqual(dims[("Fillet", "Radius")].text(), "R2")
++        # the top face of the plate still belongs to the pad
++        top = _face_with(fillet.Shape, (0, 0, 1), 10)
++        self.assertIs(DL.owner_of_pick(body, "Fillet." + top), pad)
++
++    def test_primitives_and_pushpull(self):
++        box = self.doc.addObject("Part::Box", "Box")
++        box.Placement.Base = App.Vector(0, 0, 100)
++        cyl = self.doc.addObject("Part::Cylinder", "Cylinder")
++        self.doc.recompute()
++        dims = self.by_path(DL.dimensions_for([(box, "Face1", None)]))
++        self.assertEqual(set(p for _o, p in dims), {"Length", "Width", "Height"})
++        self.assertNear(dims[("Box", "Height")].anchor, (0, 0, 105))
++        self.assertIsNone(DL.set_dimension(dims[("Box", "Height")], "20"))
++        self.assertAlmostEqual(box.Shape.BoundBox.ZMax, 120)
++        dims = self.by_path(DL.dimensions_of(cyl))
++        self.assertEqual(dims[("Cylinder", "Radius")].text(), "R2")
++
++        import PushPull as PP
++
++        solid = self.doc.addObject("Part::Feature", "Solid")
++        solid.Shape = Part.makeBox(10, 10, 10)
++        self.doc.recompute()
++        plan = PP.plan_for(solid, _face_with(solid.Shape, (0, 0, 1)))
++        self.doc.openTransaction("t")
++        used = PP.apply_distance(plan, 3)
++        self.doc.commitTransaction()
++        dims = DL.dimensions_of(used.feature)
++        self.assertEqual(len(dims), 1)
++        self.assertEqual(dims[0].text(), "3 mm")
++        self.assertNear(dims[0].anchor, (5, 5, 13))
++        self.assertIsNone(DL.set_dimension(dims[0], "-2"))
++        self.assertAlmostEqual(used.feature.Shape.BoundBox.ZMax, 8)
++
++    def test_body_shows_each_steps_main_numbers_only(self):
++        body, sk, pad = self.padded_plate(5)
++        dims = DL.dimensions_of(body)
++        self.assertEqual([(d.obj.Name, d.path) for d in dims], [("Pad", "Length")])
++
++    def test_nothing_for_two_objects(self):
++        box = self.doc.addObject("Part::Box", "Box")
++        box2 = self.doc.addObject("Part::Box", "Box001")
++        self.doc.recompute()
++        self.assertEqual(DL.dimensions_for([(box, "Face1", None), (box2, "Face1", None)]), [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestPushPull.py b/src/Mod/Unified/TestPushPull.py
+new file mode 100644
+index 000000000..ad465d766
+--- /dev/null
++++ b/src/Mod/Unified/TestPushPull.py
+@@ -0,0 +1,450 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of PushPull (面を動かす: push/pull a face), headless:
++#   FreeCADCmd -t TestPushPull
++
++import os
++import tempfile
++import unittest
++
++import FreeCAD as App
++import Part
++import Sketcher
++
++import PushPull as PP
++
++
++def _face_with(shape, normal, level=None, kind="Plane"):
++    """The name of the face of the shape with this outward normal (and level along it)."""
++    n = App.Vector(normal)
++    for i, f in enumerate(shape.Faces):
++        if type(f.Surface).__name__ != kind:
++            continue
++        info = PP.FaceInfo(f)
++        if kind == "Plane":
++            if info.normal.dot(n) < 1 - 1e-6:
++                continue
++            if level is not None and abs(info.origin.dot(n) - level) > 1e-6:
++                continue
++        return "Face%d" % (i + 1)
++    raise AssertionError("no face with normal {} at {}".format(normal, level))
++
++
++def _round_face(shape, radius):
++    for i, f in enumerate(shape.Faces):
++        if type(f.Surface).__name__ == "Cylinder" and abs(f.Surface.Radius - radius) < 1e-6:
++            return "Face%d" % (i + 1)
++    raise AssertionError("no round face of radius {}".format(radius))
++
++
++class PushPullTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("PushPullTest")
++        self.doc.UndoMode = 1
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    # helpers ------------------------------------------------------------------------------
++
++    def body(self, container=None):
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        if container is not None:
++            container.addObject(body)
++        return body
++
++    def sketch(self, body, offset=0.0):
++        sk = body.newObject("Sketcher::SketchObject", "Sketch")
++        sk.AttachmentSupport = (body.Origin.OriginFeatures[3], [""])
++        sk.MapMode = "FlatFace"
++        sk.AttachmentOffset = App.Placement(App.Vector(0, 0, offset), App.Rotation())
++        return sk
++
++    def rectangle(self, sk, w, h, x=0.0, y=0.0, constrain=True):
++        pts = [App.Vector(x, y, 0), App.Vector(x + w, y, 0), App.Vector(x + w, y + h, 0), App.Vector(x, y + h, 0)]
++        first = len(sk.Geometry)
++        for i in range(4):
++            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++        for i in range(4):
++            sk.addConstraint(Sketcher.Constraint("Coincident", first + i, 2, first + (i + 1) % 4, 1))
++        if constrain:
++            sk.addConstraint(Sketcher.Constraint("Horizontal", first))
++            sk.addConstraint(Sketcher.Constraint("Horizontal", first + 2))
++            sk.addConstraint(Sketcher.Constraint("Vertical", first + 1))
++            sk.addConstraint(Sketcher.Constraint("Vertical", first + 3))
++            sk.addConstraint(Sketcher.Constraint("DistanceX", -1, 1, first, 1, x))
++            sk.addConstraint(Sketcher.Constraint("DistanceY", -1, 1, first, 1, y))
++            width = sk.addConstraint(Sketcher.Constraint("DistanceX", first, 1, first, 2, w))
++            sk.renameConstraint(width, "Width")
++            height = sk.addConstraint(Sketcher.Constraint("DistanceY", first + 1, 1, first + 1, 2, h))
++            sk.renameConstraint(height, "Height")
++        return first
++
++    def padded_plate(self, length=5.0, container=None, constrain=True):
++        body = self.body(container)
++        sk = self.sketch(body)
++        self.rectangle(sk, 40, 30, constrain=constrain)
++        pad = body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sk
++        pad.Length = length
++        self.doc.recompute()
++        return body, sk, pad
++
++    def plan(self, root, sub, point=None):
++        plan = PP.plan_for(root, sub, point)
++        self.assertIsNotNone(plan, "no plan for {} {}".format(root.Name, sub))
++        return plan
++
++    def push(self, plan, d):
++        """One push/pull as the GUI does it: in a transaction, committed."""
++        self.doc.openTransaction("Push/pull")
++        used = plan.begin()
++        self.assertIsNotNone(used)
++        used.apply(d)
++        self.doc.commitTransaction()
++        self.doc.recompute()
++        return used
++
++    # PartDesign ---------------------------------------------------------------------------
++
++    def test_pad_top_face_changes_length(self):
++        body, sk, pad = self.padded_plate(5)
++        top = _face_with(pad.Shape, (0, 0, 1), 5)
++        plan = self.plan(body, "Pad." + top)
++        self.assertEqual(plan.kind, "property")
++        self.assertIs(plan.target, pad)
++        self.assertEqual(plan.prop, "Length")
++        self.assertAlmostEqual(plan.normal.z, 1)
++        self.push(plan, 7)
++        self.assertAlmostEqual(pad.Length.Value, 12)
++        self.assertAlmostEqual(body.Shape.Volume, 40 * 30 * 12, 3)
++        self.assertEqual(len(body.Group), 2, "no new feature")
++
++    def test_pad_top_face_pushed_in(self):
++        body, sk, pad = self.padded_plate(5)
++        plan = self.plan(body, "Pad." + _face_with(pad.Shape, (0, 0, 1), 5))
++        self.push(plan, -3)
++        self.assertAlmostEqual(pad.Length.Value, 2)
++        # never through: the length stays positive
++        plan = self.plan(body, "Pad." + _face_with(pad.Shape, (0, 0, 1), 2))
++        self.assertGreater(plan.clamp(-10), -2)
++
++    def test_reversed_pad_top_face(self):
++        body, sk, pad = self.padded_plate(5)
++        pad.Reversed = True
++        self.doc.recompute()
++        bottom = _face_with(pad.Shape, (0, 0, -1), 5)
++        plan = self.plan(body, "Pad." + bottom)
++        self.assertEqual(plan.prop, "Length")
++        self.push(plan, 2)
++        self.assertAlmostEqual(pad.Length.Value, 7)
++        self.assertAlmostEqual(body.Shape.BoundBox.ZMin, -7)
++
++    def test_pad_side_face_changes_sketch_dimension(self):
++        body, sk, pad = self.padded_plate(5)
++        right = _face_with(pad.Shape, (1, 0, 0), 40)
++        plan = self.plan(body, "Pad." + right)
++        self.assertEqual(plan.kind, "sketch?")
++        self.doc.openTransaction("Push/pull")
++        used = plan.begin()
++        self.assertEqual(used.kind, "sketch")
++        self.assertEqual(used.name, "Width")
++        used.apply(4)
++        self.doc.commitTransaction()
++        self.assertAlmostEqual(sk.getDatum("Width").Value, 44)
++        self.assertAlmostEqual(body.Shape.BoundBox.XMax, 44)
++        self.assertAlmostEqual(body.Shape.BoundBox.XMin, 0)
++
++    def test_side_face_whose_dimension_moves_everything(self):
++        # The left line is placed by the corner's distance from the origin, which moves the
++        # whole rectangle: not that dimension, a new extrusion from the face
++        body, sk, pad = self.padded_plate(5)
++        left = _face_with(pad.Shape, (-1, 0, 0), 0)
++        used = self.push(self.plan(body, "Pad." + left), 3)
++        self.assertEqual(used.kind, "new feature")
++        self.assertAlmostEqual(body.Shape.BoundBox.XMin, -3)
++        self.assertAlmostEqual(body.Shape.BoundBox.XMax, 40)
++        self.assertAlmostEqual(sk.Constraints[8].Value, 0)
++
++    def test_unconstrained_side_face_adds_a_pad(self):
++        body, sk, pad = self.padded_plate(5, constrain=False)
++        right = _face_with(pad.Shape, (1, 0, 0), 40)
++        used = self.push(self.plan(body, "Pad." + right), 6)
++        self.assertEqual(used.kind, "new feature")
++        new = body.Tip
++        self.assertTrue(new.isDerivedFrom("PartDesign::Pad"))
++        self.assertIsNot(new, pad)
++        self.assertAlmostEqual(new.Length.Value, 6)
++        self.assertAlmostEqual(body.Shape.BoundBox.XMax, 46)
++        self.assertAlmostEqual(body.Shape.Volume, 46 * 30 * 5, 3)
++
++    def test_bottom_face_pushed_in_adds_a_pocket(self):
++        body, sk, pad = self.padded_plate(5)
++        bottom = _face_with(pad.Shape, (0, 0, -1), 0)
++        plan = self.plan(body, "Pad." + bottom)
++        self.assertEqual(plan.kind, "new feature")
++        self.push(plan, -2)
++        self.assertTrue(body.Tip.isDerivedFrom("PartDesign::Pocket"))
++        self.assertAlmostEqual(body.Shape.BoundBox.ZMin, 2)
++        self.assertAlmostEqual(body.Shape.Volume, 40 * 30 * 3, 3)
++
++    def test_new_feature_switches_between_pad_and_pocket(self):
++        body, sk, pad = self.padded_plate(5)
++        bottom = _face_with(pad.Shape, (0, 0, -1), 0)
++        self.doc.openTransaction("Push/pull")
++        plan = self.plan(body, "Pad." + bottom).begin()
++        plan.apply(3)
++        self.assertTrue(body.Tip.isDerivedFrom("PartDesign::Pad"))
++        plan.apply(-1)
++        self.assertTrue(body.Tip.isDerivedFrom("PartDesign::Pocket"))
++        plan.apply(0)
++        self.assertIs(body.Tip, pad)
++        plan.apply(2)
++        self.doc.commitTransaction()
++        self.assertEqual(len([o for o in body.Group if o.isDerivedFrom("PartDesign::Pad")]), 2)
++        self.assertAlmostEqual(body.Shape.BoundBox.ZMin, -2)
++
++    def test_escape_puts_everything_back(self):
++        body, sk, pad = self.padded_plate(5)
++        names = [o.Name for o in self.doc.Objects]
++        bottom = _face_with(pad.Shape, (0, 0, -1), 0)
++        self.doc.openTransaction("Push/pull")
++        plan = self.plan(body, "Pad." + bottom).begin()
++        plan.apply(4)
++        self.assertNotEqual([o.Name for o in self.doc.Objects], names)
++        self.doc.abortTransaction()
++        self.doc.recompute()
++        self.assertEqual([o.Name for o in self.doc.Objects], names)
++        self.assertIs(body.Tip, pad)
++        self.assertAlmostEqual(body.Shape.Volume, 40 * 30 * 5, 3)
++
++    def test_one_undo_step(self):
++        body, sk, pad = self.padded_plate(5)
++        top = _face_with(pad.Shape, (0, 0, 1), 5)
++        self.doc.openTransaction("Push/pull")
++        plan = self.plan(body, "Pad." + top).begin()
++        for d in (1, 2, 3, 4):
++            plan.apply(d)
++        self.doc.commitTransaction()
++        self.assertAlmostEqual(pad.Length.Value, 9)
++        self.doc.undo()
++        self.doc.recompute()
++        self.assertAlmostEqual(pad.Length.Value, 5)
++
++    def test_pocket_floor_changes_depth(self):
++        body, sk, pad = self.padded_plate(10)
++        sk2 = self.sketch(body, 10)
++        self.rectangle(sk2, 10, 10, 5, 5)
++        pocket = body.newObject("PartDesign::Pocket", "Pocket")
++        pocket.Profile = sk2
++        pocket.Length = 4
++        self.doc.recompute()
++        floor = _face_with(pocket.Shape, (0, 0, 1), 6)
++        plan = self.plan(body, "Pocket." + floor)
++        self.assertIs(plan.target, pocket)
++        self.push(plan, -2)  # pushed in: deeper
++        self.assertAlmostEqual(pocket.Length.Value, 6)
++        floor = _face_with(pocket.Shape, (0, 0, 1), 4)
++        self.push(self.plan(body, "Pocket." + floor), 5)  # pulled out: shallower
++        self.assertAlmostEqual(pocket.Length.Value, 1)
++
++    def test_pocket_side_wall_changes_its_sketch(self):
++        body, sk, pad = self.padded_plate(10)
++        sk2 = self.sketch(body, 10)
++        self.rectangle(sk2, 10, 10, 5, 5)
++        pocket = body.newObject("PartDesign::Pocket", "Pocket")
++        pocket.Profile = sk2
++        pocket.Length = 4
++        self.doc.recompute()
++        # the wall at x = 15 faces -x (into the opening); pushing it into the material (+x)
++        wall = _face_with(pocket.Shape, (-1, 0, 0), -15)
++        used = self.push(self.plan(body, "Pocket." + wall), -3)
++        self.assertEqual(used.kind, "sketch")
++        self.assertAlmostEqual(sk2.getDatum("Width").Value, 13)
++
++    def test_round_face_of_pocketed_hole_changes_diameter(self):
++        body, sk, pad = self.padded_plate(10)
++        sk2 = self.sketch(body, 10)
++        sk2.addGeometry(Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 3))
++        sk2.addConstraint(Sketcher.Constraint("Diameter", 0, 6))
++        pocket = body.newObject("PartDesign::Pocket", "Pocket")
++        pocket.Profile = sk2
++        pocket.Type = "ThroughAll"
++        self.doc.recompute()
++        hole = _round_face(pocket.Shape, 3)
++        plan = self.plan(body, "Pocket." + hole)
++        self.assertTrue(plan.radial)
++        used = self.push(plan, -1)  # the wall pushed into the material: a bigger hole
++        self.assertEqual(used.kind, "sketch")
++        self.assertAlmostEqual(sk2.Constraints[0].Value, 8)
++
++    def test_boss_round_face_changes_diameter(self):
++        body, sk, pad = self.padded_plate(5)
++        sk2 = self.sketch(body, 5)
++        sk2.addGeometry(Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 4))
++        sk2.addConstraint(Sketcher.Constraint("Radius", 0, 4))
++        boss = body.newObject("PartDesign::Pad", "Boss")
++        boss.Profile = sk2
++        boss.Length = 6
++        self.doc.recompute()
++        self.push(self.plan(body, "Boss." + _round_face(boss.Shape, 4)), 1.5)
++        self.assertAlmostEqual(sk2.Constraints[0].Value, 5.5)
++
++    def test_hole_feature_changes_diameter(self):
++        body, sk, pad = self.padded_plate(10)
++        sk2 = self.sketch(body, 10)
++        sk2.addGeometry(Part.Circle(App.Vector(20, 15, 0), App.Vector(0, 0, 1), 2))
++        hole = body.newObject("PartDesign::Hole", "Hole")
++        hole.Profile = sk2
++        hole.Diameter = 6
++        hole.DepthType = "ThroughAll"
++        self.doc.recompute()
++        face = _round_face(hole.Shape, 3)
++        plan = self.plan(body, "Hole." + face)
++        self.assertIs(plan.target, hole)
++        self.push(plan, -1)
++        self.assertAlmostEqual(hole.Diameter.Value, 8)
++
++    def test_body_in_a_moved_part(self):
++        part = self.doc.addObject("App::Part", "Part")
++        part.Placement = App.Placement(App.Vector(100, 0, 0), App.Rotation(App.Vector(0, 0, 1), 90))
++        body, sk, pad = self.padded_plate(5, container=part)
++        top = _face_with(pad.Shape, (0, 0, 1), 5)
++        plan = self.plan(part, "Body.Pad." + top)
++        self.assertEqual(plan.prop, "Length")
++        self.assertAlmostEqual(plan.origin.z, 5)
++        # the middle of the plate (20, 15) turned by 90° about z and moved by 100 in x
++        self.assertAlmostEqual(plan.origin.x, 85)
++        self.assertAlmostEqual(plan.origin.y, 20)
++        side = _face_with(pad.Shape, (1, 0, 0), 40)
++        plan = self.plan(part, "Body.Pad." + side)
++        self.assertAlmostEqual(plan.normal.y, 1)  # x of the body is y of the world
++
++    # Part ---------------------------------------------------------------------------------
++
++    def test_part_box_faces_change_its_size(self):
++        box = self.doc.addObject("Part::Box", "Box")
++        box.Length, box.Width, box.Height = 10, 20, 30
++        self.doc.recompute()
++        self.push(self.plan(box, _face_with(box.Shape, (0, 0, 1))), 5)
++        self.assertAlmostEqual(box.Height.Value, 35)
++        self.push(self.plan(box, _face_with(box.Shape, (-1, 0, 0))), 4)
++        self.assertAlmostEqual(box.Length.Value, 14)
++        self.assertAlmostEqual(box.Shape.BoundBox.XMin, -4)
++        self.assertAlmostEqual(box.Shape.BoundBox.XMax, 10)
++        self.push(self.plan(box, _face_with(box.Shape, (0, -1, 0))), -5)
++        self.assertAlmostEqual(box.Width.Value, 15)
++        self.assertAlmostEqual(box.Shape.BoundBox.YMin, 5)
++        self.assertEqual(len(self.doc.Objects), 1)
++
++    def test_part_cylinder_side_changes_radius(self):
++        cyl = self.doc.addObject("Part::Cylinder", "Cylinder")
++        cyl.Radius, cyl.Height = 5, 10
++        self.doc.recompute()
++        plan = self.plan(cyl, _round_face(cyl.Shape, 5))
++        self.assertEqual(plan.prop, "Radius")
++        self.push(plan, 2)
++        self.assertAlmostEqual(cyl.Radius.Value, 7)
++        self.push(self.plan(cyl, _face_with(cyl.Shape, (0, 0, -1))), 3)
++        self.assertAlmostEqual(cyl.Height.Value, 13)
++        self.assertAlmostEqual(cyl.Shape.BoundBox.ZMin, -3)
++
++    def imported(self, shape, name="Imported"):
++        obj = self.doc.addObject("Part::Feature", name)
++        obj.Shape = shape
++        self.doc.recompute()
++        return obj
++
++    def test_plain_solid_face_pulled_out_and_pushed_in(self):
++        solid = self.imported(Part.makeBox(10, 20, 30))
++        top = _face_with(solid.Shape, (0, 0, 1))
++        used = self.push(self.plan(solid, top), 5)
++        self.assertEqual(used.kind, "new pushpull")
++        pp = used.feature
++        self.assertTrue(PP._is_pushpull(pp))
++        self.assertAlmostEqual(pp.Shape.Volume, 10 * 20 * 35, 3)
++        self.assertEqual(len(pp.Shape.Faces), 6, "refined: still a box")
++        # the moved face again: its distance changes, no second feature
++        top = _face_with(pp.Shape, (0, 0, 1), 35)
++        plan = self.plan(pp, top)
++        self.assertEqual(plan.kind, "property")
++        self.assertIs(plan.target, pp)
++        self.push(plan, -8)
++        self.assertAlmostEqual(pp.Distance.Value, -3)
++        self.assertAlmostEqual(pp.Shape.Volume, 10 * 20 * 27, 3)
++        self.assertEqual(len(self.doc.Objects), 2)
++
++    def test_plain_solid_side_face_pushed_in(self):
++        solid = self.imported(Part.makeBox(10, 20, 30))
++        side = _face_with(solid.Shape, (0, 1, 0))
++        plan = self.plan(solid, side)
++        self.assertGreater(plan.clamp(-100), -20, "not through the whole solid")
++        used = self.push(plan, -4)
++        self.assertAlmostEqual(used.feature.Shape.BoundBox.YMax, 16)
++
++    def test_plain_solid_hole_and_boss_radius(self):
++        plate = Part.makeBox(40, 40, 10).cut(Part.makeCylinder(5, 10, App.Vector(20, 20, 0)))
++        solid = self.imported(plate)
++        hole = _round_face(solid.Shape, 5)
++        plan = self.plan(solid, hole)
++        self.assertEqual(plan.kind, "new pushpull")
++        self.assertTrue(plan.radial)
++        used = self.push(plan, -2)  # into the material: a bigger hole
++        pp = used.feature
++        self.assertTrue(any(abs(f.Surface.Radius - 7) < 1e-6 for f in pp.Shape.Faces if type(f.Surface).__name__ == "Cylinder"))
++        self.assertAlmostEqual(pp.Shape.Volume, 40 * 40 * 10 - 3.14159265 * 49 * 10, 2)
++        # and smaller than at first
++        hole = _round_face(pp.Shape, 7)
++        self.push(self.plan(pp, hole), 4)
++        self.assertAlmostEqual(pp.Distance.Value, 2)
++        self.assertAlmostEqual(pp.Shape.Volume, 40 * 40 * 10 - 3.14159265 * 9 * 10, 2)
++        # a boss
++        boss = self.imported(Part.makeBox(40, 40, 5).fuse(Part.makeCylinder(4, 10, App.Vector(20, 20, 5))).removeSplitter(), "Boss")
++        used = self.push(self.plan(boss, _round_face(boss.Shape, 4)), -1)
++        self.assertAlmostEqual(used.feature.Shape.Volume, 40 * 40 * 5 + 3.14159265 * 9 * 10, 2)
++
++    def test_pushpull_feature_saved_and_opened(self):
++        solid = self.imported(Part.makeBox(10, 20, 30))
++        used = self.push(self.plan(solid, _face_with(solid.Shape, (1, 0, 0))), 2.5)
++        path = os.path.join(tempfile.mkdtemp(), "pushpull.FCStd")
++        self.doc.saveAs(path)
++        name = used.feature.Name
++        App.closeDocument(self.doc.Name)
++        self.doc = App.openDocument(path)
++        pp = self.doc.getObject(name)
++        pp.touch()
++        self.doc.recompute()
++        self.assertTrue(pp.isValid())
++        self.assertAlmostEqual(pp.Shape.BoundBox.XMax, 12.5)
++
++    def test_not_for_sketches_and_curved_patches(self):
++        sphere = self.doc.addObject("Part::Sphere", "Sphere")
++        self.doc.recompute()
++        self.assertIsNone(PP.plan_for(sphere, "Face1"))
++        half = self.imported(Part.makeCylinder(5, 10, App.Vector(), App.Vector(0, 0, 1), 180))
++        self.assertIsNone(PP.plan_for(half, _round_face(half.Shape, 5)))
++
++    # the drag ---------------------------------------------------------------------------
++
++    def test_snapping(self):
++        self.assertEqual(PP.round_step(0.1), 1)
++        self.assertEqual(PP.round_step(0.01), 0.1)
++        self.assertEqual(PP.round_step(2), 50)
++        self.assertEqual(PP.snap_distance(4.3, 1), (4, None))
++        self.assertEqual(PP.snap_distance(4.3, 1, [4.6], 0.5), (4.6, 4.6))
++        self.assertEqual(PP.snap_distance(4.3, 1, [5.6], 0.5), (4, None))
++
++    def test_flush_levels(self):
++        step = Part.makeBox(10, 10, 5).fuse(Part.makeBox(5, 10, 10))
++        levels = PP.flush_levels(App.Vector(7, 5, 5), App.Vector(0, 0, 1), [step, Part.makeBox(1, 1, 1, App.Vector(50, 0, 20))])
++        self.assertEqual(sorted(round(x, 6) for x in levels), [-5, 5, 15, 16])
++        self.assertEqual(round(abs(levels[0]), 6), 5, "nearest first")
++
++    def test_drag_param(self):
++        # a ray from the side, through (0, 0, 7): the point 7 up the line
++        t = PP.drag_param(App.Vector(0, 0, 0), App.Vector(0, 0, 1), App.Vector(-100, 0, 7), App.Vector(1, 0, 0))
++        self.assertAlmostEqual(t, 7)
++        self.assertIsNone(PP.drag_param(App.Vector(), App.Vector(0, 0, 1), App.Vector(0, 0, 50), App.Vector(0, 0, -1)))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 4df23c981..a51966408 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -189,3 +189,11 @@ MagnetDragGui.install()
+ 
+ # The parts shelf (部品の棚): screws, nuts, washers, profiles, company parts
+ import PartsShelfGui  # noqa: E402,F401
++
++# Push/pull a face with the arrow that appears under the cursor (面を動かす), and the driving
++# numbers of the picked thing as labels on the model (形の上の寸法)
++import PushPullGui  # noqa: E402
++import DimensionLabelsGui  # noqa: E402
++
++PushPullGui.install()
++DimensionLabelsGui.install()
+-- 
+2.43.0
+

@@ -1,0 +1,435 @@
+From 4dc1b730e03c69b4a48ef613980cf82b19039898 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:26:39 +0900
+Subject: [PATCH 282/285] Unified: dragging stays smooth with many parts; the
+ faces it touches show on top
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The faces of the other parts are read between the moves (nearest first),
+straight edges without their vertices, the stacked arrays are kept while
+the parts near the moving one stay the same, and the status bar is
+updated between the moves (it took 10 ms): 200 parts, 3.6 ms per move
+(median), 8.5 ms (95 %), in the GUI.
+
+The outline of a face the part snaps to is drawn over everything (the
+part covers the face it touches). The push/pull arrow of the pressed face
+is hidden while the part moves. Views that were closed are recognised by
+their widget (calling a closed view's viewer crashed). The line-up panel
+opens at the top left of the 3D view, clear of the parts.
+
+Std_Alignment is called 選んだ面に視点を向ける (it was 整列, which is
+what the line-up tool is searched by).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/ArrangeGui.py                 |   6 +
+ .../translations/UnifiedWording_ja.ts         |   7 +
+ src/Mod/Unified/MagnetDrag.py                 |  38 +++-
+ src/Mod/Unified/MagnetDragGui.py              | 163 ++++++++++++++----
+ 4 files changed, 176 insertions(+), 38 deletions(-)
+
+diff --git a/src/Mod/Unified/ArrangeGui.py b/src/Mod/Unified/ArrangeGui.py
+index 23badb501..2c4c77aaf 100644
+--- a/src/Mod/Unified/ArrangeGui.py
++++ b/src/Mod/Unified/ArrangeGui.py
+@@ -330,7 +330,13 @@ def open_panel(pos=None):
+     _panel = ArrangePanel(movables, Gui.getMainWindow())
+     _panel.adjustSize()
+     if pos is None:
++        # The top left corner of the 3D view, clear of the parts (they are usually in the middle)
+         pos = QtGui.QCursor.pos() + QtCore.QPoint(12, 12)
++        try:
++            viewport = Gui.ActiveDocument.ActiveView.graphicsView().viewport()
++            pos = viewport.mapToGlobal(QtCore.QPoint(12, 12))
++        except Exception:
++            pass
+     screen = QtGui.QGuiApplication.screenAt(pos) or QtGui.QGuiApplication.primaryScreen()
+     area = screen.availableGeometry()
+     size = _panel.sizeHint()
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index ce031dd1b..4b8bbb4db 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -11336,6 +11336,13 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>そろえる</translation>
+     </message>
+ </context>
++<context>
++    <name>StdCmdAlignment</name>
++    <message>
++        <source>Ali&amp;gn To…</source>
++        <translation>選んだ面に視点を向ける</translation>
++    </message>
++</context>
+ <context>
+     <name>PartsShelf</name>
+     <message>
+diff --git a/src/Mod/Unified/MagnetDrag.py b/src/Mod/Unified/MagnetDrag.py
+index c923a1437..b3cc90960 100644
+--- a/src/Mod/Unified/MagnetDrag.py
++++ b/src/Mod/Unified/MagnetDrag.py
+@@ -30,6 +30,7 @@ import numpy as np
+ import FreeCAD as App
+ 
+ UP = np.array((0.0, 0.0, 1.0))
++IDENTITY = np.eye(3)
+ 
+ SUPPORT_ANGLE = 30.0  # a face up to this steep is something to put a part on
+ TURN_ANGLE = 10.0  # the magnet turns the part by up to this, to make faces flush
+@@ -222,8 +223,8 @@ def capture(shape):
+     e0, e1 = [], []
+     for e in shape.Edges:
+         try:
+-            if isinstance(e.Curve, Part.Line) and len(e.Vertexes) == 2:
+-                a, b = e.Vertexes[0].Point, e.Vertexes[1].Point
++            if isinstance(e.Curve, Part.Line):
++                a, b = e.valueAt(e.FirstParameter), e.valueAt(e.LastParameter)
+                 e0.append((a.x, a.y, a.z))
+                 e1.append((b.x, b.y, b.z))
+         except Exception:
+@@ -260,7 +261,7 @@ class Posed:
+         self.geom = geom
+         self.R, self.t, self.g0 = R, t, g0
+         off = g0 + t
+-        identity = np.allclose(R, np.eye(3), atol=0, rtol=0)
++        identity = R is IDENTITY or not np.any(R - IDENTITY)
+ 
+         def P(a):
+             if not len(a):
+@@ -300,6 +301,22 @@ class Targets:
+         self.lo = np.array([g.lo for _, g in self.items]) if n else np.zeros((0, 3))
+         self.hi = np.array([g.hi for _, g in self.items]) if n else np.zeros((0, 3))
+ 
++    def prefetch(self, lo, hi, margin, budget=0.004):
++        """Read the faces of parts near the box lo..hi ahead of time, nearest first, for up to
++        `budget` seconds; True if there is more to read."""
++        import time
++
++        start = time.perf_counter()
++        idx = self.near(lo, hi, margin)
++        mid = (lo + hi) / 2
++        todo = [i for i in idx if isinstance(self.items[i][1], Lazy) and not self.items[i][1].loaded()]
++        todo.sort(key=lambda i: float(np.linalg.norm((self.lo[i] + self.hi[i]) / 2 - mid)))
++        for i in todo:
++            if time.perf_counter() - start > budget:
++                return True
++            self.items[i][1].pn  # reads it
++        return False
++
+     def near(self, lo, hi, margin):
+         """Indices of the parts whose boxes come within margin of the box lo..hi."""
+         if not self.items:
+@@ -308,7 +325,18 @@ class Targets:
+         return list(np.nonzero(ok)[0])
+ 
+     def stacked(self, indices, which):
+-        """Arrays of all parts in indices, with the part index and element index of each row."""
++        """Arrays of all parts in indices, with the part index and element index of each row
++        (kept for the next move: the parts near the moving one change seldom)."""
++        key = (which, tuple(int(i) for i in indices))
++        cache = self.__dict__.setdefault("_stacked", {})
++        if key in cache:
++            return cache[key]
++        if len(cache) > 64:
++            cache.clear()
++        cache[key] = self._stack(indices, which)
++        return cache[key]
++
++    def _stack(self, indices, which):
+         out = {}
+         if which == "planes":
+             names, idx = ("pn", "pc", "plo", "phi"), "pface"
+@@ -557,7 +585,7 @@ class Drag:
+             z, i, j = support
+             g = self.targets.items[i][1]
+             state.lock(g.pn[j])
+-            state.rotated = not np.allclose(R, np.eye(3))
++            state.rotated = bool(np.any(R - IDENTITY))
+             state.snaps.append(Snap("support", i, int(g.pface[j]), ("support", i, int(g.pface[j]))))
+         posed = state.posed()
+         reach = max(3 * tol, 0.5 * self.moving.size)
+diff --git a/src/Mod/Unified/MagnetDragGui.py b/src/Mod/Unified/MagnetDragGui.py
+index 871d7dd08..5135396a7 100644
+--- a/src/Mod/Unified/MagnetDragGui.py
++++ b/src/Mod/Unified/MagnetDragGui.py
+@@ -224,6 +224,18 @@ class Overlay:
+         faces.addChild(self.face_set)
+         self.root.addChild(faces)
+         top = coin.SoAnnotation()
++        # The outline of the faces on top of everything (a face the part touches is covered by
++        # the part itself)
++        outline = coin.SoSeparator()
++        ocolor = coin.SoBaseColor()
++        ocolor.rgb = self.FACE
++        ostyle = coin.SoDrawStyle()
++        ostyle.lineWidth = 3
++        self.outline_coords = coin.SoCoordinate3()
++        self.outline_lines = coin.SoLineSet()
++        for n in (ocolor, ostyle, self.outline_coords, self.outline_lines):
++            outline.addChild(n)
++        top.addChild(outline)
+         guides = coin.SoSeparator()
+         color = coin.SoBaseColor()
+         color.rgb = self.GUIDE
+@@ -253,6 +265,8 @@ class Overlay:
+         view.getSceneGraph().addChild(self.root)
+ 
+     def clear(self):
++        self.outline_coords.point.setNum(0)
++        self.outline_lines.numVertices.setNum(0)
+         self.face_coords.point.setNum(0)
+         self.face_set.coordIndex.setNum(0)
+         self.guide_coords.point.setNum(0)
+@@ -262,11 +276,18 @@ class Overlay:
+ 
+     def _triangles(self, key, face):
+         if key not in self._tess:
++            deflection = max(face.BoundBox.DiagonalLength / 200.0, 0.01)
+             try:
+-                pts, tris = face.tessellate(max(face.BoundBox.DiagonalLength / 200.0, 0.01))
++                pts, tris = face.tessellate(deflection)
+             except Exception:
+                 pts, tris = [], []
+-            self._tess[key] = ([(p.x, p.y, p.z) for p in pts], tris)
++            lines = []
++            for edge in face.Edges:
++                try:
++                    lines.append([(p.x, p.y, p.z) for p in edge.discretize(Deflection=deflection)])
++                except Exception:
++                    continue
++            self._tess[key] = ([(p.x, p.y, p.z) for p in pts], tris, lines)
+         return self._tess[key]
+ 
+     def show(self, targets, result):
+@@ -274,6 +295,7 @@ class Overlay:
+         if result is None:
+             return
+         points, index = [], []
++        outline_points, outline_counts = [], []
+         corners = []
+         for s in result.snaps:
+             if s.kind == "corner":
+@@ -282,14 +304,20 @@ class Overlay:
+             if s.kind == "flush":
+                 continue
+             key, geom = targets.items[s.part]
+-            pts, tris = self._triangles((key, s.elem), geom.faces[s.elem])
++            pts, tris, lines = self._triangles((key, s.elem), geom.faces[s.elem])
+             base = len(points)
+             points.extend(pts)
+             for a, b, c in tris:
+                 index.extend((base + a, base + b, base + c, -1))
++            for line in lines:
++                outline_points.extend(line)
++                outline_counts.append(len(line))
+         if points:
+             self.face_coords.point.setValues(0, len(points), points)
+             self.face_set.coordIndex.setValues(0, len(index), index)
++        if outline_points:
++            self.outline_coords.point.setValues(0, len(outline_points), outline_points)
++            self.outline_lines.numVertices.setValues(0, len(outline_counts), outline_counts)
+         if result.guides:
+             line_points = []
+             for a, b in result.guides:
+@@ -384,6 +412,29 @@ class Drag:
+         self.overlay = Overlay(self.view)
+         self.filter = _KeyFilter(self)
+         QtWidgets.QApplication.instance().installEventFilter(self.filter)
++        self.status_text = None
++        self.status_timer = QtCore.QTimer()
++        self.status_timer.setSingleShot(True)
++        self.status_timer.setInterval(120)
++        self.status_timer.timeout.connect(lambda: (not self.closed) and status(self.status_text, 0))
++        # Read the faces of the other parts between the moves, nearest first
++        self.prefetch = QtCore.QTimer()
++        self.prefetch.setInterval(0)
++        self.prefetch.timeout.connect(self._prefetch)
++        self.prefetch.start()
++        handler.start_ms = (time.perf_counter() - self.started) * 1000
++
++    def _prefetch(self):
++        if self.closed:
++            self.prefetch.stop()
++            return
++        res = self.solver.last
++        geom = self.solver.moving
++        lo, hi = geom.lo, geom.hi
++        if res is not None:
++            lo, hi = lo + res.t, hi + res.t
++        if not self.targets.prefetch(lo, hi, 1e12, budget=0.003):
++            self.prefetch.stop()
+ 
+     def _view_dir(self):
+         d = self.view.getViewDirection()
+@@ -435,7 +486,12 @@ class Drag:
+             return
+         self.overlay.show(self.targets, None if alt else result)
+         text = _describe(result) if not alt else tr("No magnet (Alt)")
+-        status(text or tr("Drag: Alt without magnet, Esc puts it back"), 0)
++        text = text or tr("Drag: Alt without magnet, Esc puts it back")
++        if text != self.status_text:
++            # Shown a little later, between the moves (the status bar takes milliseconds)
++            self.status_text = text
++            if not self.status_timer.isActive():
++                self.status_timer.start()
+         self.times.append(time.perf_counter() - t0)
+ 
+     def refresh(self, alt):
+@@ -445,6 +501,8 @@ class Drag:
+ 
+     def _close(self):
+         self.closed = True
++        self.prefetch.stop()
++        self.status_timer.stop()
+         QtWidgets.QApplication.instance().removeEventFilter(self.filter)
+         self.overlay.remove()
+         self.handler.drag = None
+@@ -522,10 +580,12 @@ class Handler:
+         self.node.setName(NODE_NAME)
+         self.node.addEventCallback(coin.SoEvent.getClassTypeId(), self._event)
+         view.getViewer().getSceneGraph().insertChild(self.node, 0)
++        self.widget = None
+         self.press = None  # (x, y, ctrl, shift)
+         self.drag = None
+         self.swallow = False  # take the events up to the release (after Esc, or not movable)
+         self.timings = []
++        self.start_ms = None
+ 
+     def remove(self):
+         try:
+@@ -656,10 +716,25 @@ class Handler:
+             self.swallow = True
+             return True
+         Gui.Selection.clearPreselection()
++        _quiet_other_handles()
+         self.drag = Drag(self, pick, movable, copy=ctrl)
+         return True
+ 
+ 
++def _quiet_other_handles():
++    """Hide the push/pull arrow of the face that was under the cursor (the part moves away)."""
++    try:
++        import sys
++
++        module = sys.modules.get("PushPullGui")
++        if module is not None and hasattr(module, "manager"):
++            hide = getattr(module.manager(), "_hide", None)
++            if hide is not None:
++                hide()
++    except Exception:
++        pass
++
++
+ def _grounded(obj):
+     for parent in obj.InList:
+         if getattr(parent, "ObjectToGround", None) == obj:
+@@ -672,53 +747,75 @@ def _grounded(obj):
+ _handlers = []
+ 
+ 
++def _widget_of(view):
++    try:
++        return view.graphicsView()
++    except Exception:
++        return None
++
++
++def _alive(widget):
++    """The view's widget still exists (a closed view's Python object must not be used: its
++    viewer is gone and calling it crashes)."""
++    if widget is None:
++        return False
++    try:
++        import shiboken6
++
++        return shiboken6.isValid(widget)
++    except ImportError:
++        try:
++            import shiboken2
++
++            return shiboken2.isValid(widget)
++        except ImportError:
++            return True
++
++
++def _prune():
++    _handlers[:] = [h for h in _handlers if _alive(h.widget)]
++
++
++def handler_of(view):
++    _prune()
++    widget = _widget_of(view)
++    for h in _handlers:
++        if widget is not None and h.widget is widget or h.widget == widget:
++            return h
++    return None
++
++
+ def _attach(view):
+     if view is None or not hasattr(view, "getViewer") or not hasattr(view, "getObjectInfo"):
+         return None
++    h = handler_of(view)
++    if h is not None:
++        return h
+     try:
+         root = view.getViewer().getSceneGraph()
+     except Exception:
+         return None
+-    for h in _handlers:
+-        try:
+-            if h.view.getViewer().getSceneGraph() == root:
+-                return h
+-        except Exception:
+-            continue
++    if root is None:
++        return None
+     if root.getNumChildren() and root.getChild(0).getName() == NODE_NAME:
+         return None
+     h = Handler(view)
++    h.widget = _widget_of(view)
+     _handlers.append(h)
+     return h
+ 
+ 
+-def _prune():
+-    alive = []
+-    for h in _handlers:
+-        try:
+-            h.view.getViewer()
+-            alive.append(h)
+-        except Exception:
+-            pass
+-    _handlers[:] = alive
+-
+-
+ def attach_active(*_args):
+-    _prune()
+     gdoc = Gui.ActiveDocument
+     if gdoc is None:
+         return None
+-    return _attach(gdoc.ActiveView)
+-
+-
+-def handler_of(view):
+-    for h in _handlers:
+-        try:
+-            if h.view.getViewer().getSceneGraph() == view.getViewer().getSceneGraph():
+-                return h
+-        except Exception:
+-            continue
+-    return None
++    try:
++        view = gdoc.ActiveView
++    except Exception:
++        return None
++    if not _alive(_widget_of(view)):
++        return None
++    return _attach(view)
+ 
+ 
+ _installed = []
+-- 
+2.43.0
+
