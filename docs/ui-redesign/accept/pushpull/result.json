@@ -3,6 +3,10 @@
   "arrow_shown": true,
   "arrow_on_face_center": true,
   "arrow_points_up": true,
+  "click_center_selects_face": true,
+  "click_center_no_pushpull": true,
+  "click_on_arrow_no_pushpull": true,
+  "click_on_arrow_selects": true,
   "readouts": [
    "<span style='font-size:13pt; font-weight:600; color:#1d1d1f'>+4.5 mm</span><br><span style='color:#555'>押し出し の長さ 5 → 9.5 mm</span>",
    "<span style='font-size:13pt; font-weight:600; color:#1d1d1f'>+5 mm</span><br><span style='color:#555'>押し出し の長さ 5 → 10 mm</span>"
@@ -98,5 +102,5 @@
   "hidden_on_deselect": true
  },
  "failed": [],
- "passed": 37
+ "passed": 41
 }

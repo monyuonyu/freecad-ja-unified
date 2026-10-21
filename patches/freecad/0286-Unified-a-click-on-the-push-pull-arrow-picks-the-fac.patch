@@ -1,0 +1,105 @@
+From 97c487672e5e7cb7370dc9d373e30e21e98a2527 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 15:30:29 +0900
+Subject: [PATCH 286/286] Unified: a click on the push/pull arrow picks the
+ face; only a drag moves it
+
+The arrow over a hovered face took every left press, so the middle of a face could not be picked
+(for measuring, snapping, the context bar). Now a press on the arrow becomes a push/pull only
+after the cursor moved 5 px; a click without moving picks what is under it, as the view does.
+The foot of the arrow (on the face) is not part of the handle, and the arrow is smaller (36 px).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/PushPullGui.py | 33 +++++++++++++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/PushPullGui.py b/src/Mod/Unified/PushPullGui.py
+index 471ea5bbd..a6fdd6431 100644
+--- a/src/Mod/Unified/PushPullGui.py
++++ b/src/Mod/Unified/PushPullGui.py
+@@ -26,7 +26,8 @@ CTX = "Unified_PushPull"
+ HERE = os.path.dirname(os.path.abspath(__file__))
+ QT_TRANSLATE_NOOP = App.Qt.QT_TRANSLATE_NOOP
+ 
+-HANDLE_PX = 56  # length of the arrow on the screen
++HANDLE_PX = 36  # length of the arrow on the screen
++DRAG_PX = 5  # a press on the arrow becomes a drag only after the cursor moved this far; less is a click
+ HIT_PX = 10  # how near the arrow the cursor has to be to take it
+ FLUSH_PX = 8  # how near another face's level the face snaps to it
+ APPLY_MS = 15  # the model follows the cursor at most this often (each step recomputes)
+@@ -226,6 +227,8 @@ class Arrow:
+         px, py = xy[0] - a[0], xy[1] - a[1]
+         seg = ax * ax + ay * ay
+         t = 0.0 if seg < 1e-9 else max(0.0, min(1.0, (px * ax + py * ay) / seg))
++        if seg >= 1e-9 and (px * ax + py * ay) / seg < 0.3:
++            return False  # the foot of the arrow (on the face) stays the face's: clicks there pick it
+         dx, dy = px - ax * t, py - ay * t
+         return (dx * dx + dy * dy) ** 0.5 <= HIT_PX * dpr
+ 
+@@ -564,6 +567,7 @@ class Manager(QtCore.QObject):
+         self.readout = None
+         self.plan = None
+         self.drag = None
++        self.pressed = None  # where the arrow was pressed, until it is a drag or a click
+         self.typed = None
+         self.hover_xy = None
+         self.hot = False
+@@ -609,6 +613,7 @@ class Manager(QtCore.QObject):
+         self.arrow = None
+         self.readout = None
+         self.plan = None
++        self.pressed = None
+         self.hover_xy = None
+         self.hot = False
+         self.saved_cursor = None
+@@ -726,6 +731,12 @@ class Manager(QtCore.QObject):
+             return False
+         if t == QtCore.QEvent.MouseMove:
+             xy = _coin_xy(obj, event.position() if hasattr(event, "position") else event.pos())
++            if self.drag is None and self.pressed is not None:
++                px, py = self.pressed
++                if ((xy[0] - px) ** 2 + (xy[1] - py) ** 2) ** 0.5 < DRAG_PX * obj.devicePixelRatioF():
++                    return True
++                self.pressed = None
++                self._start_drag((px, py))
+             if self.drag is not None:
+                 self.drag.move(xy, free=bool(event.modifiers() & QtCore.Qt.ShiftModifier))
+                 return True
+@@ -743,7 +754,13 @@ class Manager(QtCore.QObject):
+             xy = _coin_xy(obj, event.position() if hasattr(event, "position") else event.pos())
+             if not self.arrow.hit(xy, obj.devicePixelRatioF()) or _busy():
+                 return False
+-            self._start_drag(xy)
++            # Only a drag that starts here moves the face: a click (no move) still picks the face
++            self.pressed = xy
++            return True
++        if t == QtCore.QEvent.MouseButtonRelease and self.pressed is not None and self.drag is None:
++            xy, self.pressed = self.pressed, None
++            if event.button() == QtCore.Qt.LeftButton:
++                self._click(xy)
+             return True
+         if t == QtCore.QEvent.MouseButtonRelease and self.drag is not None:
+             if event.button() == QtCore.Qt.LeftButton:
+@@ -756,6 +773,18 @@ class Manager(QtCore.QObject):
+             self._hide()
+         return False
+ 
++    def _click(self, xy):
++        """A click on the arrow without dragging: pick what is under it, as the view would."""
++        try:
++            hit = _pick_at(self.view, xy)
++        except Exception:
++            hit = None
++        Gui.Selection.clearSelection()
++        if hit is None:
++            return
++        root, sub, point = hit
++        Gui.Selection.addSelection(root.Document.Name, root.Name, sub, point.x, point.y, point.z)
++
+     def _start_drag(self, xy):
+         try:
+             self.drag = Drag(self, self.view, self.viewport, self.plan, xy)
+-- 
+2.43.0
+

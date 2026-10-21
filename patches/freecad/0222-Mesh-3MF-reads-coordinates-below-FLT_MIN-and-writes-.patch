@@ -1,7 +1,7 @@
 From 4ee0f13458f2eeeca0e0553c813bbd042e5d3b84 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:13:00 +0900
-Subject: [PATCH 222/285] Mesh: 3MF reads coordinates below FLT_MIN and writes
+Subject: [PATCH 222/286] Mesh: 3MF reads coordinates below FLT_MIN and writes
  floats exactly
 
 std::stof throws std::out_of_range for 1e-39, so a 3MF with one such

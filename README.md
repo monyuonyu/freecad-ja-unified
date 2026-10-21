@@ -298,6 +298,12 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.9
+
+- **Clicking a face under the push/pull arrow picks it again** (bug in 0.6.7): the arrow in the middle of a hovered face took every left press, so the face could not be picked (for measuring, snapping, the context bar).
+  Now the face moves only when the arrow is dragged more than 5 px; a click without moving picks what is under it. The foot of the arrow is no longer part of the handle and the arrow is smaller (56 → 36 px).
+  The acceptance run ([docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull), 41 checks) now checks "a click in the middle of a face picks it and moves nothing" and "dragging the arrow moves the face"
+
 ## Changes in 0.6.8
 
 Measuring without pressing "Measure", and seeing a tool's result before pressing it — on the bar next to a pick and on the tool strip.

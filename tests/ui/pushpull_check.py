@@ -203,6 +203,27 @@ def case_pad_top():
     out["arrow_on_face_center"] = (App.Vector(state["base"]) - c).Length < 1e-6
     out["arrow_points_up"] = state["direction"][2] > 0.999
     undo0 = undo_count(doc)
+    # A plain click in the middle of the face (where the arrow stands) picks the face, as before
+    sx, sy = screen_of(c)
+    xdo("mousemove", sx, sy)
+    xdo("click", 1)
+    pump(500)
+    sel = Gui.Selection.getSelectionEx("", 0)
+    out["click_center_selects_face"] = bool(len(sel) == 1 and sel[0].SubElementNames and sel[0].SubElementNames[-1].endswith(name))
+    out["click_center_no_pushpull"] = abs(pad.Length.Value - 5) < 1e-9 and undo_count(doc) == undo0
+    # A click on the arrow's shaft (no move) also picks the face and does not push/pull
+    Gui.Selection.clearSelection()
+    hover(c + App.Vector(6, 4, 0))
+    grab, _d, _p = arrow_screen()
+    xdo("mousemove", grab[0], grab[1])
+    pump(200)
+    xdo("click", 1)
+    pump(500)
+    out["click_on_arrow_no_pushpull"] = abs(pad.Length.Value - 5) < 1e-9 and undo_count(doc) == undo0
+    out["click_on_arrow_selects"] = len(Gui.Selection.getSelectionEx("", 0)) == 1
+    shot("01b-click-selects-face")
+    Gui.Selection.clearSelection()
+    hover(c + App.Vector(6, 4, 0))
     seen = drag_arrow(80, shots={8: "02-drag-top-face"})
     out["readouts"] = seen[-2:]
     out["pad_length_after"] = pad.Length.Value
