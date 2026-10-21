@@ -1,0 +1,178 @@
+{
+ "boxes": {
+  "gap_left_mm": 0.1690761452659158,
+  "mm_per_px": 0.04226903631647895,
+  "status_while_dragging_ok": true,
+  "A_after": [
+   20.0,
+   0.0,
+   0.0
+  ],
+  "flush": true,
+  "undo_names": [
+   "\u30c9\u30e9\u30c3\u30b0\u3067\u52d5\u304b\u3059"
+  ],
+  "selected": [
+   "A"
+  ],
+  "A_after_undo": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "undo_back": true,
+  "A_alt": [
+   19.843585,
+   0.255513,
+   0.0
+  ],
+  "alt_not_snapped": true,
+  "A_while_held": [
+   20.0,
+   0.0,
+   0.0
+  ],
+  "A_after_esc_still_held": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "A_after_esc_moved_mouse": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "esc_back": true,
+  "esc_no_undo_step": true,
+  "click_selects": [
+   "A"
+  ],
+  "click_does_not_move": true,
+  "box_selection_still_works": [
+   "A",
+   "B"
+  ],
+  "timings_ms": [
+   5.0,
+   2.09,
+   1.78,
+   1.95,
+   2.11,
+   2.11,
+   1.6,
+   2.04,
+   1.74,
+   2.15,
+   3.35,
+   1.68,
+   2.07,
+   1.43,
+   2.01,
+   1.95
+  ]
+ },
+ "pin": {
+  "pin_after": [
+   40.0,
+   20.0,
+   0.0
+  ],
+  "mm_per_px": 0.11241633366109482,
+  "coaxial": true,
+  "through_hole_flush_below": true,
+  "status": "Pin \u3092\u52d5\u304b\u3057\u307e\u3057\u305f \u2015 \u7a74\u306b\u5dee\u3057\u8fbc\u3080",
+  "undo_back": true,
+  "ctrl_copy_is_body": true,
+  "original_stays": true,
+  "copy_at": [
+   40.0,
+   20.0,
+   0.0
+  ],
+  "copy_coaxial": true,
+  "undo_names": [
+   "\u30b3\u30d4\u30fc\u3092\u30c9\u30e9\u30c3\u30b0\u3067\u7f6e\u304f"
+  ],
+  "copy_undone": true
+ },
+ "assembly": {
+  "block_after": [
+   15.003924,
+   14.951233,
+   5.0
+  ],
+  "on_the_base": true,
+  "container_did_not_move": true,
+  "ctrl_link": [
+   "App::Link"
+  ],
+  "link_in_assembly": true
+ },
+ "rules": {
+  "expression_not_moved": true,
+  "expression_message": "Fixed \u306f\u30c9\u30e9\u30c3\u30b0\u3067\u306f\u52d5\u304d\u307e\u305b\u3093\uff08\u4f4d\u7f6e\u304c\u5f0f\u3067\u6c7a\u307e\u3063\u3066\u3044\u308b\u304b\u3001\u56fa\u5b9a\u3055\u308c\u3066\u3044\u307e\u3059\uff09",
+  "expression_no_box_selection": [],
+  "link_moved": [
+   30.013261,
+   -10.013347,
+   0.0
+  ],
+  "source_not_moved": [
+   0.0,
+   40.0,
+   0.0
+  ],
+  "attached_still": "ObjectXY",
+  "attached_offset": [
+   7.993143,
+   25.022881,
+   0.0
+  ],
+  "attached_moved_x": 7.993143,
+  "attached_message": ""
+ },
+ "align": {
+  "bar": [
+   "Unified_Align",
+   "Std_ToggleVisibility"
+  ],
+  "ctrl_k_first": {
+   "\u305d\u308d\u3048\u308b": "Unified_Align",
+   "\u6574\u5217": "Unified_Align",
+   "\u63c3\u3048": "Unified_Align",
+   "\u7b49\u9593\u9694": "Unified_Align",
+   "align": "Unified_Align"
+  },
+  "panel_open": true,
+  "preview_y_max": [
+   10.0,
+   10.0,
+   10.0
+  ],
+  "after_leave_back": true,
+  "y_max_after_click": [
+   10.0,
+   10.0,
+   10.0
+  ],
+  "aligned": true,
+  "undo_names": [
+   "\u305d\u308d\u3048\u308b"
+  ],
+  "gaps_x": [
+   17.0,
+   17.0
+  ],
+  "esc_back": true,
+  "panel_closed": true
+ },
+ "speed": {
+  "moves": 40,
+  "median_ms": 4.54,
+  "p95_ms": 9.22,
+  "first_ms": 1.51,
+  "worst_ms": 9.23,
+  "start_ms": 100.2
+ },
+ "done": true
+}

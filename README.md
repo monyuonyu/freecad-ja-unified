@@ -329,6 +329,27 @@ screens: [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-she
 - **The Fasteners workbench is bundled** ([shaise/FreeCAD_FastenersWB](https://github.com/shaise/FreeCAD_FastenersWB) `fddd07af`, **GPL-2.0-or-later**, unchanged, in `src/Mod/Fasteners`).
   The shelf makes its screws with it; its 223 tools are in Ctrl+K and "Other tools". The release builds check it is bundled and `FreeCADCmd -t TestPartsShelf` passes
 
+## Changes in 0.6.5
+
+**Drag parts with a magnet** and **line parts up**. Screens: [docs/ui-redesign/accept/magnet-0.6.5](docs/ui-redesign/accept/magnet-0.6.5)
+(`tests/ui/magnet_check.py`, real drags with xdotool). 0.6.5 does not contain the parts shelf of 0.6.6.
+
+- **Press on a part and drag**: it follows the cursor, no tool to start. A click without moving still only selects; a drag on the empty background still selects with a box.
+  Seen from above it slides on the horizontal plane of the grabbed point, which stays under the cursor; over the top of another part (a table, a plate) it climbs onto it,
+  and goes back to its own level off it (never below where it started). Seen from the side it moves in the vertical plane facing the camera
+- **The magnet**: a face that comes within about 12 pixels of a face of another part snaps flush onto it, facing it (turning the part by up to 10 degrees). Round faces snap onto one axis
+  (a pin near a hole goes in as far as it fits: to the bottom of a blind hole, until the head of a bolt sits, flush with the far side of a through hole). Corners snap onto corners,
+  faces line up with other parts' faces, shown by dashed guide lines; the face it snaps to is outlined in orange. Keep dragging to break free. **Alt**: no magnet
+- **Ctrl+drag places a copy**: an independent copy of a Body or a parametric shape; a link to an imported STEP shape, an App::Part assembly or a link (shared shape, counted in the BOM)
+- Releasing keeps it (one undo step); **Esc** while dragging puts it back. What moves is what "Snap together" moves (a Body, a shape, a link; a selected container as a whole).
+  Attached objects keep their attachment (the offset changes); parts placed by a formula, locked or grounded in an assembly do not move, and a tip says why
+- Next to 200 parts a move takes 4.5 ms (median), 9 ms (95 %); the faces of the other parts are read between the moves, nearest first
+- **Line up** (on the context bar for two or more Ctrl-picked parts, and in Ctrl+K as "align"): left/center/right, front/center/back, bottom/middle/top (screen words when looking along an axis),
+  **equal gaps** (the outer two stay), **a given gap**, **side by side** in pick order; to the first picked part (outlined) or the extent of all.
+  Pointing at a button previews, clicking keeps (one undo step), Esc cancels. Tight boxes for turned parts; parts inside nested App::Parts
+- Tests: `FreeCADCmd -t TestMagnetDrag` (24), `FreeCADCmd -t TestArrange` (11)
+- 0.6.6, released before, contains an early version of this. It can crash after a document is closed and another view is activated (a closed 3D view was used from Python); fixed in 0.6.5 and in the release after 0.6.6
+
 ## Changes in 0.6.4
 
 The 3D view follows what you look at (the default mouse style and the touchpad style offered on the first start; other styles are unchanged). Screens: [docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4).
