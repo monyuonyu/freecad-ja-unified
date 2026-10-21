@@ -1,7 +1,7 @@
-From 4dc1b730e03c69b4a48ef613980cf82b19039898 Mon Sep 17 00:00:00 2001
+From cf9df724d4a8a7208eeb50cbf18f205fc0631d00 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:26:39 +0900
-Subject: [PATCH 282/285] Unified: dragging stays smooth with many parts; the
+Subject: [PATCH 276/277] Unified: dragging stays smooth with many parts; the
  faces it touches show on top
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -49,10 +49,10 @@ index 23badb501..2c4c77aaf 100644
      area = screen.availableGeometry()
      size = _panel.sizeHint()
 diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
-index ce031dd1b..4b8bbb4db 100644
+index 973afee56..973d7c414 100644
 --- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
 +++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
-@@ -11336,6 +11336,13 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+@@ -11206,4 +11206,11 @@ Note: Currently this selects only unconnected parts, not constrained parts that
          <translation>そろえる</translation>
      </message>
  </context>
@@ -63,9 +63,7 @@ index ce031dd1b..4b8bbb4db 100644
 +        <translation>選んだ面に視点を向ける</translation>
 +    </message>
 +</context>
- <context>
-     <name>PartsShelf</name>
-     <message>
+ </TS>
 diff --git a/src/Mod/Unified/MagnetDrag.py b/src/Mod/Unified/MagnetDrag.py
 index c923a1437..b3cc90960 100644
 --- a/src/Mod/Unified/MagnetDrag.py

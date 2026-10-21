@@ -1,7 +1,7 @@
-From 1b8aaf86f380028d04972b0dafe435fca2bda8ba Mon Sep 17 00:00:00 2001
+From 4c17fba96a98311c1cdadf2164b028c2e7bf0f6d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:10:05 +0900
-Subject: [PATCH 277/285] Unified: drag parts in the 3D view with a magnet;
+Subject: [PATCH 275/277] Unified: drag parts in the 3D view with a magnet;
  line up several parts
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -30,17 +30,17 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  src/Mod/Unified/Arrange.py                    | 218 ++++++
  src/Mod/Unified/ArrangeGui.py                 | 375 +++++++++
- src/Mod/Unified/CMakeLists.txt                |   8 +-
- src/Mod/Unified/CommandAliases.py             |  10 +
- src/Mod/Unified/ContextRules.py               |  10 +
+ src/Mod/Unified/CMakeLists.txt                |   5 +-
+ src/Mod/Unified/CommandAliases.py             |   1 +
+ src/Mod/Unified/ContextRules.py               |   8 +
  .../translations/UnifiedWording_ja.ts         | 213 +++++
  src/Mod/Unified/MagnetDrag.py                 |  68 ++
  src/Mod/Unified/MagnetDragGui.py              | 736 ++++++++++++++++++
  src/Mod/Unified/TestArrange.py                | 160 ++++
  src/Mod/Unified/TestContextRules.py           |   1 +
  src/Mod/Unified/TestMagnetDrag.py             |  63 ++
- src/Mod/Unified/UnifiedCommands.py            |   9 +
- 12 files changed, 1870 insertions(+), 1 deletion(-)
+ src/Mod/Unified/UnifiedCommands.py            |   6 +
+ 12 files changed, 1853 insertions(+), 1 deletion(-)
  create mode 100644 src/Mod/Unified/Arrange.py
  create mode 100644 src/Mod/Unified/ArrangeGui.py
  create mode 100644 src/Mod/Unified/MagnetDragGui.py
@@ -652,7 +652,7 @@ index 000000000..23badb501
 +
 +Gui.addCommand("Unified_Align", ArrangeCommand())
 diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
-index 68be9cbf4..c35094ef7 100644
+index 74ca82998..2dc12da39 100644
 --- a/src/Mod/Unified/CMakeLists.txt
 +++ b/src/Mod/Unified/CMakeLists.txt
 @@ -35,7 +35,10 @@ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
@@ -665,60 +665,25 @@ index 68be9cbf4..c35094ef7 100644
 +    list(APPEND Unified_Scripts MagnetDragGui.py ArrangeGui.py)
 +endif(BUILD_GUI)
  
- # What two picks measure right away, and the preview of a tool on hover: the computations
- # without the GUI ("FreeCADCmd -t TestMeasureMath", "FreeCADCmd -t TestToolPreview")
-@@ -50,6 +53,9 @@ list(APPEND Unified_Scripts TestNetworkSettings.py)
- # The parts shelf: screws, nuts, washers (made with the bundled Fasteners workbench), aluminium
- # profiles and the company's own parts ("FreeCADCmd -t TestPartsShelf")
- list(APPEND Unified_Scripts PartsShelf.py TestPartsShelf.py)
-+if(BUILD_GUI)
-+    list(APPEND Unified_Scripts PartsShelfGui.py PartsShelf.svg Profile.svg)
-+endif(BUILD_GUI)
- 
- if(BUILD_GUI)
-     list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
+ # Network settings and the AI key: applying never waits on the network ("FreeCADCmd -t TestNetworkSettings")
+ list(APPEND Unified_Scripts TestNetworkSettings.py)
 diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
-index 2bac91cc5..97c00f4db 100644
+index 2bac91cc5..e92fa592b 100644
 --- a/src/Mod/Unified/CommandAliases.py
 +++ b/src/Mod/Unified/CommandAliases.py
-@@ -84,6 +84,16 @@ ALIASES = {
+@@ -84,6 +84,7 @@ ALIASES = {
      "Assembly_CreateSimulation": ["動かして試す", "シミュレーション", "アニメーション", "Simulation", "Motion"],
      "Unified_SnapFaces": ["くっつける", "面を合わせる", "合わせる", "Mate", "Snap"],
      "Unified_MovePointToPoint": ["点から点へ", "点を合わせる", "Move point to point"],
-+    # The parts shelf (部品の棚)
-+    "Unified_PartsShelf": ["部品の棚", "棚", "ねじ", "ネジ", "ボルト", "ナット", "座金", "ワッシャ", "ワッシャー", "六角穴付き",
-+                           "六角穴付きボルト", "キャップボルト", "六角ボルト", "皿ボルト", "皿ねじ", "止めねじ", "イモネジ",
-+                           "ばね座金", "スプリングワッシャ", "締結部品", "標準部品", "購入品", "M3", "M4", "M5", "M6", "M8",
-+                           "M10", "M12", "JIS", "会社の部品", "部品ライブラリ", "Fastener", "Screw", "Bolt", "Nut", "Washer",
-+                           "Parts library", "Toolbox"],
-+    "Unified_InsertScrew": ["ねじを入れる", "ボルトを入れる", "穴にねじ", "ねじ", "ボルト", "Insert screw", "Fastener"],
-+    "Unified_PlaceProfile": ["アルミフレーム", "フレーム", "アルミ押出材", "押出材", "押し出し材", "Tスロット", "T溝",
-+                             "20角", "30角", "40角", "Aluminium profile", "Aluminum extrusion", "Extrusion", "T-slot"],
 +    "Unified_Align": ["そろえる", "揃える", "揃え", "整列", "等間隔", "並べる", "ぴったり並べる", "左揃え", "中央揃え", "Align", "Distribute", "Arrange"],
      # Drawings
      "TechDraw_PageDefault": ["図面", "新しい図面", "ページ", "Drawing", "Page", "Sheet"],
      "TechDraw_ProjectionGroup": ["三面図", "投影", "投影グループ", "投影図群", "第三角法", "Projection group", "Standard views", "Three views"],
 diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
-index 59581a63b..55bcd4f13 100644
+index 59581a63b..fbfbbd33b 100644
 --- a/src/Mod/Unified/ContextRules.py
 +++ b/src/Mod/Unified/ContextRules.py
-@@ -51,6 +51,7 @@ RULES = {
-         A("Unified_SnapFaces", T("Snap")),
-     ],
-     "round face": [
-+        A("Unified_InsertScrew", T("Insert screw")),
-         A("Std_Measure", T("Measure")),
-         A("Unified_SnapAxes", T("Line up axes")),
-         A("PartDesign_Fillet", T("Fillet"), RADIUS),
-@@ -67,6 +68,7 @@ RULES = {
-     ],
-     "circle edge": [
-         A("PartDesign_Fillet", T("Fillet"), RADIUS),
-+        A("Unified_InsertScrew", T("Insert screw")),
-         A("PartDesign_Chamfer", T("Chamfer"), SIZE),
-         A("Unified_SelectSameCircles", T("Same circles")),
-         A("Unified_MovePointToPoint", T("Point to point")),
-@@ -106,11 +108,17 @@ RULES = {
+@@ -106,11 +106,17 @@ RULES = {
          A("Std_Measure", T("Distance")),
      ],
      "two parts": [
@@ -736,7 +701,7 @@ index 59581a63b..55bcd4f13 100644
      "mesh": [
          A("Mesh_Evaluation", T("Check and fix")),
          A("Part_ShapeFromMesh", T("Make solid")),
-@@ -277,6 +285,8 @@ def classify(picks):
+@@ -277,6 +283,8 @@ def classify(picks):
          return "two picks"
      if all(not s for s in subs) and len(picks) == 2:
          return "two parts"
@@ -746,11 +711,11 @@ index 59581a63b..55bcd4f13 100644
          return "edges"
      return "other"
 diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
-index dbffbfc68..1441110c8 100644
+index db8a0050d..973afee56 100644
 --- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
 +++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
-@@ -11119,4 +11119,217 @@ Note: Currently this selects only unconnected parts, not constrained parts that
-         <translation>選んだ部品の、鏡に映した写しを作ります。</translation>
+@@ -10993,4 +10993,217 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>マウスの方式</translation>
      </message>
  </context>
 +<!-- magnet drag and line up (0.6.5) -->
@@ -2037,10 +2002,10 @@ index 6cf3f6860..1b6ab0763 100644
  if __name__ == "__main__":
      unittest.main()
 diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
-index d6a2e89c4..4df23c981 100644
+index d6a2e89c4..10bbba7ad 100644
 --- a/src/Mod/Unified/UnifiedCommands.py
 +++ b/src/Mod/Unified/UnifiedCommands.py
-@@ -180,3 +180,12 @@ FreeCADGui.addCommand("Unified_About", AboutCommand())
+@@ -180,3 +180,9 @@ FreeCADGui.addCommand("Unified_About", AboutCommand())
  
  # Snap together (くっつける), line up the axes, point onto a face, move point to point
  import SnapToolsGui  # noqa: E402,F401
@@ -2050,9 +2015,6 @@ index d6a2e89c4..4df23c981 100644
 +import MagnetDragGui  # noqa: E402
 +
 +MagnetDragGui.install()
-+
-+# The parts shelf (部品の棚): screws, nuts, washers, profiles, company parts
-+import PartsShelfGui  # noqa: E402,F401
 -- 
 2.43.0
 

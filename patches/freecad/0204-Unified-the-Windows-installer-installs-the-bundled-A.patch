@@ -1,7 +1,7 @@
 From 4fdfc91a37d57b3f7953b877b476d4e820b7f8e4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 14:49:36 +0900
-Subject: [PATCH 204/285] Unified: the Windows installer installs the bundled
+Subject: [PATCH 204/277] Unified: the Windows installer installs the bundled
  AI runtime (ai-runtime) as well
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
