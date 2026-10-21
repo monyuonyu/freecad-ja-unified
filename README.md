@@ -298,6 +298,25 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.8
+
+Measuring without pressing "Measure", and seeing a tool's result before pressing it — on the bar next to a pick and on the tool strip.
+Screens: [docs/ui-redesign/accept/measure-preview](docs/ui-redesign/accept/measure-preview).
+Versions released in parallel: the code is in the 0.6.6 builds already (the Japanese names of kept dimensions from 0.6.5 and 0.6.7). 0.6.8 adds its description, the acceptance run and the screens; its patches are the same as 0.6.7's.
+
+- **Two picks are measured right away** (Ctrl, same or different parts): point–point distance with ΔX/ΔY/ΔZ, point–face/edge distance,
+  the **gap** of parallel edges or faces, otherwise their **angle**, the **center distance** and ⌀ of two circles or holes. The numbers are on the
+  left of the bar, the tools (snap, point to point, …) stay on the right. Nested and rotated parts are measured in global coordinates
+- **One pick, small**: the length of an edge, the area of a face, ⌀ and R of a circle or hole
+- **Click a number to copy it**; **「寸法を残す」 (keep the dimension)** makes a persistent Measure object (in a "Measurements" group), one undo step
+- **Tool preview on hover**: resting the mouse on a tool of the strip or the bar for 0.3 s draws its result on the current pick as a see-through ghost
+  (green added, red removed, blue copies): fillet/chamfer of the picked edges (or a face's edges; the bar's number or the last one), extrude 10 mm / pocket of a sketch or flat face,
+  a ⌀6 hole at the clicked point, mirror / linear / polar pattern of the picked feature, Part mirror. Worked out on copies in a thread, cancelled when the mouse leaves,
+  dropped when it takes over 1 s; **the document is never changed**
+- Tool tooltips are one plain sentence of what happens
+- Tests: `FreeCADCmd -t TestMeasureMath` (planes, cylinders, rotated and nested parts), `-t TestToolPreview` (size and place, no document change, cancel, slow),
+  GUI acceptance `tests/ui/measure_preview_check.py` (real clicks and mouse moves with xdotool)
+
 ## Changes in 0.6.7
 
 **Push/pull faces and dimensions on the model** — change the shape by grabbing it, without picking a tool first. Screens: [docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull).

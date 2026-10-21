@@ -1,0 +1,248 @@
+{
+ "measure": {
+  "two_points": {
+   "visible": true,
+   "values": [
+    "距離 15 mm",
+    "ΔX 10 mm",
+    "ΔY 10 mm",
+    "ΔZ 5 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "点から点へ",
+     "Unified_MovePointToPoint"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "two_points_same_part": {
+   "visible": true,
+   "values": [
+    "距離 80 mm",
+    "ΔX 80 mm",
+    "ΔY 0 mm",
+    "ΔZ 0 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "隠す",
+     "Std_ToggleVisibility"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "parallel_faces": {
+   "visible": true,
+   "values": [
+    "すき間 10 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "くっつける",
+     "Unified_SnapFaces"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "two_holes": {
+   "visible": true,
+   "values": [
+    "中心間 60 mm",
+    "⌀6 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "丸め",
+     "PartDesign_Fillet"
+    ],
+    [
+     "面取り",
+     "PartDesign_Chamfer"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "angle": {
+   "visible": true,
+   "values": [
+    "角度 90°",
+    "距離 40 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "くっつける",
+     "Unified_SnapFaces"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "one_edge": {
+   "visible": true,
+   "values": [
+    "長さ 80 mm"
+   ],
+   "keep": true,
+   "actions": [
+    [
+     "丸め",
+     "PartDesign_Fillet"
+    ],
+    [
+     "面取り",
+     "PartDesign_Chamfer"
+    ],
+    [
+     "同じ向きの辺も",
+     "Unified_SelectParallelEdges"
+    ],
+    [
+     "AI に頼む",
+     "Unified_AIChatAsk"
+    ],
+    [
+     "…",
+     "Unified_SearchUsable"
+    ]
+   ],
+   "measure_left_actions_right": true,
+   "ok": true
+  },
+  "copy": {
+   "clipboard": "80",
+   "status": "80 をコピーしました",
+   "ok": true
+  },
+  "keep": {
+   "new_objects": 2,
+   "measures": [
+    [
+     "Measure::MeasureDistance",
+     "距離: 80.00 mm",
+     80.0
+    ]
+   ],
+   "undo_steps": 1,
+   "button_after": "残しました",
+   "button_enabled_after": false,
+   "ok": true
+  }
+ },
+ "preview": {
+  "bar_fillet": {
+   "state": "done",
+   "ghost": true,
+   "ms": 855,
+   "tooltip_property": "選んだ辺の角を丸めます。 （キー F）",
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_chamfer": {
+   "state": "done",
+   "ghost": true,
+   "ms": 1639,
+   "tooltip": "選んだ辺の角を、斜めに切り落とします。",
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_pad": {
+   "state": "done",
+   "ghost": true,
+   "ms": 945,
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_hole": {
+   "state": "done",
+   "ghost": true,
+   "ms": 944,
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_mirror": {
+   "state": "done",
+   "ghost": true,
+   "ms": 855,
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_linear": {
+   "state": "done",
+   "ghost": true,
+   "ms": 882,
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "strip_polar": {
+   "state": "done",
+   "ghost": true,
+   "ms": 865,
+   "ghost_after_leave": false,
+   "document_unchanged": true
+  },
+  "left_early": {
+   "state": null,
+   "ghost": false
+  },
+  "slow": {
+   "state": "slow",
+   "ghost": false,
+   "ms": 1895,
+   "tooltip": "選んだ辺の角を丸めます。 （キー F）",
+   "ghost_after_leave": false
+  },
+  "document_unchanged_at_end": true
+ },
+ "failed": [],
+ "ok": true
+}
