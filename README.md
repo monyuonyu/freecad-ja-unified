@@ -348,7 +348,7 @@ screens: [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-she
   **equal gaps** (the outer two stay), **a given gap**, **side by side** in pick order; to the first picked part (outlined) or the extent of all.
   Pointing at a button previews, clicking keeps (one undo step), Esc cancels. Tight boxes for turned parts; parts inside nested App::Parts
 - Tests: `FreeCADCmd -t TestMagnetDrag` (24), `FreeCADCmd -t TestArrange` (11)
-- 0.6.6, released before, contains an early version of this. It can crash after a document is closed and another view is activated (a closed 3D view was used from Python); fixed in 0.6.5 and in the release after 0.6.6
+- 0.6.6, released before, contains an early version of this. It can crash after a document is closed and another view is activated (a closed 3D view was used from Python); fixed in 0.6.5 and 0.6.7
 
 ## Changes in 0.6.4
 
