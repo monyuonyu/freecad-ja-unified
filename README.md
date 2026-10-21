@@ -298,6 +298,23 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.6.6
+
+**Parts shelf** ("Parts Shelf" on the tool strip; Ctrl+K: ねじ, ボルト, ナット, 座金, ワッシャ, 六角穴付き, M6, screw, nut, washer). Details: [docs/parts-shelf.md](docs/parts-shelf.md);
+screens: [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-shelf).
+
+- **Screws, nuts and washers by their JIS names**, M3–M12: hexagon socket head cap screws (JIS B 1176), hex bolts (B 1180, fully/partly threaded), hex nuts (B 1181),
+  plain washers (B 1256), spring washers (B 1251), set screws (B 1177, flat/cup point), countersunk screws (B 1194). Labels like "六角穴付きボルト M6×20"
+- **Click a hole and the screw that fits goes in** ("Insert screw" on the bar next to a picked hole): the size from the diameter (tap drill, thread, clearance hole classes 1–3,
+  counterbore, countersink), the length from the plates it clamps and the thread it goes into (other parts on the same axis count; never bottoming out in a blind hole),
+  coaxial with the hole (the same math as "snap together"). Washers, nut and an extra plate can be chosen; a change redoes the screw
+- **In the parts list**: one hidden original per kind and size (name, standard, size, part number properties), links where used: the Assembly BOM counts them.
+  The design check accepts the thread overlap of a shelf screw in its tapped hole
+- **Aluminium profiles**: generic 20/30/40 series sections, slot 6/8 (from public generic dimensions; no maker's data), placed by two clicks with a ghost, or a typed length
+- **Company parts**: folders of FCStd/STEP files (optional `shelf.csv`, also Excel's Shift_JIS CSV); company-wide via `FREECAD_PARTS_SHELF`
+- **The Fasteners workbench is bundled** ([shaise/FreeCAD_FastenersWB](https://github.com/shaise/FreeCAD_FastenersWB) `fddd07af`, **GPL-2.0-or-later**, unchanged, in `src/Mod/Fasteners`).
+  The shelf makes its screws with it; its 223 tools are in Ctrl+K and "Other tools". The release builds check it is bundled and `FreeCADCmd -t TestPartsShelf` passes
+
 ## Changes in 0.6.4
 
 The 3D view follows what you look at (the default mouse style and the touchpad style offered on the first start; other styles are unchanged). Screens: [docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4).
@@ -471,3 +488,4 @@ It applies the patches to the base version, builds Linux and Windows with the sa
 ## License
 
 The patches are LGPL-2.1-or-later, the same as FreeCAD (`LICENSE`).
+The bundled Fasteners workbench (`src/Mod/Fasteners`, by Shai Seger and contributors) is GPL-2.0-or-later (`LICENSE` in that folder), shipped as a separate module.

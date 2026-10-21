@@ -291,6 +291,21 @@ AI 要执行的代码默认每次都会显示，只有点“実行する”（�
 此外还修复了装配求解器（OndselSolver）中，在 Linux 和 macOS 上导出装配（ASMT）时关节类型名损坏的问题
 （截取类型名时以 Windows 的格式为前提。是在上游测试 #32922 于 Linux 上失败时发现的）。
 
+## 0.6.6 的变更
+
+**零件架**（工具栏的「部品の棚」，Ctrl+K 输入 ねじ・ボルト・ナット・座金・ワッシャ・M6 等）。详见 [docs/parts-shelf.md](docs/parts-shelf.md)，
+验收截图见 [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-shelf)。
+
+- **按 JIS 名称的螺钉、螺母、垫圈**，M3–M12：内六角圆柱头螺钉（JIS B 1176）、六角螺栓（B 1180）、六角螺母（B 1181）、平垫圈（B 1256）、弹簧垫圈（B 1251）、
+  紧定螺钉（B 1177）、内六角沉头螺钉（B 1194）。名称如「六角穴付きボルト M6×20」
+- **点击孔即插入合适的螺钉**（选中孔后旁边的「ねじを入れる」）：规格由孔径决定（底孔、螺纹孔、JIS B 1001 通孔 1–3 级、沉孔、锪孔），长度由夹紧的板与螺纹孔决定
+  （同轴的其他零件也计入，不会顶到盲孔底），与孔同轴放置。可选垫圈、螺母与未建模板的厚度，修改后即时重新插入
+- **自然进入物料清单**：每种规格一个隐藏的原件（带名称、标准、规格、品号属性），使用处为链接，装配的 BOM 以链接数为数量。设计检查不把螺纹啮合的重叠算作干涉
+- **铝型材**：20/30/40 系列、槽 6/8 的通用截面（来自公开的通用尺寸，不含厂商数据），点击两点放置（第一点后有预览），也可输入长度
+- **公司零件**：可加入 FCStd/STEP 文件夹（索引 `shelf.csv` 可选，也能读 Excel 的 Shift_JIS CSV）；全公司可用环境变量 `FREECAD_PARTS_SHELF`
+- **内置 Fasteners 工作台**（[shaise/FreeCAD_FastenersWB](https://github.com/shaise/FreeCAD_FastenersWB) `fddd07af`，**GPL-2.0-or-later**，未修改，位于 `src/Mod/Fasteners`）。
+  零件架用它生成螺钉形状；其 223 个工具也可从 Ctrl+K 与「その他の道具」使用。发布构建会确认已内置且 `FreeCADCmd -t TestPartsShelf` 通过
+
 ## 0.6.4 的变更
 
 3D 视图跟随你正在看的位置（默认的鼠标方式和首次启动可选的触控板方式；其他方式不变）。截图：[docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4)。
@@ -447,3 +462,4 @@ XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
 ## 许可证
 
 补丁与 FreeCAD 相同，采用 LGPL-2.1-or-later（`LICENSE`）。
+内置的 Fasteners 工作台（`src/Mod/Fasteners`，作者 Shai Seger 等）采用 GPL-2.0-or-later（该文件夹中的 `LICENSE`），作为独立模块分发。

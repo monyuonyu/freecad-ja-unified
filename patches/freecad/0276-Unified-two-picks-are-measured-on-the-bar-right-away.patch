@@ -1,0 +1,2182 @@
+From 9ceaec66f489802523deb967584a974ecdc7d6e9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:08:56 +0900
+Subject: [PATCH 276/281] Unified: two picks are measured on the bar right
+ away; hovering a tool previews its result
+
+The bar next to a pick shows, on its left, what one or two picked things measure without
+pressing "Measure": point to point (with dX/dY/dZ), point to face or edge, the gap of
+parallel edges or faces and the angle of the others, diameters and the distance of the
+centers of circles and holes, the length of one edge and the area of one face. A click
+copies a number; "Keep the dimension" makes a Measure object (one undo step). The tools
+stay on the right, the two-pick tools of 0.5.8 included.
+
+Resting the mouse on a tool of the tool strip or of the bar (300 ms) shows a see-through
+ghost of what it would do on the picked things: the corners a fillet or chamfer takes off,
+the block an extrusion adds or a pocket cuts, the hole, the mirrored or repeated feature.
+It is worked out on copies in a thread, cancelled when the mouse leaves, dropped when it
+takes over a second; the document is never changed. The tools get a tooltip of one plain
+sentence.
+
+MeasureMath.py / ToolPreview.py without the GUI ("FreeCADCmd -t TestMeasureMath",
+"-t TestToolPreview"), MeasureBarGui.py / ToolPreviewGui.py with it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   7 +
+ src/Mod/Unified/Gui/ContextBar.cpp            |  19 +
+ .../translations/UnifiedWording_ja.ts         | 126 +++++
+ src/Mod/Unified/InitGui.py                    |   5 +
+ src/Mod/Unified/MeasureBarGui.py              | 153 ++++++
+ src/Mod/Unified/MeasureMath.py                | 416 +++++++++++++++
+ src/Mod/Unified/TestMeasureMath.py            | 260 +++++++++
+ src/Mod/Unified/TestToolPreview.py            | 236 +++++++++
+ src/Mod/Unified/ToolPreview.py                | 500 ++++++++++++++++++
+ src/Mod/Unified/ToolPreviewGui.py             | 322 +++++++++++
+ 10 files changed, 2044 insertions(+)
+ create mode 100644 src/Mod/Unified/MeasureBarGui.py
+ create mode 100644 src/Mod/Unified/MeasureMath.py
+ create mode 100644 src/Mod/Unified/TestMeasureMath.py
+ create mode 100644 src/Mod/Unified/TestToolPreview.py
+ create mode 100644 src/Mod/Unified/ToolPreview.py
+ create mode 100644 src/Mod/Unified/ToolPreviewGui.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 0fbaa2fba..68be9cbf4 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -37,6 +37,13 @@ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
+ # ("FreeCADCmd -t TestMagnetDrag", "FreeCADCmd -t TestArrange")
+ list(APPEND Unified_Scripts MagnetDrag.py TestMagnetDrag.py)
+ 
++# What two picks measure right away, and the preview of a tool on hover: the computations
++# without the GUI ("FreeCADCmd -t TestMeasureMath", "FreeCADCmd -t TestToolPreview")
++list(APPEND Unified_Scripts MeasureMath.py TestMeasureMath.py ToolPreview.py TestToolPreview.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts MeasureBarGui.py ToolPreviewGui.py)
++endif(BUILD_GUI)
++
+ # Network settings and the AI key: applying never waits on the network ("FreeCADCmd -t TestNetworkSettings")
+ list(APPEND Unified_Scripts TestNetworkSettings.py)
+ 
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 9d7304dd0..eec3ec011 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -377,6 +377,8 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+         }
+         button->setText(action.label);
+         const std::string name = action.command;
++        // Which tool the button runs: its preview on hover (ToolPreviewGui.py)
++        button->setProperty("unifiedCommand", QString::fromStdString(name));
+         connect(button, &QToolButton::clicked, this, [this, name]() {
+             dismiss();
+             runRules("run", name);
+@@ -388,6 +390,7 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+             fieldShown = true;
+             auto field = new QLineEdit(this);
+             field->setObjectName(QStringLiteral("UnifiedContextField"));
++            field->setProperty("unifiedCommand", QString::fromStdString(name));
+             field->setText(defaultValue(name));
+             field->setFixedWidth(fontMetrics().horizontalAdvance(QStringLiteral("0000.00 mm")) + 12);
+             field->setToolTip(label("Type the number and press Enter (the button opens all settings)"));
+@@ -404,6 +407,22 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+         dismiss();
+         return;
+     }
++    // On the left, what the picks measure (no need to press "Measure"); the buttons show what
++    // their tool would do while hovered (MeasureBarGui.py)
++    {
++        Base::PyGILStateLocker lock;
++        try {
++            Py::Module module(PyImport_ImportModule("MeasureBarGui"), true);
++            if (module.isNull()) {
++                throw Py::Exception();
++            }
++            module.callMemberFunction("decorate");
++        }
++        catch (Py::Exception&) {
++            Base::PyException e;
++            e.reportException();
++        }
++    }
+ 
+     // Put the bar next to the cursor, inside the view. The bar stays a child of the main
+     // window (views come and go with their documents) and is only positioned over the view.
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index db8a0050d..dbffbfc68 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10993,4 +10993,130 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>マウスの方式</translation>
+     </message>
+ </context>
++<context>
++    <name>UnifiedMeasure</name>
++    <message>
++        <source>Distance</source>
++        <translation>距離</translation>
++    </message>
++    <message>
++        <source>ΔX</source>
++        <translation>ΔX</translation>
++    </message>
++    <message>
++        <source>ΔY</source>
++        <translation>ΔY</translation>
++    </message>
++    <message>
++        <source>ΔZ</source>
++        <translation>ΔZ</translation>
++    </message>
++    <message>
++        <source>Gap</source>
++        <translation>すき間</translation>
++    </message>
++    <message>
++        <source>Angle</source>
++        <translation>角度</translation>
++    </message>
++    <message>
++        <source>Length</source>
++        <translation>長さ</translation>
++    </message>
++    <message>
++        <source>Area</source>
++        <translation>面積</translation>
++    </message>
++    <message>
++        <source>⌀</source>
++        <translation>⌀</translation>
++    </message>
++    <message>
++        <source>R</source>
++        <translation>R</translation>
++    </message>
++    <message>
++        <source>Center distance</source>
++        <translation>中心間</translation>
++    </message>
++    <message>
++        <source>Keep the dimension</source>
++        <translation>寸法を残す</translation>
++    </message>
++    <message>
++        <source>Leaves this measurement in the model, as a dimension that stays.</source>
++        <translation>この測った値を、消えない寸法としてモデルに残します。</translation>
++    </message>
++    <message>
++        <source>Click to copy the number</source>
++        <translation>クリックで数値をコピーします</translation>
++    </message>
++    <message>
++        <source>Copied {}</source>
++        <translation>{} をコピーしました</translation>
++    </message>
++    <message>
++        <source>Kept</source>
++        <translation>残しました</translation>
++    </message>
++    <message>
++        <source>Kept as {}</source>
++        <translation>「{}」を残しました</translation>
++    </message>
++    <message>
++        <source>Measurements</source>
++        <translation>寸法</translation>
++    </message>
++</context>
++<context>
++    <name>UnifiedPreview</name>
++    <message>
++        <source>Draws an outline on a flat face or a plane.</source>
++        <translation>平らな面や平面の上に、輪郭を描きます。</translation>
++    </message>
++    <message>
++        <source>Pulls a sketch or a flat face out into a solid.</source>
++        <translation>スケッチや平らな面を引き出して、厚みのある形にします。</translation>
++    </message>
++    <message>
++        <source>Cuts the shape of a sketch or face into the part.</source>
++        <translation>スケッチや面の形で、部品を切り抜きます。</translation>
++    </message>
++    <message>
++        <source>Turns a sketch around an axis into a solid.</source>
++        <translation>スケッチを軸のまわりに回して、形にします。</translation>
++    </message>
++    <message>
++        <source>Drills a hole where you clicked on a flat face.</source>
++        <translation>平らな面のクリックした所に、穴をあけます。</translation>
++    </message>
++    <message>
++        <source>Rounds off the picked edges.</source>
++        <translation>選んだ辺の角を丸めます。</translation>
++    </message>
++    <message>
++        <source>Cuts the picked edges off at a slant.</source>
++        <translation>選んだ辺の角を、斜めに切り落とします。</translation>
++    </message>
++    <message>
++        <source>Hollows the part out, leaving walls of the given thickness.</source>
++        <translation>部品の中をくり抜いて、決めた厚みの壁だけを残します。</translation>
++    </message>
++    <message>
++        <source>Makes a mirror image of the picked feature on the other side.</source>
++        <translation>選んだ形を、鏡に映したように反対側にも作ります。</translation>
++    </message>
++    <message>
++        <source>Repeats the picked feature in a straight row.</source>
++        <translation>選んだ形を、まっすぐ一列に並べて増やします。</translation>
++    </message>
++    <message>
++        <source>Repeats the picked feature in a circle around an axis.</source>
++        <translation>選んだ形を、軸のまわりに円く並べて増やします。</translation>
++    </message>
++    <message>
++        <source>Makes a mirrored copy of the picked part.</source>
++        <translation>選んだ部品の、鏡に映した写しを作ります。</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 95b5fe5df..d072290e9 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -72,6 +72,11 @@ class UnifiedWorkbench(Workbench):
+ 
+         UnifiedChrome.install()
+ 
++        # 道具に重ねたマウスで、その道具の結果を半透明で下見する（文書は変えない）
++        import ToolPreviewGui
++
++        ToolPreviewGui.install()
++
+         # 設計の検査の結果をステータスバーに常に出す（計算し直すたびに更新）
+         DesignCheckGui.indicator.install()
+ 
+diff --git a/src/Mod/Unified/MeasureBarGui.py b/src/Mod/Unified/MeasureBarGui.py
+new file mode 100644
+index 000000000..ae2b77730
+--- /dev/null
++++ b/src/Mod/Unified/MeasureBarGui.py
+@@ -0,0 +1,153 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""The numbers on the bar next to a pick, without pressing "Measure" (自動で測る).
++
++Called by the bar (ContextBar.cpp) each time it is built: on its left the measurement of the
++one or two picked things (MeasureMath.py), on its right the tools as before. A click on a
++number copies it; 「寸法を残す」 keeps the measurement in the document as a Measure object.
++It also lets the bar's buttons show the preview of their tool (ToolPreviewGui.py).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import MeasureMath as M
++
++translate = App.Qt.translate
++CTX = "UnifiedMeasure"
++
++_cache = {}
++
++
++def _key():
++    return tuple(
++        (s.Object.Document.Name, s.Object.Name, tuple(s.SubElementNames))
++        for s in Gui.Selection.getSelectionEx("", 0)
++    )
++
++
++def picks():
++    out = []
++    for s in Gui.Selection.getSelectionEx("", 0):
++        for name in list(s.SubElementNames) or [""]:
++            out.append((s.Object, name))
++    return out
++
++
++def current():
++    """The measurement of what is picked now (cached for the selection)"""
++    key = _key()
++    if key not in _cache:
++        if len(_cache) > 20:
++            _cache.clear()
++        p = picks()
++        _cache[key] = (M.measure_picks(p) if 0 < len(p) <= 2 else M.Result(), p)
++    return _cache[key]
++
++
++def item_text(item):
++    name = translate(CTX, M.NAMES[item.key])
++    if item.key in ("diameter", "radius"):
++        return name + item.text()
++    return "{} {}".format(name, item.text())
++
++
++def _status(text):
++    try:
++        Gui.getMainWindow().statusBar().showMessage(text, 4000)
++    except Exception:
++        pass
++
++
++def copy(item):
++    QtWidgets.QApplication.clipboard().setText(item.number())
++    _status(translate(CTX, "Copied {}").format(item.number()))
++
++
++def keep(result, picked, button=None):
++    try:
++        import MeasureGui  # noqa: F401  (how the Measure objects are drawn)
++    except Exception:
++        pass
++    try:
++        obj = M.keep(result, picked)
++    except Exception as e:
++        App.Console.PrintWarning("Keep the dimension: {}\n".format(e))
++        return None
++    if obj is not None:
++        _status(translate(CTX, "Kept as {}").format(obj.Label))
++        if button is not None:
++            # Once is enough: a second click would keep the same dimension twice
++            button.setEnabled(False)
++            button.setText(translate(CTX, "Kept"))
++    return obj
++
++
++def _measure_widget(bar, result, picked):
++    box = QtWidgets.QWidget(bar)
++    box.setObjectName("UnifiedMeasure")
++    lay = QtWidgets.QHBoxLayout(box)
++    lay.setContentsMargins(4, 0, 4, 0)
++    lay.setSpacing(0)
++    tip = translate(CTX, "Click to copy the number")
++    for i, item in enumerate(result.items):
++        b = QtWidgets.QToolButton(box)
++        b.setObjectName("UnifiedMeasureValue")
++        b.setAutoRaise(True)
++        b.setText(item_text(item))
++        b.setToolTip(tip)
++        b.setProperty("unifiedValue", item.number())
++        font = b.font()
++        if result.single:
++            font.setPointSizeF(font.pointSizeF() * 0.9)
++            pal = b.palette()
++            pal.setColor(QtGui.QPalette.ButtonText, pal.color(QtGui.QPalette.Disabled, QtGui.QPalette.ButtonText))
++            b.setPalette(pal)
++        elif i == 0:
++            font.setBold(True)
++        b.setFont(font)
++        b.clicked.connect(lambda checked=False, it=item: copy(it))
++        lay.addWidget(b)
++    if result.keep is not None:
++        k = QtWidgets.QToolButton(box)
++        k.setObjectName("UnifiedMeasureKeep")
++        k.setAutoRaise(True)
++        k.setText(translate(CTX, "Keep the dimension"))
++        k.setToolTip(translate(CTX, "Leaves this measurement in the model, as a dimension that stays."))
++        font = k.font()
++        font.setPointSizeF(font.pointSizeF() * 0.85)
++        k.setFont(font)
++        k.clicked.connect(lambda checked=False, r=result, p=picked, b=k: keep(r, p, b))
++        lay.addWidget(k)
++    line = QtWidgets.QFrame(box)
++    line.setFrameShape(QtWidgets.QFrame.VLine)
++    line.setFrameShadow(QtWidgets.QFrame.Sunken)
++    lay.addSpacing(4)
++    lay.addWidget(line)
++    return box
++
++
++def decorate():
++    """The bar was built (hidden): put the measurement on its left, hook up the previews"""
++    mw = Gui.getMainWindow()
++    bar = mw.findChild(QtWidgets.QFrame, "UnifiedContextBar")
++    if bar is None:
++        return
++    layout = bar.layout()
++    try:
++        result, picked = current()
++    except Exception as e:
++        App.Console.PrintLog("Measure on the bar: {}\n".format(e))
++        result, picked = M.Result(), []
++    if result:
++        layout.insertWidget(0, _measure_widget(bar, result, picked))
++        # The numbers are there: "Measure" / "Distance" would only say them again
++        for b in bar.findChildren(QtWidgets.QToolButton):
++            if b.property("unifiedCommand") == "Std_Measure":
++                b.hide()
++    try:
++        import ToolPreviewGui
++
++        ToolPreviewGui.watch_buttons(bar)
++    except Exception as e:
++        App.Console.PrintLog("Preview on the bar: {}\n".format(e))
+diff --git a/src/Mod/Unified/MeasureMath.py b/src/Mod/Unified/MeasureMath.py
+new file mode 100644
+index 000000000..2ba8270e7
+--- /dev/null
++++ b/src/Mod/Unified/MeasureMath.py
+@@ -0,0 +1,416 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What is measured right away when one or two things are picked (自動で測る).
++
++The bar next to a pick shows the numbers without pressing "Measure": two points give their
++distance and ΔX/ΔY/ΔZ, a point and a face or edge the distance, two edges or two faces the
++gap when they are parallel and the angle when not, circles and holes their diameter and the
++distance of their centers; one edge alone its length, one face its area.
++
++No GUI here: everything in global coordinates from the picked elements (TestMeasureMath.py
++tests it headless). MeasureBarGui.py shows the result on the bar and keeps it as a Measure
++object ("寸法を残す").
++"""
++
++import math
++
++import FreeCAD as App
++
++TOL = 1e-7
++ANGLE_TOL = 1e-6  # radians: parallel / perpendicular
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++T = lambda text: QT_TRANSLATE_NOOP("UnifiedMeasure", text)
++
++# The names of the values (English here, Japanese in UnifiedWording_ja.ts)
++NAMES = {
++    "distance": T("Distance"),
++    "dx": T("ΔX"),
++    "dy": T("ΔY"),
++    "dz": T("ΔZ"),
++    "gap": T("Gap"),
++    "angle": T("Angle"),
++    "length": T("Length"),
++    "area": T("Area"),
++    "diameter": T("⌀"),
++    "radius": T("R"),
++    "centers": T("Center distance"),
++}
++UNITS = {"length": "mm", "angle": "°", "area": "mm²"}
++
++
++class Item:
++    """One value: what it is ("gap"), the number and what kind of number (length, angle, area)."""
++
++    def __init__(self, key, value, kind="length"):
++        self.key = key
++        self.value = float(value)
++        self.kind = kind
++
++    @property
++    def unit(self):
++        return UNITS[self.kind]
++
++    def number(self):
++        """The number as it is copied: up to 3 decimals, no trailing zeros"""
++        return format_number(self.value, 2 if self.kind == "area" else 3)
++
++    def text(self):
++        return "{} {}".format(self.number(), self.unit) if self.kind != "angle" else self.number() + "°"
++
++    def __repr__(self):
++        return "Item({}, {:.6g} {})".format(self.key, self.value, self.unit)
++
++
++class Keep:
++    """How to keep the measurement as a Measure object.
++
++    kind: "distance" / "angle" (two picks), "length" / "area" / "diameter" / "radius" (one),
++    "points" (a distance between two points that were worked out, e.g. the gap of two parallel
++    faces or the centers of two holes; a Measure::MeasureDistanceDetached).
++    """
++
++    def __init__(self, kind, picks=(), points=None):
++        self.kind = kind
++        self.picks = tuple(picks)
++        self.points = points
++
++    def __repr__(self):
++        return "Keep({}, {})".format(self.kind, self.picks)
++
++
++class Result:
++    def __init__(self, items=(), keep=None, single=False):
++        self.items = list(items)
++        self.keep = keep
++        # One pick: a small hint (length, area), not the main thing of the bar
++        self.single = single
++
++    def __bool__(self):
++        return bool(self.items)
++
++    def get(self, key):
++        for item in self.items:
++            if item.key == key:
++                return item
++        return None
++
++    def __repr__(self):
++        return "Result({})".format(self.items)
++
++
++def format_number(value, decimals=3):
++    text = "{:.{}f}".format(value, decimals)
++    if "." in text:
++        text = text.rstrip("0").rstrip(".")
++    return "0" if text in ("-0", "") else text
++
++
++# --- what a picked element is -------------------------------------------------------------
++
++
++class Element:
++    """A picked vertex, edge or face (global coordinates) and what it is geometrically.
++
++    kind: "point", "line", "circle", "curve", "plane", "cylinder", "surface".
++    For lines and planes: origin and direction (the normal of a plane). For circles and
++    cylinders: center, axis and radius.
++    """
++
++    def __init__(self, shape):
++        import Part
++
++        self.shape = shape
++        self.kind = None
++        self.origin = None
++        self.direction = None
++        self.radius = None
++        if isinstance(shape, Part.Vertex) or shape.ShapeType == "Vertex":
++            self.kind = "point"
++            self.origin = App.Vector(shape.Point)
++        elif shape.ShapeType == "Edge":
++            curve = shape.Curve
++            if isinstance(curve, (Part.Line, Part.LineSegment)):
++                self.kind = "line"
++                a, b = shape.Vertexes[0].Point, shape.Vertexes[-1].Point
++                self.origin = App.Vector(a)
++                self.direction = _unit(b - a) if (b - a).Length > TOL else _unit(curve.Direction)
++            elif isinstance(curve, (Part.Circle, Part.ArcOfCircle)):
++                self.kind = "circle"
++                self.origin = App.Vector(curve.Center)
++                self.direction = _unit(curve.Axis)
++                self.radius = curve.Radius
++            else:
++                self.kind = "curve"
++        elif shape.ShapeType == "Face":
++            surface = shape.Surface
++            if isinstance(surface, Part.Plane):
++                self.kind = "plane"
++                u0, u1, v0, v1 = shape.ParameterRange
++                self.direction = _unit(shape.normalAt((u0 + u1) / 2, (v0 + v1) / 2))
++                self.origin = App.Vector(shape.CenterOfMass) if shape.Area > TOL else App.Vector(surface.Position)
++            elif isinstance(surface, Part.Cylinder):
++                self.kind = "cylinder"
++                self.direction = _unit(surface.Axis)
++                self.radius = surface.Radius
++                # The center: on the axis, in the middle of the face's extent along it
++                base = App.Vector(surface.Center)
++                mid = App.Vector(shape.CenterOfMass) if shape.Area > TOL else base
++                self.origin = base + self.direction * (mid - base).dot(self.direction)
++            else:
++                self.kind = "surface"
++        else:
++            self.kind = "other"
++
++    @property
++    def round(self):
++        return self.kind in ("circle", "cylinder")
++
++
++def _unit(v):
++    v = App.Vector(v)
++    if v.Length > TOL:
++        v.normalize()
++    return v
++
++
++def _parallel(a, b):
++    return a.cross(b).Length < ANGLE_TOL
++
++
++def _acute_angle(a, b):
++    """Angle between two directions without sign, 0..90 degrees"""
++    c = min(1.0, abs(a.dot(b)))
++    return math.degrees(math.acos(c))
++
++
++def _line_point_distance(origin, direction, point):
++    d = point - origin
++    return (d - direction * d.dot(direction)).Length
++
++
++def _min_distance(a, b):
++    try:
++        dist, pairs, _ = a.shape.distToShape(b.shape)
++        return dist, (App.Vector(pairs[0][0]), App.Vector(pairs[0][1])) if pairs else None
++    except Exception:
++        return None, None
++
++
++# --- measuring ----------------------------------------------------------------------------
++
++
++def measure_one(e, pick=0):
++    if e.kind == "line" or e.kind == "curve":
++        return Result([Item("length", e.shape.Length)], Keep("length", [pick]), single=True)
++    if e.kind == "circle":
++        items = [Item("diameter", 2 * e.radius), Item("radius", e.radius)]
++        return Result(items, Keep("diameter", [pick]), single=True)
++    if e.kind == "cylinder":
++        items = [Item("diameter", 2 * e.radius), Item("radius", e.radius)]
++        return Result(items, Keep("diameter", [pick]), single=True)
++    if e.kind in ("plane", "surface"):
++        return Result([Item("area", e.shape.Area, "area")], Keep("area", [pick]), single=True)
++    return Result()
++
++
++def measure_two(a, b):
++    # Point and point
++    if a.kind == "point" and b.kind == "point":
++        d = b.origin - a.origin
++        items = [
++            Item("distance", d.Length),
++            Item("dx", abs(d.x)),
++            Item("dy", abs(d.y)),
++            Item("dz", abs(d.z)),
++        ]
++        return Result(items, Keep("distance", [0, 1]))
++    # A point and something else: the point first
++    if b.kind == "point":
++        r = measure_two(b, a)
++        if r.keep is not None:
++            r.keep.picks = tuple(1 - i for i in r.keep.picks)
++        return r
++    if a.kind == "point":
++        p = a.origin
++        if b.kind == "plane":
++            dist = abs((p - b.origin).dot(b.direction))
++            foot = p - b.direction * (p - b.origin).dot(b.direction)
++            return Result([Item("distance", dist)], Keep("points", [0, 1], (p, foot)))
++        if b.kind == "line":
++            dist = _line_point_distance(b.origin, b.direction, p)
++            foot = b.origin + b.direction * (p - b.origin).dot(b.direction)
++            return Result([Item("distance", dist)], Keep("points", [0, 1], (p, foot)))
++        if b.round:
++            # A point and a hole: the distance to its center (axis) and to its rim/wall
++            items = [Item("centers", _line_point_distance(b.origin, b.direction, p))]
++            foot = b.origin + b.direction * (p - b.origin).dot(b.direction)
++            items.append(Item("diameter", 2 * b.radius))
++            return Result(items, Keep("points", [0, 1], (p, foot)))
++        dist, pts = _min_distance(a, b)
++        if dist is None:
++            return Result()
++        return Result([Item("distance", dist)], Keep("distance", [0, 1]))
++
++    # Two circles or holes: the distance of their centers (of their axes when parallel)
++    if a.round and b.round:
++        if _parallel(a.direction, b.direction) and a.kind == "cylinder" and b.kind == "cylinder":
++            dist = _line_point_distance(a.origin, a.direction, b.origin)
++            foot = a.origin + a.direction * (b.origin - a.origin).dot(a.direction)
++            pts = (foot, App.Vector(b.origin))
++        elif _parallel(a.direction, b.direction) and (a.kind == "cylinder" or b.kind == "cylinder"):
++            # A circle and a hole: the circle's center to the hole's axis
++            cyl, circ = (a, b) if a.kind == "cylinder" else (b, a)
++            dist = _line_point_distance(cyl.origin, cyl.direction, circ.origin)
++            foot = cyl.origin + cyl.direction * (circ.origin - cyl.origin).dot(cyl.direction)
++            pts = (foot, App.Vector(circ.origin)) if cyl is a else (App.Vector(circ.origin), foot)
++        else:
++            dist = (b.origin - a.origin).Length
++            pts = (App.Vector(a.origin), App.Vector(b.origin))
++        items = [Item("centers", dist)]
++        if abs(a.radius - b.radius) < 1e-6:
++            items.append(Item("diameter", 2 * a.radius))
++        else:
++            items.append(Item("diameter", 2 * a.radius))
++            items.append(Item("diameter", 2 * b.radius))
++        return Result(items, Keep("points", [0, 1], pts))
++
++    # Lines and planes: parallel → the gap between them, otherwise the angle
++    flat = ("line", "plane")
++    if a.kind in flat and b.kind in flat:
++        if a.kind == "line" and b.kind == "line":
++            same = _parallel(a.direction, b.direction)
++            angle = 0.0 if same else _acute_angle(a.direction, b.direction)
++        elif a.kind == "plane" and b.kind == "plane":
++            same = _parallel(a.direction, b.direction)
++            angle = 0.0 if same else _acute_angle(a.direction, b.direction)
++        else:
++            line, plane = (a, b) if a.kind == "line" else (b, a)
++            same = abs(line.direction.dot(plane.direction)) < ANGLE_TOL
++            angle = 0.0 if same else 90.0 - _acute_angle(line.direction, plane.direction)
++        if same:
++            if a.kind == "plane" or b.kind == "plane":
++                plane = a if a.kind == "plane" else b
++                other = b if plane is a else a
++                gap = abs((other.origin - plane.origin).dot(plane.direction))
++                foot = other.origin - plane.direction * (other.origin - plane.origin).dot(plane.direction)
++                pts = (foot, App.Vector(other.origin)) if plane is a else (App.Vector(other.origin), foot)
++            else:
++                gap = _line_point_distance(a.origin, a.direction, b.origin)
++                mid = (b.shape.Vertexes[0].Point + b.shape.Vertexes[-1].Point) * 0.5
++                foot = a.origin + a.direction * (mid - a.origin).dot(a.direction)
++                pts = (foot, mid)
++            return Result([Item("gap", gap)], Keep("points", [0, 1], pts))
++        items = [Item("angle", angle, "angle")]
++        dist, _ = _min_distance(a, b)
++        if dist is not None and dist > 1e-6:
++            items.append(Item("distance", dist))
++        return Result(items, Keep("angle", [0, 1]))
++
++    # Anything else: the shortest distance
++    dist, pts = _min_distance(a, b)
++    if dist is None:
++        return Result()
++    return Result([Item("distance", dist)], Keep("distance", [0, 1]))
++
++
++def measure_shapes(shapes):
++    """Measure one or two picked elements (Part shapes in global coordinates)."""
++    if not shapes or len(shapes) > 2 or any(s is None or s.isNull() for s in shapes):
++        return Result()
++    try:
++        elements = [Element(s) for s in shapes]
++    except Exception:
++        return Result()
++    if any(e.kind in (None, "other") for e in elements):
++        return Result()
++    try:
++        if len(elements) == 1:
++            return measure_one(elements[0])
++        return measure_two(elements[0], elements[1])
++    except Exception as e:  # never break the bar because of a measurement
++        App.Console.PrintLog("Measure: {}\n".format(e))
++        return Result()
++
++
++def element_shape(root, sub):
++    """The picked element in global coordinates, or None (a whole object, not a vertex/edge/face)."""
++    element = sub.split(".")[-1] if sub else ""
++    if not element.startswith(("Vertex", "Edge", "Face")):
++        return None
++    try:
++        shape = root.getSubObject(sub)
++    except Exception:
++        return None
++    if shape is None or not hasattr(shape, "isNull") or shape.isNull():
++        return None
++    return shape
++
++
++def measure_picks(picks):
++    """picks: [(root object, sub name "Body.Pad.Face3")] as Gui.Selection.getSelectionEx("", 0)
++    gives them. Only vertices, edges and faces are measured."""
++    if not picks or len(picks) > 2:
++        return Result()
++    shapes = [element_shape(root, sub) for root, sub in picks]
++    if any(s is None for s in shapes):
++        return Result()
++    return measure_shapes(shapes)
++
++
++# --- keeping it --------------------------------------------------------------------------
++
++
++def keep(result, picks, doc=None):
++    """Make a Measure object for the result (one undo step). Returns the new object or None."""
++    k = result.keep if result else None
++    if k is None:
++        return None
++    doc = doc or picks[0][0].Document
++    try:
++        import Measure  # noqa: F401  (registers the Measure types)
++    except Exception:
++        pass
++    ref = lambda i: (picks[i][0], [picks[i][1]])
++    types = {
++        "distance": "Measure::MeasureDistance",
++        "angle": "Measure::MeasureAngle",
++        "length": "Measure::MeasureLength",
++        "area": "Measure::MeasureArea",
++        "diameter": "Measure::MeasureDiameter",
++        "radius": "Measure::MeasureRadius",
++        "points": "Measure::MeasureDistanceDetached",
++    }
++    doc.openTransaction(App.Qt.translate("UnifiedMeasure", "Keep the dimension"))
++    try:
++        obj = doc.addObject(types[k.kind], "Measure")
++        if k.kind in ("distance", "angle"):
++            obj.Element1 = ref(k.picks[0])
++            obj.Element2 = ref(k.picks[1])
++        elif k.kind in ("length", "area"):
++            obj.Elements = [ref(k.picks[0])]
++        elif k.kind in ("diameter", "radius"):
++            obj.Element = ref(k.picks[0])
++        elif k.kind == "points":
++            obj.Position1, obj.Position2 = k.points
++        first = result.items[0]
++        obj.Label = "{} {}".format(App.Qt.translate("UnifiedMeasure", NAMES[first.key]), first.text())
++        group = doc.getObject("Measurements")
++        if group is None or not group.isDerivedFrom("App::DocumentObjectGroup"):
++            try:
++                group = doc.addObject(
++                    "App::DocumentObjectGroup", "Measurements", viewType="MeasureGui::ViewProviderMeasureGroup"
++                )
++            except Exception:
++                group = doc.addObject("App::DocumentObjectGroup", "Measurements")
++            group.Label = App.Qt.translate("UnifiedMeasure", "Measurements")
++        group.addObject(obj)
++        doc.recompute()
++    except Exception:
++        doc.abortTransaction()
++        raise
++    doc.commitTransaction()
++    return obj
+diff --git a/src/Mod/Unified/TestMeasureMath.py b/src/Mod/Unified/TestMeasureMath.py
+new file mode 100644
+index 000000000..41558d242
+--- /dev/null
++++ b/src/Mod/Unified/TestMeasureMath.py
+@@ -0,0 +1,260 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Tests of what is measured right away for one or two picks (MeasureMath.py). Without the GUI:
++
++    FreeCADCmd -t TestMeasureMath
++"""
++
++import math
++import unittest
++
++import FreeCAD as App
++import Part
++
++import MeasureMath as M
++
++V = App.Vector
++
++
++def face_with_normal(shape, normal):
++    for i, f in enumerate(shape.Faces, start=1):
++        if isinstance(f.Surface, Part.Plane):
++            u0, u1, v0, v1 = f.ParameterRange
++            n = f.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
++            if n.sub(normal).Length < 1e-6:
++                return "Face%d" % i
++    raise AssertionError("no face with normal %s" % normal)
++
++
++def cylinder_faces(shape):
++    return ["Face%d" % i for i, f in enumerate(shape.Faces, start=1) if isinstance(f.Surface, Part.Cylinder)]
++
++
++def vertex_at(shape, point):
++    for i, v in enumerate(shape.Vertexes, start=1):
++        if v.Point.sub(point).Length < 1e-6:
++            return "Vertex%d" % i
++    raise AssertionError("no vertex at %s" % point)
++
++
++class TestMeasureMath(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.doc = doc = App.newDocument("MeasureMathTest")
++        # A plate 80 x 50 x 5 with two holes ⌀6 at x=10 and x=70
++        plate = Part.makeBox(80, 50, 5)
++        for x in (10, 70):
++            plate = plate.cut(Part.makeCylinder(3, 5, V(x, 25, 0)))
++        cls.plate = doc.addObject("Part::Feature", "Plate")
++        cls.plate.Shape = plate
++        # A second box, 20 above the plate, turned 30° about Z
++        cls.lid = doc.addObject("Part::Box", "Lid")
++        cls.lid.Length, cls.lid.Width, cls.lid.Height = 10, 10, 2
++        cls.lid.Placement = App.Placement(V(0, 0, 25), App.Rotation(V(0, 0, 1), 30))
++        # Nested: a box in a part that is moved and turned 90° about X
++        cls.part = doc.addObject("App::Part", "Assembly")
++        cls.inner = doc.addObject("Part::Box", "Inner")
++        cls.inner.Length, cls.inner.Width, cls.inner.Height = 10, 20, 30
++        cls.inner.Placement = App.Placement(V(5, 0, 0), App.Rotation())
++        cls.part.addObject(cls.inner)
++        cls.part.Placement = App.Placement(V(100, 0, 0), App.Rotation(V(1, 0, 0), 90))
++        # A wedge-like solid with two faces at 45°
++        prism = Part.Face(Part.makePolygon([V(0, 0, 0), V(10, 0, 0), V(0, 10, 0), V(0, 0, 0)])).extrude(V(0, 0, 4))
++        cls.wedge = doc.addObject("Part::Feature", "Wedge")
++        cls.wedge.Shape = prism
++        cls.wedge.Placement = App.Placement(V(0, -50, 0), App.Rotation())
++        doc.recompute()
++
++    @classmethod
++    def tearDownClass(cls):
++        App.closeDocument(cls.doc.Name)
++
++    def measure(self, *picks):
++        return M.measure_picks(list(picks))
++
++    # --- one pick
++    def test_one_edge_length_and_face_area(self):
++        top = face_with_normal(self.plate.Shape, V(0, 0, 1))
++        r = self.measure((self.plate, top))
++        self.assertTrue(r.single)
++        self.assertAlmostEqual(r.get("area").value, 80 * 50 - 2 * math.pi * 9, places=6)
++        edge = next(
++            "Edge%d" % i
++            for i, e in enumerate(self.plate.Shape.Edges, 1)
++            if isinstance(e.Curve, Part.Line) and abs(e.Length - 80) < 1e-9
++        )
++        self.assertAlmostEqual(self.measure((self.plate, edge)).get("length").value, 80)
++
++    def test_one_circle_and_hole(self):
++        hole = cylinder_faces(self.plate.Shape)[0]
++        r = self.measure((self.plate, hole))
++        self.assertAlmostEqual(r.get("diameter").value, 6)
++        self.assertAlmostEqual(r.get("radius").value, 3)
++        circle = next(
++            "Edge%d" % i for i, e in enumerate(self.plate.Shape.Edges, 1) if isinstance(e.Curve, Part.Circle)
++        )
++        self.assertAlmostEqual(self.measure((self.plate, circle)).get("diameter").value, 6)
++
++    def test_vertex_alone_measures_nothing(self):
++        self.assertFalse(self.measure((self.plate, "Vertex1")))
++
++    def test_whole_object_measures_nothing(self):
++        self.assertFalse(self.measure((self.plate, "")))
++        self.assertFalse(self.measure((self.plate, "Face1"), (self.lid, "")))
++
++    # --- two picks
++    def test_point_point(self):
++        a = vertex_at(self.plate.Shape, V(0, 0, 0))
++        b = vertex_at(self.plate.Shape, V(80, 50, 5))
++        r = self.measure((self.plate, a), (self.plate, b))
++        self.assertAlmostEqual(r.get("distance").value, math.sqrt(80**2 + 50**2 + 25))
++        self.assertAlmostEqual(r.get("dx").value, 80)
++        self.assertAlmostEqual(r.get("dy").value, 50)
++        self.assertAlmostEqual(r.get("dz").value, 5)
++        self.assertEqual(r.keep.kind, "distance")
++
++    def test_parallel_planes_gap(self):
++        # The plate's top (z=5) and the lid's bottom (z=25): a gap of 20, also with the lid turned
++        top = face_with_normal(self.plate.Shape, V(0, 0, 1))
++        bottom = face_with_normal(self.lid.Shape, V(0, 0, -1))
++        r = self.measure((self.plate, top), (self.lid, bottom))
++        self.assertAlmostEqual(r.get("gap").value, 20)
++        self.assertIsNone(r.get("angle"))
++        self.assertEqual(r.keep.kind, "points")
++        self.assertAlmostEqual((r.keep.points[1] - r.keep.points[0]).Length, 20)
++
++    def test_planes_at_an_angle(self):
++        # The lid is turned 30°: its side and the plate's side are at 30°
++        side = face_with_normal(self.plate.Shape, V(0, -1, 0))
++        rot = App.Rotation(V(0, 0, 1), 30)
++        lid_side = face_with_normal(self.lid.Shape, rot.multVec(V(0, -1, 0)))
++        r = self.measure((self.plate, side), (self.lid, lid_side))
++        self.assertAlmostEqual(r.get("angle").value, 30, places=6)
++        self.assertIsNone(r.get("gap"))
++        self.assertEqual(r.keep.kind, "angle")
++
++    def test_wedge_faces_45(self):
++        s = self.wedge.Shape
++        slanted = face_with_normal(s, V(1, 1, 0).normalize())
++        r = self.measure((self.wedge, face_with_normal(s, V(0, -1, 0))), (self.wedge, slanted))
++        self.assertAlmostEqual(r.get("angle").value, 45, places=6)
++
++    def test_two_holes_center_distance(self):
++        h1, h2 = cylinder_faces(self.plate.Shape)
++        r = self.measure((self.plate, h1), (self.plate, h2))
++        self.assertAlmostEqual(r.get("centers").value, 60)
++        self.assertAlmostEqual(r.get("diameter").value, 6)
++        # Their rims (circle edges on the top face) too
++        circles = [
++            "Edge%d" % i
++            for i, e in enumerate(self.plate.Shape.Edges, 1)
++            if isinstance(e.Curve, Part.Circle) and abs(e.Curve.Center.z - 5) < 1e-9
++        ]
++        self.assertEqual(len(circles), 2)
++        r = self.measure((self.plate, circles[0]), (self.plate, circles[1]))
++        self.assertAlmostEqual(r.get("centers").value, 60)
++        # The rim of one hole and the wall of the other one
++        shape = self.plate.Shape
++        rim = next(c for c in circles if abs(shape.getElement(c).Curve.Center.x - 10) < 1e-9)
++        wall = next(h for h in (h1, h2) if abs(shape.getElement(h).Surface.Center.x - 70) < 1e-9)
++        r = self.measure((self.plate, rim), (self.plate, wall))
++        self.assertAlmostEqual(r.get("centers").value, 60)
++
++    def test_point_to_face_and_edge(self):
++        top = face_with_normal(self.plate.Shape, V(0, 0, 1))
++        corner = vertex_at(self.lid.Shape, self.lid.Placement.multVec(V(0, 0, 0)))
++        r = self.measure((self.lid, corner), (self.plate, top))
++        self.assertAlmostEqual(r.get("distance").value, 20)
++        # The face first: the same
++        r2 = self.measure((self.plate, top), (self.lid, corner))
++        self.assertAlmostEqual(r2.get("distance").value, 20)
++        self.assertEqual(r2.keep.picks, (1, 0))
++        # Point to a line (the plate's edge along X at y=0, z=0): sqrt(0^2 + 25^2)
++        edge = next(
++            "Edge%d" % i
++            for i, e in enumerate(self.plate.Shape.Edges, 1)
++            if isinstance(e.Curve, Part.Line)
++            and abs(e.Length - 80) < 1e-9
++            and abs(e.Vertexes[0].Point.y) < 1e-9
++            and abs(e.Vertexes[0].Point.z) < 1e-9
++        )
++        r = self.measure((self.lid, corner), (self.plate, edge))
++        self.assertAlmostEqual(r.get("distance").value, 25)
++
++    def test_edges_parallel_gap_and_angle(self):
++        s = self.plate.Shape
++        lines = [
++            (i, e)
++            for i, e in enumerate(s.Edges, 1)
++            if isinstance(e.Curve, Part.Line) and abs(e.Length - 80) < 1e-9 and abs(e.Vertexes[0].Point.z) < 1e-9
++        ]
++        (i1, _), (i2, _) = lines[:2]
++        r = self.measure((self.plate, "Edge%d" % i1), (self.plate, "Edge%d" % i2))
++        self.assertAlmostEqual(r.get("gap").value, 50)
++        # An edge of the turned lid against an edge of the plate: 30°, 20 apart in Z at least
++        lid_edges = [
++            "Edge%d" % i
++            for i, e in enumerate(self.lid.Shape.Edges, 1)
++            if isinstance(e.Curve, Part.Line)
++            and abs((e.Vertexes[1].Point - e.Vertexes[0].Point).normalize().dot(App.Rotation(V(0, 0, 1), 30).multVec(V(1, 0, 0)))) > 0.999
++        ]
++        r = self.measure((self.plate, "Edge%d" % i1), (self.lid, lid_edges[0]))
++        self.assertAlmostEqual(r.get("angle").value, 30, places=6)
++        self.assertGreaterEqual(r.get("distance").value, 20 - 1e-6)
++
++    def test_nested_and_turned_parts(self):
++        # The inner box is in a part moved by 100 in X and turned 90° about X: its top face
++        # (local +Z, height 30) points to global -Y, at y = -30
++        root = self.part
++        top_local = face_with_normal(self.inner.Shape, V(0, 0, 1))
++        bottom_local = face_with_normal(self.inner.Shape, V(0, 0, -1))
++        r = self.measure((root, "Inner." + top_local), (root, "Inner." + bottom_local))
++        self.assertAlmostEqual(r.get("gap").value, 30)
++        shape = M.element_shape(root, "Inner." + top_local)
++        e = M.Element(shape)
++        self.assertAlmostEqual(e.direction.y, -1, places=6)
++        self.assertAlmostEqual(e.origin.y, -30, places=6)
++        # Against the plate's top (normal +Z): perpendicular
++        top = face_with_normal(self.plate.Shape, V(0, 0, 1))
++        r = self.measure((root, "Inner." + top_local), (self.plate, top))
++        self.assertAlmostEqual(r.get("angle").value, 90, places=6)
++        # Corner to corner across the nesting: the inner box's local (0,0,0) is at (105,0,0)
++        v = vertex_at(self.inner.Shape, V(5, 0, 0))
++        r = self.measure((root, "Inner." + v), (self.plate, vertex_at(self.plate.Shape, V(80, 0, 0))))
++        self.assertAlmostEqual(r.get("dx").value, 25)
++        self.assertAlmostEqual(r.get("distance").value, 25)
++
++    def test_number_format(self):
++        self.assertEqual(M.format_number(20.0), "20")
++        self.assertEqual(M.format_number(12.3456), "12.346")
++        self.assertEqual(M.format_number(-0.0001), "0")
++        self.assertEqual(M.Item("angle", 30, "angle").text(), "30°")
++        self.assertEqual(M.Item("gap", 2.5).text(), "2.5 mm")
++
++    def test_keep_makes_measure_objects(self):
++        try:
++            import Measure  # noqa: F401
++        except ImportError:
++            self.skipTest("no Measure module")
++        doc = self.doc
++        before = len(doc.Objects)
++        top = face_with_normal(self.plate.Shape, V(0, 0, 1))
++        bottom = face_with_normal(self.lid.Shape, V(0, 0, -1))
++        picks = [(self.plate, top), (self.lid, bottom)]
++        obj = M.keep(M.measure_picks(picks), picks)
++        self.assertTrue(obj.isDerivedFrom("Measure::MeasureDistanceDetached"))
++        self.assertAlmostEqual(obj.Distance.Value, 20)
++        a = vertex_at(self.plate.Shape, V(0, 0, 0))
++        b = vertex_at(self.plate.Shape, V(80, 50, 5))
++        picks = [(self.plate, a), (self.plate, b)]
++        obj = M.keep(M.measure_picks(picks), picks)
++        self.assertTrue(obj.isDerivedFrom("Measure::MeasureDistance"))
++        self.assertAlmostEqual(obj.Distance.Value, math.sqrt(80**2 + 50**2 + 25), places=6)
++        hole = cylinder_faces(self.plate.Shape)[0]
++        obj = M.keep(M.measure_picks([(self.plate, hole)]), [(self.plate, hole)])
++        self.assertAlmostEqual(obj.Diameter.Value, 6)
++        self.assertIn(obj, doc.getObject("Measurements").Group)
++        self.assertEqual(len(doc.Objects), before + 4)  # 3 measures + the group
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestToolPreview.py b/src/Mod/Unified/TestToolPreview.py
+new file mode 100644
+index 000000000..3a9545f04
+--- /dev/null
++++ b/src/Mod/Unified/TestToolPreview.py
+@@ -0,0 +1,236 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Tests of the preview of a tool (ToolPreview.py): the ghosts have the right size and place,
++the document is never changed, and a job can be cancelled or gives up when slow. Without the GUI:
++
++    FreeCADCmd -t TestToolPreview
++"""
++
++import math
++import time
++import unittest
++
++import FreeCAD as App
++import Part
++import Sketcher
++
++import ToolPreview as P
++
++V = App.Vector
++
++
++def rectangle(sketch, x0, y0, x1, y1):
++    pts = [V(x0, y0, 0), V(x1, y0, 0), V(x1, y1, 0), V(x0, y1, 0)]
++    for i in range(4):
++        sketch.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++    for i in range(4):
++        sketch.addConstraint(Sketcher.Constraint("Coincident", i, 2, (i + 1) % 4, 1))
++
++
++def snapshot(doc):
++    """Everything a preview must not change"""
++    state = {
++        "names": [o.Name for o in doc.Objects],
++        "undo": doc.UndoCount,
++        "redo": doc.RedoCount,
++        "transacting": doc.HasPendingTransaction,
++    }
++    for o in doc.Objects:
++        state[o.Name] = (
++            tuple(o.State),
++            # (the origin's planes and axes make a new shape each time: only real shapes)
++            o.Shape.hashCode() if o.isDerivedFrom("Part::Feature") and not o.Shape.isNull() else None,
++            round(o.Shape.Volume, 9) if hasattr(o, "Shape") and o.Shape.Solids else None,
++            str(o.Placement) if hasattr(o, "Placement") else None,
++        )
++    return state
++
++
++class TestToolPreview(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        cls.doc = doc = App.newDocument("ToolPreviewTest")
++        doc.UndoMode = 1
++        # A body, moved and turned (all previews are in global coordinates), with a plate 80x50x5
++        body = doc.addObject("PartDesign::Body", "Body")
++        body.Placement = App.Placement(V(10, 20, 30), App.Rotation(V(0, 0, 1), 90))
++        sketch = body.newObject("Sketcher::SketchObject", "Sketch")
++        sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]  # XY plane
++        sketch.MapMode = "FlatFace"
++        rectangle(sketch, 0, 0, 80, 50)
++        doc.recompute()
++        pad = body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sketch
++        pad.Length = 5
++        sketch.Visibility = False
++        doc.recompute()
++        # A second sketch on the XY plane, not used yet: the extrusion preview
++        free = body.newObject("Sketcher::SketchObject", "Free")
++        free.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
++        free.MapMode = "FlatFace"
++        rectangle(free, 100, 0, 110, 10)
++        doc.recompute()
++        cls.body, cls.sketch, cls.pad, cls.free = body, sketch, pad, free
++        cls.box = doc.addObject("Part::Box", "Box")
++        cls.box.Placement = App.Placement(V(0, 0, 100), App.Rotation())
++        doc.recompute()
++        # Nothing to undo from building the test document itself
++        doc.clearUndos()
++
++    @classmethod
++    def tearDownClass(cls):
++        App.closeDocument(cls.doc.Name)
++
++    def setUp(self):
++        self.before = snapshot(self.doc)
++
++    def tearDown(self):
++        self.assertEqual(snapshot(self.doc), self.before, "the preview changed the document")
++
++    def face(self, normal):
++        """The pad's face with the global normal, as a pick through the body"""
++        shape = Part.getShape(self.body, "Pad.", transform=True)
++        for i, f in enumerate(shape.Faces, start=1):
++            if f.normalAt(0, 0).sub(normal).Length < 1e-6 and isinstance(f.Surface, Part.Plane):
++                return "Face%d" % i, f
++        self.fail("no face with normal %s" % normal)
++
++    def vertical_edges(self):
++        shape = Part.getShape(self.body, "Pad.", transform=True)
++        return [
++            "Edge%d" % i
++            for i, e in enumerate(shape.Edges, start=1)
++            if abs(abs((e.Vertexes[1].Point - e.Vertexes[0].Point).normalize().z) - 1) < 1e-9
++        ]
++
++    def test_fillet_takes_off_the_corners(self):
++        edges = self.vertical_edges()
++        self.assertEqual(len(edges), 4)
++        picks = [P.Pick(self.body, "Pad." + e) for e in edges]
++        out = P.build("PartDesign_Fillet", picks, "3 mm")
++        self.assertEqual(len(out), 1)
++        shape, role = out[0]
++        self.assertEqual(role, P.REMOVE)
++        # Four corners of r=3, 5 high: (r² - πr²/4) · h each
++        self.assertAlmostEqual(shape.Volume, 4 * (9 - math.pi * 9 / 4) * 5, places=4)
++        # Where the plate is: the body is moved to z=30
++        self.assertAlmostEqual(shape.BoundBox.ZMin, 30, places=6)
++
++    def test_fillet_of_a_face_uses_its_edges(self):
++        name, _ = self.face(V(0, 0, 1))
++        out = P.build("PartDesign_Fillet", [P.Pick(self.body, "Pad." + name)], 1.0)
++        self.assertGreater(out[0][0].Volume, 0)
++
++    def test_chamfer(self):
++        e = self.vertical_edges()[0]
++        out = P.build("PartDesign_Chamfer", [P.Pick(self.body, "Pad." + e)], "2")
++        self.assertAlmostEqual(out[0][0].Volume, 2 * 2 / 2 * 5, places=6)
++
++    def test_extrude_sketch_10mm(self):
++        out = P.build("PartDesign_Pad", [P.Pick(self.body, "Free.")], None)
++        shape, role = out[0]
++        self.assertEqual(role, P.ADD)
++        self.assertAlmostEqual(shape.Volume, 10 * 10 * 10, places=6)
++        # Upwards from the sketch (z = 30 .. 40), turned with the body
++        self.assertAlmostEqual(shape.BoundBox.ZMin, 30, places=6)
++        self.assertAlmostEqual(shape.BoundBox.ZMax, 40, places=6)
++        self.assertAlmostEqual(shape.BoundBox.XMax, 10, places=6)  # x' = -y + 10
++        self.assertAlmostEqual(shape.BoundBox.YMin, 120, places=6)  # y' = x + 20
++
++    def test_extrude_and_cut_a_face(self):
++        name, face = self.face(V(0, 0, 1))
++        out = P.build("PartDesign_Pad", [P.Pick(self.body, "Pad." + name)], "7 mm")
++        self.assertAlmostEqual(out[0][0].Volume, 80 * 50 * 7, places=4)
++        self.assertAlmostEqual(out[0][0].BoundBox.ZMax, 35 + 7, places=6)
++        out = P.build("PartDesign_Pocket", [P.Pick(self.body, "Pad." + name)], "2")
++        self.assertEqual(out[0][1], P.REMOVE)
++        self.assertAlmostEqual(out[0][0].BoundBox.ZMin, 33, places=6)
++
++    def test_hole_at_the_picked_point(self):
++        name, face = self.face(V(0, 0, 1))
++        point = face.CenterOfMass
++        out = P.build("Unified_Hole", [P.Pick(self.body, "Pad." + name, point)])
++        shape, role = out[0]
++        self.assertEqual(role, P.REMOVE)
++        # ⌀6 through the 5 mm plate (the 25 mm deep drill is cut to the plate)
++        self.assertAlmostEqual(shape.Volume, math.pi * 9 * 5, places=3)
++        c = shape.BoundBox.Center
++        self.assertAlmostEqual(c.x, point.x, places=6)
++        self.assertAlmostEqual(c.y, point.y, places=6)
++        # No point: nothing to show
++        self.assertIsNone(P.build("Unified_Hole", [P.Pick(self.body, "Pad." + name)]))
++
++    def test_mirror_and_patterns_of_a_feature(self):
++        pick = [P.Pick(self.body, "Pad.")]
++        pad_box = Part.getShape(self.body, "Pad.", transform=True).BoundBox
++        # Mirrored through the sketch's vertical axis: local x → -x; global: the body turns x to y
++        shape, role = P.build("PartDesign_Mirrored", pick)[0]
++        self.assertEqual(role, P.ADD)
++        self.assertAlmostEqual(shape.Volume, 80 * 50 * 5, places=4)
++        self.assertAlmostEqual(shape.BoundBox.YMax, 20, places=6)
++        self.assertAlmostEqual(shape.BoundBox.YMin, 20 - 80, places=6)
++        # Linear: along the sketch's x (global y), 200 apart (twice 80, rounded up to 200)
++        shape, _ = P.build("PartDesign_LinearPattern", pick)[0]
++        self.assertAlmostEqual(shape.BoundBox.YMin, pad_box.YMin + 200, places=6)
++        # Polar: half a turn about the sketch's normal through its origin
++        shape, _ = P.build("PartDesign_PolarPattern", pick)[0]
++        self.assertAlmostEqual(shape.BoundBox.YMax, 20, places=6)
++        self.assertAlmostEqual(shape.BoundBox.XMin, 10, places=6)
++
++    def test_part_mirror(self):
++        shape, role = P.build("Part_Mirror", [P.Pick(self.box, "")])[0]
++        self.assertEqual(role, P.COPY)
++        self.assertAlmostEqual(shape.BoundBox.ZMax, -100, places=6)
++
++    def test_nothing_to_show(self):
++        self.assertIsNone(P.build("PartDesign_Fillet", []))
++        self.assertIsNone(P.build("PartDesign_Fillet", [P.Pick(self.box, "")]))
++        self.assertIsNone(P.build("PartDesign_Pad", [P.Pick(self.box, "Edge1")]))
++        self.assertIsNone(P.build("Std_Delete", [P.Pick(self.box, "")]))
++        self.assertIsNone(P.build("PartDesign_Fillet", [P.Pick(self.box, "Edge1")], "-1"))
++
++    # --- the background job
++    def test_job_in_a_thread(self):
++        name = self.vertical_edges()[0]
++        compute = P.prepare("PartDesign_Fillet", [P.Pick(self.body, "Pad." + name)], 2)
++        job = P.Job(compute, deadline=30).start()
++        self.assertEqual(job.wait(30), "done")
++        self.assertGreater(job.result[0][0].Volume, 0)
++
++    def test_cancel(self):
++        steps = []
++
++        def slow(check):
++            for i in range(100):
++                check()
++                steps.append(i)
++                time.sleep(0.01)
++            return [(Part.makeBox(1, 1, 1), P.ADD)]
++
++        job = P.Job(slow, deadline=30).start()
++        time.sleep(0.05)
++        job.cancel()
++        self.assertEqual(job.wait(5), "cancelled")
++        self.assertIsNone(job.result)
++        self.assertLess(len(steps), 100)  # it stopped at the next check
++
++    def test_slow_gives_up(self):
++        def slow(check):
++            time.sleep(0.3)
++            return [(Part.makeBox(1, 1, 1), P.ADD)]
++
++        job = P.Job(slow, deadline=0.1).start()
++        time.sleep(0.15)
++        self.assertEqual(job.poll(), "slow")
++        job.wait(5)
++        self.assertEqual(job.poll(), "slow")
++        self.assertIsNone(job.result)
++
++    def test_failure_is_quiet(self):
++        def broken(check):
++            raise RuntimeError("no")
++
++        self.assertEqual(P.Job(broken).start().wait(5), "failed")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/ToolPreview.py b/src/Mod/Unified/ToolPreview.py
+new file mode 100644
+index 000000000..2de3c520b
+--- /dev/null
++++ b/src/Mod/Unified/ToolPreview.py
+@@ -0,0 +1,500 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What a tool would do, before it is pressed (ツールの下見).
++
++Hovering a tool of the tool strip or of the bar next to a pick shows a see-through ghost of
++its result on what is picked: the corner a fillet takes off, the block an extrusion adds, the
++hole, the mirrored or repeated feature. The ghost is made from copies of the shapes; the
++document is never touched (no new object, no transaction, nothing recomputed).
++
++No GUI here (TestToolPreview.py tests it headless): prepare() reads what it needs from the
++document right away, the shapes are worked out in a thread (Job), and ToolPreviewGui.py draws
++them over the 3D view. A job can be cancelled (the mouse left the button) and gives up after a
++second (then only the tooltip is shown).
++"""
++
++import math
++import threading
++import time
++
++import FreeCAD as App
++
++TOL = 1e-7
++
++# What a ghost shape is: material added (green), material taken away (red), a whole new
++# copy of a shape (blue)
++ADD, REMOVE, COPY = "add", "remove", "copy"
++
++# The tools that have a preview, with their default number (the bar's number field, or the
++# last number used with the tool, wins)
++DEFAULTS = {
++    "PartDesign_Fillet": 2.0,
++    "PartDesign_Chamfer": 1.0,
++    "PartDesign_Pad": 10.0,
++    "PartDesign_Pocket": 10.0,
++    "Unified_Hole": 6.0,
++    "PartDesign_Mirrored": None,
++    "PartDesign_LinearPattern": None,
++    "PartDesign_PolarPattern": None,
++    "Part_Mirror": None,
++}
++HOLE_DEPTH = 25.0  # PartDesign's hole: "Dimension", 25 mm
++
++
++class NoPreview(Exception):
++    """The tool has nothing to show for what is picked."""
++
++
++class Pick:
++    """One pick: the top-level object, the path to the element ("Body.Pad.Face3") and the
++    point where it was clicked (global), as Gui.Selection.getSelectionEx("", 0) gives them."""
++
++    def __init__(self, root, sub="", point=None):
++        self.root = root
++        self.sub = sub or ""
++        self.point = App.Vector(point) if point is not None else None
++
++    @property
++    def element(self):
++        return self.sub.split(".")[-1]
++
++    @property
++    def path(self):
++        """The path of the object that owns the element: "Body.Pad." for "Body.Pad.Face3" """
++        return self.sub[: self.sub.rfind(".") + 1] if "." in self.sub else ""
++
++    def owner(self):
++        objs = self.root.getSubObjectList(self.sub) if self.sub else None
++        return list(objs)[-1] if objs else self.root
++
++    def owner_shape(self):
++        """The shape of the object that owns the element, in global coordinates (a copy)"""
++        import Part
++
++        shape = Part.getShape(self.root, self.path, transform=True)
++        if shape.isNull():
++            raise NoPreview()
++        return shape.copy()
++
++    def element_shape(self):
++        if not self.element:
++            return None
++        shape = self.root.getSubObject(self.sub)
++        return None if shape is None or shape.isNull() else shape.copy()
++
++
++def _number(command, value):
++    if value in (None, ""):
++        return DEFAULTS.get(command)
++    if isinstance(value, (int, float)):
++        return float(value)
++    try:
++        text = str(value).strip()
++        q = App.Units.Quantity(text if any(c.isalpha() for c in text) else text + " mm")
++        return float(q.Value)
++    except Exception:
++        return DEFAULTS.get(command)
++
++
++def _global_placement(obj):
++    try:
++        return obj.getGlobalPlacement()
++    except Exception:
++        return obj.Placement
++
++
++def _body_of(obj):
++    if obj.isDerivedFrom("PartDesign::Body"):
++        return obj
++    try:
++        parent = obj.getParentGeoFeatureGroup()
++    except Exception:
++        parent = None
++    return parent if parent is not None and parent.isDerivedFrom("PartDesign::Body") else None
++
++
++def _profile_sketch(feature):
++    profile = getattr(feature, "Profile", None)
++    obj = profile[0] if isinstance(profile, tuple) and profile else profile
++    return obj if obj is not None and obj.isDerivedFrom("Part::Part2DObject") else None
++
++
++def _face_normal(face):
++    u0, u1, v0, v1 = face.ParameterRange
++    n = face.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
++    n.normalize()
++    return n
++
++
++# --- reading what is picked (main thread) -------------------------------------------------
++# Each prepare_* reads the document and returns a function that works on copies only: it can
++# run in another thread.
++
++
++def _edges_by_solid(picks):
++    """Picked edges (and the edges of picked faces), grouped by the solid they belong to"""
++    groups = {}
++    for p in picks:
++        if not p.element.startswith(("Edge", "Face")):
++            continue
++        key = (p.root.Name, p.path)
++        if key not in groups:
++            groups[key] = [p.owner_shape(), []]
++        solid, names = groups[key]
++        if p.element not in names:
++            names.append(p.element)
++    if not groups:
++        raise NoPreview()
++    out = []
++    for solid, names in groups.values():
++        edges = []
++        for name in names:
++            sub = solid.getElement(name)
++            for e in sub.Edges if name.startswith("Face") else [sub]:
++                if not any(e.isSame(x) for x in edges):
++                    edges.append(e)
++        if not solid.Solids:
++            raise NoPreview()
++        out.append((solid, edges))
++    return out
++
++
++def prepare_dressup(command, picks, value):
++    size = _number(command, value)
++    if not size or size <= 0:
++        raise NoPreview()
++    groups = _edges_by_solid(picks)
++
++    def compute(check):
++        result = []
++        for solid, edges in groups:
++            check()
++            if command == "PartDesign_Fillet":
++                done = solid.makeFillet(size, edges)
++            else:
++                done = solid.makeChamfer(size, edges)
++            check()
++            removed = solid.cut(done)
++            result.append((removed if removed.Volume > TOL else done, REMOVE))
++        return result
++
++    return compute
++
++
++def _profile_faces(pick):
++    """The faces to extrude for a pick: a picked flat face, or the closed outline of a sketch;
++    with the direction of extrusion (the outward normal / the sketch's normal)"""
++    import Part
++
++    if pick.element.startswith("Face"):
++        face = pick.element_shape()
++        if face is None or not isinstance(face.Surface, Part.Plane):
++            raise NoPreview()
++        return [face], _face_normal(face)
++    obj = pick.owner()
++    if pick.element or not obj.isDerivedFrom("Part::Part2DObject"):
++        raise NoPreview()
++    shape = pick.owner_shape()
++    wires = [w for w in shape.Wires if w.isClosed()]
++    if not wires:
++        raise NoPreview()
++    face = Part.makeFace(wires, "Part::FaceMakerBullseye")
++    # The sketch's normal: the shape carries the placements of the sketch and its containers
++    normal = shape.Placement.Rotation.multVec(App.Vector(0, 0, 1))
++    normal.normalize()
++    return face.Faces, normal
++
++
++def prepare_extrude(command, picks, value):
++    if len(picks) != 1:
++        raise NoPreview()
++    length = _number(command, value)
++    if not length or length <= 0:
++        raise NoPreview()
++    faces, normal = _profile_faces(picks[0])
++    pocket = command == "PartDesign_Pocket"
++    vector = normal * (-length if pocket else length)
++
++    def compute(check):
++        out = []
++        for f in faces:
++            check()
++            out.append((f.extrude(vector), REMOVE if pocket else ADD))
++        return out
++
++    return compute
++
++
++def prepare_hole(command, picks, value):
++    import Part
++
++    if len(picks) != 1 or not picks[0].element.startswith("Face") or picks[0].point is None:
++        raise NoPreview()
++    face = picks[0].element_shape()
++    if face is None or not isinstance(face.Surface, Part.Plane):
++        raise NoPreview()
++    diameter = _number(command, value)
++    normal = _face_normal(face)
++    point = picks[0].point
++    solid = picks[0].owner_shape()
++
++    def compute(check):
++        cyl = Part.makeCylinder(diameter / 2, HOLE_DEPTH, point, -normal)
++        check()
++        if solid.Solids:
++            cut = solid.common(cyl)
++            if cut.Volume > TOL:
++                return [(cut, REMOVE)]
++        return [(cyl, REMOVE)]
++
++    return compute
++
++
++def _feature_of(pick):
++    """The PartDesign feature a pick stands for: the picked feature, the one that owns the
++    picked element, or the body's last one"""
++    obj = pick.owner()
++    if obj.isDerivedFrom("PartDesign::Body"):
++        obj = obj.Tip
++    if obj is None or not obj.isDerivedFrom("PartDesign::FeatureAddSub"):
++        raise NoPreview()
++    return obj
++
++
++def _pattern_length(shape):
++    """As PartDesign's command does: twice the size, rounded up to 1, 2 or 5 times a power of 10"""
++    box = shape.BoundBox
++    size = max(box.XLength, box.YLength, box.ZLength)
++    if size <= 1e-7:
++        return 100.0
++    wanted = 2.0 * size
++    power = 10.0 ** math.floor(math.log10(wanted))
++    for step in (1.0, 2.0, 5.0, 10.0):
++        if step * power >= wanted - 1e-7:
++            return step * power
++    return 10.0 * power
++
++
++def prepare_transform(command, picks, value):
++    if not picks:
++        raise NoPreview()
++    features = []
++    for p in picks:
++        f = _feature_of(p)
++        if f not in features:
++            features.append(f)
++    body = _body_of(features[0])
++    if body is None:
++        raise NoPreview()
++    body_place = _global_placement(body)
++    tools = []
++    for f in features:
++        tool = f.AddSubShape.copy()
++        if tool.isNull():
++            raise NoPreview()
++        local_box = tool.BoundBox
++        tool.transformShape(body_place.toMatrix())
++        role = REMOVE if getattr(f, "AddSubType", "Additive") == "Subtractive" else ADD
++        tools.append((tool, role, local_box))
++    sketch = _profile_sketch(features[0])
++    sketch_place = _global_placement(sketch) if sketch is not None else None
++    if sketch_place is not None:
++        origin = sketch_place.Base
++        x_axis = sketch_place.Rotation.multVec(App.Vector(1, 0, 0))
++        normal = sketch_place.Rotation.multVec(App.Vector(0, 0, 1))
++    else:
++        origin = body_place.Base
++        x_axis = body_place.Rotation.multVec(App.Vector(1, 0, 0))
++        normal = body_place.Rotation.multVec(App.Vector(0, 0, 1))
++
++    if command == "PartDesign_Mirrored":
++        # Through the sketch's vertical axis (the plane of V and the normal), else the XY plane
++        plane_normal = x_axis if sketch_place is not None else normal
++
++        def move(shape):
++            return shape.mirror(origin, plane_normal)
++
++    elif command == "PartDesign_LinearPattern":
++        # Along the sketch's horizontal axis (else X), 2 times, twice the size apart
++        length = _pattern_length(_union_box(t[2] for t in tools))
++
++        def move(shape):
++            s = shape.copy()
++            s.translate(x_axis * length)
++            return s
++
++    elif command == "PartDesign_PolarPattern":
++        # Around the sketch's normal (else Z), 2 times over 360°
++
++        def move(shape):
++            s = shape.copy()
++            s.rotate(origin, normal, 180)
++            return s
++
++    else:
++        raise NoPreview()
++
++    def compute(check):
++        out = []
++        for tool, role, _ in tools:
++            check()
++            out.append((move(tool), role))
++        return out
++
++    return compute
++
++
++def _union_box(boxes):
++    total = None
++    for b in boxes:
++        if total is None:
++            total = App.BoundBox(b)
++        else:
++            total.add(b)
++    import Part
++
++    if total is None:
++        return Part.Shape()
++    return Part.makeBox(max(total.XLength, 1e-6), max(total.YLength, 1e-6), max(total.ZLength, 1e-6))
++
++
++def prepare_part_mirror(command, picks, value):
++    """Part's mirror: a copy of the whole shape in the XY plane through the origin"""
++    shapes = []
++    for p in picks:
++        if p.element:
++            raise NoPreview()
++        shape = p.owner_shape()
++        if shape.isNull() or not shape.Solids and not shape.Faces:
++            raise NoPreview()
++        shapes.append(shape)
++    if not shapes:
++        raise NoPreview()
++
++    def compute(check):
++        out = []
++        for s in shapes:
++            check()
++            out.append((s.mirror(App.Vector(0, 0, 0), App.Vector(0, 0, 1)), COPY))
++        return out
++
++    return compute
++
++
++PREPARE = {
++    "PartDesign_Fillet": prepare_dressup,
++    "PartDesign_Chamfer": prepare_dressup,
++    "PartDesign_Pad": prepare_extrude,
++    "PartDesign_Pocket": prepare_extrude,
++    "Unified_Hole": prepare_hole,
++    "PartDesign_Mirrored": prepare_transform,
++    "PartDesign_LinearPattern": prepare_transform,
++    "PartDesign_PolarPattern": prepare_transform,
++    "Part_Mirror": prepare_part_mirror,
++}
++
++
++def has_preview(command):
++    return command in PREPARE
++
++
++def prepare(command, picks, value=None):
++    """Read what the tool needs from the document now; returns compute(check) → [(shape, role)]
++    that works on copies only, or None when there is nothing to show."""
++    fn = PREPARE.get(command)
++    if fn is None or not picks:
++        return None
++    try:
++        return fn(command, list(picks), value)
++    except NoPreview:
++        return None
++    except Exception as e:
++        App.Console.PrintLog("Preview of {}: {}\n".format(command, e))
++        return None
++
++
++def build(command, picks, value=None):
++    """Prepare and compute right here (for tests and scripts): [(shape, role)] or None"""
++    compute = prepare(command, picks, value)
++    if compute is None:
++        return None
++    try:
++        out = compute(lambda: None)
++    except Exception:
++        return None
++    return [(s, r) for s, r in out if s is not None and not s.isNull()] or None
++
++
++# --- doing it in the background -----------------------------------------------------------
++
++
++class Cancelled(Exception):
++    pass
++
++
++class Job:
++    """A preview worked out in a thread.
++
++    poll() says how it goes: "pending", "done" (result has the shapes), "cancelled",
++    "slow" (it took longer than the deadline: only the tooltip is shown) or "failed".
++    A job that was cancelled or is late never hands out its result.
++    """
++
++    def __init__(self, compute, deadline=1.0):
++        self._compute = compute
++        self.deadline = deadline
++        self.state = "pending"
++        self.result = None
++        self._cancel = threading.Event()
++        self._lock = threading.Lock()
++        self._started = None
++        self._thread = None
++
++    def _check(self):
++        if self._cancel.is_set():
++            raise Cancelled()
++
++    def _run(self):
++        try:
++            out = self._compute(self._check)
++            out = [(s, r) for s, r in out if s is not None and not s.isNull()]
++            with self._lock:
++                if self.state == "pending":
++                    late = time.monotonic() - self._started > self.deadline
++                    self.state = "slow" if late else ("done" if out else "failed")
++                    self.result = out if self.state == "done" else None
++        except Cancelled:
++            with self._lock:
++                if self.state == "pending":
++                    self.state = "cancelled"
++        except Exception as e:
++            App.Console.PrintLog("Preview: {}\n".format(e))
++            with self._lock:
++                if self.state == "pending":
++                    self.state = "failed"
++
++    def start(self):
++        self._started = time.monotonic()
++        self._thread = threading.Thread(target=self._run, name="ToolPreview", daemon=True)
++        self._thread.start()
++        return self
++
++    def cancel(self):
++        self._cancel.set()
++        with self._lock:
++            if self.state == "pending":
++                self.state = "cancelled"
++            self.result = None
++
++    def poll(self):
++        with self._lock:
++            if self.state == "pending" and self._started is not None:
++                if time.monotonic() - self._started > self.deadline:
++                    # Too slow: give up (the thread ends on its own; its result is dropped)
++                    self.state = "slow"
++                    self._cancel.set()
++            return self.state
++
++    def wait(self, timeout=None):
++        if self._thread is not None:
++            self._thread.join(timeout)
++        return self.poll()
+diff --git a/src/Mod/Unified/ToolPreviewGui.py b/src/Mod/Unified/ToolPreviewGui.py
+new file mode 100644
+index 000000000..f46fb7049
+--- /dev/null
++++ b/src/Mod/Unified/ToolPreviewGui.py
+@@ -0,0 +1,322 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Hovering a tool shows what it would do (ツールの下見): a see-through ghost over the 3D view.
++
++The tools of the tool strip and of the bar next to a pick: after the mouse rests on the
++button for a moment (300 ms), the result is worked out on copies of the picked shapes
++(ToolPreview.py, in a thread) and drawn over the view: green where material is added, red
++where it is taken away, blue for a new copy. Leaving the button (or pressing it) removes the
++ghost and cancels the work. What takes longer than a second is not shown; the tooltip, one
++plain sentence of what the tool does, is shown in any case.
++The document is never changed.
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import ToolPreview
++
++translate = App.Qt.translate
++CTX = "UnifiedPreview"
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++DELAY_MS = 300
++POLL_MS = 30
++
++# One plain sentence of what each tool does (Japanese in UnifiedWording_ja.ts)
++TIPS = {
++    "PartDesign_NewSketch": QT_TRANSLATE_NOOP(CTX, "Draws an outline on a flat face or a plane."),
++    "PartDesign_Pad": QT_TRANSLATE_NOOP(CTX, "Pulls a sketch or a flat face out into a solid."),
++    "PartDesign_Pocket": QT_TRANSLATE_NOOP(CTX, "Cuts the shape of a sketch or face into the part."),
++    "PartDesign_Revolution": QT_TRANSLATE_NOOP(CTX, "Turns a sketch around an axis into a solid."),
++    "Unified_Hole": QT_TRANSLATE_NOOP(CTX, "Drills a hole where you clicked on a flat face."),
++    "PartDesign_Fillet": QT_TRANSLATE_NOOP(CTX, "Rounds off the picked edges."),
++    "PartDesign_Chamfer": QT_TRANSLATE_NOOP(CTX, "Cuts the picked edges off at a slant."),
++    "PartDesign_Thickness": QT_TRANSLATE_NOOP(CTX, "Hollows the part out, leaving walls of the given thickness."),
++    "PartDesign_Mirrored": QT_TRANSLATE_NOOP(CTX, "Makes a mirror image of the picked feature on the other side."),
++    "PartDesign_LinearPattern": QT_TRANSLATE_NOOP(CTX, "Repeats the picked feature in a straight row."),
++    "PartDesign_PolarPattern": QT_TRANSLATE_NOOP(CTX, "Repeats the picked feature in a circle around an axis."),
++    "Part_Mirror": QT_TRANSLATE_NOOP(CTX, "Makes a mirrored copy of the picked part."),
++}
++
++COLORS = {
++    ToolPreview.ADD: (0.15, 0.75, 0.25),
++    ToolPreview.REMOVE: (0.9, 0.15, 0.1),
++    ToolPreview.COPY: (0.2, 0.45, 0.95),
++}
++
++
++def tip_for(command):
++    text = TIPS.get(command)
++    return translate(CTX, text) if text else ""
++
++
++# --- the ghost over the view --------------------------------------------------------------
++
++
++class Ghost:
++    """See-through shapes drawn over the active 3D view; not part of the document"""
++
++    def __init__(self):
++        self.view = None
++        self.root = None
++
++    def show(self, shapes):
++        from pivy import coin
++
++        self.clear()
++        doc = Gui.ActiveDocument
++        view = doc.ActiveView if doc else None
++        if view is None or not hasattr(view, "getSceneGraph"):
++            return False
++        root = coin.SoSeparator()
++        style = coin.SoPickStyle()
++        style.style = coin.SoPickStyle.UNPICKABLE
++        root.addChild(style)
++        # In front of the faces it lies on (a fillet's sliver, an extrusion on a face)
++        offset = coin.SoPolygonOffset()
++        offset.factor = -1.0
++        offset.units = -1.0
++        root.addChild(offset)
++        for shape, role in shapes:
++            node = self._node(shape)
++            if node is None:
++                continue
++            sep = coin.SoSeparator()
++            look = coin.SoMaterial()
++            look.diffuseColor.setValue(*COLORS.get(role, COLORS[ToolPreview.COPY]))
++            look.emissiveColor.setValue(*[c * 0.35 for c in COLORS.get(role, COLORS[ToolPreview.COPY])])
++            look.transparency.setValue(0.45)
++            look.setOverride(True)
++            sep.addChild(look)
++            sep.addChild(node)
++            root.addChild(sep)
++        view.getSceneGraph().addChild(root)
++        self.view, self.root = view, root
++        return True
++
++    @staticmethod
++    def _node(shape):
++        from pivy import coin
++
++        try:
++            box = shape.BoundBox
++            deviation = max(0.01, box.DiagonalLength * 0.002)
++            text = shape.writeInventor(Deviation=deviation)
++        except Exception:
++            try:
++                text = shape.writeInventor()
++            except Exception:
++                return None
++        data = coin.SoInput()
++        data.setBuffer(text)
++        return coin.SoDB.readAll(data)
++
++    def clear(self):
++        if self.root is not None and self.view is not None:
++            try:
++                self.view.getSceneGraph().removeChild(self.root)
++            except Exception:
++                pass
++        self.view = self.root = None
++
++    @property
++    def shown(self):
++        return self.root is not None
++
++
++# --- what is picked ------------------------------------------------------------------------
++
++
++def current_picks():
++    picks = []
++    for sel in Gui.Selection.getSelectionEx("", 0):
++        names = list(sel.SubElementNames) or [""]
++        points = list(sel.PickedPoints)
++        for i, name in enumerate(names):
++            point = points[i] if i < len(points) else None
++            if point is not None and not _on_element(sel.Object, name, point):
++                point = None  # picked in the tree: no point
++            picks.append(ToolPreview.Pick(sel.Object, name, point))
++    return picks
++
++
++def _on_element(root, sub, point):
++    try:
++        import Part
++
++        shape = root.getSubObject(sub) if sub and sub.split(".")[-1] else None
++        if shape is None:
++            return False
++        tol = max(1e-3, shape.BoundBox.DiagonalLength * 1e-3)
++        return shape.distToShape(Part.Vertex(point))[0] <= tol
++    except Exception:
++        return False
++
++
++# --- hovering -----------------------------------------------------------------------------
++
++
++class Previewer(QtCore.QObject):
++    """One preview at a time: started by resting on a button, ended by leaving it"""
++
++    def __init__(self):
++        super().__init__()
++        self.ghost = Ghost()
++        self.button = None
++        self.command = None
++        self.job = None
++        self.delay = QtCore.QTimer(self)
++        self.delay.setSingleShot(True)
++        self.delay.timeout.connect(self._start)
++        self.poller = QtCore.QTimer(self)
++        self.poller.setInterval(POLL_MS)
++        self.poller.timeout.connect(self._poll)
++        # The last state, for tests and the acceptance run
++        self.last_state = None
++
++    def hover(self, button, command):
++        self.leave()
++        if not ToolPreview.has_preview(command):
++            return
++        self.button, self.command = button, command
++        self.delay.start(DELAY_MS)
++
++    def leave(self):
++        self.delay.stop()
++        self.poller.stop()
++        if self.job is not None:
++            self.job.cancel()
++            self.last_state = "cancelled" if self.job.state == "cancelled" else self.last_state
++            self.job = None
++        self.ghost.clear()
++        self.button = self.command = None
++
++    def _value(self):
++        """The number the tool would take: the bar's field when it is this tool's, else the
++        last one used with it (ContextRules)"""
++        button = self.button
++        bar = button.parentWidget() if button is not None else None
++        if bar is not None and bar.objectName() == "UnifiedContextBar":
++            field = bar.findChild(QtWidgets.QLineEdit, "UnifiedContextField")
++            if field is not None and field.property("unifiedCommand") == self.command:
++                return field.text()
++        try:
++            import ContextRules
++
++            return ContextRules.default_value(self.command) or None
++        except Exception:
++            return None
++
++    def _start(self):
++        if self.command is None or Gui.Control.activeDialog():
++            return
++        compute = ToolPreview.prepare(self.command, current_picks(), self._value())
++        if compute is None:
++            self.last_state = "none"
++            return
++        self.job = ToolPreview.Job(compute, deadline=1.0).start()
++        self.last_state = "pending"
++        self.poller.start()
++
++    def _poll(self):
++        job = self.job
++        if job is None:
++            self.poller.stop()
++            return
++        state = job.poll()
++        if state == "pending":
++            return
++        self.poller.stop()
++        self.last_state = state
++        if state == "done" and self.button is not None:
++            self.ghost.show(job.result)
++        self.job = None
++
++
++_previewer = None
++
++
++def previewer():
++    global _previewer
++    if _previewer is None:
++        _previewer = Previewer()
++    return _previewer
++
++
++def command_of(button):
++    """The command a button runs: set by the bar next to a pick, or the button's action"""
++    name = button.property("unifiedCommand")
++    if name:
++        return str(name)
++    action = button.defaultAction() if isinstance(button, QtWidgets.QToolButton) else None
++    return action.objectName() if action is not None else ""
++
++
++class HoverFilter(QtCore.QObject):
++    def eventFilter(self, obj, event):
++        t = event.type()
++        if t == QtCore.QEvent.Enter:
++            command = command_of(obj)
++            tip = tip_for(command)
++            if tip and obj.property("unifiedTip") != tip:
++                obj.setProperty("unifiedTip", tip)
++                obj.setToolTip(_with_key(tip, command))
++            previewer().hover(obj, command)
++        elif t in (QtCore.QEvent.Leave, QtCore.QEvent.Hide, QtCore.QEvent.MouseButtonPress):
++            if previewer().button is obj:
++                previewer().leave()
++        elif t == QtCore.QEvent.ChildAdded and isinstance(obj, QtWidgets.QToolBar):
++            # A tool added to the strip: its button is made later
++            QtCore.QTimer.singleShot(0, lambda bar=obj: watch_buttons(bar))
++        return False
++
++
++def _with_key(tip, command):
++    try:
++        import UnifiedChrome
++
++        for key, name in UnifiedChrome.KEYS.items():
++            if name == command:
++                return tip + " " + translate("Unified", "(key {})").format(key)
++    except Exception:
++        pass
++    return tip
++
++
++_filter = None
++
++
++def _hover_filter():
++    global _filter
++    if _filter is None:
++        _filter = HoverFilter()
++    return _filter
++
++
++def watch_buttons(parent):
++    """Preview and plain tooltips for the tool buttons in the widget"""
++    f = _hover_filter()
++    for button in parent.findChildren(QtWidgets.QToolButton):
++        if not button.property("unifiedHover"):
++            button.setProperty("unifiedHover", True)
++            button.installEventFilter(f)
++
++
++STRIPS = ("Unified Tools", "Unified Model", "Unified Parts")
++
++
++def install():
++    def later():
++        mw = Gui.getMainWindow()
++        for bar in mw.findChildren(QtWidgets.QToolBar):
++            if bar.objectName() in STRIPS and not bar.property("unifiedHover"):
++                bar.setProperty("unifiedHover", True)
++                bar.installEventFilter(_hover_filter())
++                watch_buttons(bar)
++
++    QtCore.QTimer.singleShot(0, later)
+-- 
+2.43.0
+

@@ -1,0 +1,445 @@
+From f295ee4b3c0ecdd75021ab5381228a0c3929cd19 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:14:00 +0900
+Subject: [PATCH 279/281] Unified: the parts shelf on the tool strip, in Other
+ tools and the design check
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- "Parts Shelf" next to "Put Part" on the tool strip (and on the Parts toolbar of the
+  classic chrome); the Fasteners workbench under "Other tools"
+- the tool search remembers what was typed, so that the shelf opens with "M6×20" found
+- the design check takes a shelf screw in its tapped hole for the thread it is (the overlap
+  is at most the ring between thread and tap drill), and does not list the shelf's hidden
+  originals as hidden parts
+- Japanese texts of the shelf
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandSearchGui.py           |   7 +
+ src/Mod/Unified/DesignCheck.py                |  27 ++
+ .../translations/UnifiedWording_ja.ts         | 248 ++++++++++++++++++
+ src/Mod/Unified/Gui/Workbench.cpp             |   4 +-
+ src/Mod/Unified/TestPartsShelf.py             |  22 ++
+ src/Mod/Unified/UnifiedChrome.py              |   1 +
+ 6 files changed, 308 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/CommandSearchGui.py b/src/Mod/Unified/CommandSearchGui.py
+index 0d3afbf92..aa8649639 100644
+--- a/src/Mod/Unified/CommandSearchGui.py
++++ b/src/Mod/Unified/CommandSearchGui.py
+@@ -8,6 +8,7 @@ tool usually is. When nothing fits, the last row hands the question to the AI.
+ """
+ 
+ import os
++import time
+ 
+ import FreeCAD as App
+ import FreeCADGui as Gui
+@@ -115,6 +116,9 @@ def usable(names):
+     return ok
+ 
+ 
++last_query = ("", 0.0)  # (text, time) of the last search a tool was picked from
++
++
+ def run(entry):
+     """Run the command, loading its module first if needed"""
+     name = entry["name"]
+@@ -319,6 +323,9 @@ class SearchPopup(QtWidgets.QFrame):
+             return
+         entry = _by_name.get(key)
+         if entry:
++            # What was typed, for a tool that uses it (the parts shelf opens with "M6×20" found)
++            global last_query
++            last_query = (text, time.monotonic())
+             QtCore.QTimer.singleShot(0, lambda: run(entry))
+ 
+     # -- keys and clicks
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 82241fb0a..1e18e2acc 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -248,6 +248,8 @@ def check_hidden(doc, issues, opt):
+     for o in doc.Objects:
+         if _visible(o):
+             continue
++        if "ShelfKey" in o.PropertiesList:
++            continue  # the hidden originals of the parts shelf (their links are the parts)
+         if o.isDerivedFrom("PartDesign::Body") or o.isDerivedFrom("App::Link") or (
+                 o.isDerivedFrom("Part::Feature") and not _in_body(o) and not o.isDerivedFrom("Part::Part2DObject")
+                 and not o.isDerivedFrom("Part::Datum")
+@@ -374,6 +376,28 @@ def _fitted(a, b, clearance=0.5):
+     return False
+ 
+ 
++def _thread_in_hole(oa, ob, volume):
++    """A screw of the parts shelf (PartsShelf.py) and a part with its tapped hole: they overlap by
++    at most the ring between the thread and the tap drill along the screw (the thread engagement)"""
++    import math
++
++    try:
++        import PartsShelf
++    except ImportError:
++        return False
++    for screw in (oa, ob):
++        info = PartsShelf.thread_engagement(screw) if screw is not None else None
++        if info is None:
++            continue
++        d, tap, length = info
++        if length <= 0:
++            length = 3 * d  # a nut: its height is less than this
++        ring = math.pi / 4 * (d * d - tap * tap) * length
++        if volume <= ring * 1.05 + 1e-3:
++            return True
++    return False
++
++
+ def _pair_compute(a, b, need_touch, opt):
+     """2 つの形の (重なりの体積, 重なりの中心, 接しているか)。重い（形によっては 1 組に数秒）"""
+     try:
+@@ -556,6 +580,9 @@ def iter_interference(doc, issues, opt, shapes):
+         v, center, t = _pair(a, b, pair_touch, opt)
+         if pair_touch and not t and _fitted(a, b):
+             t = True  # a pin in a hole with a clearance fit is held by it, not floating
++        if v > opt["interference_mm3"] and _thread_in_hole(doc.getObject(na), doc.getObject(nb), v):
++            v = 0.0  # a screw of the parts shelf in its tapped hole: the thread overlaps, as it should
++            t = True
+         if v > opt["interference_mm3"]:
+             issues.append(Issue(ERROR, "interference",
+                                 translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 1441110c8..ce031dd1b 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10409,6 +10409,10 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Join rigidly</source>
+         <translation>固定でつなぐ</translation>
+     </message>
++    <message>
++        <source>Insert screw</source>
++        <translation>ねじを入れる</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_SearchUsable</name>
+@@ -11332,4 +11336,248 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>そろえる</translation>
+     </message>
+ </context>
++<context>
++    <name>PartsShelf</name>
++    <message>
++        <source>(none yet: add a folder below)</source>
++        <translation>（まだありません。下でフォルダーを足してください）</translation>
++    </message>
++    <message>
++        <source>A nut on the other side</source>
++        <translation>反対側をナットで止める</translation>
++    </message>
++    <message>
++        <source>Add a folder of the company's parts (FCStd and STEP files, see the README)</source>
++        <translation>会社の部品のフォルダーを足す（FCStd と STEP のファイル。書き方は README）</translation>
++    </message>
++    <message>
++        <source>Add the folder with the company's parts (FCStd, STEP; an index shelf.csv is optional)</source>
++        <translation>会社の部品が入ったフォルダーを足してください（FCStd・STEP。一覧の shelf.csv は無くてもかまいません）</translation>
++    </message>
++    <message>
++        <source>Aluminium profiles</source>
++        <translation>アルミフレーム</translation>
++    </message>
++    <message>
++        <source>Change screw</source>
++        <translation>ねじを変える</translation>
++    </message>
++    <message>
++        <source>Click a face: the part goes there</source>
++        <translation>面をクリックすると、そこに部品を置きます</translation>
++    </message>
++    <message>
++        <source>Click a hole: the screw that fits goes in (size and length from the hole)</source>
++        <translation>穴をクリックすると、合うねじが入ります（太さと長さは穴から決まります）</translation>
++    </message>
++    <message>
++        <source>Click where it ends, or type the length and press Enter</source>
++        <translation>終わりの点をクリックするか、長さを打ち込んで Enter</translation>
++    </message>
++    <message>
++        <source>Click where the profile starts (on a face it lies on the face)</source>
++        <translation>フレームの始まりの点をクリック（面の上なら面に載せます）</translation>
++    </message>
++    <message>
++        <source>Company parts</source>
++        <translation>会社の部品</translation>
++    </message>
++    <message>
++        <source>Company parts: no folder yet</source>
++        <translation>会社の部品: フォルダーはまだありません</translation>
++    </message>
++    <message>
++        <source>Company parts: {}</source>
++        <translation>会社の部品: {}</translation>
++    </message>
++    <message>
++        <source>Could not put it: {}</source>
++        <translation>置けませんでした: {}</translation>
++    </message>
++    <message>
++        <source>Find, e.g. M6×20, nut, washer, profile</source>
++        <translation>探す（例: M6×20、ナット、座金、フレーム）</translation>
++    </message>
++    <message>
++        <source>Folder of the company's parts</source>
++        <translation>会社の部品のフォルダー</translation>
++    </message>
++    <message>
++        <source>Folder…</source>
++        <translation>フォルダー…</translation>
++    </message>
++    <message>
++        <source>Follows the cursor after the first click; type a length and press Enter to put it</source>
++        <translation>1 点目をクリックするとカーソルに合わせて変わります。長さを打ち込んで Enter でも置けます</translation>
++    </message>
++    <message>
++        <source>From the hole</source>
++        <translation>穴に合わせる</translation>
++    </message>
++    <message>
++        <source>Goes in:</source>
++        <translation>入るもの:</translation>
++    </message>
++    <message>
++        <source>Insert</source>
++        <translation>入れる</translation>
++    </message>
++    <message>
++        <source>Insert puts it into the hole. Or click another hole</source>
++        <translation>「入れる」でこの穴に入れます。別の穴をクリックしてもかまいません</translation>
++    </message>
++    <message>
++        <source>Insert screw</source>
++        <translation>ねじを入れる</translation>
++    </message>
++    <message>
++        <source>Length:</source>
++        <translation>長さ:</translation>
++    </message>
++    <message>
++        <source>Nuts</source>
++        <translation>ナット</translation>
++    </message>
++    <message>
++        <source>Parts shelf</source>
++        <translation>部品の棚</translation>
++    </message>
++    <message>
++        <source>Pick a part on the shelf</source>
++        <translation>棚から部品を選んでください</translation>
++    </message>
++    <message>
++        <source>Plate on top:</source>
++        <translation>上に重ねる板:</translation>
++    </message>
++    <message>
++        <source>Put part</source>
++        <translation>部品を置く</translation>
++    </message>
++    <message>
++        <source>Put profile</source>
++        <translation>フレームを置く</translation>
++    </message>
++    <message>
++        <source>Put: {}</source>
++        <translation>置きました: {}</translation>
++    </message>
++    <message>
++        <source>Put: {} (Ctrl+Z takes it back; changing the options above changes it)</source>
++        <translation>置きました: {}（Ctrl+Z で取り消し。上の設定を変えるとこのねじが変わります）</translation>
++    </message>
++    <message>
++        <source>Screws and bolts</source>
++        <translation>ねじ・ボルト</translation>
++    </message>
++    <message>
++        <source>Set screws</source>
++        <translation>止めねじ</translation>
++    </message>
++    <message>
++        <source>Shelf parts (originals)</source>
++        <translation>棚の部品（元の形）</translation>
++    </message>
++    <message>
++        <source>Size:</source>
++        <translation>太さ:</translation>
++    </message>
++    <message>
++        <source>That is not a hole for M3 to M12: click the round face or the edge of a hole</source>
++        <translation>M3〜M12 の穴ではありません。穴の丸い面か縁をクリックしてください</translation>
++    </message>
++    <message>
++        <source>The hole:</source>
++        <translation>穴:</translation>
++    </message>
++    <message>
++        <source>The thickness of a plate the screw also holds that is not drawn (the head sits that much higher)</source>
++        <translation>描いていない板も一緒に締めるときの、その厚さ（頭がその分だけ上に来ます）</translation>
++    </message>
++    <message>
++        <source>Washers</source>
++        <translation>座金</translation>
++    </message>
++    <message>
++        <source>Washers under the head (plain and spring)</source>
++        <translation>頭の下に座金（平座金とばね座金）</translation>
++    </message>
++    <message>
++        <source>blind</source>
++        <translation>止まり穴</translation>
++    </message>
++    <message>
++        <source>clearance hole of {}</source>
++        <translation>{} のキリ穴</translation>
++    </message>
++    <message>
++        <source>counterbore</source>
++        <translation>座ぐり</translation>
++    </message>
++    <message>
++        <source>countersink</source>
++        <translation>皿もみ</translation>
++    </message>
++    <message>
++        <source>generic</source>
++        <translation>汎用</translation>
++    </message>
++    <message>
++        <source>holds {:g} mm</source>
++        <translation>締める厚さ {:g} mm</translation>
++    </message>
++    <message>
++        <source>needs {:g} mm, standard length {:g} mm</source>
++        <translation>必要な長さ {:g} mm → 規格の長さ {:g} mm</translation>
++    </message>
++    <message>
++        <source>tap drill of {}</source>
++        <translation>{} の下穴</translation>
++    </message>
++    <message>
++        <source>thread of {}</source>
++        <translation>{} のねじ穴</translation>
++    </message>
++    <message>
++        <source>thread {:g} mm deep</source>
++        <translation>ねじ深さ {:g} mm</translation>
++    </message>
++    <message>
++        <source>through</source>
++        <translation>通し穴</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_InsertScrew</name>
++    <message>
++        <source>Insert Screw</source>
++        <translation>ねじを入れる</translation>
++    </message>
++    <message>
++        <source>A screw for the picked hole: the size from its diameter (tap drill or clearance hole), the length from what it holds, on its axis</source>
++        <translation>選んだ穴に合うねじを入れます。太さは穴の径（下穴・キリ穴）から、長さは締める厚さから決め、穴の軸に合わせて置きます</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_PartsShelf</name>
++    <message>
++        <source>Parts Shelf</source>
++        <translation>部品の棚</translation>
++    </message>
++    <message>
++        <source>Screws, nuts and washers (JIS, M3–M12), aluminium profiles and the company's own parts: click a hole and the screw that fits goes in</source>
++        <translation>ねじ・ナット・座金（JIS、M3〜M12）、アルミフレーム、会社の部品。穴をクリックすると合うねじが入ります</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_PlaceProfile</name>
++    <message>
++        <source>Aluminium Profile</source>
++        <translation>アルミフレーム</translation>
++    </message>
++    <message>
++        <source>A generic aluminium extrusion profile (20/30/40 series, slot 6/8) between two clicked points</source>
++        <translation>汎用のアルミフレーム（20・30・40 シリーズ、溝 6・8）を、クリックした 2 点の間に置きます</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index e30d909e7..9eb21c1cd 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -353,7 +353,8 @@ Gui::ToolBarItem* Workbench::classicToolBars() const
+            << "Std_TransformManip"
+            << "Unified_SnapFaces"
+            << "Unified_MovePointToPoint"
+-           << "PartDesign_Boolean";
++           << "PartDesign_Boolean"
++           << "Unified_PartsShelf";
+ 
+     auto check = new Gui::ToolBarItem(root);
+     check->textUnderIcons = true;
+@@ -430,6 +431,7 @@ void addToolStrip(Gui::ToolBarItem& strip)
+           << "Separator"
+           << "Unified_NewDrawing"
+           << "Unified_PlacePart"
++          << "Unified_PartsShelf"
+           << "Separator"
+           << "Unified_OtherTools";
+ }
+diff --git a/src/Mod/Unified/TestPartsShelf.py b/src/Mod/Unified/TestPartsShelf.py
+index 18ec64a98..73c41bf20 100644
+--- a/src/Mod/Unified/TestPartsShelf.py
++++ b/src/Mod/Unified/TestPartsShelf.py
+@@ -297,6 +297,28 @@ class DocumentTest(unittest.TestCase):
+         self.assertEqual(rows[screw[0]][0], "2")
+         self.assertIn("JIS B 1176", rows[screw[0]][1])
+ 
++    def test_design_check_accepts_the_thread(self):
++        """A shelf screw in its tapped hole is no overlap for the design check; one through solid
++        material is, and the hidden originals are not reported as hidden parts"""
++        import DesignCheck
++
++        plate = self.doc.addObject("Part::Feature", "Plate")
++        plate.Shape = _plate((40, 40, 10), (0, 0, 30), [(20, 20, 6.6, None, None)])
++        block = self.doc.addObject("Part::Feature", "Block")
++        block.Shape = _plate((40, 40, 30), (0, 0, 0), [(20, 20, 5.0, 15, None)])
++        self.doc.recompute()
++        face = _cyl_face(plate.Shape, 6.6)
++        hole = PS.analyze_hole(face, PS.solids_of_document(self.doc))
++        links = PS.put_plan(self.doc, PS.plan_for_hole(hole))
++        self.doc.recompute()
++        issues = DesignCheck.run(self.doc, floating=False)
++        self.assertEqual([i for i in issues if i.rule in ("interference", "hidden_skipped")], [])
++        # Without its hole, the same screw overlaps
++        block.Shape = Part.makeBox(40, 40, 30)
++        self.doc.recompute()
++        issues = DesignCheck.run(self.doc, floating=False)
++        self.assertTrue(any(i.rule == "interference" and links[0].Name in i.objects for i in issues))
++
+     def test_profile_two_points(self):
+         a, b = App.Vector(10, 0, 5), App.Vector(10, 300, 5)
+         link = PS.put_profile(self.doc, "20-6", a, b, face_normal=App.Vector(0, 0, 1))
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 8e5868bc0..9ad6e37d2 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -307,6 +307,7 @@ KINDS = [
+     ("SpreadsheetWorkbench", False),
+     ("SurfaceWorkbench", False),
+     ("MaterialWorkbench", False),
++    ("FastenersWorkbench", False),  # bundled: every fastener of the Fasteners workbench
+     ("BIMWorkbench", True),
+     ("CAMWorkbench", True),
+     ("FemWorkbench", True),
+-- 
+2.43.0
+

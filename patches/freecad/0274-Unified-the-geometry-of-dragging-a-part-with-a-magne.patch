@@ -1,0 +1,1254 @@
+From 5e77082dfe68db05737fb4cdbcbdf3125e7550c8 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:01:41 +0900
+Subject: [PATCH 274/281] Unified: the geometry of dragging a part with a
+ magnet
+
+MagnetDrag.py: where a dragged part goes for the cursor ray. Seen from
+above it slides on its own level with the grabbed point under the cursor
+and climbs onto the top of other parts under its footprint (never below
+where it started); seen from the side it moves in the vertical plane
+facing the camera. Then the magnet, within a tolerance given in mm (about
+12 pixels at the part): faces facing each other snap flush (turning the
+part by up to 10 degrees), round faces onto one axis (a pin drops into a
+hole as far as it fits: the bottom of a blind hole, the head of a bolt,
+flush with the far side of a through hole), corners onto corners, faces
+line up in one plane with faces of other parts, with guide lines along
+the edges that line up. A snap holds up to 1.5 tolerances.
+
+The faces are read once per part (numpy arrays), only for parts near the
+moving one (Lazy). 200 parts: under 1 ms per move headless.
+Tests: FreeCADCmd -t TestMagnetDrag (21).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt    |   4 +
+ src/Mod/Unified/MagnetDrag.py     | 927 ++++++++++++++++++++++++++++++
+ src/Mod/Unified/TestMagnetDrag.py | 266 +++++++++
+ 3 files changed, 1197 insertions(+)
+ create mode 100644 src/Mod/Unified/MagnetDrag.py
+ create mode 100644 src/Mod/Unified/TestMagnetDrag.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 821f77274..74ca82998 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -33,6 +33,10 @@ endif(BUILD_GUI)
+ # "FreeCADCmd -t TestSnapMath") and the tools in the 3D view
+ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
+ 
++# Dragging a part in the 3D view, the magnet and lining parts up: the geometry, tested headless
++# ("FreeCADCmd -t TestMagnetDrag", "FreeCADCmd -t TestArrange")
++list(APPEND Unified_Scripts MagnetDrag.py TestMagnetDrag.py)
++
+ # Network settings and the AI key: applying never waits on the network ("FreeCADCmd -t TestNetworkSettings")
+ list(APPEND Unified_Scripts TestNetworkSettings.py)
+ 
+diff --git a/src/Mod/Unified/MagnetDrag.py b/src/Mod/Unified/MagnetDrag.py
+new file mode 100644
+index 000000000..c38e54bb1
+--- /dev/null
++++ b/src/Mod/Unified/MagnetDrag.py
+@@ -0,0 +1,927 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# The geometry behind dragging a part in the 3D view and having it stick like a magnet
++# (ドラッグで動かす・磁石).
++#
++# No GUI here. MagnetDragGui.py turns mouse events into rays and moves the document object;
++# TestMagnetDrag.py tests this file headless ("FreeCADCmd -t TestMagnetDrag").
++#
++# How a drag moves the part:
++#
++# * Looking from above (the usual views), the part slides on the level it started at: the
++#   horizontal plane through the point that was grabbed, which stays under the cursor. When
++#   the part comes over the top of another part (a table, a plate), it climbs onto it and
++#   sits on it ("placing on a table"); off it again, it goes back to its own level. It is
++#   never pushed below the level it started at, so a part that was in the air does not fall.
++# * Looking from the side (the view less than 15 degrees above the horizon), the part moves
++#   in the vertical plane facing the camera, with the grabbed point under the cursor.
++# * Then the magnet: a face of the part that comes within the tolerance (about 12 pixels) of
++#   a face of another part, facing it, snaps flush onto it; round faces snap onto one axis
++#   (a pin over a hole drops into it as far as it fits); corners snap onto corners; faces
++#   that come within the tolerance of being in one plane with a face of another part line
++#   up (the guides show it). Dragging further breaks it free. All of it is off with Alt.
++#
++# Everything is in global coordinates and numpy; the faces of each part are read once and
++# cached (Geometry), the parts far from the moving one are skipped by their bounding boxes.
++
++import math
++
++import numpy as np
++
++import FreeCAD as App
++
++UP = np.array((0.0, 0.0, 1.0))
++
++SUPPORT_ANGLE = 30.0  # a face up to this steep is something to put a part on
++TURN_ANGLE = 10.0  # the magnet turns the part by up to this, to make faces flush
++FLAT_ANGLE = 0.5  # faces this close in direction are parallel without turning
++SIDE_VIEW_ANGLE = 15.0  # below this elevation the part moves in the vertical plane
++HOLD = 1.5  # a snap holds until the part is this many tolerances away (feels like a magnet)
++EPS = 1e-6
++
++
++def _v(p):
++    return np.array((float(p[0]), float(p[1]), float(p[2])))
++
++
++def _unit(v):
++    n = np.linalg.norm(v)
++    return v / n if n > 1e-15 else v
++
++
++def rotation_between(a, b):
++    """The 3x3 matrix of the smallest rotation turning direction a into b (a half turn about
++    an axis across a nearest to Z, X or Y when they are opposite: the same every time)."""
++    a = _unit(_v(a))
++    b = _unit(_v(b))
++    c = float(np.dot(a, b))
++    if c > 1 - 1e-15:
++        return np.eye(3)
++    if c < -1 + 1e-12:
++        for helper in (UP, np.array((1.0, 0, 0)), np.array((0, 1.0, 0))):
++            axis = np.cross(a, helper)
++            if np.linalg.norm(axis) > 1e-6:
++                return axis_rotation(_unit(axis), math.pi)
++    axis = np.cross(a, b)
++    s = np.linalg.norm(axis)
++    return axis_rotation(axis / s, math.atan2(s, c))
++
++
++def axis_rotation(axis, angle):
++    x, y, z = axis
++    c, s = math.cos(angle), math.sin(angle)
++    C = 1 - c
++    return np.array(
++        (
++            (c + x * x * C, x * y * C - z * s, x * z * C + y * s),
++            (y * x * C + z * s, c + y * y * C, y * z * C - x * s),
++            (z * x * C - y * s, z * y * C + x * s, c + z * z * C),
++        )
++    )
++
++
++def to_placement(R, t, g0):
++    """The global move (App.Placement) of a pose: x -> R (x - g0) + g0 + t."""
++    base =t + g0 - R.dot(g0)
++    m = App.Matrix(
++        R[0, 0], R[0, 1], R[0, 2], base[0],
++        R[1, 0], R[1, 1], R[1, 2], base[1],
++        R[2, 0], R[2, 1], R[2, 2], base[2],
++        0, 0, 0, 1,
++    )
++    return App.Placement(m)
++
++
++# --- what a part offers to snap to ----------------------------------------------------------
++
++
++class Geometry:
++    """The faces, round faces, corners and straight edges of one shape, in global coordinates.
++
++    planes: normal (outward), center, bounding box of each flat face
++    cylinders: axis, middle point on the axis, radius, half length, hole or not
++    """
++
++    def __init__(self, shape=None):
++        self.shape = shape
++        self.faces = []
++        self.pn = np.zeros((0, 3))
++        self.pc = np.zeros((0, 3))
++        self.plo = np.zeros((0, 3))
++        self.phi = np.zeros((0, 3))
++        self.pface = np.zeros(0, dtype=int)
++        self.an = np.zeros((0, 3))
++        self.ao = np.zeros((0, 3))
++        self.ar = np.zeros(0)
++        self.ah = np.zeros(0)
++        self.ahole = np.zeros(0, dtype=bool)
++        self.aface = np.zeros(0, dtype=int)
++        self.verts = np.zeros((0, 3))
++        self.e0 = np.zeros((0, 3))
++        self.e1 = np.zeros((0, 3))
++        self.lo = np.zeros(3)
++        self.hi = np.zeros(3)
++        self._cloud = None
++        self._radius = {}
++
++    @property
++    def size(self):
++        return float(np.linalg.norm(self.hi - self.lo))
++
++    def cloud(self):
++        """Points of the surface (for how low the part reaches in a direction)."""
++        if self._cloud is None:
++            pts = [self.verts]
++            if self.shape is not None and not self.shape.isNull():
++                try:
++                    tess = self.shape.tessellate(max(self.size / 100.0, 0.01))[0]
++                    if tess:
++                        pts.append(np.array([(p.x, p.y, p.z) for p in tess]))
++                except Exception:
++                    pass
++            pts = [p for p in pts if len(p)]
++            self._cloud = np.vstack(pts) if pts else np.array([self.lo, self.hi])
++        return self._cloud
++
++    def face_radius(self, index):
++        """How far the flat face reaches from its center (for "does it fit in the hole")."""
++        if index not in self._radius:
++            import Part
++
++            face = self.faces[index]
++            center = face.CenterOfMass
++            r = 0.0
++            for e in face.Edges:
++                if isinstance(e.Curve, Part.Circle):
++                    r = max(r, (e.Curve.Center - center).Length + e.Curve.Radius)
++                else:
++                    for p in e.discretize(8):
++                        r = max(r, (p - center).Length)
++            self._radius[index] = r
++        return self._radius[index]
++
++
++def capture(shape):
++    """The Geometry of a shape (in the coordinates the shape is in)."""
++    import Part
++
++    g = Geometry(shape)
++    if shape is None or shape.isNull():
++        return g
++    bb = shape.BoundBox
++    if not bb.isValid():
++        return g
++    g.lo = _v((bb.XMin, bb.YMin, bb.ZMin))
++    g.hi = _v((bb.XMax, bb.YMax, bb.ZMax))
++    g.faces = list(shape.Faces)
++    pn, pc, plo, phi, pface = [], [], [], [], []
++    an, ao, ar, ah, ahole, aface = [], [], [], [], [], []
++    for i, f in enumerate(g.faces):
++        try:
++            s = f.Surface
++            u0, u1, v0, v1 = f.ParameterRange
++            um, vm = (u0 + u1) / 2, (v0 + v1) / 2
++            if isinstance(s, Part.Plane):
++                n = f.normalAt(um, vm)
++                c = f.CenterOfMass
++                fb = f.BoundBox
++                pn.append((n.x, n.y, n.z))
++                pc.append((c.x, c.y, c.z))
++                plo.append((fb.XMin, fb.YMin, fb.ZMin))
++                phi.append((fb.XMax, fb.YMax, fb.ZMax))
++                pface.append(i)
++            elif isinstance(s, Part.Cylinder):
++                if u1 - u0 < math.pi - 1e-6:  # a rounded corner, not a pin or a hole
++                    continue
++                axis = _unit(_v(s.Axis))
++                origin = _v(s.Center)
++                ends = [np.dot(_v(f.valueAt(u0, v)) - origin, axis) for v in (v0, v1)]
++                lo_, hi_ = min(ends), max(ends)
++                p = _v(f.valueAt(um, vm))
++                n = _v(f.normalAt(um, vm))
++                radial = (p - origin) - axis * np.dot(p - origin, axis)
++                an.append(axis)
++                ao.append(origin + axis * (lo_ + hi_) / 2)
++                ar.append(s.Radius)
++                ah.append((hi_ - lo_) / 2)
++                ahole.append(np.dot(n, radial) < 0)
++                aface.append(i)
++        except Exception:
++            continue
++    if pn:
++        g.pn = np.array(pn)
++        g.pn /= np.linalg.norm(g.pn, axis=1)[:, None]
++        g.pc, g.plo, g.phi = np.array(pc), np.array(plo), np.array(phi)
++        g.pface = np.array(pface, dtype=int)
++    if an:
++        g.an, g.ao, g.ar, g.ah = np.array(an), np.array(ao), np.array(ar), np.array(ah)
++        g.ahole = np.array(ahole, dtype=bool)
++        g.aface = np.array(aface, dtype=int)
++    verts = [(v.Point.x, v.Point.y, v.Point.z) for v in shape.Vertexes]
++    if verts:
++        g.verts = np.array(verts)
++    e0, e1 = [], []
++    for e in shape.Edges:
++        try:
++            if isinstance(e.Curve, Part.Line) and len(e.Vertexes) == 2:
++                a, b = e.Vertexes[0].Point, e.Vertexes[1].Point
++                e0.append((a.x, a.y, a.z))
++                e1.append((b.x, b.y, b.z))
++        except Exception:
++            continue
++    if e0:
++        g.e0, g.e1 = np.array(e0), np.array(e1)
++    return g
++
++
++class Lazy:
++    """A Geometry read only when the moving part comes near it (its box is known at once)."""
++
++    def __init__(self, lo, hi, load):
++        self.lo = _v(lo)
++        self.hi = _v(hi)
++        self._load = load
++        self._geom = None
++
++    def loaded(self):
++        return self._geom is not None
++
++    def __getattr__(self, name):
++        if name.startswith("__") or name in ("_load", "_geom"):
++            raise AttributeError(name)
++        if self._geom is None:
++            self._geom = self._load()
++        return getattr(self._geom, name)
++
++
++class Posed:
++    """A Geometry moved by x -> R (x - g0) + g0 + t (arrays only, for one step of the drag)."""
++
++    def __init__(self, geom, R, t, g0):
++        self.geom = geom
++        self.R, self.t, self.g0 = R, t, g0
++        off = g0 + t
++        identity = np.allclose(R, np.eye(3), atol=0, rtol=0)
++
++        def P(a):
++            if not len(a):
++                return a
++            return a + t if identity else (a - g0).dot(R.T) + off
++
++        def D(a):
++            if not len(a) or identity:
++                return a
++            return a.dot(R.T)
++
++        def box(lo, hi):
++            if identity:
++                return lo + t, hi + t
++            c, h = P((lo + hi) / 2), ((hi - lo) / 2).dot(np.abs(R).T)
++            return c - h, c + h
++
++        self.pn, self.pc = D(geom.pn), P(geom.pc)
++        self.plo, self.phi = box(geom.plo, geom.phi) if len(geom.plo) else (geom.plo, geom.phi)
++        self.an, self.ao = D(geom.an), P(geom.ao)
++        self.verts, self.e0, self.e1 = P(geom.verts), P(geom.e0), P(geom.e1)
++        lo, hi = box(geom.lo[None, :], geom.hi[None, :])
++        self.lo, self.hi = lo[0], hi[0]
++
++    def point(self, p):
++        return self.R.dot(p - self.g0) + self.g0 + self.t
++
++
++class Targets:
++    """The other parts, each a (key, Geometry), with their bounding boxes stacked."""
++
++    def __init__(self, items):
++        self.items = [
++            (k, g) for k, g in items if isinstance(g, Lazy) or g is not None and (len(g.pn) or len(g.an) or len(g.verts))
++        ]
++        n = len(self.items)
++        self.lo = np.array([g.lo for _, g in self.items]) if n else np.zeros((0, 3))
++        self.hi = np.array([g.hi for _, g in self.items]) if n else np.zeros((0, 3))
++
++    def near(self, lo, hi, margin):
++        """Indices of the parts whose boxes come within margin of the box lo..hi."""
++        if not self.items:
++            return []
++        ok = np.all(self.lo <= hi + margin, axis=1) & np.all(self.hi >= lo - margin, axis=1)
++        return list(np.nonzero(ok)[0])
++
++    def stacked(self, indices, which):
++        """Arrays of all parts in indices, with the part index and element index of each row."""
++        out = {}
++        if which == "planes":
++            names, idx = ("pn", "pc", "plo", "phi"), "pface"
++        elif which == "axes":
++            names, idx = ("an", "ao", "ar", "ah", "ahole"), "aface"
++        elif which == "verts":
++            names, idx = ("verts",), None
++        else:
++            names, idx = ("e0", "e1"), None
++        parts, elems = [], []
++        cols = {n: [] for n in names}
++        for i in indices:
++            g = self.items[i][1]
++            arr = getattr(g, names[0])
++            if not len(arr):
++                continue
++            for n in names:
++                cols[n].append(getattr(g, n))
++            parts.append(np.full(len(arr), i, dtype=int))
++            elems.append(getattr(g, idx) if idx else np.arange(len(arr)))
++        if not parts:
++            return None
++        for n in names:
++            out[n] = np.concatenate(cols[n])
++        out["part"] = np.concatenate(parts)
++        out["elem"] = np.concatenate(elems)
++        return out
++
++
++# --- one step of the drag -------------------------------------------------------------------
++
++
++class Snap:
++    """A snap that holds the part: kind "support", "contact", "axis", "hole", "corner" or
++    "flush"; target: (part index, element index of the target); what to highlight."""
++
++    def __init__(self, kind, part, elem, key, moving_elem=None, point=None):
++        self.kind = kind
++        self.part = part
++        self.elem = elem
++        self.key = key
++        self.moving_elem = moving_elem
++        self.point = point
++
++    def __repr__(self):
++        return "Snap({}, part={}, elem={})".format(self.kind, self.part, self.elem)
++
++
++class Result:
++    def __init__(self, R, t, g0):
++        self.R, self.t, self.g0 = R, t, g0
++        self.snaps = []
++        self.guides = []  # (a, b) global points of the guide lines
++        self.free = True
++
++    @property
++    def placement(self):
++        return to_placement(self.R, self.t, self.g0)
++
++    def kinds(self):
++        return [s.kind for s in self.snaps]
++
++
++def ray_plane(o, d, p, n):
++    denom = float(np.dot(d, n))
++    if abs(denom) < 1e-9:
++        return None
++    s = float(np.dot(p - o, n)) / denom
++    if s <= 0:
++        return None
++    return o + d * s
++
++
++class Drag:
++    """One drag of one part.
++
++    moving: Geometry of the part as it was when the drag started (global)
++    grab: the point of the part that was grabbed (global)
++    view_dir: the direction the camera looks
++    targets: Targets (the other parts)
++    """
++
++    def __init__(self, moving, grab, view_dir, targets):
++        self.moving = moving
++        self.g0 = _v(grab)
++        self.targets = targets
++        d = _unit(_v(view_dir))
++        elevation = math.degrees(math.asin(min(1.0, abs(float(np.dot(d, UP))))))
++        self.horizontal = elevation >= SIDE_VIEW_ANGLE
++        if self.horizontal:
++            self.normal = UP
++        else:
++            flat = d - UP * np.dot(d, UP)
++            flat = _unit(flat)
++            # A world axis if the view is near one (the part stays in a world plane)
++            for axis in (np.array((1.0, 0, 0)), np.array((0, 1.0, 0))):
++                if abs(np.dot(flat, axis)) > math.cos(math.radians(20)):
++                    flat = axis * np.sign(np.dot(flat, axis))
++            self.normal = flat
++        cloud = moving.cloud()
++        self.bottom0 = float(np.min(cloud.dot(UP))) if len(cloud) else float(moving.lo[2])
++        self.height = float(np.ptp(cloud.dot(UP))) if len(cloud) else float(moving.hi[2] - moving.lo[2])
++        self.level = 0.0
++        self.support = None
++        self.prev = set()
++        self.last = None
++
++    # -- where the part goes before the magnet
++
++    def _support_at(self, x, level, tol, hint=None):
++        """The highest face (facing up) under the part's footprint, its grabbed point above x,
++        that the part may stand on (a pin over a hole stands on the plate around it)."""
++        if not self.horizontal:
++            return None
++        t = self.targets
++        if not t.items:
++            return None
++        bottom = self.bottom0 + level
++        lo_z, hi_z = self.bottom0 - tol, bottom + self.height + tol
++        shift = x - self.g0
++        flo = self.moving.lo[:2] + shift[:2]
++        fhi = self.moving.hi[:2] + shift[:2]
++        under = np.nonzero(
++            (t.lo[:, 0] <= fhi[0]) & (t.hi[:, 0] >= flo[0]) & (t.lo[:, 1] <= fhi[1]) & (t.hi[:, 1] >= flo[1])
++            & (t.hi[:, 2] >= lo_z) & (t.lo[:, 2] <= hi_z)
++        )[0]
++        if not len(under):
++            return None
++        # Where to look: under the grabbed point and around the footprint
++        mid, half = (flo + fhi) / 2, (fhi - flo) / 2 * 0.8
++        samples = [x[:2]] + [mid + half * np.array(s) for s in ((0, 0), (-1, -1), (1, -1), (1, 1), (-1, 1), (0, -1), (1, 0), (0, 1), (-1, 0))]
++        cos_s = math.cos(math.radians(SUPPORT_ANGLE))
++        best = None
++        for sample in samples:
++            for i in under:
++                g = t.items[i][1]
++                if not len(g.pn):
++                    continue
++                ok = (
++                    (g.pn[:, 2] >= cos_s)
++                    & (g.plo[:, 0] <= sample[0] + EPS) & (g.phi[:, 0] >= sample[0] - EPS)
++                    & (g.plo[:, 1] <= sample[1] + EPS) & (g.phi[:, 1] >= sample[1] - EPS)
++                )
++                for j in np.nonzero(ok)[0]:
++                    n, c = g.pn[j], g.pc[j]
++                    z = c[2] - ((sample[0] - c[0]) * n[0] + (sample[1] - c[1]) * n[1]) / n[2]
++                    if z < lo_z or z > hi_z or (best is not None and z <= best[0]):
++                        continue
++                    face = g.faces[g.pface[j]]
++                    try:
++                        if not face.isInside(App.Vector(sample[0], sample[1], z), 1e-4, True):
++                            continue
++                    except Exception:
++                        continue
++                    best = (z, i, j)
++        if best is not None:
++            return best
++        # Over a hole or a gap of the part it stands on: it stays on that part's face
++        for prev in (hint, self.support):
++            if prev is None or prev[1] >= len(t.items):
++                continue
++            z, i, j = prev
++            g = t.items[i][1]
++            if t.lo[i][0] <= mid[0] <= t.hi[i][0] and t.lo[i][1] <= mid[1] <= t.hi[i][1]:
++                n, c = g.pn[j], g.pc[j]
++                z = c[2] - ((x[0] - c[0]) * n[0] + (x[1] - c[1]) * n[1]) / n[2]
++                return (z, i, j)
++        return None
++
++    def _on_support(self, x, support):
++        """Rotation and translation that put the part on the support with its grabbed point
++        above x (horizontally)."""
++        z, i, j = support
++        g = self.targets.items[i][1]
++        n = g.pn[j]
++        R = np.eye(3)
++        m = self.moving
++        if len(m.pn):
++            dots = m.pn.dot(n)
++            k = int(np.argmin(dots))
++            if -dots[k] >= math.cos(math.radians(SUPPORT_ANGLE)) and -dots[k] < 1 - 1e-12:
++                R = rotation_between(m.pn[k], -n)
++        delta = x - self.g0
++        delta = delta - UP * np.dot(delta, UP)
++        low = float(np.min((m.cloud() - self.g0).dot(R.T).dot(n)))
++        point = g.pc[j]
++        tau = (np.dot(point, n) - np.dot(self.g0 + delta, n) - low) / float(np.dot(UP, n))
++        return R, delta + UP * tau, tau
++
++    def base(self, o, d, snapping=True, tol=0.0):
++        """(R, t, support) before the magnet; None if the cursor ray misses the plane."""
++        o, d = _v(o), _unit(_v(d))
++        if not self.horizontal:
++            x = ray_plane(o, d, self.g0, self.normal)
++            if x is None:
++                return None
++            return np.eye(3), x - self.g0, None
++        if not snapping:
++            x = ray_plane(o, d, self.g0, UP)
++            if x is None:
++                return None
++            self.level = 0.0
++            self.support = None
++            return np.eye(3), x - self.g0, None
++        level = self.level
++        x = ray_plane(o, d, self.g0 + UP * level, UP)
++        if x is None:
++            return None
++        support = self._support_at(x, level, tol)
++        R, t, tau = (np.eye(3), x - self.g0 - UP * level, 0.0) if support is None else self._on_support(x, support)
++        if abs(tau - level) > EPS:
++            # The grabbed point goes up or down: read the cursor again on the new level
++            x2 = ray_plane(o, d, self.g0 + UP * tau, UP)
++            if x2 is not None:
++                s2 = self._support_at(x2, tau, tol, support)
++                if s2 is None:
++                    R2, t2, tau2 = np.eye(3), x2 - self.g0, 0.0
++                else:
++                    R2, t2, tau2 = self._on_support(x2, s2)
++                if abs(tau2 - tau) < 1e-6 or s2 is None and support is None:
++                    x, support, R, t, tau = x2, s2, R2, t2, tau2
++        if support is None:
++            t = x - self.g0
++            t = t - UP * np.dot(t, UP)
++            tau = 0.0
++        self.level = tau
++        self.support = support
++        return R, t, support
++
++    # -- the magnet
++
++    def solve(self, o, d, tol, snapping=True):
++        """Where the part goes for the cursor ray (o, d); tol: the magnet's reach in mm (about
++        12 pixels at the part). Returns a Result, or None if the ray misses."""
++        b = self.base(o, d, snapping, tol)
++        if b is None:
++            return None
++        R, t, support = b
++        res = Result(R, t, self.g0)
++        if not snapping:
++            self.prev = set()
++            self.last = res
++            return res
++        state = _State(self, R, t, tol)
++        if support is not None:
++            z, i, j = support
++            g = self.targets.items[i][1]
++            state.lock(g.pn[j])
++            state.rotated = not np.allclose(R, np.eye(3))
++            state.snaps.append(Snap("support", i, int(g.pface[j]), ("support", i, int(g.pface[j]))))
++        posed = state.posed()
++        reach = max(3 * tol, 0.5 * self.moving.size)
++        state.near = self.targets.near(posed.lo, posed.hi, reach)
++        state.close = self.targets.near(posed.lo, posed.hi, HOLD * tol + EPS)
++        state.axes()
++        state.contacts()
++        state.corners()
++        state.flush()
++        res = Result(state.R, state.t, self.g0)
++        res.snaps = state.snaps
++        res.free = not state.snaps
++        res.guides = state.guides()
++        self.prev = set(s.key for s in res.snaps)
++        self.last = res
++        return res
++
++
++class _State:
++    """The pose while the snaps are added one after another; each snap only moves the part
++    in the directions the earlier ones left free (locks)."""
++
++    def __init__(self, drag, R, t, tol):
++        self.drag = drag
++        self.R, self.t = R, t
++        self.tol = tol
++        self.locks = []
++        self.snaps = []
++        self.rotated = False
++        self.near = []
++        self.close = []
++        self._posed = None
++
++    def posed(self):
++        if self._posed is None:
++            self._posed = Posed(self.drag.moving, self.R, self.t, self.drag.g0)
++        return self._posed
++
++    def reach(self, key):
++        return self.tol * (HOLD if key in self.drag.prev else 1.0)
++
++    def lock(self, n):
++        u = _v(n)
++        for l in self.locks:
++            u = u - l * np.dot(u, l)
++        if np.linalg.norm(u) > 1e-6:
++            self.locks.append(_unit(u))
++
++    def free_part(self, v):
++        for l in self.locks:
++            v = v - l * np.dot(v, l)
++        return v
++
++    def move(self, dt):
++        self.t = self.t + dt
++        self._posed = None
++
++    def turn(self, Q, about):
++        """Turn the part by Q about the point (global)."""
++        g0 = self.drag.g0
++        self.R = Q.dot(self.R)
++        self.t = Q.dot(g0 + self.t - about) + about - g0
++        self._posed = None
++        self.rotated = True
++
++    def along(self, n, distance):
++        """A move that changes the distance along n by `distance` without leaving the locks;
++        None if the locks do not allow it."""
++        u = self.free_part(_v(n))
++        k = float(np.dot(u, n))
++        if k < 0.5:
++            return None
++        return u * (distance / k)
++
++    def _drop_support(self):
++        self.snaps = [s for s in self.snaps if s.kind != "support"]
++        self.locks = []
++
++    # pins and holes on one axis
++    def axes(self):
++        p = self.posed()
++        if not len(p.an):
++            return
++        T = self.drag.targets.stacked(self.close, "axes")
++        if T is None:
++            return
++        best = None
++        cos_turn = math.cos(math.radians(TURN_ANGLE))
++        for i in range(len(p.an)):
++            a, o = p.an[i], p.ao[i]
++            dots = np.abs(T["an"].dot(a))
++            rel = o - T["ao"]
++            along = np.einsum("ij,ij->i", rel, T["an"])
++            w = rel - T["an"] * along[:, None]
++            dist = np.linalg.norm(w, axis=1)
++            ok = (dots >= cos_turn) & (np.abs(along) <= self.drag.moving.ah[i] + T["ah"] + self.tol)
++            for j in np.nonzero(ok)[0]:
++                key = ("axis", int(T["part"][j]), int(T["elem"][j]), i)
++                if dist[j] > self.reach(key):
++                    continue
++                score = dist[j] + 0.1 * abs(self.drag.moving.ar[i] - T["ar"][j])
++                if best is None or score < best[0]:
++                    best = (score, i, j, key)
++        if best is None:
++            return
++        _, i, j, key = best
++        target_axis = T["an"][j]
++        a = p.an[i]
++        sign = 1.0 if np.dot(a, target_axis) >= 0 else -1.0
++        angle = math.degrees(math.acos(min(1.0, abs(float(np.dot(a, target_axis))))))
++        if angle > 1e-9:
++            if angle > FLAT_ANGLE and (self.rotated or self.locks):
++                return
++            self.turn(rotation_between(a, target_axis * sign), p.ao[i])
++            p = self.posed()
++        rel = p.ao[i] - T["ao"][j]
++        w = rel - target_axis * np.dot(rel, target_axis)
++        if self.locks and np.linalg.norm(w - self.free_part(w)) > 1e-6:
++            # Not reachable on the table: the axis wins, the part leaves the table
++            self._drop_support()
++        self.move(-w)
++        part, elem = int(T["part"][j]), int(T["elem"][j])
++        support = [s for s in self.snaps if s.kind == "support"]
++        self.lock(np.cross(target_axis, _perpendicular(target_axis)))
++        self.lock(_perpendicular(target_axis))
++        kind = "axis"
++        if T["ahole"][j] and support and support[0].part == part:
++            drop = self._drop_into(i, j, T, support[0])
++            if drop > 1e-9:
++                n = self.drag.targets.items[part][1]
++                self.move(-_support_normal(n, support[0]) * drop)
++                kind = "hole"
++                self.snaps = [s for s in self.snaps if s.kind != "support"]
++        self.snaps.append(Snap(kind, part, elem, key, moving_elem=int(self.drag.moving.aface[i])))
++
++    def _drop_into(self, i, j, T, support):
++        """How far the pin i goes down into the hole j (it stops on the bottom of the hole or
++        where a wider face of it sits on the face around the hole)."""
++        g = self.drag.targets.items[support.part][1]
++        n = _support_normal(g, support)
++        if abs(float(np.dot(T["an"][j], n))) < math.cos(math.radians(1)):
++            return 0.0
++        p = self.posed()
++        m = self.drag.moving
++        if self.drag.moving.ar[i] > T["ar"][j] * 1.02 + 1e-6:
++            return 0.0
++        floor = float(np.dot(T["ao"][j], n)) - float(T["ah"][j])
++        surface = float(np.dot(g.pc[list(g.pface).index(support.elem)], n))
++        axis_o, axis_d = T["ao"][j], T["an"][j]
++        # A blind hole has a bottom (a face facing up across the axis at its lower end); in a
++        # through hole the pin goes down until something wider stops it, or else until its
++        # end is flush with the other side
++        blind = False
++        for k in range(len(g.pn)):
++            rel = g.pc[k] - axis_o
++            if (
++                np.dot(g.pn[k], n) > math.cos(math.radians(FLAT_ANGLE))
++                and abs(float(np.dot(g.pc[k], n)) - floor) < 1e-6
++                and np.linalg.norm(rel - axis_d * np.dot(rel, axis_d)) < T["ar"][j]
++            ):
++                blind = True
++        travel = None
++        fits_any = False
++        stopped = False
++        for k in range(len(p.pn)):
++            if np.dot(p.pn[k], n) > -math.cos(math.radians(FLAT_ANGLE)):
++                continue
++            c = p.pc[k]
++            rel = c - axis_o
++            off = float(np.linalg.norm(rel - axis_d * np.dot(rel, axis_d)))
++            fits = off + m.face_radius(int(m.pface[k])) <= T["ar"][j] + 1e-6
++            fits_any = fits_any or fits
++            if fits and not blind:
++                continue
++            stopped = stopped or not fits
++            h = float(np.dot(c, n)) - (floor if fits else surface)
++            travel = h if travel is None else min(travel, h)
++        if not fits_any:
++            return 0.0
++        if not stopped and not blind:
++            # Nothing wider: the lowest end of the pin flush with the other side
++            lows = [float(np.dot(p.pc[k], n)) for k in range(len(p.pn)) if np.dot(p.pn[k], n) <= -math.cos(math.radians(FLAT_ANGLE))]
++            travel = min(lows) - floor if lows else None
++        if travel is None:
++            return 0.0
++        return max(0.0, travel)
++
++    # faces that touch, facing each other
++    def contacts(self):
++        for _ in range(3):
++            if not self._contact():
++                return
++
++    def _contact(self):
++        p = self.posed()
++        if not len(p.pn):
++            return False
++        T = self.drag.targets.stacked(self.close, "planes")
++        if T is None:
++            return False
++        dots = p.pn.dot(T["pn"].T)  # (moving, target)
++        cos_turn = math.cos(math.radians(TURN_ANGLE))
++        gap = p.pc.dot(T["pn"].T) - np.einsum("ij,ij->i", T["pc"], T["pn"])[None, :]
++        cand = np.argwhere((dots <= -cos_turn) & (np.abs(gap) <= HOLD * self.tol + EPS))
++        taken = set(s.key for s in self.snaps)
++        options = []
++        for i, j in cand:
++            key = ("contact", int(T["part"][j]), int(T["elem"][j]), int(self.drag.moving.pface[i]))
++            if key in taken or abs(gap[i, j]) > self.reach(key):
++                continue
++            options.append((abs(gap[i, j]), i, j, key))
++        options.sort(key=lambda x: x[0])
++        for _, i, j, key in options:
++            n = T["pn"][j]
++            angle = math.degrees(math.acos(min(1.0, -float(dots[i, j]))))
++            if angle > FLAT_ANGLE and (self.rotated or self.locks):
++                continue
++            saved = (self.R, self.t, self.rotated)
++            if angle > 1e-9:
++                self.turn(rotation_between(p.pn[i], -n), p.pc[i])
++            q = self.posed()
++            g = float(np.dot(q.pc[i] - T["pc"][j], n))
++            dt = self.along(n, -g)
++            if dt is None or not _overlap(q.plo[i] + dt, q.phi[i] + dt, T["plo"][j], T["phi"][j], n):
++                self.R, self.t, self.rotated = saved
++                self._posed = None
++                continue
++            self.move(dt)
++            self.lock(n)
++            self.snaps.append(Snap("contact", int(T["part"][j]), int(T["elem"][j]), key, int(self.drag.moving.pface[i])))
++            return True
++        return False
++
++    # corners onto corners
++    def corners(self):
++        p = self.posed()
++        if not len(p.verts) or len(self.locks) >= 3:
++            return
++        T = self.drag.targets.stacked(self.close, "verts")
++        if T is None:
++            return
++        best = None
++        for i in range(len(p.verts)):
++            diff = T["verts"] - p.verts[i]
++            free = diff
++            for l in self.locks:
++                free = free - np.outer(free.dot(l), l)
++            stuck = np.linalg.norm(diff - free, axis=1)
++            dist = np.linalg.norm(free, axis=1)
++            ok = np.nonzero((stuck < 1e-6) & (dist <= HOLD * self.tol))[0]
++            for j in ok:
++                key = ("corner", int(T["part"][j]), int(T["elem"][j]), i)
++                if dist[j] > self.reach(key) or dist[j] < 1e-9:
++                    continue
++                if best is None or dist[j] < best[0]:
++                    best = (dist[j], i, j, key, free[j])
++        if best is None:
++            return
++        _, i, j, key, dt = best
++        self.move(dt)
++        for axis in np.eye(3):
++            self.lock(axis)
++        self.snaps.append(Snap("corner", int(T["part"][j]), int(T["elem"][j]), key, point=T["verts"][j]))
++
++    # faces in one plane with faces of other parts (lined up, side by side)
++    def flush(self):
++        for _ in range(3):
++            if len(self.locks) >= 3 or not self._flush():
++                return
++
++    def _flush(self):
++        p = self.posed()
++        if not len(p.pn):
++            return False
++        T = self.drag.targets.stacked(self.near, "planes")
++        if T is None:
++            return False
++        dots = p.pn.dot(T["pn"].T)
++        off = np.einsum("ij,ij->i", T["pc"], T["pn"])[None, :] - p.pc.dot(T["pn"].T)
++        cos_flat = math.cos(math.radians(FLAT_ANGLE))
++        cand = np.argwhere((dots >= cos_flat) & (np.abs(off) <= HOLD * self.tol) & (np.abs(off) > 1e-7))
++        options = []
++        for i, j in cand:
++            key = ("flush", int(T["part"][j]), int(T["elem"][j]), int(self.drag.moving.pface[i]))
++            if abs(off[i, j]) > self.reach(key):
++                continue
++            options.append((abs(off[i, j]), i, j, key))
++        options.sort(key=lambda x: x[0])
++        for _, i, j, key in options:
++            n = T["pn"][j]
++            dt = self.along(n, off[i, j])
++            if dt is None or np.linalg.norm(dt - n * np.dot(dt, n)) > 1e-6:
++                continue
++            self.move(dt)
++            self.lock(n)
++            self.snaps.append(Snap("flush", int(T["part"][j]), int(T["elem"][j]), key, int(self.drag.moving.pface[i])))
++            return True
++        return False
++
++    # the guide lines of what lines up now
++    def guides(self, limit=6):
++        p = self.posed()
++        out = []
++        cos_line = math.cos(math.radians(0.1))
++        E = self.drag.targets.stacked(self.near, "edges")
++        if E is not None and len(p.e0):
++            md = p.e1 - p.e0
++            ml = np.linalg.norm(md, axis=1)
++            td = E["e1"] - E["e0"]
++            tl = np.linalg.norm(td, axis=1)
++            for i in range(len(p.e0)):
++                if ml[i] < 1e-9:
++                    continue
++                u = md[i] / ml[i]
++                par = np.abs(td.dot(u)) >= cos_line * np.maximum(tl, 1e-12)
++                rel = E["e0"] - p.e0[i]
++                w = rel - np.outer(rel.dot(u), u)
++                on = np.nonzero(par & (np.linalg.norm(w, axis=1) < 1e-5))[0]
++                for j in on:
++                    s = [0.0, float(ml[i]), float(np.dot(E["e0"][j] - p.e0[i], u)), float(np.dot(E["e1"][j] - p.e0[i], u))]
++                    lo, hi = min(s), max(s)
++                    a, b = p.e0[i] + u * lo, p.e0[i] + u * hi
++                    # Only lines that join the part to another one (not an edge it touches along)
++                    if hi - lo <= max(ml[i], tl[j]) + 1e-6:
++                        continue
++                    if any(np.linalg.norm(a - x) + np.linalg.norm(b - y) < 1e-6 for x, y in out):
++                        continue
++                    out.append((a, b))
++                    if len(out) >= limit:
++                        return out
++        if out:
++            return out
++        # Flush faces without a common edge line: from the middle of one to the other
++        for s in self.snaps:
++            if s.kind != "flush":
++                continue
++            g = self.drag.targets.items[s.part][1]
++            j = list(g.pface).index(s.elem)
++            i = list(self.drag.moving.pface).index(s.moving_elem)
++            a, b = p.pc[i], g.pc[j]
++            out.append((a + (a - b) * 0.15, b + (b - a) * 0.15))
++        return out
++
++
++def _support_normal(g, support):
++    return g.pn[list(g.pface).index(support.elem)]
++
++
++def _perpendicular(n):
++    helper = np.array((1.0, 0, 0)) if abs(n[0]) < 0.9 else np.array((0, 1.0, 0))
++    return _unit(np.cross(n, helper))
++
++
++def _overlap(alo, ahi, blo, bhi, n):
++    """Two flat faces in one plane (their boxes) overlap with some area, not only at an edge."""
++    lo = np.maximum(alo, blo)
++    hi = np.minimum(ahi, bhi)
++    span = hi - lo
++    if np.any(span < -1e-6):
++        return False
++    # Directions across the plane: at least two of the box sides with real overlap, ignoring
++    # the side along the normal
++    k = int(np.argmax(np.abs(n)))
++    sides = [span[m] for m in range(3) if m != k]
++    return all(s > 1e-6 for s in sides)
++
++
+diff --git a/src/Mod/Unified/TestMagnetDrag.py b/src/Mod/Unified/TestMagnetDrag.py
+new file mode 100644
+index 000000000..6cf3f6860
+--- /dev/null
++++ b/src/Mod/Unified/TestMagnetDrag.py
+@@ -0,0 +1,266 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of MagnetDrag (dragging a part, the magnet), headless:
++#   FreeCADCmd -t TestMagnetDrag
++
++import math
++import time
++import unittest
++
++import numpy as np
++
++import FreeCAD as App
++import Part
++
++import MagnetDrag as M
++
++ISO = np.array((-1.0, -1.0, -1.0)) / math.sqrt(3)  # the camera looks down at 35 degrees
++FRONT = np.array((0.0, 1.0, 0.0))
++
++
++def box(x, y, z, l=10, w=10, h=10):
++    return Part.makeBox(l, w, h, App.Vector(x, y, z))
++
++
++def ray_to(point, d=ISO):
++    """A cursor ray that passes through the point (as if the cursor were on it)."""
++    p = np.array(point, dtype=float)
++    return p - d * 500, d
++
++
++class MagnetDragTest(unittest.TestCase):
++    def drag(self, moving, others, grab, d=ISO):
++        targets = M.Targets([(i, M.capture(s)) for i, s in enumerate(others)])
++        return M.Drag(M.capture(moving), grab, d, targets)
++
++    def moved(self, res, p):
++        return res.R.dot(np.array(p, dtype=float) - res.g0) + res.g0 + res.t
++
++    def assertVec(self, a, b, tol=1e-6):
++        self.assertLess(np.linalg.norm(np.array(a, dtype=float) - np.array(b, dtype=float)), tol, "{} != {}".format(a, b))
++
++    # -- the plain drag ----------------------------------------------------------------------
++
++    def test_slides_on_its_level_with_the_grabbed_point_under_the_cursor(self):
++        d = self.drag(box(0, 0, 0), [], (5, 5, 10))
++        res = d.solve(*ray_to((40, 25, 10)), tol=1.0)
++        self.assertVec(res.t, (35, 20, 0))
++        self.assertTrue(np.allclose(res.R, np.eye(3)))
++        self.assertTrue(res.free)
++
++    def test_side_view_moves_in_the_vertical_plane(self):
++        d = self.drag(box(0, 0, 0), [], (5, 0, 5), FRONT)
++        self.assertFalse(d.horizontal)
++        res = d.solve(*ray_to((25, 0, 30), FRONT), tol=1.0)
++        self.assertVec(res.t, (20, 0, 25))
++
++    # -- the magnet: faces ------------------------------------------------------------------
++
++    def test_box_toward_box_snaps_flush(self):
++        other = box(20, 0, 0)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        # 1.5 mm short of touching (the right face of the moving box at x=18.5)
++        res = d.solve(*ray_to((13.5, 5, 10)), tol=2.0)
++        self.assertIn("contact", res.kinds())
++        self.assertAlmostEqual(self.moved(res, (10, 0, 0))[0], 20.0, places=6)
++        # The faces face each other and stay where the cursor put them sideways
++        self.assertAlmostEqual(res.t[2], 0.0, places=9)
++
++    def test_overshoot_is_pushed_back_and_far_breaks_free(self):
++        other = box(20, 0, 0)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        res = d.solve(*ray_to((16, 5.5, 10)), tol=2.0)  # 1 mm into the other box
++        self.assertAlmostEqual(self.moved(res, (10, 0, 0))[0], 20.0, places=6)
++        # Held a bit further than it caught (the magnet), then free
++        res = d.solve(*ray_to((17.8, 5.5, 10)), tol=2.0)
++        self.assertIn("contact", res.kinds())
++        res = d.solve(*ray_to((19.5, 5.5, 10)), tol=2.0)
++        self.assertNotIn("contact", res.kinds())
++
++    def test_faces_that_only_meet_at_an_edge_do_not_snap(self):
++        other = box(20, 30, 0)  # beside, but not across from each other
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        res = d.solve(*ray_to((14, 5, 10)), tol=2.0)
++        self.assertNotIn("contact", res.kinds())
++
++    def test_slightly_turned_part_is_turned_flush(self):
++        turned = box(20, -5, 0, 10, 20, 10)
++        turned.rotate(App.Vector(20, 5, 0), App.Vector(0, 0, 1), 4)
++        d = self.drag(box(0, 0, 0), [turned], (5, 5, 10))
++        res = d.solve(*ray_to((14, 5, 10)), tol=2.0)
++        self.assertIn("contact", res.kinds())
++        n = res.R.dot((1, 0, 0))
++        target = turned.Faces[0].normalAt(0, 0)  # x-min face of the turned box
++        self.assertAlmostEqual(float(np.dot(n, (target.x, target.y, target.z))), -1.0, places=9)
++
++    def test_alt_no_snapping(self):
++        other = box(20, 0, 0)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        res = d.solve(*ray_to((13.5, 5, 10)), tol=2.0, snapping=False)
++        self.assertVec(res.t, (8.5, 0, 0))
++        self.assertEqual(res.kinds(), [])
++
++    # -- on a table ---------------------------------------------------------------------------
++
++    def test_climbs_onto_a_plate_and_back_down(self):
++        plate = box(30, 0, 0, 40, 40, 3)
++        d = self.drag(box(0, 0, 0), [plate], (5, 5, 10))
++        res = d.solve(*ray_to((50, 20, 13)), tol=0.5)
++        self.assertIn("support", res.kinds())
++        self.assertAlmostEqual(self.moved(res, (0, 0, 0))[2], 3.0, places=6)
++        # The grabbed point is under the cursor on the new level
++        self.assertVec(self.moved(res, (5, 5, 10)), (50, 20, 13))
++        res = d.solve(*ray_to((5, -30, 10)), tol=0.5)
++        self.assertAlmostEqual(self.moved(res, (0, 0, 0))[2], 0.0, places=6)
++
++    def test_sits_tilted_on_a_ramp(self):
++        ramp = box(30, 0, 0, 40, 40, 3)
++        ramp.rotate(App.Vector(30, 0, 0), App.Vector(0, 1, 0), -15)  # rises towards +x
++        d = self.drag(box(0, 0, 0), [ramp], (5, 5, 10))
++        res = d.solve(*ray_to((50, 20, 18)), tol=0.5)
++        self.assertIn("support", res.kinds())
++        top = ramp.Faces[5]
++        n = top.normalAt(0, 0)
++        down = res.R.dot((0, 0, -1))
++        self.assertAlmostEqual(float(np.dot(down, (n.x, n.y, n.z))), -1.0, places=9)
++        # Its bottom lies on the ramp's top face
++        corner = self.moved(res, (0, 0, 0))
++        self.assertLess(top.distToShape(Part.Vertex(App.Vector(*corner)))[0], 1e-6)
++
++    def test_a_part_in_the_air_does_not_fall(self):
++        table = box(-50, -50, 0, 100, 100, 2)
++        d = self.drag(box(0, 0, 20), [table], (5, 5, 30))
++        res = d.solve(*ray_to((15, 5, 30)), tol=0.5)
++        self.assertAlmostEqual(self.moved(res, (0, 0, 20))[2], 20.0, places=9)
++
++    # -- pins and holes -----------------------------------------------------------------------
++
++    def plate_with_hole(self, through=True):
++        plate = box(0, 0, 0, 40, 40, 8)
++        depth = 8 if through else 5
++        hole = Part.makeCylinder(3, depth + 1, App.Vector(20, 20, 8 - depth if not through else -0.5))
++        return plate.cut(hole)
++
++    def test_pin_near_hole_goes_onto_its_axis_and_into_it(self):
++        plate = self.plate_with_hole()
++        pin = Part.makeCylinder(2.9, 20, App.Vector(-20, 20, 0))
++        d = self.drag(pin, [plate], (-20, 20, 20))
++        # On the plate (top at 8), the pin's axis 1 mm away from the hole's
++        res = d.solve(*ray_to((19, 20.5, 28)), tol=2.0)
++        self.assertIn("hole", res.kinds())
++        axis = self.moved(res, (-20, 20, 0))
++        self.assertVec(axis[:2], (20, 20))
++        # A through hole: down to the bottom of the plate
++        self.assertAlmostEqual(axis[2], 0.0, places=6)
++
++    def test_pin_into_a_blind_hole_rests_on_its_bottom(self):
++        plate = self.plate_with_hole(through=False)
++        pin = Part.makeCylinder(2.9, 20, App.Vector(-20, 20, 0))
++        d = self.drag(pin, [plate], (-20, 20, 20))
++        res = d.solve(*ray_to((19, 20.5, 28)), tol=2.0)
++        self.assertAlmostEqual(self.moved(res, (-20, 20, 0))[2], 3.0, places=6)
++
++    def test_bolt_stops_on_its_head(self):
++        plate = self.plate_with_hole()
++        bolt = Part.makeCylinder(2.9, 20, App.Vector(-20, 20, 0)).fuse(Part.makeCylinder(5, 4, App.Vector(-20, 20, 20)))
++        bolt = bolt.removeSplitter()
++        d = self.drag(bolt, [plate], (-20, 20, 24))
++        res = d.solve(*ray_to((19, 20.5, 32)), tol=2.0)
++        self.assertIn("hole", res.kinds())
++        # The head (at 20 above the end) sits on the plate's top (8); the end sticks out below
++        self.assertAlmostEqual(self.moved(res, (-20, 20, 20))[2], 8.0, places=6)
++
++    def test_too_thick_pin_stays_on_top(self):
++        plate = self.plate_with_hole()
++        pin = Part.makeCylinder(4, 20, App.Vector(-20, 20, 0))
++        d = self.drag(pin, [plate], (-20, 20, 20))
++        res = d.solve(*ray_to((19, 20.5, 28)), tol=2.0)
++        self.assertIn("axis", res.kinds())
++        axis = self.moved(res, (-20, 20, 0))
++        self.assertVec(axis, (20, 20, 8))
++
++    # -- corners and lining up ----------------------------------------------------------------
++
++    def test_corner_onto_corner(self):
++        other = box(20, 0, 0)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10), FRONT)
++        # Seen from the front: the moving box's top right corner near the other's bottom left
++        res = d.solve(*ray_to((14.2, 0, -0.4), FRONT), tol=1.0)
++        self.assertIn("corner", res.kinds())
++        self.assertVec(self.moved(res, (10, 0, 10)), (20, 0, 0))
++
++    def test_flush_with_a_guide(self):
++        other = box(20, 0, 0, 10, 10, 10)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        # 5 mm beside it, 0.6 mm off its front: lines up with it
++        res = d.solve(*ray_to((40, 5.6, 10)), tol=1.0)
++        self.assertIn("flush", res.kinds())
++        self.assertAlmostEqual(self.moved(res, (0, 0, 0))[1], 0.0, places=9)
++        self.assertAlmostEqual(self.moved(res, (0, 0, 0))[0], 35.0, places=9)
++        self.assertTrue(res.guides)
++
++    def test_guides_follow_lined_up_edges(self):
++        other = box(15, 0, 0)
++        d = self.drag(box(0, 0, 0), [other], (5, 5, 10))
++        res = d.solve(*ray_to((5, 5.4, 10)), tol=1.0)  # 0.4 mm off: lines up with the other in y
++        self.assertIn("flush", res.kinds())
++        self.assertAlmostEqual(res.t[1], 0.0, places=9)
++        self.assertTrue(res.guides)
++        for a, b in res.guides:
++            self.assertGreater(np.linalg.norm(b - a), 20)  # from one box to the other
++
++    # -- speed --------------------------------------------------------------------------------
++
++    def test_two_hundred_parts_under_16_ms(self):
++        shapes = []
++        for i in range(200):
++            x, y = (i % 20) * 15.0, (i // 20) * 15.0
++            s = box(x, y, 0)
++            if i % 4 == 0:
++                s = s.cut(Part.makeCylinder(2, 12, App.Vector(x + 5, y + 5, -1)))
++            shapes.append(s)
++        t0 = time.perf_counter()
++        targets = M.Targets([(i, M.capture(s)) for i, s in enumerate(shapes)])
++        t_capture = time.perf_counter() - t0
++        d = M.Drag(M.capture(Part.makeCylinder(1.9, 15, App.Vector(-30, -30, 0))), (-30, -30, 15), ISO, targets)
++        times = []
++        for k in range(120):
++            x = -20 + k * 2.5
++            t0 = time.perf_counter()
++            d.solve(*ray_to((x, x * 0.7, 25)), tol=1.0)
++            times.append(time.perf_counter() - t0)
++        times.sort()
++        App.Console.PrintMessage(
++            "MagnetDrag: 200 parts read in {:.0f} ms; a move median {:.2f} ms, worst {:.2f} ms\n".format(
++                t_capture * 1000, times[len(times) // 2] * 1000, times[-1] * 1000
++            )
++        )
++        self.assertLess(times[len(times) // 2], 0.016)
++        self.assertLess(times[int(len(times) * 0.95)], 0.016)
++
++    def test_far_parts_are_not_read(self):
++        near, far = box(20, 0, 0), box(500, 500, 0)
++        lazy = [M.Lazy((s.BoundBox.XMin, s.BoundBox.YMin, s.BoundBox.ZMin), (s.BoundBox.XMax, s.BoundBox.YMax, s.BoundBox.ZMax), lambda s=s: M.capture(s)) for s in (near, far)]
++        d = M.Drag(M.capture(box(0, 0, 0)), (5, 5, 10), ISO, M.Targets(list(enumerate(lazy))))
++        res = d.solve(*ray_to((13.5, 5, 10)), tol=2.0)
++        self.assertIn("contact", res.kinds())
++        self.assertTrue(lazy[0].loaded())
++        self.assertFalse(lazy[1].loaded())
++
++    # -- the placement --------------------------------------------------------------------------
++
++    def test_placement_matches_the_pose(self):
++        R = M.rotation_between((0, 0, 1), (0, 1, 1))
++        res = M.Result(R, np.array((1.0, 2, 3)), np.array((5.0, 5, 5)))
++        p = res.placement
++        for q in ((0, 0, 0), (1, 2, 3), (-4, 7, 1)):
++            v = p.multVec(App.Vector(*q))
++            self.assertVec((v.x, v.y, v.z), self.moved(res, q))
++
++    def test_rotation_between_opposite(self):
++        R = M.rotation_between((0, 0, 1), (0, 0, -1))
++        self.assertVec(R.dot((0, 0, 1)), (0, 0, -1))
++        self.assertAlmostEqual(np.linalg.det(R), 1.0)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

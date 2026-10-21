@@ -1,0 +1,70 @@
+From d57502f3eb60f6de0ca40ffb8730e1c2b7104987 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:20:59 +0900
+Subject: [PATCH 281/281] Bundles: the release checks that the Fasteners
+ workbench is in it and the shelf works
+
+Linux and Windows: before packing, Mod/Fasteners (and its LICENSE) must be there and
+"freecadcmd -t TestPartsShelf" must pass (every kind and size made, holes, the parts list).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   | 15 +++++++++++++++
+ package/bundle/windows/create_bundle.sh | 15 +++++++++++++++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 3aa00a06b..26220ddda 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -152,6 +152,21 @@ if ! "${conda_env}/bin/freecadcmd" --safe-mode --console "import pivy; from pivy
+     exit 1
+ fi
+ 
++# 部品の棚: 同梱した Fasteners ワークベンチ（GPL-2.0-or-later、Mod/Fasteners）が入っていて、
++# ねじ・ナット・座金・フレームが全部の大きさで作れ、穴に合うねじが選べること
++echo "Running the parts shelf test (the bundled Fasteners workbench)..."
++shelf_home=$(mktemp -d)
++if [ ! -f "${conda_env}/Mod/Fasteners/FastenersCmd.py" ] || [ ! -f "${conda_env}/Mod/Fasteners/LICENSE" ] \
++    || ! HOME="${shelf_home}" XDG_CONFIG_HOME="${shelf_home}/config" XDG_DATA_HOME="${shelf_home}/data" \
++         XDG_CACHE_HOME="${shelf_home}/cache" LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 \
++         "${conda_env}/bin/freecadcmd" -t TestPartsShelf > "${shelf_home}/out.txt" 2>&1 \
++    || ! grep -q '^OK' "${shelf_home}/out.txt"; then
++    tail -40 "${shelf_home}/out.txt" || true
++    echo "The parts shelf test failed; the bundled Fasteners workbench is missing or does not work."
++    exit 1
++fi
++tail -3 "${shelf_home}/out.txt"
++
+ curl -LO https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage
+ chmod a+x appimagetool-$(uname -m).AppImage
+ 
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index daa211cb3..a261d1d3c 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -189,6 +189,21 @@ if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode --console "import pivy; from piv
+   exit 1
+ fi
+ 
++# 部品の棚: 同梱した Fasteners ワークベンチ（GPL-2.0-or-later、Mod/Fasteners）が入っていて、
++# ねじ・ナット・座金・フレームが全部の大きさで作れ、穴に合うねじが選べること
++echo "Running the parts shelf test (the bundled Fasteners workbench)..."
++shelf_home=$(mktemp -d)
++if [ ! -f "$SIGN_DIR/Mod/Fasteners/FastenersCmd.py" ] || [ ! -f "$SIGN_DIR/Mod/Fasteners/LICENSE" ] \
++    || ! APPDATA="$(cygpath -w "${shelf_home}/appdata")" LOCALAPPDATA="$(cygpath -w "${shelf_home}/local")" \
++         PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 \
++         "$SIGN_DIR/bin/freecadcmd.exe" -t TestPartsShelf > "${shelf_home}/out.txt" 2>&1 \
++    || ! grep -q '^OK' "${shelf_home}/out.txt"; then
++  tail -40 "${shelf_home}/out.txt" || true
++  echo "The parts shelf test failed; the bundled Fasteners workbench is missing or does not work."
++  exit 1
++fi
++tail -3 "${shelf_home}/out.txt"
++
+ 7z a -t7z -mx9 -mmt=${NUMBER_OF_PROCESSORS} ${version_name}.7z ${version_name} -bb
+ # create hash
+ sha256sum ${version_name}.7z > ${version_name}.7z-SHA256.txt
+-- 
+2.43.0
+

@@ -1,0 +1,2058 @@
+From 1b8aaf86f380028d04972b0dafe435fca2bda8ba Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 21 Oct 2026 10:10:05 +0900
+Subject: [PATCH 277/281] Unified: drag parts in the 3D view with a magnet;
+ line up several parts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Press on a part and drag: it follows the cursor (MagnetDragGui.py), with
+the magnet of MagnetDrag.py. A click without moving still selects; a drag
+on the empty background still selects with a box. The events are taken by
+a callback node in front of the selection, only once the cursor moved
+beyond the drag distance over a part. The part moved is what SnapMath
+would move (a Body, a shape, a link; a selected container as a whole);
+attached parts keep their attachment (the offset changes), parts placed by
+a formula, locked or grounded do not move (a message says why). The faces
+it snaps to are drawn orange, the lines that line up dashed magenta. Alt:
+no magnet; Ctrl: drag a copy (a link for imported shapes, assemblies and
+links; an independent copy for Bodies and parametric shapes); Esc puts it
+back; the release is one step to undo.
+
+Line up (そろえる, Unified_Align, on the bar for two or more whole parts and
+in Ctrl+K): left/center/right, front/back, bottom/top (screen words when
+looking along an axis), equal gaps, a given gap, side by side in pick
+order; to the first picked part or the extent of all. Pointing at a
+button previews, clicking keeps. Arrange.py, tests: TestArrange (11).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Arrange.py                    | 218 ++++++
+ src/Mod/Unified/ArrangeGui.py                 | 375 +++++++++
+ src/Mod/Unified/CMakeLists.txt                |   8 +-
+ src/Mod/Unified/CommandAliases.py             |  10 +
+ src/Mod/Unified/ContextRules.py               |  10 +
+ .../translations/UnifiedWording_ja.ts         | 213 +++++
+ src/Mod/Unified/MagnetDrag.py                 |  68 ++
+ src/Mod/Unified/MagnetDragGui.py              | 736 ++++++++++++++++++
+ src/Mod/Unified/TestArrange.py                | 160 ++++
+ src/Mod/Unified/TestContextRules.py           |   1 +
+ src/Mod/Unified/TestMagnetDrag.py             |  63 ++
+ src/Mod/Unified/UnifiedCommands.py            |   9 +
+ 12 files changed, 1870 insertions(+), 1 deletion(-)
+ create mode 100644 src/Mod/Unified/Arrange.py
+ create mode 100644 src/Mod/Unified/ArrangeGui.py
+ create mode 100644 src/Mod/Unified/MagnetDragGui.py
+ create mode 100644 src/Mod/Unified/TestArrange.py
+
+diff --git a/src/Mod/Unified/Arrange.py b/src/Mod/Unified/Arrange.py
+new file mode 100644
+index 000000000..805497bc4
+--- /dev/null
++++ b/src/Mod/Unified/Arrange.py
+@@ -0,0 +1,218 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Lining up several parts (そろえる), like the alignment of shapes in a slide program:
++# left / center / right (and front / back, bottom / top), spreading them with equal gaps or a
++# given gap, and packing them side by side in the order they were picked.
++#
++# No GUI here (ArrangeGui.py is the menu). Parts are SnapMath Movables (the part as the
++# selection names it: a Body, a shape, a link, an App::Part); their extents are the tight
++# boxes along the global axes (optimalBoundingBox of the shape where it is). A move is a
++# translation along one axis; attached parts move through their offset (SnapMath.apply).
++# Tests: FreeCADCmd -t TestArrange
++
++import math
++
++import FreeCAD as App
++
++import SnapMath as S
++
++AXES = ("x", "y", "z")
++REFERENCE_ALL = "all"
++
++
++class Item:
++    """A part to line up and its extent [lo, hi] on the three axes."""
++
++    def __init__(self, movable, lo, hi):
++        self.movable = movable
++        self.lo = list(lo)
++        self.hi = list(hi)
++
++    def low(self, axis):
++        return self.lo[axis]
++
++    def high(self, axis):
++        return self.hi[axis]
++
++    def center(self, axis):
++        return (self.lo[axis] + self.hi[axis]) / 2
++
++    def size(self, axis):
++        return self.hi[axis] - self.lo[axis]
++
++    def side(self, axis, where):
++        return {"min": self.low, "center": self.center, "max": self.high}[where](axis)
++
++    def __repr__(self):
++        return "Item({}, {}, {})".format(self.movable.obj.Label, self.lo, self.hi)
++
++
++def extent(movable):
++    """(lo, hi) of the part where it is, along the global axes (tight for turned parts)."""
++    import Part
++
++    shape = Part.getShape(movable.obj, "", needSubElement=False, transform=False)
++    if shape is None or shape.isNull():
++        raise S.SnapError("{} has no shape".format(movable.obj.Label))
++    shape = shape.copy()
++    shape.Placement = movable.global_placement().multiply(shape.Placement)
++    try:
++        bb = shape.optimalBoundingBox()
++    except Exception:
++        bb = shape.BoundBox
++    return (bb.XMin, bb.YMin, bb.ZMin), (bb.XMax, bb.YMax, bb.ZMax)
++
++
++def items_of(movables):
++    return [Item(m, *extent(m)) for m in movables]
++
++
++def movables_of_selection(entries):
++    """The parts of a selection of whole objects: entries are (root, path) as the selection
++    gives them ("" for a top-level object, "Part.Body." below a container). The same part
++    picked twice counts once; things that cannot move are left out."""
++    out = []
++    seen = set()
++    for root, sub in entries:
++        if sub and not sub.endswith("."):
++            continue  # a face, an edge: not a whole part
++        try:
++            candidates = S.movable_candidates(S.Pick(root, sub))
++        except Exception:
++            continue
++        if not candidates:
++            continue
++        m = candidates[0]
++        if m.obj in seen:
++            continue
++        seen.add(m.obj)
++        out.append(m)
++    return out
++
++
++def _target(items, axis, where, reference):
++    if reference == REFERENCE_ALL:
++        lo = min(i.low(axis) for i in items)
++        hi = max(i.high(axis) for i in items)
++        return {"min": lo, "center": (lo + hi) / 2, "max": hi}[where]
++    return items[reference].side(axis, where)
++
++
++def _vector(axis, d):
++    v = [0.0, 0.0, 0.0]
++    v[axis] = d
++    return App.Vector(*v)
++
++
++def align(items, axis, where, reference=0):
++    """Moves (App.Vector each) that put the side `where` ("min", "center", "max") of every
++    part on the axis at the reference's (the first part; or REFERENCE_ALL: the extent of all)."""
++    value = _target(items, axis, where, reference)
++    return [_vector(axis, value - i.side(axis, where)) for i in items]
++
++
++def distribute(items, axis, gap=None, reference=0):
++    """Spread the parts along the axis in the order they are along it.
++
++    gap None: the two outermost stay, the ones between get equal gaps (3 parts or more).
++    gap given: that gap between neighbours; the reference part stays (with REFERENCE_ALL
++    the lowest one)."""
++    order = sorted(range(len(items)), key=lambda k: (items[k].center(axis), k))
++    n = len(items)
++    moves = [App.Vector() for _ in items]
++    if n < 2:
++        return moves
++    if gap is None:
++        if n < 3:
++            return moves
++        first, last = items[order[0]], items[order[-1]]
++        span = last.high(axis) - first.low(axis)
++        total = sum(items[k].size(axis) for k in order)
++        gap = (span - total) / (n - 1)
++        fixed = order[0]
++    else:
++        fixed = order[0] if reference == REFERENCE_ALL else reference
++    pos = {}
++    p = 0.0
++    for k in order:
++        pos[k] = p
++        p += items[k].size(axis) + gap
++    shift = items[fixed].low(axis) - pos[fixed]
++    for k in order:
++        moves[k] = _vector(axis, pos[k] + shift - items[k].low(axis))
++    return moves
++
++
++def pack(items, axis, gap=0.0):
++    """Side by side in the order picked: the first stays, each next one starts where the one
++    before ends (plus gap), towards the positive side of the axis."""
++    moves = [App.Vector() for _ in items]
++    if not items:
++        return moves
++    end = items[0].high(axis)
++    for k in range(1, len(items)):
++        it = items[k]
++        moves[k] = _vector(axis, end + gap - it.low(axis))
++        end = end + gap + it.size(axis)
++    return moves
++
++
++def apply(items, moves, attachment="offset"):
++    """Move the parts (from where they are now)."""
++    for it, v in zip(items, moves):
++        if v.Length < 1e-12:
++            continue
++        S.apply(it.movable, App.Placement(v, App.Rotation()), attachment)
++
++
++def restore(items):
++    for it in items:
++        S.restore(it.movable)
++
++
++def problems(items):
++    """[(label, reason)] of the parts that cannot be moved this way."""
++    out = []
++    for it in items:
++        p = S.check_movable(it.movable)
++        if p in ("expression", "readonly"):
++            out.append((it.movable.obj.Label, p))
++    return out
++
++
++# --- the words of the axes as the view shows them --------------------------------------------
++
++# Seen from the front (the usual names): X left/right, Y front/back, Z bottom/top.
++# Each axis: (word of its min side, of its center, of its max side, name of the row, letter)
++WORLD_WORDS = {
++    0: ("Left", "Center", "Right", "Left-right", "X"),
++    1: ("Front", "Center", "Back", "Front-back", "Y"),
++    2: ("Bottom", "Middle", "Top", "Bottom-top", "Z"),
++}
++
++
++def axis_words(view_dir=None, view_up=None, view_right=None, angle=10.0):
++    """The words of each axis (see WORLD_WORDS). Looking straight along an axis (top view,
++    front view, ...) they follow the screen (left/right, bottom/top, near/far); otherwise the
++    usual world names."""
++    words = dict(WORLD_WORDS)
++    if view_dir is None or view_up is None or view_right is None:
++        return words
++    d = App.Vector(view_dir).normalize()
++    axes = [App.Vector(1, 0, 0), App.Vector(0, 1, 0), App.Vector(0, 0, 1)]
++    along = [abs(d.dot(a)) for a in axes]
++    k = max(range(3), key=lambda i: along[i])
++    if along[k] < math.cos(math.radians(angle)):
++        return words
++    up = App.Vector(view_up).normalize()
++    right = App.Vector(view_right).normalize()
++    out = {}
++    for i, a in enumerate(axes):
++        if i == k:
++            # Along the view: its positive side is near (towards the camera) or far
++            out[i] = ("Far", "Center", "Near", "Depth") if d.dot(a) < 0 else ("Near", "Center", "Far", "Depth")
++        elif abs(a.dot(right)) >= abs(a.dot(up)):
++            out[i] = ("Left", "Center", "Right", "Left-right") if a.dot(right) > 0 else ("Right", "Center", "Left", "Left-right")
++        else:
++            out[i] = ("Bottom", "Middle", "Top", "Bottom-top") if a.dot(up) > 0 else ("Top", "Middle", "Bottom", "Bottom-top")
++        out[i] = out[i] + ("XYZ"[i],)
++    return out
+diff --git a/src/Mod/Unified/ArrangeGui.py b/src/Mod/Unified/ArrangeGui.py
+new file mode 100644
+index 000000000..23badb501
+--- /dev/null
++++ b/src/Mod/Unified/ArrangeGui.py
+@@ -0,0 +1,375 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# 「そろえる」: line up the selected parts (Ctrl+click two or more whole parts), like the
++# alignment of shapes in a slide program. A small panel next to the cursor: left / center /
++# right (and front / back, bottom / top), equal gaps, a given gap, side by side. Pointing at a
++# button shows the result in the view; clicking it keeps it (one step to undo); Esc or a
++# click elsewhere puts everything back. The first picked part stays (it is the reference,
++# outlined in the view), or the extent of all of them. The arithmetic is in Arrange.py.
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import Arrange as A
++
++translate = App.Qt.translate
++CTX = "Unified_Arrange"
++PARAMS = "User parameter:BaseApp/Preferences/Mod/Unified/Arrange"
++
++
++def tr(text):
++    return translate(CTX, text)
++
++
++def selection_entries():
++    """(root, path) of the whole objects selected, in the order they were picked."""
++    out = []
++    for sel in Gui.Selection.getSelectionEx("", 0):
++        names = list(sel.SubElementNames) or [""]
++        for name in names:
++            out.append((sel.Object, name))
++    return out
++
++
++def selected_movables():
++    return A.movables_of_selection(selection_entries())
++
++
++def _view_words():
++    gdoc = Gui.ActiveDocument
++    view = gdoc.ActiveView if gdoc else None
++    if view is None or not hasattr(view, "getCameraNode"):
++        return A.axis_words()
++    try:
++        cam = view.getCameraNode()
++        rot = cam.orientation.getValue()
++        d = rot.multVec(__import__("pivy").coin.SbVec3f(0, 0, -1))
++        u = rot.multVec(__import__("pivy").coin.SbVec3f(0, 1, 0))
++        r = rot.multVec(__import__("pivy").coin.SbVec3f(1, 0, 0))
++        vec = lambda v: App.Vector(v[0], v[1], v[2])
++        return A.axis_words(vec(d), vec(u), vec(r))
++    except Exception:
++        return A.axis_words()
++
++
++class _Outline:
++    """The box around the reference part, drawn in the view."""
++
++    def __init__(self):
++        from pivy import coin
++
++        gdoc = Gui.ActiveDocument
++        self.view = gdoc.ActiveView if gdoc else None
++        self.root = coin.SoSeparator()
++        style = coin.SoPickStyle()
++        style.style = coin.SoPickStyle.UNPICKABLE
++        self.root.addChild(style)
++        top = coin.SoAnnotation()
++        color = coin.SoBaseColor()
++        color.rgb = (1.0, 0.5, 0.0)
++        draw = coin.SoDrawStyle()
++        draw.lineWidth = 2
++        draw.linePattern = 0xFF00
++        self.coords = coin.SoCoordinate3()
++        self.lines = coin.SoIndexedLineSet()
++        for n in (color, draw, self.coords, self.lines):
++            top.addChild(n)
++        self.root.addChild(top)
++        if self.view is not None and hasattr(self.view, "getSceneGraph"):
++            self.view.getSceneGraph().addChild(self.root)
++
++    def show(self, lo, hi):
++        if lo is None:
++            self.coords.point.setNum(0)
++            self.lines.coordIndex.setNum(0)
++            return
++        pts = [(x, y, z) for z in (lo[2], hi[2]) for y in (lo[1], hi[1]) for x in (lo[0], hi[0])]
++        idx = [0, 1, 3, 2, 0, -1, 4, 5, 7, 6, 4, -1, 0, 4, -1, 1, 5, -1, 2, 6, -1, 3, 7, -1]
++        self.coords.point.setValues(0, len(pts), pts)
++        self.lines.coordIndex.setValues(0, len(idx), idx)
++
++    def remove(self):
++        try:
++            if self.view is not None:
++                self.view.getSceneGraph().removeChild(self.root)
++        except Exception:
++            pass
++
++
++class ArrangePanel(QtWidgets.QFrame):
++    """The panel of 「そろえる」. Pointing at a button previews, clicking keeps."""
++
++    def __init__(self, movables, parent=None):
++        super().__init__(parent, QtCore.Qt.Popup)
++        self.setFrameShape(QtWidgets.QFrame.StyledPanel)
++        self.setObjectName("UnifiedArrangePanel")
++        self.items = A.items_of(movables)
++        self.doc = movables[0].obj.Document
++        self.preview_open = False
++        self.done = False
++        self.last_action = None
++        self.outline = _Outline()
++        words = _view_words()
++
++        layout = QtWidgets.QVBoxLayout(self)
++        layout.setContentsMargins(8, 8, 8, 8)
++        layout.setSpacing(4)
++        title = QtWidgets.QLabel(tr("Line up {} parts").format(len(self.items)))
++        font = title.font()
++        font.setBold(True)
++        title.setFont(font)
++        layout.addWidget(title)
++
++        ref_row = QtWidgets.QHBoxLayout()
++        ref_row.addWidget(QtWidgets.QLabel(tr("Reference:")))
++        self.reference = QtWidgets.QComboBox()
++        self.reference.addItem(tr("{} (picked first, stays)").format(self.items[0].movable.obj.Label), 0)
++        self.reference.addItem(tr("The extent of all picked"), A.REFERENCE_ALL)
++        saved = App.ParamGet(PARAMS).GetString("Reference", "first")
++        self.reference.setCurrentIndex(1 if saved == "all" else 0)
++        self.reference.currentIndexChanged.connect(self._reference_changed)
++        ref_row.addWidget(self.reference, 1)
++        layout.addLayout(ref_row)
++
++        grid = QtWidgets.QGridLayout()
++        grid.setHorizontalSpacing(4)
++        grid.setVerticalSpacing(4)
++        self.buttons = []
++        row = 0
++        for axis in range(3):
++            w = words[axis]
++            grid.addWidget(QtWidgets.QLabel("{} ({})".format(tr(w[3]), w[4])), row, 0)
++            for col, where in enumerate(("min", "center", "max")):
++                b = self._button(tr(w[col]), ("align", axis, where))
++                b.setToolTip(tr("Put the {} of every part where the reference's is").format(tr(w[col])))
++                grid.addWidget(b, row, col + 1)
++            row += 1
++        line = QtWidgets.QFrame()
++        line.setFrameShape(QtWidgets.QFrame.HLine)
++        grid.addWidget(line, row, 0, 1, 4)
++        row += 1
++        axis_names = ["{} ({})".format(tr(words[a][3]), words[a][4]) for a in range(3)]
++        short = [tr("X"), tr("Y"), tr("Z")]
++
++        grid.addWidget(QtWidgets.QLabel(tr("Equal gaps")), row, 0)
++        for a in range(3):
++            b = self._button(short[a], ("spread", a, None))
++            b.setToolTip(tr("The two outermost stay, the ones between get equal gaps (3 parts or more): {}").format(axis_names[a]))
++            b.setEnabled(len(self.items) >= 3)
++            grid.addWidget(b, row, a + 1)
++        row += 1
++
++        gap_row = QtWidgets.QHBoxLayout()
++        gap_row.setContentsMargins(0, 0, 0, 0)
++        gap_label = QtWidgets.QLabel(tr("Gap"))
++        self.gap = QtWidgets.QDoubleSpinBox()
++        self.gap.setDecimals(2)
++        self.gap.setRange(-10000, 10000)
++        self.gap.setSuffix(" mm")
++        self.gap.setValue(App.ParamGet(PARAMS).GetFloat("Gap", 10.0))
++        self.gap.valueChanged.connect(self._gap_changed)
++        gap_row.addWidget(gap_label)
++        gap_row.addWidget(self.gap, 1)
++        gap_box = QtWidgets.QWidget()
++        gap_box.setLayout(gap_row)
++        grid.addWidget(gap_box, row, 0)
++        for a in range(3):
++            b = self._button(short[a], ("gap", a, None))
++            b.setToolTip(tr("This gap between neighbours, the reference stays: {}").format(axis_names[a]))
++            grid.addWidget(b, row, a + 1)
++        row += 1
++
++        grid.addWidget(QtWidgets.QLabel(tr("Side by side")), row, 0)
++        for a in range(3):
++            b = self._button(short[a], ("pack", a, None))
++            b.setToolTip(tr("Touching, in the order they were picked, the first stays: {}").format(axis_names[a]))
++            grid.addWidget(b, row, a + 1)
++        layout.addLayout(grid)
++
++        self.message = QtWidgets.QLabel("")
++        self.message.setWordWrap(True)
++        self.message.setStyleSheet("color: #a33;")
++        layout.addWidget(self.message)
++        hint = QtWidgets.QLabel(tr("Point at a button to see it, click to keep, Esc to close"))
++        hint.setStyleSheet("color: gray;")
++        layout.addWidget(hint)
++        bad = A.problems(self.items)
++        if bad:
++            self.message.setText(
++                tr("Not moved (place set by a formula or locked): {}").format(", ".join(l for l, _ in bad))
++            )
++            self.items = [i for i in self.items if i.movable.obj.Label not in {l for l, _ in bad}] or self.items[:1]
++        self._reference_changed()
++
++    # ---------------------------------------------------------------- buttons and preview
++
++    def _button(self, text, action):
++        b = QtWidgets.QToolButton()
++        b.setText(text)
++        b.setAutoRaise(False)
++        b.setMinimumWidth(56)
++        b.setProperty("arrangeAction", action)
++        b.installEventFilter(self)
++        b.clicked.connect(lambda checked=False, a=action: self.commit(a))
++        self.buttons.append(b)
++        return b
++
++    def eventFilter(self, obj, event):
++        action = obj.property("arrangeAction") if isinstance(obj, QtWidgets.QToolButton) else None
++        if action is not None:
++            if event.type() == QtCore.QEvent.Enter:
++                self.preview(tuple(action))
++            elif event.type() == QtCore.QEvent.Leave:
++                self.unpreview()
++        return False
++
++    def _ref(self):
++        return self.reference.currentData()
++
++    def _reference_changed(self, *_):
++        ref = self._ref()
++        App.ParamGet(PARAMS).SetString("Reference", "all" if ref == A.REFERENCE_ALL else "first")
++        if ref == A.REFERENCE_ALL:
++            lo = [min(i.lo[k] for i in self.items) for k in range(3)]
++            hi = [max(i.hi[k] for i in self.items) for k in range(3)]
++            self.outline.show(lo, hi)
++        else:
++            self.outline.show(self.items[0].lo, self.items[0].hi)
++        if self.last_action is not None and self.preview_open:
++            self.preview(self.last_action)
++        Gui.updateGui()
++
++    def _gap_changed(self, value):
++        App.ParamGet(PARAMS).SetFloat("Gap", value)
++        if self.preview_open and self.last_action and self.last_action[0] == "gap":
++            self.preview(self.last_action)
++
++    def moves(self, action):
++        kind, axis, where = action
++        ref = self._ref()
++        if kind == "align":
++            return A.align(self.items, axis, where, ref)
++        if kind == "spread":
++            return A.distribute(self.items, axis, None, ref)
++        if kind == "gap":
++            return A.distribute(self.items, axis, self.gap.value(), ref)
++        if kind == "pack":
++            return A.pack(self.items, axis, 0.0)
++        return []
++
++    def _name(self, action):
++        return {
++            "align": tr("Line up"),
++            "spread": tr("Equal gaps"),
++            "gap": tr("Gap"),
++            "pack": tr("Side by side"),
++        }[action[0]]
++
++    def preview(self, action):
++        self.unpreview()
++        if action[0] == "spread" and len(self.items) < 3:
++            return
++        self.last_action = action
++        self.doc.openTransaction(self._name(action))
++        self.preview_open = True
++        try:
++            A.apply(self.items, self.moves(action))
++        except Exception as err:
++            self.message.setText(str(err))
++        Gui.updateGui()
++
++    def unpreview(self):
++        if self.preview_open:
++            self.preview_open = False
++            self.doc.abortTransaction()
++            Gui.updateGui()
++
++    def commit(self, action):
++        if self.done:
++            return
++        self.preview(action)
++        if not self.preview_open:
++            return
++        self.preview_open = False
++        try:
++            self.doc.recompute()
++        except Exception:
++            pass
++        self.doc.commitTransaction()
++        self.done = True
++        self.close()
++
++    def keyPressEvent(self, event):
++        if event.key() == QtCore.Qt.Key_Escape:
++            self.close()
++            return
++        super().keyPressEvent(event)
++
++    def closeEvent(self, event):
++        self.unpreview()
++        self.outline.remove()
++        global _panel
++        _panel = None
++        super().closeEvent(event)
++
++
++_panel = None
++
++
++def open_panel(pos=None):
++    global _panel
++    movables = selected_movables()
++    if len(movables) < 2:
++        Gui.getMainWindow().statusBar().showMessage(tr("Pick two or more whole parts (Ctrl+click) to line them up"), 6000)
++        return None
++    if len({m.obj.Document for m in movables}) > 1:
++        Gui.getMainWindow().statusBar().showMessage(tr("The parts are in different files"), 6000)
++        return None
++    if _panel is not None:
++        _panel.close()
++    _panel = ArrangePanel(movables, Gui.getMainWindow())
++    _panel.adjustSize()
++    if pos is None:
++        pos = QtGui.QCursor.pos() + QtCore.QPoint(12, 12)
++    screen = QtGui.QGuiApplication.screenAt(pos) or QtGui.QGuiApplication.primaryScreen()
++    area = screen.availableGeometry()
++    size = _panel.sizeHint()
++    x = min(pos.x(), area.right() - size.width())
++    y = min(pos.y(), area.bottom() - size.height())
++    _panel.move(max(area.left(), x), max(area.top(), y))
++    _panel.show()
++    return _panel
++
++
++class ArrangeCommand:
++    def GetResources(self):
++        return {
++            "MenuText": QT_TRANSLATE_NOOP("Unified_Align", "Line up"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_Align",
++                "Line up the picked parts: left, center, right (front, back, bottom, top), equal gaps, side by side",
++            ),
++            "Pixmap": "Std_Placement",
++        }
++
++    def IsActive(self):
++        if Gui.ActiveDocument is None:
++            return False
++        sel = Gui.Selection.getSelectionEx("", 0)
++        whole = 0
++        for s in sel:
++            names = list(s.SubElementNames) or [""]
++            if any(n and not n.endswith(".") for n in names):
++                return False
++            whole += len(names)
++        return whole >= 2
++
++    def Activated(self):
++        open_panel()
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++Gui.addCommand("Unified_Align", ArrangeCommand())
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 68be9cbf4..c35094ef7 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -35,7 +35,10 @@ list(APPEND Unified_Scripts SnapMath.py TestSnapMath.py)
+ 
+ # Dragging a part in the 3D view, the magnet and lining parts up: the geometry, tested headless
+ # ("FreeCADCmd -t TestMagnetDrag", "FreeCADCmd -t TestArrange")
+-list(APPEND Unified_Scripts MagnetDrag.py TestMagnetDrag.py)
++list(APPEND Unified_Scripts MagnetDrag.py TestMagnetDrag.py Arrange.py TestArrange.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts MagnetDragGui.py ArrangeGui.py)
++endif(BUILD_GUI)
+ 
+ # What two picks measure right away, and the preview of a tool on hover: the computations
+ # without the GUI ("FreeCADCmd -t TestMeasureMath", "FreeCADCmd -t TestToolPreview")
+@@ -50,6 +53,9 @@ list(APPEND Unified_Scripts TestNetworkSettings.py)
+ # The parts shelf: screws, nuts, washers (made with the bundled Fasteners workbench), aluminium
+ # profiles and the company's own parts ("FreeCADCmd -t TestPartsShelf")
+ list(APPEND Unified_Scripts PartsShelf.py TestPartsShelf.py)
++if(BUILD_GUI)
++    list(APPEND Unified_Scripts PartsShelfGui.py PartsShelf.svg Profile.svg)
++endif(BUILD_GUI)
+ 
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts SnapToolsGui.py SnapFaces.svg SnapAxes.svg PointToFace.svg MovePointToPoint.svg)
+diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
+index 2bac91cc5..97c00f4db 100644
+--- a/src/Mod/Unified/CommandAliases.py
++++ b/src/Mod/Unified/CommandAliases.py
+@@ -84,6 +84,16 @@ ALIASES = {
+     "Assembly_CreateSimulation": ["動かして試す", "シミュレーション", "アニメーション", "Simulation", "Motion"],
+     "Unified_SnapFaces": ["くっつける", "面を合わせる", "合わせる", "Mate", "Snap"],
+     "Unified_MovePointToPoint": ["点から点へ", "点を合わせる", "Move point to point"],
++    # The parts shelf (部品の棚)
++    "Unified_PartsShelf": ["部品の棚", "棚", "ねじ", "ネジ", "ボルト", "ナット", "座金", "ワッシャ", "ワッシャー", "六角穴付き",
++                           "六角穴付きボルト", "キャップボルト", "六角ボルト", "皿ボルト", "皿ねじ", "止めねじ", "イモネジ",
++                           "ばね座金", "スプリングワッシャ", "締結部品", "標準部品", "購入品", "M3", "M4", "M5", "M6", "M8",
++                           "M10", "M12", "JIS", "会社の部品", "部品ライブラリ", "Fastener", "Screw", "Bolt", "Nut", "Washer",
++                           "Parts library", "Toolbox"],
++    "Unified_InsertScrew": ["ねじを入れる", "ボルトを入れる", "穴にねじ", "ねじ", "ボルト", "Insert screw", "Fastener"],
++    "Unified_PlaceProfile": ["アルミフレーム", "フレーム", "アルミ押出材", "押出材", "押し出し材", "Tスロット", "T溝",
++                             "20角", "30角", "40角", "Aluminium profile", "Aluminum extrusion", "Extrusion", "T-slot"],
++    "Unified_Align": ["そろえる", "揃える", "揃え", "整列", "等間隔", "並べる", "ぴったり並べる", "左揃え", "中央揃え", "Align", "Distribute", "Arrange"],
+     # Drawings
+     "TechDraw_PageDefault": ["図面", "新しい図面", "ページ", "Drawing", "Page", "Sheet"],
+     "TechDraw_ProjectionGroup": ["三面図", "投影", "投影グループ", "投影図群", "第三角法", "Projection group", "Standard views", "Three views"],
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 59581a63b..55bcd4f13 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -51,6 +51,7 @@ RULES = {
+         A("Unified_SnapFaces", T("Snap")),
+     ],
+     "round face": [
++        A("Unified_InsertScrew", T("Insert screw")),
+         A("Std_Measure", T("Measure")),
+         A("Unified_SnapAxes", T("Line up axes")),
+         A("PartDesign_Fillet", T("Fillet"), RADIUS),
+@@ -67,6 +68,7 @@ RULES = {
+     ],
+     "circle edge": [
+         A("PartDesign_Fillet", T("Fillet"), RADIUS),
++        A("Unified_InsertScrew", T("Insert screw")),
+         A("PartDesign_Chamfer", T("Chamfer"), SIZE),
+         A("Unified_SelectSameCircles", T("Same circles")),
+         A("Unified_MovePointToPoint", T("Point to point")),
+@@ -106,11 +108,17 @@ RULES = {
+         A("Std_Measure", T("Distance")),
+     ],
+     "two parts": [
++        A("Unified_Align", T("Line up")),
+         A("Part_Fuse", T("Join")),
+         A("Part_Cut", T("Subtract")),
+         A("Part_Common", T("Overlap")),
+         A("Std_Measure", T("Distance")),
+     ],
++    # Three or more whole parts
++    "parts": [
++        A("Unified_Align", T("Line up")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
+     "mesh": [
+         A("Mesh_Evaluation", T("Check and fix")),
+         A("Part_ShapeFromMesh", T("Make solid")),
+@@ -277,6 +285,8 @@ def classify(picks):
+         return "two picks"
+     if all(not s for s in subs) and len(picks) == 2:
+         return "two parts"
++    if all(not s for s in subs) and len(picks) >= 3:
++        return "parts"
+     if all(s and all(x.startswith("Edge") for x in s) for s in subs):
+         return "edges"
+     return "other"
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index dbffbfc68..1441110c8 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -11119,4 +11119,217 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>選んだ部品の、鏡に映した写しを作ります。</translation>
+     </message>
+ </context>
++<!-- magnet drag and line up (0.6.5) -->
++<context>
++    <name>Unified_Magnet</name>
++    <message>
++        <source>On the face</source>
++        <translation>面に載せる</translation>
++    </message>
++    <message>
++        <source>Faces together</source>
++        <translation>面をくっつける</translation>
++    </message>
++    <message>
++        <source>On one axis</source>
++        <translation>軸をそろえる</translation>
++    </message>
++    <message>
++        <source>Into the hole</source>
++        <translation>穴に差し込む</translation>
++    </message>
++    <message>
++        <source>Corner on corner</source>
++        <translation>角を合わせる</translation>
++    </message>
++    <message>
++        <source>Lined up</source>
++        <translation>面がそろう</translation>
++    </message>
++    <message>
++        <source>No magnet (Alt)</source>
++        <translation>磁石なし（Alt）</translation>
++    </message>
++    <message>
++        <source>Drag: Alt without magnet, Esc puts it back</source>
++        <translation>ドラッグ中: Alt で磁石なし、Esc で元に戻す</translation>
++    </message>
++    <message>
++        <source>Drag a copy</source>
++        <translation>コピーをドラッグで置く</translation>
++    </message>
++    <message>
++        <source>Drag</source>
++        <translation>ドラッグで動かす</translation>
++    </message>
++    <message>
++        <source>Placed a link to {} (same shape, changes with it)</source>
++        <translation>{} のリンクを置きました（形を共有し、元を直すと一緒に変わります）</translation>
++    </message>
++    <message>
++        <source>Placed a copy of {}</source>
++        <translation>{} のコピーを置きました（別々に直せます）</translation>
++    </message>
++    <message>
++        <source>Moved {}</source>
++        <translation>{} を動かしました</translation>
++    </message>
++    <message>
++        <source> (still attached: its offset changed)</source>
++        <translation>（取り付けはそのまま、ずらしの量を変えました）</translation>
++    </message>
++    <message>
++        <source>Put back</source>
++        <translation>元に戻しました</translation>
++    </message>
++    <message>
++        <source>{} does not move by dragging: its place is set by a formula or locked</source>
++        <translation>{} はドラッグでは動きません（位置が式で決まっているか、固定されています）</translation>
++    </message>
++    <message>
++        <source>{} is fixed in its assembly (grounded): it does not move by dragging</source>
++        <translation>{} は組立で固定されているので、ドラッグでは動きません</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Arrange</name>
++    <message>
++        <source>Line up {} parts</source>
++        <translation>{} 個をそろえる</translation>
++    </message>
++    <message>
++        <source>Reference:</source>
++        <translation>基準:</translation>
++    </message>
++    <message>
++        <source>{} (picked first, stays)</source>
++        <translation>{}（最初に選んだ物・動かない）</translation>
++    </message>
++    <message>
++        <source>The extent of all picked</source>
++        <translation>選んだ物全体の範囲</translation>
++    </message>
++    <message>
++        <source>Left-right</source>
++        <translation>左右</translation>
++    </message>
++    <message>
++        <source>Front-back</source>
++        <translation>前後</translation>
++    </message>
++    <message>
++        <source>Bottom-top</source>
++        <translation>上下</translation>
++    </message>
++    <message>
++        <source>Depth</source>
++        <translation>奥行き</translation>
++    </message>
++    <message>
++        <source>Left</source>
++        <translation>左</translation>
++    </message>
++    <message>
++        <source>Center</source>
++        <translation>中央</translation>
++    </message>
++    <message>
++        <source>Right</source>
++        <translation>右</translation>
++    </message>
++    <message>
++        <source>Front</source>
++        <translation>手前</translation>
++    </message>
++    <message>
++        <source>Back</source>
++        <translation>奥</translation>
++    </message>
++    <message>
++        <source>Bottom</source>
++        <translation>下</translation>
++    </message>
++    <message>
++        <source>Middle</source>
++        <translation>中央</translation>
++    </message>
++    <message>
++        <source>Top</source>
++        <translation>上</translation>
++    </message>
++    <message>
++        <source>Near</source>
++        <translation>手前</translation>
++    </message>
++    <message>
++        <source>Far</source>
++        <translation>奥</translation>
++    </message>
++    <message>
++        <source>Put the {} of every part where the reference's is</source>
++        <translation>どの部品も「{}」を基準にそろえる</translation>
++    </message>
++    <message>
++        <source>Equal gaps</source>
++        <translation>等間隔に並べる</translation>
++    </message>
++    <message>
++        <source>The two outermost stay, the ones between get equal gaps (3 parts or more): {}</source>
++        <translation>両端の 2 つは動かさず、間を等しい間隔にする（3 個以上）: {}</translation>
++    </message>
++    <message>
++        <source>Gap</source>
++        <translation>間隔を指定</translation>
++    </message>
++    <message>
++        <source>This gap between neighbours, the reference stays: {}</source>
++        <translation>となりとの間隔をこの値にする（基準は動かない）: {}</translation>
++    </message>
++    <message>
++        <source>Side by side</source>
++        <translation>ぴったり並べる</translation>
++    </message>
++    <message>
++        <source>Touching, in the order they were picked, the first stays: {}</source>
++        <translation>選んだ順にすき間なく並べる（最初の物は動かない）: {}</translation>
++    </message>
++    <message>
++        <source>Point at a button to see it, click to keep, Esc to close</source>
++        <translation>ボタンに重ねると結果が見え、クリックで決定、Esc でやめる</translation>
++    </message>
++    <message>
++        <source>Not moved (place set by a formula or locked): {}</source>
++        <translation>動かせない物（位置が式で決まっているか固定）: {}</translation>
++    </message>
++    <message>
++        <source>Line up</source>
++        <translation>そろえる</translation>
++    </message>
++    <message>
++        <source>Pick two or more whole parts (Ctrl+click) to line them up</source>
++        <translation>そろえる部品を 2 つ以上選んでください（Ctrl を押しながらクリック）</translation>
++    </message>
++    <message>
++        <source>The parts are in different files</source>
++        <translation>部品が別々のファイルにあります</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Align</name>
++    <message>
++        <source>Line up</source>
++        <translation>そろえる</translation>
++    </message>
++    <message>
++        <source>Line up the picked parts: left, center, right (front, back, bottom, top), equal gaps, side by side</source>
++        <translation>選んだ部品をそろえる: 左・中央・右（手前・奥・下・上）、等間隔、ぴったり並べる</translation>
++    </message>
++</context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Line up</source>
++        <translation>そろえる</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/MagnetDrag.py b/src/Mod/Unified/MagnetDrag.py
+index c38e54bb1..c923a1437 100644
+--- a/src/Mod/Unified/MagnetDrag.py
++++ b/src/Mod/Unified/MagnetDrag.py
+@@ -925,3 +925,71 @@ def _overlap(alo, ahi, blo, bhi, n):
+     return all(s > 1e-6 for s in sides)
+ 
+ 
++
++
++# --- the part that moves -------------------------------------------------------------------
++
++
++def choose_movable(candidates, selected=()):
++    """What a drag moves: the part the pressed face belongs to (as SnapMath reads it: a Body,
++    a shape, a link, not a step inside a body or a link); or, when a container around it is
++    selected as a whole (an App::Part, an imported assembly), that container."""
++    if not candidates:
++        return None
++    chosen = candidates[0]
++    for m in candidates:
++        if m.obj in selected:
++            chosen = m
++    return chosen
++
++
++def copy_kind(obj):
++    """How a drag with Ctrl copies: "link" for what is used as it is (imported shapes without
++    a history, App::Part assemblies, links), "copy" for what is edited here (a Body, a
++    parametric shape): a copy that can be changed on its own."""
++    if obj.isDerivedFrom("App::Link") or obj.isDerivedFrom("App::Part"):
++        return "link"
++    if obj.isDerivedFrom("PartDesign::Body"):
++        return "copy"
++    if obj.TypeId == "Part::Feature":
++        return "link"
++    return "copy"
++
++
++def _container(movable, pick):
++    obj = movable.obj
++    if pick is not None and movable.depth >= 1:
++        objs = pick.objects()
++        if movable.depth - 1 < len(objs):
++            return objs[movable.depth - 1]
++    if hasattr(obj, "getParentGeoFeatureGroup"):
++        parent = obj.getParentGeoFeatureGroup()
++        if parent is not None:
++            return parent
++    for parent in obj.InList:
++        if parent.isDerivedFrom("App::DocumentObjectGroup") and obj in parent.Group:
++            return parent
++    return None
++
++
++def duplicate(movable, pick=None):
++    """A copy of the part at the same place, in the same container; (Movable, kind)."""
++    import SnapMath as S
++
++    obj = movable.obj
++    kind = copy_kind(obj)
++    if kind == "copy":
++        return S.copy_of(movable, pick), kind
++    doc = obj.Document
++    link = doc.addObject("App::Link", obj.Name + "_Link")
++    source = obj.LinkedObject if obj.isDerivedFrom("App::Link") and obj.LinkedObject is not None else obj
++    link.LinkedObject = source
++    link.Label = obj.Label
++    link.Placement = obj.Placement
++    container = _container(movable, pick)
++    if container is not None and container.Document == doc and hasattr(container, "addObject"):
++        container.addObject(link)
++    copy = S.Movable(link, movable.parent, movable.depth)
++    copy.placement = App.Placement(movable.placement)
++    copy.offset = None
++    return copy, kind
+diff --git a/src/Mod/Unified/MagnetDragGui.py b/src/Mod/Unified/MagnetDragGui.py
+new file mode 100644
+index 000000000..871d7dd08
+--- /dev/null
++++ b/src/Mod/Unified/MagnetDragGui.py
+@@ -0,0 +1,736 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Dragging a part in the 3D view (ドラッグで動かす) and the magnet (磁石).
++#
++# Press the left button on a part and drag: the part follows the cursor, no tool to start,
++# no handles. A click without moving still only selects. Faces that come near facing faces
++# of other parts snap flush, pins drop into holes, corners meet corners, and guide lines show
++# what lines up (MagnetDrag.py does the geometry). Alt: no magnet. Ctrl: drag a copy.
++# Esc: back to where it was. Releasing the button keeps it (one step to undo).
++#
++# The events are taken before the selection and the box selection see them: a callback node
++# in front of everything in the view's scene. While it does not take an event, the view
++# behaves as before (a drag on the empty background still selects with a box).
++
++import time
++
++import numpy as np
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtGui, QtWidgets
++
++import MagnetDrag as M
++import SnapMath as S
++
++translate = App.Qt.translate
++CTX = "Unified_Magnet"
++PARAMS = "User parameter:BaseApp/Preferences/Mod/Unified"
++NODE_NAME = "UnifiedMagnetDrag"
++
++
++def tr(text):
++    return translate(CTX, text)
++
++
++def _coin():
++    from pivy import coin
++
++    return coin
++
++
++def params():
++    return App.ParamGet(PARAMS)
++
++
++def enabled():
++    return params().GetBool("DragParts", True)
++
++
++def magnet_pixels():
++    return max(2, params().GetInt("MagnetPixels", 12))
++
++
++def status(text, ms=6000):
++    mw = Gui.getMainWindow()
++    if mw is not None:
++        if text:
++            mw.statusBar().showMessage(text, ms)
++        else:
++            mw.statusBar().clearMessage()
++
++
++# --- the other parts: what the moving part can snap to -------------------------------------
++
++_cache = {}  # (document, root, path) -> (signature, Lazy)
++
++
++def _is_container(obj):
++    linked = obj.getLinkedObject(True)
++    if getattr(obj, "ElementCount", 0):
++        return True
++    if linked.isDerivedFrom("PartDesign::Body"):
++        return False
++    if linked.isDerivedFrom("App::DocumentObjectGroup"):
++        return True
++    return linked.hasExtension("App::GeoFeatureGroupExtension") or linked.hasExtension("App::GroupExtension")
++
++
++def _visible(obj):
++    vo = getattr(obj, "ViewObject", None)
++    if vo is not None:
++        try:
++            return bool(vo.Visibility)
++        except Exception:
++            pass
++    return bool(getattr(obj, "Visibility", True))
++
++
++def _leaves(doc):
++    """(root, path) of every visible part of the document (Bodies, shapes, links to them),
++    through containers and links."""
++    out = []
++
++    def walk(root, obj, sub, depth):
++        if depth > 12:
++            return
++        if _is_container(obj):
++            try:
++                names = obj.getSubObjects()
++            except Exception:
++                names = ()
++            for name in names:
++                child = obj.getSubObject(name, retType=1)
++                if child is None:
++                    continue
++                vis = obj.isElementVisible(name.rstrip("."))
++                if vis == 0 or (vis < 0 and not child.Visibility):
++                    continue
++                walk(root, child, sub + name, depth + 1)
++            return
++        linked = obj.getLinkedObject(True)
++        if linked.isDerivedFrom("App::Origin") or linked.isDerivedFrom("App::DatumElement"):
++            return
++        if not hasattr(linked, "Shape") or linked.isDerivedFrom("Part::Part2DObject"):
++            return
++        out.append((root, sub))
++
++    for root in doc.RootObjects:
++        if not _visible(root):
++            continue
++        walk(root, root, "", 0)
++    return out
++
++
++def _signature(root, sub):
++    try:
++        place = root.getSubObject(sub, retType=3) if sub else root.getSubObject("", retType=3)
++        obj = root.getSubObject(sub, retType=1) if sub else root
++        linked = obj.getLinkedObject(True)
++        shape = getattr(linked, "Shape", None)
++        return (tuple(round(x, 9) for x in place.toMatrix().A), shape.hashCode() if shape is not None else 0)
++    except Exception:
++        return None
++
++
++def _global_shape(root, sub):
++    import Part
++
++    try:
++        shape = Part.getShape(root, sub, needSubElement=False, transform=True)
++    except Exception:
++        return None
++    if shape is None or shape.isNull():
++        return None
++    return shape
++
++
++def targets_for(doc, excluded):
++    """Targets of all visible parts except those that contain or are inside the excluded
++    objects (what moves)."""
++    items = []
++    seen = set()
++    for root, sub in _leaves(doc):
++        try:
++            objs = root.getSubObjectList(sub) if sub else [root]
++        except Exception:
++            objs = [root]
++        if any(o in excluded for o in objs):
++            continue
++        key = (doc.Name, root.Name, sub)
++        if key in seen:
++            continue
++        seen.add(key)
++        sig = _signature(root, sub)
++        cached = _cache.get(key)
++        if cached is not None and cached[0] == sig and sig is not None:
++            items.append((key, cached[1]))
++            continue
++        shape = _global_shape(root, sub)
++        if shape is None or not shape.Faces:
++            continue
++        bb = shape.BoundBox
++        lazy = M.Lazy((bb.XMin, bb.YMin, bb.ZMin), (bb.XMax, bb.YMax, bb.ZMax), lambda s=shape: M.capture(s))
++        _cache[key] = (sig, lazy)
++        items.append((key, lazy))
++    return M.Targets(items)
++
++
++def moving_geometry(movable):
++    import Part
++
++    try:
++        shape = Part.getShape(movable.obj, "", needSubElement=False, transform=False)
++    except Exception:
++        shape = None
++    if shape is None or shape.isNull():
++        return M.Geometry()
++    shape = shape.copy()
++    shape.Placement = movable.global_placement().multiply(shape.Placement)
++    return M.capture(shape)
++
++
++# --- what is drawn while dragging -----------------------------------------------------------
++
++
++class Overlay:
++    """The faces the part snaps to (orange), the guide lines (magenta, dashed) and the corners
++    that meet (markers)."""
++
++    FACE = (1.0, 0.5, 0.0)
++    GUIDE = (0.85, 0.0, 0.75)
++
++    def __init__(self, view):
++        coin = _coin()
++        self.view = view
++        self.root = coin.SoSeparator()
++        self.root.setName("UnifiedMagnetOverlay")
++        style = coin.SoPickStyle()
++        style.style = coin.SoPickStyle.UNPICKABLE
++        self.root.addChild(style)
++        # Faces: drawn over the model, see-through
++        faces = coin.SoSeparator()
++        mat = coin.SoMaterial()
++        mat.diffuseColor = self.FACE
++        mat.emissiveColor = (0.6, 0.25, 0.0)
++        mat.transparency = 0.45
++        faces.addChild(mat)
++        offset = coin.SoPolygonOffset()
++        offset.factor = -2.0
++        offset.units = -2.0
++        faces.addChild(offset)
++        self.face_coords = coin.SoCoordinate3()
++        self.face_set = coin.SoIndexedFaceSet()
++        faces.addChild(self.face_coords)
++        faces.addChild(self.face_set)
++        self.root.addChild(faces)
++        top = coin.SoAnnotation()
++        guides = coin.SoSeparator()
++        color = coin.SoBaseColor()
++        color.rgb = self.GUIDE
++        draw = coin.SoDrawStyle()
++        draw.lineWidth = 2
++        draw.linePattern = 0xF0F0
++        self.guide_coords = coin.SoCoordinate3()
++        self.guide_lines = coin.SoLineSet()
++        guides.addChild(color)
++        guides.addChild(draw)
++        guides.addChild(self.guide_coords)
++        guides.addChild(self.guide_lines)
++        top.addChild(guides)
++        markers = coin.SoSeparator()
++        mcolor = coin.SoBaseColor()
++        mcolor.rgb = self.FACE
++        self.marker_coords = coin.SoCoordinate3()
++        self.marker_set = coin.SoMarkerSet()
++        self.marker_set.markerIndex = Gui.getMarkerIndex("CIRCLE_FILLED", 9)
++        markers.addChild(mcolor)
++        markers.addChild(self.marker_coords)
++        markers.addChild(self.marker_set)
++        top.addChild(markers)
++        self.root.addChild(top)
++        self._tess = {}
++        self.clear()
++        view.getSceneGraph().addChild(self.root)
++
++    def clear(self):
++        self.face_coords.point.setNum(0)
++        self.face_set.coordIndex.setNum(0)
++        self.guide_coords.point.setNum(0)
++        self.guide_lines.numVertices.setNum(0)
++        self.marker_coords.point.setNum(0)
++        self.marker_set.numPoints = 0
++
++    def _triangles(self, key, face):
++        if key not in self._tess:
++            try:
++                pts, tris = face.tessellate(max(face.BoundBox.DiagonalLength / 200.0, 0.01))
++            except Exception:
++                pts, tris = [], []
++            self._tess[key] = ([(p.x, p.y, p.z) for p in pts], tris)
++        return self._tess[key]
++
++    def show(self, targets, result):
++        self.clear()
++        if result is None:
++            return
++        points, index = [], []
++        corners = []
++        for s in result.snaps:
++            if s.kind == "corner":
++                corners.append(tuple(s.point))
++                continue
++            if s.kind == "flush":
++                continue
++            key, geom = targets.items[s.part]
++            pts, tris = self._triangles((key, s.elem), geom.faces[s.elem])
++            base = len(points)
++            points.extend(pts)
++            for a, b, c in tris:
++                index.extend((base + a, base + b, base + c, -1))
++        if points:
++            self.face_coords.point.setValues(0, len(points), points)
++            self.face_set.coordIndex.setValues(0, len(index), index)
++        if result.guides:
++            line_points = []
++            for a, b in result.guides:
++                line_points.extend((tuple(a), tuple(b)))
++            self.guide_coords.point.setValues(0, len(line_points), line_points)
++            self.guide_lines.numVertices.setValues(0, len(result.guides), [2] * len(result.guides))
++        if corners:
++            self.marker_coords.point.setValues(0, len(corners), corners)
++            self.marker_set.numPoints = len(corners)
++
++    def remove(self):
++        try:
++            self.view.getSceneGraph().removeChild(self.root)
++        except Exception:
++            pass
++
++
++# --- the drag -------------------------------------------------------------------------------
++
++MESSAGES = {
++    "support": "On the face",
++    "contact": "Faces together",
++    "axis": "On one axis",
++    "hole": "Into the hole",
++    "corner": "Corner on corner",
++    "flush": "Lined up",
++}
++
++
++def _describe(result):
++    if result is None or not result.snaps:
++        return ""
++    seen = []
++    for s in result.snaps:
++        text = tr(MESSAGES[s.kind])
++        if text not in seen:
++            seen.append(text)
++    return " ・ ".join(seen)
++
++
++class _KeyFilter(QtCore.QObject):
++    """Esc and Alt while a part is dragged (the keyboard focus may be anywhere)."""
++
++    def __init__(self, drag):
++        super().__init__()
++        self.drag = drag
++
++    def eventFilter(self, obj, event):
++        t = event.type()
++        if t in (QtCore.QEvent.ShortcutOverride, QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
++            key = event.key()
++            if key == QtCore.Qt.Key_Escape:
++                if t == QtCore.QEvent.KeyPress:
++                    QtCore.QTimer.singleShot(0, self.drag.cancel)
++                event.accept()
++                return True
++            if key == QtCore.Qt.Key_Alt and t != QtCore.QEvent.ShortcutOverride:
++                alt = t == QtCore.QEvent.KeyPress
++                QtCore.QTimer.singleShot(0, lambda: self.drag.refresh(alt))
++                return True
++        return False
++
++
++class Drag:
++    """One drag, from the first movement to the release (or Esc)."""
++
++    def __init__(self, handler, pick, movable, copy):
++        self.handler = handler
++        self.view = handler.view
++        self.pick = pick
++        self.doc = movable.obj.Document
++        self.copy_kind = None
++        self.started = time.perf_counter()
++        self.times = []
++        self.result = None
++        self.last_pos = None
++        self.alt = False
++        self.closed = False
++        self.attached = S.check_movable(movable) == "attached"
++        self.doc.openTransaction(tr("Drag a copy") if copy else tr("Drag"))
++        self.original = movable
++        geometry = moving_geometry(movable)
++        if copy:
++            movable, self.copy_kind = M.duplicate(movable, pick)
++        self.movable = movable
++        excluded = {movable.obj, self.original.obj}
++        self.targets = targets_for(self.doc, excluded if not copy else {movable.obj})
++        if copy:
++            # The original stays where it is and is something to snap to
++            pass
++        self.solver = M.Drag(geometry, pick.point, self._view_dir(), self.targets)
++        self.overlay = Overlay(self.view)
++        self.filter = _KeyFilter(self)
++        QtWidgets.QApplication.instance().installEventFilter(self.filter)
++
++    def _view_dir(self):
++        d = self.view.getViewDirection()
++        return (d.x, d.y, d.z)
++
++    def _ray(self, pos):
++        from pivy import coin
++
++        p = self.view.getPoint(pos[0], pos[1])
++        cam = self.view.getCameraNode()
++        if isinstance(cam, coin.SoPerspectiveCamera):
++            e = cam.position.getValue()
++            o = np.array((e[0], e[1], e[2]))
++            d = np.array((p.x, p.y, p.z)) - o
++        else:
++            vd = self.view.getViewDirection()
++            d = np.array((vd.x, vd.y, vd.z))
++            o = np.array((p.x, p.y, p.z)) - d * 1e6
++        return o, d / np.linalg.norm(d)
++
++    def _tolerance(self, pos):
++        """The magnet's reach in mm at the grabbed point: its pixels there."""
++        res = self.solver.last
++        g = self.solver.g0 if res is None else res.R.dot(self.solver.g0 - res.g0) + res.g0 + res.t
++        n = np.array(self._view_dir())
++        o1, d1 = self._ray(pos)
++        o2, d2 = self._ray((pos[0] + magnet_pixels(), pos[1]))
++        a = M.ray_plane(o1, d1, g, n)
++        b = M.ray_plane(o2, d2, g, n)
++        if a is None or b is None:
++            return 0.0
++        return float(np.linalg.norm(b - a))
++
++    def move_to(self, pos, alt):
++        if self.closed:
++            return
++        t0 = time.perf_counter()
++        self.last_pos = pos
++        self.alt = alt
++        o, d = self._ray(pos)
++        result = self.solver.solve(o, d, self._tolerance(pos), snapping=not alt)
++        if result is None:
++            return
++        self.result = result
++        try:
++            S.apply(self.movable, result.placement)
++        except Exception as err:
++            status(str(err))
++            return
++        self.overlay.show(self.targets, None if alt else result)
++        text = _describe(result) if not alt else tr("No magnet (Alt)")
++        status(text or tr("Drag: Alt without magnet, Esc puts it back"), 0)
++        self.times.append(time.perf_counter() - t0)
++
++    def refresh(self, alt):
++        if self.last_pos is not None and not self.closed:
++            self.move_to(self.last_pos, alt)
++            self.view.redraw()
++
++    def _close(self):
++        self.closed = True
++        QtWidgets.QApplication.instance().removeEventFilter(self.filter)
++        self.overlay.remove()
++        self.handler.drag = None
++
++    def finish(self):
++        if self.closed:
++            return
++        self._close()
++        try:
++            self.doc.recompute()
++        except Exception:
++            pass
++        self.doc.commitTransaction()
++        self._select()
++        moved = self.movable.obj.Label
++        if self.copy_kind == "link":
++            text = tr("Placed a link to {} (same shape, changes with it)").format(moved)
++        elif self.copy_kind == "copy":
++            text = tr("Placed a copy of {}").format(moved)
++        else:
++            text = tr("Moved {}").format(moved)
++        if self.attached:
++            text += tr(" (still attached: its offset changed)")
++        snaps = _describe(self.result)
++        if snaps:
++            text += " ― " + snaps
++        status(text)
++        if self.times and params().GetBool("DragTimingLog", False):
++            ts = sorted(self.times)
++            App.Console.PrintLog(
++                "MagnetDrag: {} moves, median {:.1f} ms, worst {:.1f} ms, {} parts\n".format(
++                    len(ts), ts[len(ts) // 2] * 1000, ts[-1] * 1000, len(self.targets.items)
++                )
++            )
++        self.handler.timings = list(self.times)
++
++    def cancel(self):
++        if self.closed:
++            return
++        self._close()
++        self.doc.abortTransaction()
++        self.handler.swallow = True
++        status(tr("Put back"))
++        self.view.redraw()
++
++    def _select(self):
++        """The part that was dragged is selected afterwards (its tools show on the bar)."""
++        try:
++            obj = self.movable.obj
++            root = self.pick.root
++            Gui.Selection.clearSelection()
++            objs = self.pick.objects()
++            if obj == root or self.movable.depth == 0:
++                Gui.Selection.addSelection(obj.Document.Name, obj.Name)
++                return
++            tokens = self.pick.tokens
++            depth = self.movable.depth
++            if obj in objs:
++                path = ".".join(tokens[:depth]) + "."
++            else:
++                # A copy: the same container as the original
++                path = ".".join(tokens[: depth - 1] + [obj.Name]) + "."
++            Gui.Selection.addSelection(root.Document.Name, root.Name, path)
++        except Exception:
++            pass
++
++
++class Handler:
++    """The callback node of one 3D view."""
++
++    def __init__(self, view):
++        coin = _coin()
++        self.view = view
++        self.node = coin.SoEventCallback()
++        self.node.setName(NODE_NAME)
++        self.node.addEventCallback(coin.SoEvent.getClassTypeId(), self._event)
++        view.getViewer().getSceneGraph().insertChild(self.node, 0)
++        self.press = None  # (x, y, ctrl, shift)
++        self.drag = None
++        self.swallow = False  # take the events up to the release (after Esc, or not movable)
++        self.timings = []
++
++    def remove(self):
++        try:
++            self.view.getViewer().getSceneGraph().removeChild(self.node)
++        except Exception:
++            pass
++
++    def _event(self, *args):
++        node = args[-1]
++        try:
++            self._handle(node)
++        except Exception as err:  # never break the view
++            App.Console.PrintWarning("Drag: {}\n".format(err))
++            if self.drag is not None:
++                try:
++                    self.drag.cancel()
++                except Exception:
++                    pass
++
++    def _handle(self, node):
++        coin = _coin()
++        ev = node.getEvent()
++        if ev.isOfType(coin.SoMouseButtonEvent.getClassTypeId()):
++            if ev.getButton() != coin.SoMouseButtonEvent.BUTTON1:
++                if self.drag is not None or self.swallow:
++                    node.setHandled()
++                return
++            down = ev.getState() == coin.SoButtonEvent.DOWN
++            if down:
++                self.press = None
++                self.swallow = False
++                if self.drag is None and self._may_start():
++                    pos = ev.getPosition().getValue()
++                    self.press = (int(pos[0]), int(pos[1]), ev.wasCtrlDown(), ev.wasShiftDown())
++                return
++            # released
++            self.press = None
++            if self.drag is not None:
++                node.setHandled()
++                self.drag.finish()
++            elif self.swallow:
++                node.setHandled()
++                self.swallow = False
++            return
++        if ev.isOfType(coin.SoLocation2Event.getClassTypeId()):
++            pos = ev.getPosition().getValue()
++            pos = (int(pos[0]), int(pos[1]))
++            if self.drag is not None:
++                node.setHandled()
++                self.drag.move_to(pos, ev.wasAltDown())
++                return
++            if self.swallow:
++                node.setHandled()
++                return
++            if self.press is None:
++                return
++            dx, dy = pos[0] - self.press[0], pos[1] - self.press[1]
++            if (dx * dx + dy * dy) ** 0.5 <= QtWidgets.QApplication.startDragDistance():
++                return
++            press, self.press = self.press, None
++            if self._start(press):
++                node.setHandled()
++                if self.drag is not None:
++                    self.drag.move_to(pos, ev.wasAltDown())
++            return
++        if ev.isOfType(coin.SoKeyboardEvent.getClassTypeId()) and (self.drag is not None):
++            if ev.getKey() == coin.SoKeyboardEvent.ESCAPE:
++                node.setHandled()
++                if ev.getState() == coin.SoButtonEvent.DOWN:
++                    self.drag.cancel()
++
++    def _may_start(self):
++        if not enabled():
++            return False
++        gdoc = Gui.ActiveDocument
++        if gdoc is None or gdoc.getInEdit() is not None:
++            return False
++        try:
++            if Gui.Control.activeDialog():
++                return False
++        except Exception:
++            pass
++        return True
++
++    def _pick(self, pos):
++        info = self.view.getObjectInfo(pos)
++        if not info:
++            return None
++        root = info.get("ParentObject")
++        sub = info.get("SubName")
++        if root is None or not sub:
++            try:
++                root = App.getDocument(info["Document"]).getObject(info["Object"])
++            except Exception:
++                return None
++            sub = info.get("Component")
++        if root is None or not sub:
++            return None
++        return S.Pick(root, sub, App.Vector(info["x"], info["y"], info["z"]))
++
++    def _start(self, press):
++        """Start dragging what is under the press; True if the events are ours from now on."""
++        x, y, ctrl, shift = press
++        if shift:
++            return False
++        pick = self._pick((x, y))
++        if pick is None:
++            return False
++        try:
++            candidates = S.movable_candidates(pick)
++        except Exception:
++            candidates = []
++        selected = {s.Object for s in Gui.Selection.getSelectionEx("", 0) if not s.SubElementNames}
++        selected |= {s.Object for s in Gui.Selection.getSelectionEx() if not s.SubElementNames}
++        movable = M.choose_movable(candidates, selected)
++        if movable is None:
++            return False
++        problem = S.check_movable(movable)
++        if problem in ("expression", "readonly"):
++            status(
++                tr("{} does not move by dragging: its place is set by a formula or locked").format(movable.obj.Label),
++                8000,
++            )
++            self.swallow = True
++            return True
++        if _grounded(movable.obj):
++            status(tr("{} is fixed in its assembly (grounded): it does not move by dragging").format(movable.obj.Label), 8000)
++            self.swallow = True
++            return True
++        Gui.Selection.clearPreselection()
++        self.drag = Drag(self, pick, movable, copy=ctrl)
++        return True
++
++
++def _grounded(obj):
++    for parent in obj.InList:
++        if getattr(parent, "ObjectToGround", None) == obj:
++            return True
++    return False
++
++
++# --- every 3D view gets one --------------------------------------------------------------------
++
++_handlers = []
++
++
++def _attach(view):
++    if view is None or not hasattr(view, "getViewer") or not hasattr(view, "getObjectInfo"):
++        return None
++    try:
++        root = view.getViewer().getSceneGraph()
++    except Exception:
++        return None
++    for h in _handlers:
++        try:
++            if h.view.getViewer().getSceneGraph() == root:
++                return h
++        except Exception:
++            continue
++    if root.getNumChildren() and root.getChild(0).getName() == NODE_NAME:
++        return None
++    h = Handler(view)
++    _handlers.append(h)
++    return h
++
++
++def _prune():
++    alive = []
++    for h in _handlers:
++        try:
++            h.view.getViewer()
++            alive.append(h)
++        except Exception:
++            pass
++    _handlers[:] = alive
++
++
++def attach_active(*_args):
++    _prune()
++    gdoc = Gui.ActiveDocument
++    if gdoc is None:
++        return None
++    return _attach(gdoc.ActiveView)
++
++
++def handler_of(view):
++    for h in _handlers:
++        try:
++            if h.view.getViewer().getSceneGraph() == view.getViewer().getSceneGraph():
++                return h
++        except Exception:
++            continue
++    return None
++
++
++_installed = []
++
++
++def install():
++    if _installed:
++        return
++    mw = Gui.getMainWindow()
++    mdi = mw.findChild(QtWidgets.QMdiArea) if mw else None
++    if mdi is None:
++        return
++    mdi.subWindowActivated.connect(lambda *_: QtCore.QTimer.singleShot(0, attach_active))
++    QtCore.QTimer.singleShot(0, attach_active)
++    _installed.append(mdi)
+diff --git a/src/Mod/Unified/TestArrange.py b/src/Mod/Unified/TestArrange.py
+new file mode 100644
+index 000000000..ab7bd6cd0
+--- /dev/null
++++ b/src/Mod/Unified/TestArrange.py
+@@ -0,0 +1,160 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of Arrange (lining parts up), headless:
++#   FreeCADCmd -t TestArrange
++
++import unittest
++
++import FreeCAD as App
++
++import Arrange as A
++import SnapMath as S
++
++
++class ArrangeTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("ArrangeTest")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def box(self, name, at, size=(10, 10, 10), container=None, rotation=None):
++        b = self.doc.addObject("Part::Box", name)
++        b.Length, b.Width, b.Height = size
++        b.Placement = App.Placement(App.Vector(*at), rotation or App.Rotation())
++        if container is not None:
++            container.addObject(b)
++        return b
++
++    def items(self, entries):
++        self.doc.recompute()
++        return A.items_of(A.movables_of_selection(entries))
++
++    def boxes(self):
++        a = self.box("A", (0, 0, 0))
++        b = self.box("B", (30, 7, 3), (20, 5, 8))
++        c = self.box("C", (70, -4, 1), (6, 6, 6))
++        self.entries = [(a, ""), (b, ""), (c, "")]
++        return a, b, c
++
++    def after(self):
++        self.doc.recompute()
++        return A.items_of(A.movables_of_selection(self.entries))
++
++    def test_align_left_center_right_to_the_first(self):
++        self.boxes()
++        for axis in range(3):
++            for where in ("min", "center", "max"):
++                items = A.items_of(A.movables_of_selection(self.entries))
++                ref = items[0].side(axis, where)
++                A.apply(items, A.align(items, axis, where))
++                for it in self.after():
++                    self.assertAlmostEqual(it.side(axis, where), ref, places=6)
++                # The other axes did not change
++                self.doc.recompute()
++
++    def test_align_to_the_extent_of_all(self):
++        self.boxes()
++        items = A.items_of(A.movables_of_selection(self.entries))
++        A.apply(items, A.align(items, 1, "max", A.REFERENCE_ALL))
++        for it in self.after():
++            self.assertAlmostEqual(it.high(1), 12.0, places=6)
++
++    def test_first_stays(self):
++        a, _b, _c = self.boxes()
++        items = A.items_of(A.movables_of_selection(self.entries))
++        A.apply(items, A.align(items, 2, "max"))
++        self.assertEqual(a.Placement.Base, App.Vector(0, 0, 0))
++
++    def test_equal_gaps_keep_the_outer_two(self):
++        self.boxes()
++        items = A.items_of(A.movables_of_selection(self.entries))
++        A.apply(items, A.distribute(items, 0))
++        out = sorted(self.after(), key=lambda i: i.low(0))
++        self.assertAlmostEqual(out[0].low(0), 0.0)
++        self.assertAlmostEqual(out[-1].high(0), 76.0)
++        g1 = out[1].low(0) - out[0].high(0)
++        g2 = out[2].low(0) - out[1].high(0)
++        self.assertAlmostEqual(g1, g2, places=6)
++        self.assertAlmostEqual(g1, (76 - 36) / 2.0, places=6)
++
++    def test_given_gap_around_the_reference(self):
++        self.boxes()
++        items = A.items_of(A.movables_of_selection(self.entries))
++        A.apply(items, A.distribute(items, 0, gap=5.0))
++        out = sorted(self.after(), key=lambda i: i.low(0))
++        self.assertAlmostEqual(out[0].low(0), 0.0)  # A, the reference, stays
++        self.assertAlmostEqual(out[1].low(0), 15.0)
++        self.assertAlmostEqual(out[2].low(0), 40.0)
++
++    def test_pack_in_pick_order(self):
++        a, b, c = self.boxes()
++        self.entries = [(c, ""), (a, ""), (b, "")]
++        items = A.items_of(A.movables_of_selection(self.entries))
++        A.apply(items, A.pack(items, 0))
++        out = self.after()
++        self.assertAlmostEqual(out[0].low(0), 70.0)
++        self.assertAlmostEqual(out[1].low(0), 76.0)
++        self.assertAlmostEqual(out[2].low(0), 86.0)
++        self.assertAlmostEqual(out[2].high(0), 106.0)
++
++    def test_turned_part_uses_its_tight_extent(self):
++        a = self.box("A", (0, 0, 0))
++        t = self.box("T", (50, 0, 0), (20, 2, 2), rotation=App.Rotation(App.Vector(0, 0, 1), 90))
++        self.entries = [(a, ""), (t, "")]
++        items = self.items(self.entries)
++        self.assertAlmostEqual(items[1].size(1), 20.0, places=4)
++        A.apply(items, A.align(items, 1, "min"))
++        out = self.after()
++        self.assertAlmostEqual(out[1].low(1), 0.0, places=4)
++
++    def test_parts_inside_app_parts(self):
++        outer = self.doc.addObject("App::Part", "Outer")
++        outer.Placement.Base = App.Vector(100, 0, 0)
++        inner = self.doc.addObject("App::Part", "Inner")
++        outer.addObject(inner)
++        inner.Placement = App.Placement(App.Vector(0, 50, 0), App.Rotation(App.Vector(0, 0, 1), 30))
++        deep = self.box("Deep", (5, 0, 0), container=inner)
++        top = self.box("Top", (0, 0, 20))
++        self.entries = [(top, ""), (outer, "Inner.Deep.")]
++        items = self.items(self.entries)
++        self.assertEqual(items[1].movable.obj, deep)
++        for where in ("min", "max"):
++            A.apply(items, A.align(items, 0, where))
++            out = self.after()
++            self.assertAlmostEqual(out[1].side(0, where), out[0].side(0, where), places=4)
++            items = out
++        # The containers did not move
++        self.assertEqual(outer.Placement.Base, App.Vector(100, 0, 0))
++
++    def test_attached_part_keeps_its_attachment(self):
++        a = self.box("A", (0, 0, 0))
++        b = self.box("B", (40, 0, 0))
++        b.AttachmentSupport = [(a, "Vertex1")]
++        b.MapMode = "Translate"
++        b.AttachmentOffset = App.Placement(App.Vector(40, 0, 0), App.Rotation())
++        self.doc.recompute()
++        self.entries = [(a, ""), (b, "")]
++        items = self.items(self.entries)
++        A.apply(items, A.align(items, 0, "min"))
++        self.doc.recompute()
++        self.assertEqual(b.MapMode, "Translate")
++        self.assertAlmostEqual(b.Placement.Base.x, 0.0, places=6)
++
++    def test_faces_are_not_parts(self):
++        a = self.box("A", (0, 0, 0))
++        self.doc.recompute()
++        self.assertEqual(A.movables_of_selection([(a, "Face1")]), [])
++
++    def test_words_follow_the_view(self):
++        top = A.axis_words(App.Vector(0, 0, -1), App.Vector(0, 1, 0), App.Vector(1, 0, 0))
++        self.assertEqual(top[0][:3], ("Left", "Center", "Right"))
++        self.assertEqual(top[1][:3], ("Bottom", "Middle", "Top"))
++        self.assertEqual(top[2][:3], ("Far", "Center", "Near"))
++        rear = A.axis_words(App.Vector(0, -1, 0), App.Vector(0, 0, 1), App.Vector(-1, 0, 0))
++        self.assertEqual(rear[0][:3], ("Right", "Center", "Left"))
++        iso = A.axis_words(App.Vector(-1, -1, -1), App.Vector(0, 0, 1), App.Vector(1, -1, 0))
++        self.assertEqual(iso, A.WORLD_WORDS)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestContextRules.py b/src/Mod/Unified/TestContextRules.py
+index e4a900a00..708181ad2 100644
+--- a/src/Mod/Unified/TestContextRules.py
++++ b/src/Mod/Unified/TestContextRules.py
+@@ -98,6 +98,7 @@ class TestContextRules(unittest.TestCase):
+             "part": [(self.body, [])],
+             "two picks": [(self.box2, ["Face1"]), (self.box, ["Face2"])],
+             "two parts": [(self.box2, []), (self.cyl, [])],
++            "parts": [(self.box2, []), (self.cyl, []), (self.box, [])],
+             "mesh": [(self.mesh, [])],
+             "drawing lines": [(self.lines, ["Edge1"])],
+             "joint": [(self.joint, [])],
+diff --git a/src/Mod/Unified/TestMagnetDrag.py b/src/Mod/Unified/TestMagnetDrag.py
+index 6cf3f6860..1b6ab0763 100644
+--- a/src/Mod/Unified/TestMagnetDrag.py
++++ b/src/Mod/Unified/TestMagnetDrag.py
+@@ -262,5 +262,68 @@ class MagnetDragTest(unittest.TestCase):
+         self.assertAlmostEqual(np.linalg.det(R), 1.0)
+ 
+ 
++class DuplicateTest(unittest.TestCase):
++    """Ctrl+drag: what the copy is."""
++
++    def setUp(self):
++        self.doc = App.newDocument("MagnetDuplicate")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def test_kinds(self):
++        import SnapMath as S
++
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        boxf = self.doc.addObject("Part::Box", "Box")
++        imported = self.doc.addObject("Part::Feature", "Imported")
++        imported.Shape = Part.makeBox(1, 2, 3)
++        asm = self.doc.addObject("App::Part", "Assembly")
++        link = self.doc.addObject("App::Link", "L")
++        link.LinkedObject = boxf
++        self.assertEqual(M.copy_kind(body), "copy")
++        self.assertEqual(M.copy_kind(boxf), "copy")
++        self.assertEqual(M.copy_kind(imported), "link")
++        self.assertEqual(M.copy_kind(asm), "link")
++        self.assertEqual(M.copy_kind(link), "link")
++
++    def test_link_copy_in_the_same_container_at_the_same_place(self):
++        import SnapMath as S
++
++        asm = self.doc.addObject("App::Part", "Assembly")
++        asm.Placement.Base = App.Vector(10, 0, 0)
++        imported = self.doc.addObject("Part::Feature", "Imported")
++        imported.Shape = Part.makeBox(1, 2, 3)
++        imported.Placement.Base = App.Vector(0, 5, 0)
++        asm.addObject(imported)
++        self.doc.recompute()
++        pick = S.Pick(asm, "Imported.Face1", App.Vector(10, 5, 0))
++        movable = S.movable_candidates(pick)[0]
++        self.assertEqual(movable.obj, imported)
++        copy, kind = M.duplicate(movable, pick)
++        self.assertEqual(kind, "link")
++        self.assertTrue(copy.obj.isDerivedFrom("App::Link"))
++        self.assertIn(copy.obj, asm.Group)
++        S.apply(copy, App.Placement(App.Vector(0, 0, 7), App.Rotation()))
++        self.doc.recompute()
++        self.assertEqual(asm.Placement.multiply(copy.obj.Placement).Base, App.Vector(10, 5, 7))
++        self.assertEqual(imported.Placement.Base, App.Vector(0, 5, 0))
++
++    def test_body_copy_is_independent(self):
++        import SnapMath as S
++
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        box = self.doc.addObject("PartDesign::AdditiveBox", "Box")
++        body.addObject(box)
++        self.doc.recompute()
++        pick = S.Pick(body, "Box.Face1", App.Vector(0, 0, 0))
++        movable = M.choose_movable(S.movable_candidates(pick))
++        self.assertEqual(movable.obj, body)
++        copy, kind = M.duplicate(movable, pick)
++        self.assertEqual(kind, "copy")
++        self.assertTrue(copy.obj.isDerivedFrom("PartDesign::Body"))
++        self.assertNotEqual(copy.obj.Group[-1], box)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index d6a2e89c4..4df23c981 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -180,3 +180,12 @@ FreeCADGui.addCommand("Unified_About", AboutCommand())
+ 
+ # Snap together (くっつける), line up the axes, point onto a face, move point to point
+ import SnapToolsGui  # noqa: E402,F401
++
++# Line up several parts (そろえる) and drag parts in the 3D view with a magnet (ドラッグで動かす)
++import ArrangeGui  # noqa: E402,F401
++import MagnetDragGui  # noqa: E402
++
++MagnetDragGui.install()
++
++# The parts shelf (部品の棚): screws, nuts, washers, profiles, company parts
++import PartsShelfGui  # noqa: E402,F401
+-- 
+2.43.0
+
