@@ -1,0 +1,167 @@
+{
+ "assembly": {
+  "plate_in_assembly_and_held": true,
+  "placed_part_free": true,
+  "picks_found": true,
+  "plate_not_moved": true,
+  "plate_not_turned_over": true,
+  "pillar_on_the_plate": true,
+  "pillar_box": [
+   59.98,
+   30.05,
+   15.0,
+   79.98,
+   50.05,
+   65.0
+  ],
+  "ctrl_v_puts_another": true,
+  "undo_takes_it_back": true,
+  "grid_on_the_bar": true,
+  "bar_tools": [
+   "Unified_SnapFaces",
+   "Unified_AnotherPart",
+   "Unified_GridCopies",
+   "Std_ToggleVisibility",
+   "Unified_AIChatAsk",
+   "Unified_SearchUsable",
+   null,
+   null
+  ],
+  "picked_parts": [
+   "部品"
+  ],
+  "sel": [
+   [
+    "Assembly",
+    [
+     "部品.Pad.;#d:1;FAC;:H1128:4,F.Face5"
+    ]
+   ]
+  ],
+  "grid_places": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    40
+   ],
+   [
+    80,
+    0
+   ],
+   [
+    80,
+    40
+   ]
+  ],
+  "four_corners": true,
+  "tree_double_click_stays": true
+ },
+ "holes": {
+  "four_holes_by_clicks": true,
+  "positions_on_panel": true,
+  "typed_position": true,
+  "points": [
+   [
+    10.0,
+    10.0
+   ],
+   [
+    10.15,
+    49.91
+   ],
+   [
+    89.98,
+    10.08
+   ],
+   [
+    90.07,
+    49.92
+   ]
+  ],
+  "four_holes_made": true
+ },
+ "type_radius": {
+  "same_direction_on_bar": true,
+  "four_edges_no_seam": true,
+  "bar_stays": true,
+  "view_not_turned": true,
+  "fillet_r3_four_edges": true
+ },
+ "drawing": {
+  "one_hole_callout": true,
+  "hole_positions": [
+   10.0,
+   10.0,
+   50.0,
+   90.0
+  ],
+  "hole_positions_ok": true,
+  "title_block_japanese": true,
+  "search_titles": [
+   "寸法  — 図面  (Dimension)",
+   "寸法  — スケッチ  (Dimension)",
+   "寸法  — 2D の作図  (Dimension)",
+   "測る  (Measure)",
+   "寸法参照を修復  (Repair Dimension References)",
+   "寸法を反転  (Flip Dimension)",
+   "寸法スナップ  (Snap Dimensions)",
+   "3点からの角度寸法  (Angle Dimension From 3 Points)"
+  ],
+  "search_rows_differ": true
+ },
+ "dxf": {
+  "band_shown": true,
+  "no_plate_from_the_frame": true,
+  "no_question_dialog": true
+ },
+ "follow": {
+  "screw_length_fits": true,
+  "screw_follows": true,
+  "center_holes": [
+   [
+    "-40.000,-20.000,3.000"
+   ],
+   [
+    "-33.000,-20.000,3.000"
+   ]
+  ],
+  "center_lines_follow": true,
+  "one_3d_tab": true,
+  "modified_before_close": true,
+  "asked_if_modified": true,
+  "asked": {
+   "dialog": true,
+   "text": "閉じる前に「ねじの板」の変更を保存しますか？ 保存しないと、変更は失われます。"
+  },
+  "closing_last_3d_closes_file": true,
+  "reopened_on_3d": true,
+  "reopened_modified_mark": true
+ },
+ "plane_click": {
+  "plane_found": true,
+  "first_click_takes_the_plane": true
+ },
+ "messages": {
+  "catalog_icons_missing": [],
+  "search_first": [
+   "コピー  — 全般  (Copy)",
+   "部品の棚  (Parts Shelf)",
+   "点から点へ動かす  (Move point to point)"
+  ],
+  "copy_top": [
+   "Std_Copy",
+   "Sketcher_Copy",
+   "BIM_Copy",
+   "Unified_AnotherPart",
+   "Unified_GridCopies"
+  ],
+  "copy_finds_another_part": true,
+  "no_icon_notification": true,
+  "processing_in_japanese": true
+ },
+ "failed": [],
+ "passed": 42
+}

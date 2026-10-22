@@ -1,0 +1,62 @@
+{
+ "assembly": {
+  "error": "Traceback (most recent call last):\n  File \"<string>\", line 155, in stage\n  File \"<guictl>\", line 70, in case_assembly\nTypeError: click() argument after * must be an iterable, not NoneType\n"
+ },
+ "holes": {
+  "error": "Traceback (most recent call last):\n  File \"<string>\", line 155, in stage\n  File \"<guictl>\", line 220, in case_holes\nModuleNotFoundError: No module named 'HoleMultiGui'\n"
+ },
+ "type_radius": {
+  "same_direction_on_bar": true,
+  "four_edges_no_seam": true,
+  "bar_stays": false,
+  "view_not_turned": false,
+  "fillet_r3_four_edges": false
+ },
+ "drawing": {
+  "one_hole_callout": false,
+  "hole_positions": [],
+  "hole_positions_ok": false,
+  "title_block_japanese": false,
+  "search_titles": [
+   "寸法  (Dimension)",
+   "寸法  (Dimension)",
+   "寸法  (Dimension)",
+   "寸法  (Dimension)",
+   "寸法  (Dimension)",
+   "寸法参照を修復  (Repair Dimension References)",
+   "測る  (Measure)",
+   "寸法を反転  (Flip Dimension)"
+  ],
+  "search_rows_differ": false
+ },
+ "dxf": {
+  "band_shown": true,
+  "no_plate_from_the_frame": false,
+  "no_question_dialog": true
+ },
+ "follow": {
+  "error": "Traceback (most recent call last):\n  File \"<string>\", line 155, in stage\n  File \"<guictl>\", line 408, in case_follow\nModuleNotFoundError: No module named 'FollowGui'\n"
+ },
+ "plane_click": {
+  "plane_found": true,
+  "first_click_takes_the_plane": true
+ },
+ "messages": {
+  "error": "Traceback (most recent call last):\n  File \"<string>\", line 155, in stage\n  File \"<guictl>\", line 506, in case_messages\nAttributeError: module 'CommandSearchGui' has no attribute 'local_icon'\n"
+ },
+ "failed": [
+  "type_radius.bar_stays",
+  "type_radius.view_not_turned",
+  "type_radius.fillet_r3_four_edges",
+  "drawing.one_hole_callout",
+  "drawing.hole_positions_ok",
+  "drawing.title_block_japanese",
+  "drawing.search_rows_differ",
+  "dxf.no_plate_from_the_frame",
+  "assembly",
+  "holes",
+  "follow",
+  "messages"
+ ],
+ "passed": 6
+}

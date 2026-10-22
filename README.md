@@ -298,6 +298,22 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.1
+
+Fixes from the first-time-user test of 0.6.9 ([docs/ui-redesign/usability-0.6.9/report.md](docs/ui-redesign/usability-0.6.9/report.md)); acceptance in [docs/ui-redesign/accept/U071](docs/ui-redesign/accept/U071) (`tests/ui/u071_check.py`, 42 checks with real input; the same steps fail 12 checks on 0.7.0).
+
+- Assembly: the file's own part goes into the assembly and is held; parts put in are free; a held part never moves or turns over when snapping or swapping
+- More of a part: Ctrl+C / Ctrl+V, "One more", "Copies in a Grid" (four corners: 2 × 2); a double-click in the tree no longer jumps to the part's file
+- Hole: each further click on the face adds a hole; positions typed as distances from the left and bottom edges
+- "Type 3 and Enter": the bar stays after "same direction", digits go to its field and never turn the view; hole seams are not picked
+- Drawing: rounded corners are not holes; hole positions dimensioned; Japanese title block; PDF starts with the file's name
+- DXF: the frame and title boxes are no outline; open lines are reported and nothing is made
+- Screws, washers, nuts and the drawing's center lines follow their hole
+- Closing the last 3D tab asks to save and closes the file; files open on their 3D view
+- No camera animation when a panel opens (the first plane click hits); the model is kept in view
+- A screw thinner than the hole goes through with a nut (M5×25 for a 15 mm plate)
+- Missing icons are logged, not notified; catalog icon paths are mapped to this installation; "Processing..." translated; same-name search hits say where they work
+
 ## Changes in 0.7.0
 
 The last four items of the UI rebuild ([docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)); with them every stage (P0–P10) is done.

@@ -1,0 +1,224 @@
+From 99b4412584389f150fe6553ea8b6de860c4ae741 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:22:15 +0900
+Subject: [PATCH 290/291] Unified: the bar for a part of the assembly; closing
+ the last 3D view closes the file; files open on their 3D view
+
+- A face of a part put into the assembly from another file gets the
+  assembly's tools (snap, one more, grid, measure, hide), not the part's
+  own (which would change the other file). Picks in an assembly being
+  edited are picks in the view.
+- After the save question of the last 3D view, the file without views is
+  closed; Cancel keeps it.
+- The drawing's center lines are looked at again once its views have
+  their new lines.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/ContextRules.py    | 25 +++++++++-
+ src/Mod/Unified/FollowGui.py       | 75 ++++++++++++++++++++++++------
+ src/Mod/Unified/Gui/ContextBar.cpp | 20 ++++++--
+ 3 files changed, 101 insertions(+), 19 deletions(-)
+
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index eb1dabbef..82ff27d0d 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -104,6 +104,14 @@ RULES = {
+         A("Unified_GridCopies", T("Grid")),
+         A("Std_ToggleVisibility", T("Hide")),
+     ],
++    # A part of another file in this file's assembly (picked anywhere on it)
++    "linked part": [
++        A("Unified_SnapFaces", T("Snap")),
++        A("Unified_AnotherPart", T("One more")),
++        A("Unified_GridCopies", T("Grid")),
++        A("Std_Measure", T("Measure")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
+     # Two picks on two parts (the first one moves; which of these fit the commands decide)
+     "two picks": [
+         A("Unified_SnapFaces", T("Snap")),
+@@ -314,9 +322,24 @@ def selection_picks():
+     return [(s.Object, list(s.SubElementNames)) for s in Gui.Selection.getSelectionEx()]
+ 
+ 
++def _linked_from_elsewhere():
++    """One pick on a part of another file put into this file's assembly (its own tools would
++    change the other file)"""
++    import FreeCADGui as Gui
++
++    top = Gui.Selection.getSelectionEx("", 0)
++    res = Gui.Selection.getSelectionEx()
++    if len(top) != 1 or len(res) != 1:
++        return False
++    return top[0].Object.Document != res[0].Object.Document
++
++
+ def actions_for_selection():
+     """For the bar: [(command, translated label, field unit or "")]"""
+-    kind = classify(selection_picks())
++    picks = selection_picks()
++    kind = classify(picks)
++    if kind not in ("two picks", "two parts", "parts") and _linked_from_elsewhere():
++        kind = "linked part"
+     out = []
+     for a in actions_for(kind):
+         label = translate("ContextRules", a["label"])
+diff --git a/src/Mod/Unified/FollowGui.py b/src/Mod/Unified/FollowGui.py
+index fb5557fad..197acc963 100644
+--- a/src/Mod/Unified/FollowGui.py
++++ b/src/Mod/Unified/FollowGui.py
+@@ -44,23 +44,42 @@ class _Follow:
+                 changed += PartsShelf.follow_holes(doc)
+             except Exception as e:
+                 App.Console.PrintLog("Follow holes: {}\n".format(e))
+-            try:
+-                import DrawingAuto
+-
+-                for v in doc.Objects:
+-                    if v.isDerivedFrom("TechDraw::DrawViewPart") and getattr(v, "AutoCenterLines", None):
+-                        if DrawingAuto.refresh_center_lines(v):
+-                            changed += 1
+-            except Exception as e:
+-                App.Console.PrintLog("Follow center lines: {}\n".format(e))
+             if changed:
+                 doc.recompute()
+         finally:
+             self.busy = False
++        # The drawing's views work out their lines in the background: look at their holes when
++        # they are done (a few times, the larger the model the later)
++        if any(v.isDerivedFrom("TechDraw::DrawViewPart") and getattr(v, "AutoCenterLines", None) for v in doc.Objects):
++            for ms in (400, 1200, 3000):
++                QtCore.QTimer.singleShot(ms, lambda: self.center_lines(name))
++
++    def center_lines(self, name):
++        try:
++            doc = App.getDocument(name)
++        except Exception:
++            return
++        try:
++            import DrawingAuto
+ 
+-    def slotFinishRestoreDocument(self, doc):
++            changed = [v for v in doc.Objects
++                       if v.isDerivedFrom("TechDraw::DrawViewPart") and getattr(v, "AutoCenterLines", None)
++                       and DrawingAuto.refresh_center_lines(v)]
++        except Exception as e:
++            App.Console.PrintLog("Follow center lines: {}\n".format(e))
++            return
++        if changed:
++            self.busy = True
++            try:
++                doc.recompute()
++            finally:
++                self.busy = False
++
++    def slotCreatedDocument(self, doc):  # also when a file is opened
+         name = doc.Name
+-        QtCore.QTimer.singleShot(300, lambda: show_3d_first(name))
++        # The drawing's page opens its view a little later: its 3D view in front once it has
++        for ms in (300, 1200, 2500, 4000, 6000):
++            QtCore.QTimer.singleShot(ms, lambda: show_3d_first(name, only_over_page=True))
+ 
+ 
+ def _mdi():
+@@ -97,11 +116,15 @@ def _doc_of_subwindow(sub):
+     return None
+ 
+ 
+-def show_3d_first(doc_name):
++def show_3d_first(doc_name, only_over_page=False):
+     subs = _3d_subwindows(doc_name)
+     mdi = _mdi()
+-    if subs and mdi is not None:
+-        mdi.setActiveSubWindow(subs[0])
++    if not subs or mdi is None:
++        return
++    act = mdi.activeSubWindow()
++    if only_over_page and act is not None and (act in subs or not _belongs(act, doc_name)):
++        return  # the 3D view is in front, or the user went to another file
++    mdi.setActiveSubWindow(subs[0])
+ 
+ 
+ class _CloseWatcher(QtCore.QObject):
+@@ -116,6 +139,9 @@ class _CloseWatcher(QtCore.QObject):
+                 others = [s for s in mdi.subWindowList() if s is not obj and _belongs(s, doc)]
+                 for s in others:
+                     s.close()
++                # Saved or not as the user answered: a file without any view left is closed
++                # (Cancel keeps the view, and the file)
++                QtCore.QTimer.singleShot(300, lambda: _close_if_viewless(doc))
+         return False
+ 
+     def watch(self, sub):
+@@ -124,6 +150,27 @@ class _CloseWatcher(QtCore.QObject):
+             sub.installEventFilter(self)
+ 
+ 
++def _close_if_viewless(doc_name, uid=None, tries=20):
++    """After the last 3D view was asked to close: once the question is answered and the views
++    are gone, the file goes too. Cancel keeps the view (then nothing happens)."""
++    try:
++        doc = App.getDocument(doc_name)
++    except Exception:
++        return
++    if uid is None:
++        uid = doc.Uid
++    if doc.Uid != uid:
++        return  # another file of the same name since
++    mdi = _mdi()
++    busy = QtWidgets.QApplication.activeModalWidget() is not None
++    has_views = (mdi is not None and any(_belongs(s, doc_name) for s in mdi.subWindowList())) or _3d_subwindows(doc_name)
++    if busy or has_views:
++        if tries > 0:
++            QtCore.QTimer.singleShot(300, lambda: _close_if_viewless(doc_name, uid, tries - 1 if not busy else tries))
++        return
++    App.closeDocument(doc_name)
++
++
+ def _belongs(sub, doc_name):
+     """The sub-window shows the file (its title is "<file label> : n" or a page of the file)"""
+     try:
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 2a0ffcf80..312a30e40 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -212,8 +212,18 @@ void ContextBar::onSelectionChanged(const Gui::SelectionChanges& msg)
+ {
+     switch (msg.Type) {
+         case Gui::SelectionChanges::AddSelection:
+-            // Picks in a 3D view carry the picked point; the tree and commands do not
++            // Picks in a 3D view carry the picked point; the tree and commands do not. In an
++            // assembly being edited the view picks without the point: a pick while the cursor
++            // is over the 3D view is one in the view
+             pickedInView = msg.hasPickedPoint;
++            if (!pickedInView) {
++                if (Gui::View3DInventor* view = active3DView()) {
++                    QWidget* gl = view->getViewer()->getGLWidget();
++                    QWidget* under = QApplication::widgetAt(QCursor::pos());
++                    pickedInView = gl && under && (under == gl || gl->isAncestorOf(under))
++                        && Gui::Application::Instance->editDocument();
++                }
++            }
+             if (pickedInView) {
+                 pickedSincePress = true;
+                 if (Gui::View3DInventor* view = active3DView()) {
+@@ -262,9 +272,11 @@ std::vector<ContextBar::Action> ContextBar::actionsForSelection() const
+     if (selection.empty()) {
+         return {};
+     }
+-    // Not for a part of another document shown here, e.g. in an assembly: the tools work
+-    // in the active document
+-    const App::DocumentObject* obj = selection.front().getObject();
++    // Not for a part of another document shown here, except through the active document (a
++    // part put into an assembly: the rules then offer the assembly's tools only)
++    auto top = Gui::Selection().getSelectionEx(nullptr, App::DocumentObject::getClassTypeId(),
++                                               Gui::ResolveMode::NoResolve);
++    const App::DocumentObject* obj = top.empty() ? nullptr : top.front().getObject();
+     if (!obj || obj->getDocument() != App::GetApplication().getActiveDocument()) {
+         return {};
+     }
+-- 
+2.43.0
+

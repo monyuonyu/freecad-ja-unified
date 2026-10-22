@@ -1,0 +1,156 @@
+From 09b96448e64faf2b641a453894c6f11a93545964 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:29:32 +0900
+Subject: [PATCH 291/291] Unified: the picked parts said again after a button
+ of the bar clears the status bar; the catalog of the search follows the new
+ commands
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandCatalog.json  | 50 +++++++++++++++++++++++++---
+ src/Mod/Unified/SelectionWordsGui.py | 20 ++++++++++-
+ 2 files changed, 65 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/CommandCatalog.json b/src/Mod/Unified/CommandCatalog.json
+index b90fdedba..6312d14c9 100644
+--- a/src/Mod/Unified/CommandCatalog.json
++++ b/src/Mod/Unified/CommandCatalog.json
+@@ -19489,7 +19489,7 @@
+ }
+ ],
+ "tip_en": "Revolves the selected shape",
+-"tip_ja": "選択した形を回転押し出し",
++"tip_ja": "選んだ形を軸のまわりに回した形を作ります",
+ "wb": ""
+ },
+ {
+@@ -23829,7 +23829,7 @@
+ }
+ ],
+ "tip_en": "Creates a mirrored copy of the selected geometry",
+-"tip_ja": "選択した図形の鏡像コピーを作成",
++"tip_ja": "選んだ図形を、線を境に鏡に映した写しを作ります",
+ "wb": ""
+ },
+ {
+@@ -52137,6 +52137,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_AnotherPart",
++"en": "Another of This Part",
++"en_raw": "Another of This Part",
++"icon": "Std_DuplicateSelection",
++"ja": "同じ部品をもう 1 つ",
++"module": "",
++"module_wb": "",
++"name": "Unified_AnotherPart",
++"places": [],
++"tip_en": "Put one more of the picked part beside it (as Ctrl+C, Ctrl+V)",
++"tip_ja": "選んだ部品をもう 1 つ、横に置きます（Ctrl+C・Ctrl+V と同じ）",
++"wb": ""
++},
++{
+ "ctx": "Unified_DesignCheck",
+ "en": "Design check",
+ "en_raw": "Design check",
+@@ -52221,6 +52235,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_GridCopies",
++"en": "Copies in a Grid",
++"en_raw": "Copies in a Grid",
++"icon": "Draft_Array",
++"ja": "格子に並べる（複製）",
++"module": "",
++"module_wb": "",
++"name": "Unified_GridCopies",
++"places": [],
++"tip_en": "More of the picked part of the assembly in rows and columns at a spacing (one at each corner: 2 × 2)",
++"tip_ja": "組立の選んだ部品を、縦横に決まった間隔で並べて増やします（四隅なら 2 × 2）",
++"wb": ""
++},
++{
+ "ctx": "Unified_Hole",
+ "en": "Hole",
+ "en_raw": "Hole",
+@@ -52235,6 +52263,20 @@
+ "wb": ""
+ },
+ {
++"ctx": "Unified_HolePositions",
++"en": "Hole Positions",
++"en_raw": "Hole Positions",
++"icon": "TechDraw_HorizontalDimension",
++"ja": "穴の位置の寸法",
++"module": "",
++"module_wb": "",
++"name": "Unified_HolePositions",
++"places": [],
++"tip_en": "Dimensions from the left and the bottom edge to each column and row of holes of the picked view",
++"tip_ja": "選んだ図の、左の辺と下の辺から穴の列・行までの寸法を入れます",
++"wb": ""
++},
++{
+ "ctx": "Unified_InsertHere",
+ "en": "Insert Here",
+ "en_raw": "Insert Here",
+@@ -52434,7 +52476,7 @@
+ "ctx": "Unified_Search",
+ "en": "Search Tools…",
+ "en_raw": "Search Tools…",
+-"icon": "edit-find",
++"icon": "/home/shota/freecad-src/build/release/Mod/Unified/Search.svg",
+ "ja": "道具を探す…",
+ "module": "",
+ "module_wb": "",
+@@ -52448,7 +52490,7 @@
+ "ctx": "Unified_SearchUsable",
+ "en": "All Tools for This",
+ "en_raw": "All Tools for This",
+-"icon": "edit-find",
++"icon": "/home/shota/freecad-src/build/release/Mod/Unified/Search.svg",
+ "ja": "これに使える道具",
+ "module": "",
+ "module_wb": "",
+diff --git a/src/Mod/Unified/SelectionWordsGui.py b/src/Mod/Unified/SelectionWordsGui.py
+index 75c2b6dfb..d2282565b 100644
+--- a/src/Mod/Unified/SelectionWordsGui.py
++++ b/src/Mod/Unified/SelectionWordsGui.py
+@@ -44,13 +44,31 @@ class Observer:
+     def clearSelection(self, *_args):
+         pass
+ 
++    def removePreselection(self, *_args):
++        # The cursor left the model (e.g. onto the bar of tools): the status bar says what is
++        # picked again, instead of nothing
++        self._later()
++
+     def show(self):
+         self.pending = False
+         if editing():
+             return  # a sketch or a tool has its own words
+         text = current_text()
+         if text:
+-            show_in_status(translate("Unified", "Picked: {}").format(text))
++            message = translate("Unified", "Picked: {}").format(text)
++            show_in_status(message)
++            # A button of the bar that just went away clears the status bar after this (its
++            # status tip): say it again then, unless something else is said by then
++            QtCore.QTimer.singleShot(400, lambda: _again(message))
++
++
++def _again(message):
++    try:
++        label = Gui.getMainWindow().statusBar().findChild(QtWidgets.QLabel, "actionLabel")
++    except Exception:
++        return
++    if label is not None and not label.text() and current_text():
++        label.setText(message)
+ 
+ 
+ def show_in_status(text):
+-- 
+2.43.0
+

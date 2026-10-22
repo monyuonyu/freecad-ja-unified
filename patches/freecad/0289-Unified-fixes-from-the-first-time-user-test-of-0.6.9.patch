@@ -1,0 +1,2564 @@
+From d98dbe9a4f75ca9a41b8dda8f2fd6c304fbf907f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:01:47 +0900
+Subject: [PATCH 289/291] Unified: fixes from the first-time-user test of 0.6.9
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Assembly: the part of the file goes into its assembly and is held
+  (grounded); parts put in are free. Snapping a held part moves the other
+  one instead, and "Swap" never moves (or turns over) a held part.
+- More of a part in an assembly: Ctrl+C / Ctrl+V, "Another of This Part",
+  "Copies in a Grid" (rows × columns, the four corners in one go). A
+  double-click on a part in the tree picks it instead of opening its file.
+- Hole: further clicks on the face add holes; the panel lists them with
+  their distances from the left and bottom edge to type.
+- After "also the edges in the same direction" the bar stays; a digit goes
+  into its number field wherever the focus is, never turning the view.
+  Python's addSelection with a point is a pick at that point.
+- Drawing: only real holes get the hole callout (not R corners), one line
+  per size; hole positions from the left/bottom edge, also as a command;
+  the title block in Japanese; PDF export starts with the file's name.
+- DXF: the drawing's frame and title boxes are no outline; lines that do
+  not close are reported and nothing is made.
+- Screws, washers and nuts follow their hole; the drawing's center lines
+  follow the holes. Closing the last 3D view closes the file (asking to
+  save); a file opens on its 3D view.
+- Views move without animation when a panel opens (the first click on a
+  plane hits); the model is kept in view after a typed length.
+- A thinner screw than the hole goes through with a nut (M5 in ⌀6: M5×25).
+- Missing icons are logged, not notified; catalog icon paths of the build
+  machine map to this installation; "Processing..." translated; search
+  rows with the same name say where they work.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/BitmapFactory.cpp                     |  10 +-
+ src/Gui/ProgressBar.cpp                       |   5 +-
+ src/Gui/Selection/Selection.cpp               |   8 +-
+ src/Mod/TechDraw/Gui/MDIViewPage.cpp          |  12 +-
+ src/Mod/Unified/A4_Landscape_JIS_ja.svg       | 133 +++++++++++
+ src/Mod/Unified/AssemblyCopies.py             |  99 ++++++++
+ src/Mod/Unified/AssemblyCopiesGui.py          | 224 ++++++++++++++++++
+ src/Mod/Unified/CMakeLists.txt                |   9 +-
+ src/Mod/Unified/CommandAliases.py             |   3 +
+ src/Mod/Unified/CommandSearchCore.py          |  41 ++++
+ src/Mod/Unified/CommandSearchGui.py           |  30 ++-
+ src/Mod/Unified/ContextRules.py               |  11 +-
+ src/Mod/Unified/DrawingAuto.py                | 151 +++++++++++-
+ src/Mod/Unified/FollowGui.py                  | 159 +++++++++++++
+ src/Mod/Unified/Gui/ContextBar.cpp            |  41 ++++
+ .../translations/UnifiedWording_ja.ts         | 143 ++++++++++-
+ src/Mod/Unified/HoleMultiGui.py               | 203 ++++++++++++++++
+ src/Mod/Unified/InitGui.py                    |  19 ++
+ src/Mod/Unified/LooseOutline.py               | 100 ++++++++
+ src/Mod/Unified/PartsShelf.py                 |  95 +++++++-
+ src/Mod/Unified/Search.svg                    |   1 +
+ src/Mod/Unified/SnapToolsGui.py               |  14 ++
+ src/Mod/Unified/TaskPanels.py                 |   3 +-
+ src/Mod/Unified/TestAssemblyCopies.py         |  55 +++++
+ src/Mod/Unified/TestCommandSearch.py          |  20 ++
+ src/Mod/Unified/TestDrawingAuto.py            |  42 ++++
+ src/Mod/Unified/TestLooseOutline.py           |  48 ++++
+ src/Mod/Unified/TestPartsShelf.py             |   8 +
+ src/Mod/Unified/UnifiedChrome.py              | 187 ++++++++++++++-
+ src/Mod/Unified/UnifiedCommands.py            |   4 +
+ src/Mod/Unified/UnifiedFiles.py               |   9 +-
+ 31 files changed, 1851 insertions(+), 36 deletions(-)
+ create mode 100644 src/Mod/Unified/A4_Landscape_JIS_ja.svg
+ create mode 100644 src/Mod/Unified/AssemblyCopies.py
+ create mode 100644 src/Mod/Unified/AssemblyCopiesGui.py
+ create mode 100644 src/Mod/Unified/FollowGui.py
+ create mode 100644 src/Mod/Unified/HoleMultiGui.py
+ create mode 100644 src/Mod/Unified/Search.svg
+ create mode 100644 src/Mod/Unified/TestAssemblyCopies.py
+ create mode 100644 src/Mod/Unified/TestLooseOutline.py
+
+diff --git a/src/Gui/BitmapFactory.cpp b/src/Gui/BitmapFactory.cpp
+index 1310976d2..b2db1f757 100644
+--- a/src/Gui/BitmapFactory.cpp
++++ b/src/Gui/BitmapFactory.cpp
+@@ -42,6 +42,7 @@
+ #include <Base/Console.h>
+ #include <Base/ConsoleObserver.h>
+ 
++#include <App/SingleWorkbench.h>
+ #include "BitmapFactory.h"
+ 
+ using namespace Gui;
+@@ -493,7 +494,14 @@ QPixmap BitmapFactoryInst::pixmap(const char* name) const
+         return icon;
+     }
+ 
+-    Base::Console().warning("Cannot find icon: {}\n", name);
++    // In the integrated environment a missing icon is the developers' matter, not the user's:
++    // the log, not a notification (usability test 0.6.9 saw build paths in English)
++    if (App::isSingleWorkbench()) {
++        Base::Console().log("Cannot find icon: {}\n", name);
++    }
++    else {
++        Base::Console().warning("Cannot find icon: {}\n", name);
++    }
+     return QPixmap(Gui::BitmapFactory().pixmapFromSvg("help-browser", QSize(16, 16)));
+ }
+ 
+diff --git a/src/Gui/ProgressBar.cpp b/src/Gui/ProgressBar.cpp
+index cf8664145..0a9c3c487 100644
+--- a/src/Gui/ProgressBar.cpp
++++ b/src/Gui/ProgressBar.cpp
+@@ -21,6 +21,7 @@
+  ***************************************************************************/
+ 
+ 
++#include <QCoreApplication>
+ #include <QApplication>
+ #include <QElapsedTimer>
+ #include <QKeyEvent>
+@@ -392,7 +393,9 @@ void SequencerBar::setText(const char* pszTxt)
+     QThread* thr = d->bar->thread();  // this is the main thread
+ 
+     // print message to the statusbar
+-    d->text = pszTxt ? QString::fromUtf8(pszTxt) : QLatin1String("");
++    // The modules' texts in the user's language where there is a translation (e.g. Part's
++    // "Processing...")
++    d->text = pszTxt ? QCoreApplication::translate("Gui::SequencerBar", pszTxt) : QLatin1String("");
+     if (thr != currentThread) {
+         QMetaObject::invokeMethod(
+             getMainWindow(),
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index 204edca04..c885c00bc 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -2410,8 +2410,12 @@ PyObject* SelectionSingleton::sAddSelection(PyObject* /*self*/, PyObject* args)
+     if (
+         PyArg_ParseTuple(args, "ss|sfffO!", &docname, &objname, &subname, &x, &y, &z, &PyBool_Type, &clearPreselect)
+     ) {
+-        Selection()
+-            .addSelection(docname, objname, subname, x, y, z, nullptr, Base::asBoolean(clearPreselect));
++        // With a point (x, y, z given): a pick at that point of the model, as one in the 3D view
++        const bool withPoint = PyTuple_Size(args) >= 6;
++        Selection().addSelection(
++            docname, objname, subname, x, y, z, nullptr, Base::asBoolean(clearPreselect),
++            withPoint ? SelectionChanges::PickedPoint::Valid : SelectionChanges::PickedPoint::Invalid
++        );
+         Py_Return;
+     }
+ 
+diff --git a/src/Mod/TechDraw/Gui/MDIViewPage.cpp b/src/Mod/TechDraw/Gui/MDIViewPage.cpp
+index d72699816..d7242aaf3 100644
+--- a/src/Mod/TechDraw/Gui/MDIViewPage.cpp
++++ b/src/Mod/TechDraw/Gui/MDIViewPage.cpp
+@@ -54,6 +54,8 @@
+ #include <Gui/BitmapFactory.h>
+ #include <Gui/Command.h>
+ #include <Gui/Document.h>
++#include <QDir>
++#include <QFileInfo>
+ #include <Gui/FileDialog.h>
+ #include <Gui/MainWindow.h>
+ #include <Gui/Selection/Selection.h>
+@@ -866,10 +868,18 @@ QString MDIViewPage::getPdfFileName() const
+         {"PDF", {"*.pdf"}},
+         Gui::FileDialog::Filter::AllFiles(),
+     };
++    // Start with the file's name, beside the file (it was empty)
++    QString start;
++    if (auto* page = const_cast<MDIViewPage*>(this)->getPage(); page && page->getDocument()) {
++        auto* doc = page->getDocument();
++        QFileInfo file(QString::fromUtf8(doc->FileName.getValue()));
++        QString name = QString::fromUtf8(doc->Label.getValue()) + QStringLiteral(".pdf");
++        start = file.fileName().isEmpty() ? name : file.dir().filePath(name);
++    }
+     QString fn =
+         Gui::FileDialog::getSaveFileName(Gui::getMainWindow(),
+                                          QObject::tr("Export Page as PDF"),
+-                                         QString(), filter);
++                                         start, filter);
+     if (fn.isEmpty()) {
+         return {};
+     }
+diff --git a/src/Mod/Unified/A4_Landscape_JIS_ja.svg b/src/Mod/Unified/A4_Landscape_JIS_ja.svg
+new file mode 100644
+index 000000000..83eeb0433
+--- /dev/null
++++ b/src/Mod/Unified/A4_Landscape_JIS_ja.svg
+@@ -0,0 +1,133 @@
++<?xml version="1.0" encoding="UTF-8" standalone="no"?>
++
++<svg
++   width="297mm"
++   height="210mm"
++   viewBox="0 0 297 210"
++   version="1.1"
++   id="svg"
++   xmlns="http://www.w3.org/2000/svg"
++   xmlns:svg="http://www.w3.org/2000/svg"
++   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
++   xmlns:cc="http://creativecommons.org/ns#"
++   xmlns:dc="http://purl.org/dc/elements/1.1/"
++   xmlns:freecad="https://www.freecad.org/wiki/index.php?title=Svg_Namespace">
++  <title id="title">Drawing sheet ISO 5457 - A4T - Minimal</title>
++  <metadata id="metadata">
++    <rdf:RDF>
++      <cc:Work rdf:about="">
++        <cc:license rdf:resource="http://creativecommons.org/publicdomain/zero/1.0/" />
++        <dc:title>Drawing sheet ISO 5457 - A4T - Minimal</dc:title>
++        <dc:creator>
++          <cc:Agent>
++            <dc:title>Benjamin May</dc:title>
++          </cc:Agent>
++        </dc:creator>
++      </cc:Work>
++      <cc:License rdf:about="http://creativecommons.org/publicdomain/zero/1.0/">
++        <cc:permits rdf:resource="http://creativecommons.org/ns#Reproduction" />
++        <cc:permits rdf:resource="http://creativecommons.org/ns#Distribution" />
++        <cc:permits rdf:resource="http://creativecommons.org/ns#DerivativeWorks" />
++      </cc:License>
++    </rdf:RDF>
++  </metadata>
++  <rect id="drawing_space_frame" x="20" y="10" width="267" height="190" style="fill:none;stroke:#000000;stroke-width:0.7;stroke-linecap:round;stroke-linejoin:round" />
++  <g id="centring_marks" style="fill:none;stroke:#000000;stroke-width:0.7;stroke-linecap:round">
++    <path id="top_centering" d="m 148.5,5 v 10" />
++    <path id="right_centering" d="m 292,105 h -10" />
++    <path id="bottom_centering" d="m 148.5,205 v -6" />
++    <path id="left_centering" d="m 15,105 h 10" />
++  </g>
++  <g id="grid_reference_system">
++    <g id="grid_reference_borders" style="fill:none;stroke:#000000;stroke-width:0.35;stroke-linecap:round;stroke-linejoin:round">
++      <rect id="grid_reference_border"  x="15" y="5" width="277" height="200" />
++      <path id="upper_border_1" d="m 48.5,5 v 5"/>
++      <path id="upper_border_2" d="m 98.5,5 v 5"/>
++      <path id="upper_border_4" d="m 198.5,5 v 5"/>
++      <path id="upper_border_5" d="m 248.5,5 v 5"/>
++      <path id="right_border_1" d="m 292,55 h -5"/>
++      <path id="right_border_3" d="m 292,155 h -5"/>
++      <path id="lower_border_1" d="m 48.5,205 v -5"/>
++      <path id="lower_border_2" d="m 98.5,205 v -5"/>
++      <path id="lower_border_4" d="m 198.5,205 v -5"/>
++      <path id="lower_border_5" d="m 248.5,205 v -5"/>
++      <path id="left_border_1" d="m 15,55 h 5"/>
++      <path id="left_border_3" d="m 15,155 h 5"/>
++    </g>
++    <g id="grid_reference_markers" style="font-size:3.5px;font-family:osifont;text-align:center;text-anchor:middle;fill:#000000;stroke:none">
++      <text id="upper_marker_1" x="23.5" y="8.8">1</text>
++      <text id="upper_marker_2" x="73.5" y="8.8">2</text>
++      <text id="upper_marker_3" x="123.5" y="8.8">3</text>
++      <text id="upper_marker_4" x="173.5" y="8.8">4</text>
++      <text id="upper_marker_5" x="223.5" y="8.8">5</text>
++      <text id="upper_marker_6" x="273.5" y="8.8">6</text>
++      <text id="right_marker_1" x="289.5" y="31.3">A</text>
++      <text id="right_marker_2" x="289.5" y="81.3">B</text>
++      <text id="right_marker_3" x="289.5" y="131.3">C</text>
++      <text id="right_marker_4" x="289.5" y="181.3">D</text>
++      <text id="lower_marker_6" x="273.5" y="203.8">A4</text>
++    </g>
++  </g>
++  <g id="trimming_marks" style="fill:#000000;stroke:none">
++    <path id="top_left_trimming" d="m 0,0 h 10 v 5 h -5 v 5 h -5 z" />
++    <path id="top_right_trimming" d="m 297,0 h -10 v 5 h 5 v 5 h 5 z" />
++    <path id="bottom_right_trimming" d="m 297,210 h -10 v -5 h 5 v -5 h 5 z" />
++    <path id="bottom_left_trimming" d="m 0,210 h 10 v -5 h -5 v -5 h -5 z" />
++  </g>
++<!-- Title block -->
++  <g id="title_block_borders" style="fill:none;stroke:#000000;stroke-width:0.35;stroke-linecap:round;stroke-linejoin:round">
++    <rect id="title_block_frame" x="107" y="164" width="180" height="36" style="stroke-width:0.7"/>
++    <rect id="legal_owner_border" x="247" y="164" width="40" height="24"/>
++    <rect id="identification_number_border" x="107" y="188" width="80" height="12"/>
++    <rect id="revision_index_border" x="247" y="188" width="20" height="12"/>
++    <rect id="date_of_issue_border" x="207" y="188" width="40" height="12"/>
++    <rect id="sheet_number_border" x="267" y="188" width="20" height="12"/>
++    <rect id="language_code_border" x="187" y="188" width="20" height="12"/>
++    <rect id="title_border" x="107" y="164" width="80" height="12"/>
++    <rect id="approval_person_border" x="187" y="176" width="60" height="12"/>
++    <rect id="creator_border" x="187" y="164" width="60" height="12"/>
++    <rect id="document_type_border" x="107" y="176" width="80" height="12"/>
++  </g>
++  <g id="title_block_labels" style="font-size:3.5px;font-family:osifont;text-anchor:start;fill:#000000;stroke:none">
++    <text id="legal_owner label" x="247.5" y="167.6">所有者:</text>
++    <text id="identification_number_label" x="107.5" y="191.6">図番:</text>
++    <text id="revision_index_label" x="247.5" y="191.6">改訂:</text>
++    <text id="date_of_issue_label" x="207.5" y="191.6">発行日:</text>
++    <text id="sheet_number_label" x="267.5" y="191.6">シート:</text>
++    <text id="language_code_label" x="187.5" y="191.6">言語:</text>
++    <text id="title_label" x="107.5" y="167.6">表題:</text>
++    <text id="approval_person_label" x="187.5" y="179.6">承認:</text>
++    <text id="creator_label" x="187.5" y="167.6">作成:</text>
++    <text id="document_type_label" x="107.5" y="179.6">図面の種類:</text>
++    <text id="sheet_scale_label" x="227.5" y="155.6">尺度:</text>
++    <text id="general_tolerances_label" x="187.5" y="155.6">普通公差:</text>
++    <text id="part_material_label" x="107.5" y="155.6">材料:</text>
++  </g>
++  <g id="title_block_data_fields" style="font-size:5px;font-family:osifont;text-anchor:start;fill:#000000;stroke:none">
++    <text id="legal_owner_1_data_field" x="267" y="173.1" freecad:editable="legal_owner_1" freecad:autofill="organization" style="font-size:3.5px;text-align:center;text-anchor:middle"><tspan/></text>
++    <text id="legal_owner_2_data_field" x="267" y="177.1" freecad:editable="legal_owner_2" style="font-size:3.5px;text-align:center;text-anchor:middle"><tspan/></text>
++    <text id="legal_owner_3_data_field" x="267" y="181.1" freecad:editable="legal_owner_3" style="font-size:3.5px;text-align:center;text-anchor:middle"><tspan/></text>
++    <text id="legal_owner_4_data_field" x="267" y="185.1" freecad:editable="legal_owner_4" style="font-size:3.5px;text-align:center;text-anchor:middle"><tspan/></text>
++    <text id="identification_number_data_field" x="108" y="197.2" freecad:editable="drawing_number"><tspan>DN</tspan></text>
++    <text id="revision_index_data_field" x="257" y="197.2" freecad:editable="revision_index" style="text-align:center;text-anchor:middle"><tspan>AAA</tspan></text>
++    <text id="date_of_issue_data_field" x="208" y="197.2" freecad:editable="date_of_issue" freecad:autofill="date"><tspan>YYYY-MM-DD</tspan></text>
++    <text id="sheet_number_data_field" x="277" y="197.2" freecad:editable="sheet_number" freecad:autofill="sheet" style="text-align:center;text-anchor:middle"><tspan>X / Y</tspan></text>
++    <text id="language_code_data_field" x="197" y="197.2" freecad:editable="language_code" style="text-align:center;text-anchor:middle"><tspan>EN</tspan></text>
++    <text id="title_data_field" x="108" y="173.2" freecad:editable="title" freecad:autofill="title"><tspan>ISO 5457 template</tspan></text>
++    <text id="approval_person_data_field" x="188" y="185.2" freecad:editable="approval_person"><tspan>B. Hecate</tspan></text>
++    <text id="creator_data_field" x="188" y="173.2" freecad:editable="creator" freecad:autofill="author"><tspan>A. Nemesis</tspan></text>
++    <text id="document_type_data_field" x="108" y="185.2" freecad:editable="document_type"><tspan>Component Drawing</tspan></text>
++    <text id="sheet_scale_data_field" x="237" y="161.2" freecad:editable="scale" freecad:autofill="scale" style="text-align:center;text-anchor:middle"><tspan>1 : 1</tspan></text>
++    <text id="general_tolerances_data_field" x="188" y="161.2" freecad:editable="general_tolerances"><tspan>ISO 2768-m</tspan></text>
++    <text id="part_material_data_field" x="108" y="161.2" freecad:editable="part_material"><tspan>Stainless steel Mat.No. 1.4301</tspan></text>
++  </g>
++  <g id="extras_outlines" style="fill:none;stroke:#000000;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round">
++    <path id="first_angle_trapezoid" d="m 266,147 -10,2.5 v 5 l 10,2.5 z"/>
++    <circle id="first_angle_inner circle" cx="273" cy="152" r="2.5"/>
++    <circle id="first_angle_outer circle" cx="273" cy="152" r="5"/>
++  </g>
++  <g id="extras_centre_lines" style="fill:none;stroke:#000000;stroke-width:0.25;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:6, 0.75, 0.125, 0.75">
++    <path id="first_angle_horizontal" d="m 255,152 h 24" style="stroke-dashoffset:0.25"/>
++    <path id="first_angle_vertical" d="m 273,158 v -12" style="stroke-dashoffset:4.625"/>
++  </g>
++</svg>
+diff --git a/src/Mod/Unified/AssemblyCopies.py b/src/Mod/Unified/AssemblyCopies.py
+new file mode 100644
+index 000000000..40172a8b4
+--- /dev/null
++++ b/src/Mod/Unified/AssemblyCopies.py
+@@ -0,0 +1,99 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""More of the same part in an assembly (usability test 0.6.9, task 4: "a pillar at each of the
++four corners" had no way: Ctrl+C / Ctrl+V did nothing, the pattern made one row).
++
++- duplicate(): another of the picked parts (a link to the same part), beside it
++- grid(): copies in rows × columns at a spacing (four corners: 2 × 2)
++
++App side only ("FreeCADCmd -t TestAssemblyCopies"); the keys and the panel: AssemblyCopiesGui.py.
++"""
++
++import FreeCAD as App
++
++translate = App.Qt.translate
++
++
++def assembly_of(obj):
++    """The assembly the object is a part of, or None"""
++    if obj is None:
++        return None
++    for parent in obj.InList:
++        if parent.isDerivedFrom("Assembly::AssemblyObject") and obj in parent.Group:
++            return parent
++    return None
++
++
++def is_assembly_part(obj):
++    return assembly_of(obj) is not None and (
++        obj.isDerivedFrom("App::Link") or obj.isDerivedFrom("PartDesign::Body") or obj.isDerivedFrom("Part::Feature")
++        or obj.isDerivedFrom("App::Part")
++    )
++
++
++def _size(obj):
++    try:
++        b = obj.Shape.BoundBox if hasattr(obj, "Shape") else None
++    except Exception:
++        b = None
++    if b is None or not b.isValid():
++        return App.Vector(10, 10, 10)
++    return App.Vector(b.XLength, b.YLength, b.ZLength)
++
++
++def copy_of(obj, offset):
++    """Another of the part, moved by offset (assembly coordinates); in the same assembly"""
++    asm = assembly_of(obj)
++    doc = obj.Document
++    target = obj.LinkedObject if obj.isDerivedFrom("App::Link") else obj
++    new = doc.addObject("App::Link", obj.Name)
++    new.setLink(target)
++    new.Label = obj.Label
++    pl = App.Placement(obj.Placement)
++    pl.Base = pl.Base + App.Vector(offset)
++    new.Placement = pl
++    if asm is not None:
++        asm.addObject(new)
++    return new
++
++
++def duplicate(objs, offset=None):
++    """One more of each part, beside it (along X by its width and a little gap). One undo step."""
++    objs = [o for o in objs if o is not None]
++    if not objs:
++        return []
++    doc = objs[0].Document
++    doc.openTransaction(translate("Unified", "Another of the part"))
++    out = []
++    try:
++        for o in objs:
++            step = App.Vector(offset) if offset is not None else App.Vector(_size(o).x + 10, 0, 0)
++            out.append(copy_of(o, step))
++        doc.recompute()
++    except Exception:
++        doc.abortTransaction()
++        raise
++    doc.commitTransaction()
++    return out
++
++
++def grid_offsets(columns, rows, dx, dy):
++    """The places of a grid relative to the first (which is the part itself)"""
++    return [App.Vector(i * dx, j * dy, 0) for j in range(rows) for i in range(columns) if i or j]
++
++
++def grid(obj, columns, rows, dx, dy):
++    """Copies of the part in columns × rows at the spacing (the part itself is the first). One
++    undo step."""
++    columns, rows = max(1, int(columns)), max(1, int(rows))
++    doc = obj.Document
++    doc.openTransaction(translate("Unified", "Copies in a grid"))
++    out = []
++    try:
++        for off in grid_offsets(columns, rows, dx, dy):
++            out.append(copy_of(obj, off))
++        doc.recompute()
++    except Exception:
++        doc.abortTransaction()
++        raise
++    doc.commitTransaction()
++    return out
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+new file mode 100644
+index 000000000..a10ab9cb9
+--- /dev/null
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -0,0 +1,224 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""More of the same part in an assembly, in the GUI (AssemblyCopies.py):
++
++- Ctrl+C / Ctrl+V on parts of an assembly: another of each, beside it (picked, to move or snap)
++- "Copies in a Grid": rows × columns at a spacing (the four corners of a plate: 2 × 2)
++- a double-click on a part of an assembly in the tree picks it instead of opening its own file
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import AssemblyCopies as AC
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def picked_parts():
++    out = []
++    for s in Gui.Selection.getSelectionEx("", 0):
++        obj = s.Object
++        subs = s.SubElementNames or ("",)
++        for sub in subs:
++            # A pick inside the assembly: its first level below the assembly is the part
++            leaf = obj
++            if obj.isDerivedFrom("Assembly::AssemblyObject") and sub:
++                name = sub.split(".")[0]
++                leaf = obj.Document.getObject(name) or obj
++            elif sub and "." in sub:
++                first = obj.Document.getObject(sub.split(".")[0])
++                if first is not None and AC.is_assembly_part(first):
++                    leaf = first
++            if AC.is_assembly_part(leaf) and leaf not in out:
++                out.append(leaf)
++    return out
++
++
++_clipboard = []
++
++
++def copy():
++    global _clipboard
++    _clipboard = [(o.Document.Name, o.Name) for o in picked_parts()]
++    if _clipboard:
++        Gui.getMainWindow().statusBar().showMessage(
++            translate("Unified", "Copied {} part(s): Ctrl+V puts another of each").format(len(_clipboard)), 4000
++        )
++    return bool(_clipboard)
++
++
++def paste():
++    objs = []
++    for d, n in _clipboard:
++        try:
++            o = App.getDocument(d).getObject(n)
++        except Exception:
++            o = None
++        if o is not None:
++            objs.append(o)
++    if not objs:
++        return False
++    new = AC.duplicate(objs)
++    Gui.Selection.clearSelection()
++    for o in new:
++        asm = AC.assembly_of(o)
++        if asm is not None:
++            Gui.Selection.addSelection(o.Document.Name, asm.Name, o.Name + ".")
++        else:
++            Gui.Selection.addSelection(o)
++    Gui.getMainWindow().statusBar().showMessage(
++        translate("Unified", "Put {} more: drag it or use “Snap” to place it").format(len(new)), 5000
++    )
++    return True
++
++
++def handle_key(event):
++    """Ctrl+C / Ctrl+V on parts of an assembly (else the usual copy and paste)"""
++    mods = event.modifiers() & ~QtCore.Qt.KeypadModifier
++    if mods != QtCore.Qt.ControlModifier or event.key() not in (QtCore.Qt.Key_C, QtCore.Qt.Key_V):
++        return False
++    import UnifiedChrome
++
++    app = QtWidgets.QApplication.instance()
++    if UnifiedChrome.typing_text(app.focusWidget()) or app.activePopupWidget() or app.activeModalWidget():
++        return False
++    if Gui.Control.activeDialog():
++        return False
++    if event.key() == QtCore.Qt.Key_C:
++        return bool(picked_parts())  # copied when the key press comes (below)
++    return bool(_clipboard)
++
++
++class GridPanel:
++    def __init__(self, part):
++        self.part = part
++        self.form = QtWidgets.QWidget()
++        self.form.setWindowTitle(translate("Unified_GridCopies", "Copies in a Grid"))
++        lay = QtWidgets.QFormLayout(self.form)
++        size = AC._size(part)
++        self.columns = QtWidgets.QSpinBox()
++        self.columns.setRange(1, 50)
++        self.columns.setValue(2)
++        self.rows = QtWidgets.QSpinBox()
++        self.rows.setRange(1, 50)
++        self.rows.setValue(2)
++        self.dx = QtWidgets.QDoubleSpinBox()
++        self.dy = QtWidgets.QDoubleSpinBox()
++        for f, v in ((self.dx, size.x * 2), (self.dy, size.y * 2)):
++            f.setRange(-10000, 10000)
++            f.setDecimals(2)
++            f.setSuffix(" mm")
++            f.setValue(v)
++        self.columns.setObjectName("UnifiedGridColumns")
++        self.rows.setObjectName("UnifiedGridRows")
++        self.dx.setObjectName("UnifiedGridDX")
++        self.dy.setObjectName("UnifiedGridDY")
++        lay.addRow(QtWidgets.QLabel(translate("Unified_GridCopies", "“{}” and its copies").format(part.Label)))
++        lay.addRow(translate("Unified_GridCopies", "Across (X)"), self.columns)
++        lay.addRow(translate("Unified_GridCopies", "Spacing across"), self.dx)
++        lay.addRow(translate("Unified_GridCopies", "Back (Y)"), self.rows)
++        lay.addRow(translate("Unified_GridCopies", "Spacing back"), self.dy)
++        hint = QtWidgets.QLabel(
++            translate("Unified_GridCopies", "From the part's place: e.g. a pillar at one corner of a 100 × 60 plate, "
++                      "2 × 2 at 80 and 40 mm puts one at each corner.")
++        )
++        hint.setWordWrap(True)
++        lay.addRow(hint)
++
++    def getStandardButtons(self):
++        return QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
++
++    def accept(self):
++        AC.grid(self.part, self.columns.value(), self.rows.value(), self.dx.value(), self.dy.value())
++        Gui.Control.closeDialog()
++        return True
++
++    def reject(self):
++        Gui.Control.closeDialog()
++        return True
++
++
++class GridCopiesCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Draft_Array",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_GridCopies", "Copies in a Grid"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_GridCopies",
++                "More of the picked part of the assembly in rows and columns at a spacing (one at each corner: 2 × 2)",
++            ),
++        }
++
++    def IsActive(self):
++        return len(picked_parts()) == 1 and not Gui.Control.activeDialog()
++
++    def Activated(self):
++        parts = picked_parts()
++        if parts:
++            Gui.Control.showDialog(GridPanel(parts[0]))
++
++
++class DuplicateCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Std_DuplicateSelection",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_AnotherPart", "Another of This Part"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_AnotherPart", "Put one more of the picked part beside it (as Ctrl+C, Ctrl+V)"
++            ),
++        }
++
++    def IsActive(self):
++        return bool(picked_parts())
++
++    def Activated(self):
++        copy()
++        paste()
++
++
++class KeyAndTreeFilter(QtCore.QObject):
++    def eventFilter(self, obj, event):
++        t = event.type()
++        if t == QtCore.QEvent.ShortcutOverride and isinstance(obj, QtWidgets.QWidget):
++            if handle_key(event):
++                event.accept()
++                return True
++        elif t == QtCore.QEvent.KeyPress and isinstance(obj, QtWidgets.QWidget):
++            if handle_key(event):
++                if event.key() == QtCore.Qt.Key_C:
++                    copy()
++                else:
++                    QtCore.QTimer.singleShot(0, paste)
++                return True
++        elif t == QtCore.QEvent.MouseButtonDblClick and isinstance(obj, QtWidgets.QWidget):
++            tree = obj.parentWidget()
++            if tree is not None and tree.metaObject().className() == "Gui::TreeWidget":
++                import HistoryLineGui as H
++
++                index = tree.indexAt(event.position().toPoint() if hasattr(event, "position") else event.pos())
++                o = H.object_of(index)
++                if o is not None and o.isDerivedFrom("App::Link") and AC.assembly_of(o) is not None:
++                    # A part of the assembly: picked, not opened in its own file
++                    return True
++        return False
++
++
++_filter = None
++
++
++def install():
++    global _filter
++    if _filter is None:
++        import UnifiedChrome
++
++        _filter = KeyAndTreeFilter()
++        UnifiedChrome.EXTRA_FILTERS.append(_filter)
++
++
++Gui.addCommand("Unified_GridCopies", GridCopiesCommand())
++Gui.addCommand("Unified_AnotherPart", DuplicateCommand())
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 79297bdcd..01e387116 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -26,7 +26,7 @@ set(Unified_Scripts
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+         CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
+-        UnifiedChrome.py OtherTools.svg UnifiedSettings.py)
++        UnifiedChrome.py OtherTools.svg UnifiedSettings.py Search.svg)
+ endif(BUILD_GUI)
+ 
+ # Snap together / move point to point: the geometry (SnapMath, tested headless by
+@@ -71,12 +71,15 @@ endif(BUILD_GUI)
+ # The "in effect up to here" line of a part's history (the body's Tip, never named so), what a
+ # pick is called in words, and the short task panels: the logic tested headless
+ # ("FreeCADCmd -t TestHistoryLine", "FreeCADCmd -t TestSelectionWords", "FreeCADCmd -t TestWording")
+-list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py
++list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py)
++    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py)
+ endif(BUILD_GUI)
+ 
++# The A4 sheet with its title block in Japanese (the default sheet of new drawings)
++list(APPEND Unified_Scripts A4_Landscape_JIS_ja.svg)
++
+ add_custom_target(UnifiedScripts ALL SOURCES ${Unified_Scripts})
+ fc_copy_sources(UnifiedScripts "${CMAKE_BINARY_DIR}/Mod/Unified" ${Unified_Scripts})
+ 
+diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
+index 982f33b06..ce51d32b6 100644
+--- a/src/Mod/Unified/CommandAliases.py
++++ b/src/Mod/Unified/CommandAliases.py
+@@ -26,6 +26,9 @@ ALIASES = {
+     "PartDesign_AdditivePipe": ["スイープ", "なぞる", "パイプ", "Sweep", "Pipe"],
+     "PartDesign_AdditiveHelix": ["らせん", "ばね", "コイル", "Helix", "Spring", "Coil"],
+     "PartDesign_SubtractiveHelix": ["ねじ山", "ねじを切る", "Thread"],
++    "Unified_AnotherPart": ["コピー", "複製", "もう1つ", "もう一つ", "同じ部品", "Copy", "Duplicate"],
++    "Unified_GridCopies": ["格子", "四隅", "並べる", "配列", "コピー", "Grid", "Array"],
++    "Unified_HolePositions": ["穴の位置", "穴の寸法", "位置寸法", "Hole position"],
+     "Unified_InsertHere": ["ここに差し込む", "途中に足す", "途中に手順", "ここまで有効", "ロールバック", "Rollback", "Insert here"],
+     "Unified_LineToEnd": ["全部有効", "最後まで", "ここまで有効を戻す", "Roll forward"],
+     "PartDesign_MoveTip": ["先端", "先端を設定", "ここに差し込む", "途中に足す", "途中に手順", "Tip", "Set tip", "Rollback", "ロールバック"],
+diff --git a/src/Mod/Unified/CommandSearchCore.py b/src/Mod/Unified/CommandSearchCore.py
+index 24be27821..56040572e 100644
+--- a/src/Mod/Unified/CommandSearchCore.py
++++ b/src/Mod/Unified/CommandSearchCore.py
+@@ -6,6 +6,7 @@ An entry is a dict as in CommandCatalog.json: name, ja, en, tip_ja, tip_en, wb,
+ the search adds "aliases".
+ """
+ 
++import FreeCAD as App
+ import json
+ import os
+ import re
+@@ -157,3 +158,43 @@ def search(query, entries, usable=(), placed=(), limit=40):
+         found.append((-s, e.get("ja") or e.get("en") or e["name"], e["name"], e))
+     found.sort(key=lambda t: t[:3])
+     return [t[3] for t in found[:limit]]
++
++
++def translate_general():
++    try:
++        return App.Qt.translate("CommandSearch", "General")
++    except Exception:
++        return "General"
++
++
++def disambiguate(found):
++    """The hits as shown: [(entry, what tells it apart)]. A group button that only repeats one of
++    its tools (e.g. the "Dimension" drop-down beside "Dimension") is left out; tools with the same
++    name say where they work, e.g. 「寸法 — スケッチ」「寸法 — 図面」 (usability test 0.6.9: a row
++    of identical "寸法 (Dimension)")."""
++
++    def name(e):
++        return plain(e.get("ja") or e.get("en") or e["name"])
++
++    names = {}
++    for e in found:
++        names.setdefault(name(e), []).append(e)
++    out = []
++    for e in found:
++        same = names[name(e)]
++        if len(same) > 1 and "_Comp" in e["name"] and any("_Comp" not in o["name"] for o in same):
++            continue
++        out.append(e)
++    names = {}
++    for e in out:
++        names.setdefault(name(e), []).append(e)
++    shown = []
++    for e in out:
++        same = names[name(e)]
++        extra = ""
++        if len(same) > 1:
++            extra = module_name(e) or translate_general()
++            if sum(1 for o in same if (module_name(o) or o.get("wb")) == (module_name(e) or e.get("wb"))) > 1:
++                extra = "{} · {}".format(extra, e.get("en") or e["name"])
++        shown.append((e, extra))
++    return shown
+diff --git a/src/Mod/Unified/CommandSearchGui.py b/src/Mod/Unified/CommandSearchGui.py
+index aa8649639..7e295f2fa 100644
+--- a/src/Mod/Unified/CommandSearchGui.py
++++ b/src/Mod/Unified/CommandSearchGui.py
+@@ -157,6 +157,21 @@ def ask_ai(text):
+     panel.input.setFocus()
+ 
+ 
++def local_icon(icon):
++    """An icon path of the catalog made on another machine (the build's), as a path here: the
++    part after ".../Mod/" under this FreeCAD's modules"""
++    if not icon or not os.path.isabs(icon) or os.path.isfile(icon):
++        return icon
++    norm = icon.replace("\\", "/")
++    if "/Mod/" in norm:
++        rest = norm.split("/Mod/", 1)[1]
++        for base in (os.path.join(App.getHomePath(), "Mod"), os.path.join(App.getUserAppDataDir(), "Mod")):
++            p = os.path.join(base, rest)
++            if os.path.isfile(p):
++                return p
++    return ""
++
++
+ class SearchPopup(QtWidgets.QFrame):
+     """The search field with the list of matching tools, at the top of the window"""
+ 
+@@ -255,7 +270,8 @@ class SearchPopup(QtWidgets.QFrame):
+         found = core.search(text, found, usable=ok, placed=self.places.keys(), limit=40)
+         for e in found:
+             refresh_texts(e)
+-            self.list.addItem(self.make_item(e, e["name"] in ok))
++        for e, extra in core.disambiguate(found):
++            self.list.addItem(self.make_item(e, e["name"] in ok, extra))
+         ai = QtWidgets.QListWidgetItem(
+             translate("CommandSearch", "Ask the AI: “{}”").format(text)
+             + "\n"
+@@ -266,9 +282,9 @@ class SearchPopup(QtWidgets.QFrame):
+         self.list.addItem(ai)
+         self.list.setCurrentRow(0)
+ 
+-    def make_item(self, e, can_run):
++    def make_item(self, e, can_run, extra=""):
+         name = e.get("ja") or e.get("en") or e["name"]
+-        title = name
++        title = name + ("  — " + extra if extra else "")
+         if e.get("en") and core.fold(e["en"]) != core.fold(name):
+             title += "  ({})".format(e["en"])
+         where = self.places.get(e["name"])
+@@ -298,10 +314,10 @@ class SearchPopup(QtWidgets.QFrame):
+ 
+     def icon_for(self, e, loaded):
+         """The command's icon; for a module not loaded yet (its icons come with it) the module's"""
+-        icon = e.get("icon", "")
++        icon = local_icon(e.get("icon", ""))
+         if icon and os.path.isfile(icon):
+             return QtGui.QIcon(icon)
+-        if loaded and icon:
++        if loaded and icon and not os.path.isabs(icon):
+             return Gui.getIcon(icon)
+         try:
+             wb_icon = Gui.getWorkbench(e.get("module_wb") or e.get("wb")).Icon
+@@ -386,7 +402,7 @@ class SearchField(QtWidgets.QLineEdit):
+ class SearchCommand:
+     def GetResources(self):
+         return {
+-            "Pixmap": "edit-find",
++            "Pixmap": os.path.join(os.path.dirname(os.path.abspath(__file__)), "Search.svg"),
+             "MenuText": QT_TRANSLATE_NOOP("Unified_Search", "Search Tools…"),
+             "ToolTip": QT_TRANSLATE_NOOP(
+                 "Unified_Search",
+@@ -410,7 +426,7 @@ class SearchUsableCommand:
+ 
+     def GetResources(self):
+         return {
+-            "Pixmap": "edit-find",
++            "Pixmap": os.path.join(os.path.dirname(os.path.abspath(__file__)), "Search.svg"),
+             "MenuText": QT_TRANSLATE_NOOP("Unified_SearchUsable", "All Tools for This"),
+             "ToolTip": QT_TRANSLATE_NOOP(
+                 "Unified_SearchUsable", "Every tool that can be used with what is picked; type to narrow down"
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 183056a64..eb1dabbef 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -52,6 +52,9 @@ RULES = {
+         A("Unified_Hole", T("Hole")),
+         A("PartDesign_Thickness", T("Shell"), THICK),
+         A("Unified_SnapFaces", T("Snap")),
++        # a face of a part of an assembly (the tools of a part's steps are off there)
++        A("Unified_AnotherPart", T("One more")),
++        A("Unified_GridCopies", T("Grid")),
+     ],
+     "round face": [
+         A("Unified_InsertScrew", T("Insert screw")),
+@@ -95,8 +98,10 @@ RULES = {
+     "part": [
+         A("Std_TransformManip", T("Move")),
+         A("Unified_SnapFaces", T("Snap")),
+-        A("Unified_MovePointToPoint", T("Point to point")),
++        # 6.4: move, snap, another, mirror, arrange, hide (point to point is on the search)
++        A("Unified_AnotherPart", T("One more")),
+         A("Part_Mirror", T("Mirror")),
++        A("Unified_GridCopies", T("Grid")),
+         A("Std_ToggleVisibility", T("Hide")),
+     ],
+     # Two picks on two parts (the first one moves; which of these fit the commands decide)
+@@ -138,6 +143,7 @@ RULES = {
+     ],
+     # In a technical drawing
+     "drawing circle": [
++        A("Unified_HolePositions", T("Hole positions")),
+         A("TechDraw_DiameterDimension", T("Diameter")),
+         A("TechDraw_RadiusDimension", T("Radius")),
+         A("TechDraw_CircleCenterLines", T("Center lines")),
+@@ -155,6 +161,7 @@ RULES = {
+         A("TechDraw_2LineCenterLine", T("Center line")),
+     ],
+     "drawing view": [
++        A("Unified_HolePositions", T("Hole positions")),
+         A("TechDraw_ExtensionCircleCenterLines", T("Center lines")),
+         A("TechDraw_SectionView", T("Section")),
+         A("TechDraw_DetailView", T("Detail")),
+@@ -415,5 +422,7 @@ def run_with_value(command, text):
+         setattr(obj, field[0], value)
+         obj.Document.recompute()
+         App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified/ContextBar").SetString(command, text)
++        # The new shape may be larger than the view (a 50 mm pillar from a 20 mm square)
++        UnifiedChrome.keep_model_in_view()
+     except Exception as e:
+         App.Console.PrintWarning("Context bar: {}: {}\n".format(command, e))
+diff --git a/src/Mod/Unified/DrawingAuto.py b/src/Mod/Unified/DrawingAuto.py
+index 6caa598dd..6e022db11 100644
+--- a/src/Mod/Unified/DrawingAuto.py
++++ b/src/Mod/Unified/DrawingAuto.py
+@@ -7,7 +7,9 @@ the model (name, scale, date). Works without the GUI (tested by TestDrawingAuto.
+ import datetime
+ import time
+ 
++
+ import FreeCAD as App
++import Part
+ 
+ translate = App.Qt.translate
+ 
+@@ -68,17 +70,93 @@ def add_dimension(page, view, kind, refs, spec=None):
+     return dim
+ 
+ 
++def hole_radii(view):
++    """Radii of the holes of the view's parts: round faces whose material is outside (a hole's
++    wall), not rounded corners or round outsides. None when the parts cannot be read."""
++    radii = []
++    try:
++        sources = list(getattr(view, "Source", []) or []) + list(getattr(view, "XSource", []) or [])
++    except Exception:
++        return None
++    if not sources:
++        return None
++    for src in sources:
++        try:
++            shape = Part.getShape(src)
++        except Exception:
++            continue
++        for f in shape.Faces:
++            if type(f.Surface).__name__ != "Cylinder":
++                continue
++            c = f.Surface
++            try:
++                u0, u1, v0, v1 = f.ParameterRange
++                p = f.valueAt((u0 + u1) / 2, (v0 + v1) / 2)
++                n = f.normalAt((u0 + u1) / 2, (v0 + v1) / 2)
++            except Exception:
++                continue
++            a = App.Vector(c.Axis)
++            r = p - c.Center
++            radial = r - a * r.dot(a)
++            if radial.Length > 1e-9 and n.dot(radial) < 0:
++                radii.append(c.Radius)
++    return radii
++
++
+ def hole_groups(view):
+-    """Circles of the view by diameter: {diameter: [(index, edge)]}"""
++    """Circles of the view that are holes, by diameter: {diameter: [(index, edge)]}. Only whole
++    circles, and only of the holes of the parts (not a rounded corner seen end on)."""
++    radii = hole_radii(view)
+     groups = {}
+     for i, e in edges_of(view):
+-        if curve_name(e) == "Circle":
+-            # The view's edges are in model sizes (not scaled)
+-            d = round(e.Curve.Radius * 2, 3)
+-            groups.setdefault(d, []).append((i, e))
++        if curve_name(e) != "Circle" or not e.isClosed():
++            continue
++        r = e.Curve.Radius
++        if radii is not None and not any(abs(r - h) < 1e-3 for h in radii):
++            continue
++        # The view's edges are in model sizes (not scaled)
++        d = round(r * 2, 3)
++        groups.setdefault(d, []).append((i, e))
+     return groups
+ 
+ 
++def _key_of(e):
++    c = e.Curve.Location
++    return "{:.3f},{:.3f},{:.3f}".format(c.x, c.y, e.Curve.Radius)
++
++
++def _remember_center_lines(view, tags, circle):
++    for name, doc in (("AutoCenterLines", "Center lines made for the holes"),
++                      ("AutoCenterHoles", "The holes they were made for")):
++        if not hasattr(view, name):
++            view.addProperty("App::PropertyStringList", name, "Unified", doc)
++            view.setPropertyStatus(name, "Hidden")
++    view.AutoCenterLines = list(view.AutoCenterLines) + list(tags)
++    view.AutoCenterHoles = list(view.AutoCenterHoles) + [_key_of(circle)]
++
++
++def refresh_center_lines(view):
++    """The center lines made for the holes, again where the holes are now (a hole moved in the
++    model: its cross moves with it). Returns True if they changed."""
++    old = list(getattr(view, "AutoCenterLines", []) or [])
++    if not old:
++        return False
++    groups = hole_groups(view)
++    now = sorted(_key_of(e) for c in groups.values() for _, e in c)
++    if now == sorted(getattr(view, "AutoCenterHoles", []) or []):
++        return False
++    for tag in old:
++        try:
++            view.removeCosmeticEdge(tag)
++        except Exception:
++            pass
++    view.AutoCenterLines = []
++    view.AutoCenterHoles = []
++    for _d, circles in groups.items():
++        center_lines(view, circles)
++    return True
++
++
+ def center_lines(view, circles):
+     """A cross of thin dash-dot lines through each circle, a little longer than the circle"""
+     made = 0
+@@ -87,8 +165,11 @@ def center_lines(view, circles):
+         # The view's edges and cosmetic lines are both in model sizes (not scaled)
+         cx, cy, er = c.x, c.y, e.Curve.Radius * 1.3
+         try:
+-            view.makeCosmeticLine(App.Vector(cx - er, cy, 0), App.Vector(cx + er, cy, 0), CENTER_LINE_STYLE, THIN)
+-            view.makeCosmeticLine(App.Vector(cx, cy - er, 0), App.Vector(cx, cy + er, 0), CENTER_LINE_STYLE, THIN)
++            tags = [
++                view.makeCosmeticLine(App.Vector(cx - er, cy, 0), App.Vector(cx + er, cy, 0), CENTER_LINE_STYLE, THIN),
++                view.makeCosmeticLine(App.Vector(cx, cy - er, 0), App.Vector(cx, cy + er, 0), CENTER_LINE_STYLE, THIN),
++            ]
++            _remember_center_lines(view, [t for t in tags if t], e)
+             made += 1
+         except Exception as e:
+             App.Console.PrintLog("Drawing: center line: {}\n".format(e))
+@@ -147,6 +228,55 @@ def outer_sizes(page, view, horizontal=True, vertical=True):
+     return made
+ 
+ 
++def hole_positions(page, view, groups=None):
++    """Where the holes are: from the left edge to each column of holes and from the bottom edge
++    to each row (usability test 0.6.9: a click on a hole's circle picked its center lines, so
++    its position could not be dimensioned). Below and left of the view, after the overall sizes."""
++    groups = hole_groups(view) if groups is None else groups
++    circles = [e for c in groups.values() for _, e in c]
++    if not circles:
++        return []
++    verts = vertices_of(view)
++    lines = [(i, e) for i, e in edges_of(view) if curve_name(e) in ("Line", "LineSegment")]
++    upright = [(i, e) for i, e in lines if e.BoundBox.XLength < 1e-6]
++    level = [(i, e) for i, e in lines if e.BoundBox.YLength < 1e-6]
++    if not upright or not level:
++        return []
++    left = min(upright, key=lambda t: t[1].BoundBox.XMin)
++    bottom = min(level, key=lambda t: t[1].BoundBox.YMin)
++    box = extent(view)
++    scale = view.getScale() if hasattr(view, "getScale") else 1.0
++
++    def center_vertex(e):
++        c = e.Curve.Location
++        for i, p in verts:
++            if abs(p.x - c.x) < 1e-3 and abs(p.y - c.y) < 1e-3:
++                return i
++        return None
++
++    made = []
++    xs, ys = {}, {}
++    for e in circles:
++        c = e.Curve.Location
++        xs.setdefault(round(c.x, 3), e)
++        ys.setdefault(round(c.y, 3), e)
++    for k, (x, e) in enumerate(sorted(xs.items())):
++        v = center_vertex(e)
++        if v is None or abs(x - left[1].BoundBox.XMin) < 1e-6:
++            continue
++        d = add_dimension(page, view, "DistanceX", ["Edge%d" % left[0], "Vertex%d" % v])
++        d.X, d.Y = ((left[1].BoundBox.XMin + x) / 2) * scale, box[1] * scale - 16 - 7 * k
++        made.append(d)
++    for k, (y, e) in enumerate(sorted(ys.items())):
++        v = center_vertex(e)
++        if v is None or abs(y - bottom[1].BoundBox.YMin) < 1e-6:
++            continue
++        d = add_dimension(page, view, "DistanceY", ["Edge%d" % bottom[0], "Vertex%d" % v])
++        d.X, d.Y = box[0] * scale - 16 - 7 * k, ((bottom[1].BoundBox.YMin + y) / 2) * scale
++        made.append(d)
++    return made
++
++
+ def place_clear_of_title_block(page, group):
+     """The front view above the title block (bottom right) and a little to the left"""
+     front = group.Anchor
+@@ -212,7 +342,7 @@ def complete(page, group, name=None):
+             g = hole_groups(v)
+             if sum(len(c) for c in g.values()) > sum(len(c) for c in groups.values()):
+                 holes_view, groups = v, g
+-    for diameter, circles in sorted(groups.items()):
++    for row, (diameter, circles) in enumerate(sorted(groups.items())):
+         added["center_lines"] += center_lines(holes_view, circles)
+         n = len(circles)
+         spec = ("{}×⌀%.0f".format(n) if n > 1 else "⌀%.0f") + (translate("DrawingAuto", " drill") if n > 1 else "")
+@@ -222,9 +352,12 @@ def complete(page, group, name=None):
+         box = extent(holes_view)
+         sc = holes_view.getScale() if hasattr(holes_view, "getScale") else 1.0
+         if box:
++            # Each size of hole on a line of its own, above the part's top right corner
+             d.X = box[2] * sc + 6
+-            d.Y = box[3] * sc + 8
++            d.Y = box[3] * sc + 8 + 9 * row
+         added["dimensions"] += 1
++    if groups:
++        added["dimensions"] += len(hole_positions(page, holes_view, groups))
+     added["dimensions"] += len(outer_sizes(page, front))
+     # The depth: the width of the right view
+     for v in views:
+diff --git a/src/Mod/Unified/FollowGui.py b/src/Mod/Unified/FollowGui.py
+new file mode 100644
+index 000000000..fb5557fad
+--- /dev/null
++++ b/src/Mod/Unified/FollowGui.py
+@@ -0,0 +1,159 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""What goes with the model when it changes, and the 3D view as the face of a file
++(usability test 0.6.9, task 8):
++
++- a screw, washer or nut from the parts shelf follows its hole when the hole moves
++  (PartsShelf.follow_holes), and so do the center lines of the holes on the drawing
++  (DrawingAuto.refresh_center_lines)
++- closing the last 3D view of a file closes the file (asking to save it), instead of leaving
++  it open behind its drawing with no question
++- a file opened shows its 3D view first, not the drawing
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++
++class _Follow:
++    def __init__(self):
++        self.busy = False
++        self.pending = set()
++
++    def slotRecomputedDocument(self, doc):
++        if self.busy:
++            return
++        name = doc.Name
++        if name in self.pending:
++            return
++        self.pending.add(name)
++        QtCore.QTimer.singleShot(0, lambda: self.follow(name))
++
++    def follow(self, name):
++        self.pending.discard(name)
++        try:
++            doc = App.getDocument(name)
++        except Exception:
++            return
++        self.busy = True
++        try:
++            changed = 0
++            try:
++                import PartsShelf
++
++                changed += PartsShelf.follow_holes(doc)
++            except Exception as e:
++                App.Console.PrintLog("Follow holes: {}\n".format(e))
++            try:
++                import DrawingAuto
++
++                for v in doc.Objects:
++                    if v.isDerivedFrom("TechDraw::DrawViewPart") and getattr(v, "AutoCenterLines", None):
++                        if DrawingAuto.refresh_center_lines(v):
++                            changed += 1
++            except Exception as e:
++                App.Console.PrintLog("Follow center lines: {}\n".format(e))
++            if changed:
++                doc.recompute()
++        finally:
++            self.busy = False
++
++    def slotFinishRestoreDocument(self, doc):
++        name = doc.Name
++        QtCore.QTimer.singleShot(300, lambda: show_3d_first(name))
++
++
++def _mdi():
++    return Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
++
++
++def _3d_subwindows(doc_name):
++    """The sub-windows of the file's 3D views"""
++    out = []
++    try:
++        gdoc = Gui.getDocument(doc_name)
++    except Exception:
++        return out
++    mdi = _mdi()
++    if mdi is None:
++        return out
++    views = []
++    for v in gdoc.mdiViewsOfType("Gui::View3DInventor"):
++        try:
++            views.append(v.graphicsView())
++        except Exception:
++            pass
++    for sub in mdi.subWindowList():
++        w = sub.widget()
++        if w is not None and any(w.isAncestorOf(g) for g in views):
++            out.append(sub)
++    return out
++
++
++def _doc_of_subwindow(sub):
++    for d in App.listDocuments():
++        if sub in _3d_subwindows(d):
++            return d
++    return None
++
++
++def show_3d_first(doc_name):
++    subs = _3d_subwindows(doc_name)
++    mdi = _mdi()
++    if subs and mdi is not None:
++        mdi.setActiveSubWindow(subs[0])
++
++
++class _CloseWatcher(QtCore.QObject):
++    """Closing the last 3D view of a file: the file's other views close too, so that FreeCAD
++    asks whether to save it and closes it"""
++
++    def eventFilter(self, obj, event):
++        if event.type() == QtCore.QEvent.Close and isinstance(obj, QtWidgets.QMdiSubWindow):
++            doc = _doc_of_subwindow(obj)
++            if doc is not None and len(_3d_subwindows(doc)) == 1:
++                mdi = _mdi()
++                others = [s for s in mdi.subWindowList() if s is not obj and _belongs(s, doc)]
++                for s in others:
++                    s.close()
++        return False
++
++    def watch(self, sub):
++        if sub is not None and not sub.property("unifiedCloseWatch"):
++            sub.setProperty("unifiedCloseWatch", True)
++            sub.installEventFilter(self)
++
++
++def _belongs(sub, doc_name):
++    """The sub-window shows the file (its title is "<file label> : n" or a page of the file)"""
++    try:
++        doc = App.getDocument(doc_name)
++    except Exception:
++        return False
++    title = sub.windowTitle()
++    if title.startswith(doc.Label + " :") or title.startswith(doc.Label + ":"):
++        return True
++    w = sub.widget()
++    # A drawing page's view: its page is an object of the file
++    for o in doc.Objects:
++        if o.isDerivedFrom("TechDraw::DrawPage") and title.startswith(o.Label):
++            return True
++    return False
++
++
++_follow = None
++_close = None
++
++
++def install():
++    global _follow, _close
++    if _follow is None:
++        _follow = _Follow()
++        App.addDocumentObserver(_follow)
++    if _close is None:
++        _close = _CloseWatcher(Gui.getMainWindow())
++        mdi = _mdi()
++        if mdi is not None:
++            for s in mdi.subWindowList():
++                _close.watch(s)
++            mdi.subWindowActivated.connect(_close.watch)
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index eec3ec011..2a0ffcf80 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -440,6 +440,11 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+     move(pos);
+     show();
+     raise();
++    // Digits go to the number field wherever the keyboard focus is (see eventFilter)
++    qApp->removeEventFilter(this);
++    if (findChild<QLineEdit*>(QStringLiteral("UnifiedContextField"))) {
++        qApp->installEventFilter(this);
++    }
+ 
+     // Leave the bar alone while the user works with the view: orbiting, panning or
+     // zooming hides it
+@@ -461,6 +466,29 @@ void ContextBar::watchView(QWidget* gl)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
++    // While the bar with a number field is shown, a digit typed anywhere but in a text field goes
++    // into the field: it must not turn the view ("1"…"6"), wherever the keyboard focus is (e.g.
++    // after a click on one of the bar's buttons; usability test 0.6.9)
++    if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)
++        && watched != watchedView && isVisible()) {
++        auto* field = findChild<QLineEdit*>(QStringLiteral("UnifiedContextField"));
++        auto* key = static_cast<QKeyEvent*>(event);
++        const QString text = key->text();
++        QWidget* focus = QApplication::focusWidget();
++        bool typing = focus
++            && (qobject_cast<QLineEdit*>(focus) || focus->inherits("QAbstractSpinBox")
++                || focus->inherits("QTextEdit") || focus->inherits("QPlainTextEdit"));
++        if (field && !typing && text.size() == 1 && (text.at(0).isDigit() || text == QLatin1String("."))
++            && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
++            if (event->type() == QEvent::ShortcutOverride) {
++                event->accept();
++                return true;
++            }
++            field->setFocus();
++            field->setText(text);
++            return true;
++        }
++    }
+     if (watched == watchedView && event->type() == QEvent::MouseButtonPress) {
+         pickedSincePress = false;
+     }
+@@ -479,6 +507,18 @@ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+                 dismiss();
+             }
+         }
++        else if (event->type() == QEvent::ShortcutOverride) {
++            // A number is expected: the digits must not turn the view ("1"…"6" are the
++            // standard views) but go into the field (as the key press below)
++            auto* key = static_cast<QKeyEvent*>(event);
++            const QString text = key->text();
++            if (findChild<QLineEdit*>(QStringLiteral("UnifiedContextField")) && text.size() == 1
++                && (text.at(0).isDigit() || text == QLatin1String("."))
++                && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
++                event->accept();
++                return true;
++            }
++        }
+         else if (event->type() == QEvent::KeyPress) {
+             // Typing a number goes into the bar's number field (no need to click it first)
+             auto* key = static_cast<QKeyEvent*>(event);
+@@ -538,5 +578,6 @@ void ContextBar::editPickedStep()
+ 
+ void ContextBar::dismiss()
+ {
++    qApp->removeEventFilter(this);
+     hide();
+ }
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 1ec02908b..4ae73add6 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -9534,6 +9534,10 @@ for ProjectionGroups</source>
+         <source>On the edge</source>
+         <translation>辺の上</translation>
+     </message>
++    <message>
++        <source>{} stays where it is (it is fixed)</source>
++        <translation>{} は固定なので動かしません</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_SnapFaces</name>
+@@ -10219,6 +10223,38 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Picked: {}</source>
+         <translation>選択中: {}</translation>
+     </message>
++    <message>
++        <source>Copied {} part(s): Ctrl+V puts another of each</source>
++        <translation>{} 個の部品を写しました。Ctrl+V でもう 1 つずつ置きます</translation>
++    </message>
++    <message>
++        <source>Put {} more: drag it or use “Snap” to place it</source>
++        <translation>{} 個置きました。ドラッグか「くっつける」で位置を決めてください</translation>
++    </message>
++    <message>
++        <source>Another of the part</source>
++        <translation>同じ部品をもう 1 つ</translation>
++    </message>
++    <message>
++        <source>Copies in a grid</source>
++        <translation>格子に並べる</translation>
++    </message>
++    <message>
++        <source>Put this file's part into the assembly</source>
++        <translation>この文書の部品を組立に入れる</translation>
++    </message>
++    <message>
++        <source>{} dimension(s) of where the holes are</source>
++        <translation>穴の位置の寸法を {} 個入れました</translation>
++    </message>
++    <message>
++        <source>Left out {} frame or title block rectangle(s) of the drawing.</source>
++        <translation>図面の枠・表題欄の四角を {} 個外しました。</translation>
++    </message>
++    <message>
++        <source>{} runs of lines do not close (over {:.0f} × {:.0f} mm), so the outline cannot be extruded. Make it a sketch to close the gaps ("Make a sketch to fix"), or pick the lines of one closed outline.</source>
++        <translation>閉じていない線のつながりが {} 個あります（{:.0f} × {:.0f} mm の範囲）。このままでは押し出せません。「スケッチにして直す」ですき間を閉じるか、閉じた 1 つの輪郭の線を選んでください。</translation>
++    </message>
+ </context>
+ <context>
+     <name>CommandSearch</name>
+@@ -10270,6 +10306,10 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Search tools  Ctrl+K</source>
+         <translation>🔍 道具を探す  Ctrl+K</translation>
+     </message>
++    <message>
++        <source>General</source>
++        <translation>全般</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_Search</name>
+@@ -10565,6 +10605,18 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>Insert screw</source>
+         <translation>ねじを入れる</translation>
+     </message>
++    <message>
++        <source>One more</source>
++        <translation>もう 1 つ</translation>
++    </message>
++    <message>
++        <source>Grid</source>
++        <translation>格子に並べる</translation>
++    </message>
++    <message>
++        <source>Hole positions</source>
++        <translation>穴の位置</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_SearchUsable</name>
+@@ -11019,11 +11071,11 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+     </message>
+     <message>
+         <source>Closed (no holes)</source>
+-        <translation>閉じている（穴なし）</translation>
++        <translation>すき間なく閉じている（3D プリントできる）</translation>
+     </message>
+     <message>
+         <source>Has holes (open edges)</source>
+-        <translation>穴がある（閉じていない辺）</translation>
++        <translation>網にすき間がある（閉じていない辺）</translation>
+     </message>
+     <message>
+         <source>All faces point outwards</source>
+@@ -12619,4 +12671,91 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>平面で切り取る</translation>
+     </message>
+ </context>
++<context>
++    <name>Gui::SequencerBar</name>
++    <message>
++        <source>Processing...</source>
++        <translation>計算しています…</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_GridCopies</name>
++    <message>
++        <source>Copies in a Grid</source>
++        <translation>格子に並べる（複製）</translation>
++    </message>
++    <message>
++        <source>More of the picked part of the assembly in rows and columns at a spacing (one at each corner: 2 × 2)</source>
++        <translation>組立の選んだ部品を、縦横に決まった間隔で並べて増やします（四隅なら 2 × 2）</translation>
++    </message>
++    <message>
++        <source>“{}” and its copies</source>
++        <translation>「{}」とその写し</translation>
++    </message>
++    <message>
++        <source>Across (X)</source>
++        <translation>横の数（X）</translation>
++    </message>
++    <message>
++        <source>Spacing across</source>
++        <translation>横の間隔</translation>
++    </message>
++    <message>
++        <source>Back (Y)</source>
++        <translation>奥の数（Y）</translation>
++    </message>
++    <message>
++        <source>Spacing back</source>
++        <translation>奥の間隔</translation>
++    </message>
++    <message>
++        <source>From the part's place: e.g. a pillar at one corner of a 100 × 60 plate, 2 × 2 at 80 and 40 mm puts one at each corner.</source>
++        <translation>今の位置から数えます。例: 100 × 60 の板の角にある柱なら、2 × 2・80 mm と 40 mm で四隅に 1 本ずつ。</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_AnotherPart</name>
++    <message>
++        <source>Another of This Part</source>
++        <translation>同じ部品をもう 1 つ</translation>
++    </message>
++    <message>
++        <source>Put one more of the picked part beside it (as Ctrl+C, Ctrl+V)</source>
++        <translation>選んだ部品をもう 1 つ、横に置きます（Ctrl+C・Ctrl+V と同じ）</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_HolePositions</name>
++    <message>
++        <source>Hole Positions</source>
++        <translation>穴の位置の寸法</translation>
++    </message>
++    <message>
++        <source>Dimensions from the left and the bottom edge to each column and row of holes of the picked view</source>
++        <translation>選んだ図の、左の辺と下の辺から穴の列・行までの寸法を入れます</translation>
++    </message>
++</context>
++<context>
++    <name>Unified_Hole</name>
++    <message>
++        <source>Holes (click the face to add one)</source>
++        <translation>穴（面をクリックすると足せます）</translation>
++    </message>
++    <message>
++        <source>From the left edge</source>
++        <translation>左の辺から</translation>
++    </message>
++    <message>
++        <source>From the bottom edge</source>
++        <translation>下の辺から</translation>
++    </message>
++    <message>
++        <source>Hole {}</source>
++        <translation>穴 {}</translation>
++    </message>
++    <message>
++        <source>Remove this hole</source>
++        <translation>この穴を消す</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/HoleMultiGui.py b/src/Mod/Unified/HoleMultiGui.py
+new file mode 100644
+index 000000000..4093cecab
+--- /dev/null
++++ b/src/Mod/Unified/HoleMultiGui.py
+@@ -0,0 +1,203 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""More holes and their positions in numbers, while the hole's panel is open (usability test
++0.6.9, task 1: "only one hole can be put; its position cannot be typed").
++
++After "Hole" on a face, each further click on the same face puts another hole there, and the
++panel lists the holes with their distances from the left and the bottom edge of the face, to
++type exactly (Enter). The holes are the points of the hole's sketch (Unified_Hole makes it).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++import Part
++from PySide import QtCore, QtWidgets
++
++translate = App.Qt.translate
++
++
++def _num(v):
++    return "{:.2f}".format(v).rstrip("0").rstrip(".")
++
++
++class HolePositions(QtCore.QObject):
++    """The list of holes on the panel, and the clicks that add one"""
++
++    def __init__(self, hole, sketch, face_obj, face_name):
++        super().__init__(Gui.getMainWindow())
++        self.hole = hole
++        self.sketch = sketch
++        self.face_obj = face_obj
++        self.face_name = face_name
++        self.box = None
++        self.rows = []
++        self.origin = self._origin()
++        Gui.Selection.addObserver(self)
++        self.timer = QtCore.QTimer(self)
++        self.timer.setInterval(300)
++        self.timer.timeout.connect(self._watch)
++        self.timer.start()
++
++    # -- where the face is, in the sketch's plane
++    def _origin(self):
++        try:
++            face = self.face_obj.Shape.getElement(self.face_name)
++        except Exception:
++            return App.Vector(0, 0, 0)
++        inv = self.sketch.getGlobalPlacement().inverse()
++        pts = [inv.multVec(v.Point) for v in face.Vertexes]
++        if not pts:
++            return App.Vector(0, 0, 0)
++        return App.Vector(min(p.x for p in pts), min(p.y for p in pts), 0)
++
++    def points(self):
++        return [(i, g) for i, g in enumerate(self.sketch.Geometry) if isinstance(g, Part.Point)]
++
++    # -- clicks on the face add a hole
++    def addSelection(self, doc, obj, sub, pnt):
++        if not Gui.Control.activeDialog() or pnt is None or not sub.startswith("Face"):
++            return
++        if doc != self.sketch.Document.Name:
++            return
++        try:
++            target = App.getDocument(doc).getObject(obj)
++        except Exception:
++            return
++        # The face where the holes are: on the step it was picked on, or on the hole itself
++        # (after the first hole the part shows the hole's shape)
++        try:
++            shape = target.Shape.getElement(sub.split(".")[-1])
++        except Exception:
++            return
++        if type(shape.Surface).__name__ != "Plane":
++            return
++        p = App.Vector(*pnt)
++        local = self.sketch.getGlobalPlacement().inverse().multVec(p)
++        if abs(local.z) > 1e-4:
++            return  # another face
++        QtCore.QTimer.singleShot(0, lambda: self.add(local))
++
++    def add(self, local):
++        doc = self.sketch.Document
++        for _i, g in self.points():
++            if (App.Vector(g.X, g.Y, 0) - App.Vector(local.x, local.y, 0)).Length < 0.5:
++                return  # the same hole again
++        self.sketch.addGeometry(Part.Point(App.Vector(local.x, local.y, 0)))
++        doc.recompute()
++        Gui.Selection.clearSelection()
++        self.rebuild()
++
++    def move(self, index, x, y):
++        self.sketch.moveGeometry(index, 1, App.Vector(self.origin.x + x, self.origin.y + y, 0))
++        self.sketch.Document.recompute()
++        self.rebuild()
++
++    def remove(self, index):
++        if len(self.points()) > 1:
++            self.sketch.delGeometry(index)
++            self.sketch.Document.recompute()
++            self.rebuild()
++
++    # -- the list on the panel
++    def _panel_place(self):
++        panel = Gui.getMainWindow().findChild(QtWidgets.QWidget, "Tasks")
++        if panel is None:
++            return None
++        for w in panel.findChildren(QtWidgets.QWidget):
++            if w.metaObject().className() == "PartDesignGui::TaskHoleParameters" and w.isVisible():
++                return w
++        return None
++
++    def rebuild(self):
++        place = self._panel_place()
++        if place is None:
++            return
++        if self.box is None or not _alive(self.box):
++            self.box = QtWidgets.QGroupBox(translate("Unified_Hole", "Holes (click the face to add one)"))
++            self.box.setObjectName("UnifiedHolePositions")
++            QtWidgets.QGridLayout(self.box)
++            content = place.findChild(QtWidgets.QWidget, "TaskHoleParameters")
++            lay = content.layout() if content is not None else None
++            if lay is not None:
++                lay.insertWidget(0, self.box)
++            else:
++                return
++        lay = self.box.layout()
++        while lay.count():
++            w = lay.takeAt(0).widget()
++            if w is not None:
++                w.deleteLater()
++        lay.addWidget(QtWidgets.QLabel(""), 0, 0)
++        lay.addWidget(QtWidgets.QLabel(translate("Unified_Hole", "From the left edge")), 0, 1)
++        lay.addWidget(QtWidgets.QLabel(translate("Unified_Hole", "From the bottom edge")), 0, 2)
++        self.rows = []
++        for row, (index, g) in enumerate(self.points(), 1):
++            lay.addWidget(QtWidgets.QLabel(translate("Unified_Hole", "Hole {}").format(row)), row, 0)
++            fx = QtWidgets.QLineEdit(_num(g.X - self.origin.x))
++            fy = QtWidgets.QLineEdit(_num(g.Y - self.origin.y))
++            for f in (fx, fy):
++                f.setObjectName("UnifiedHoleX" if f is fx else "UnifiedHoleY")
++                f.setMaximumWidth(90)
++            fx.setProperty("unifiedHoleRow", row)
++
++            def commit(_=None, index=index, fx=fx, fy=fy):
++                try:
++                    x = float(fx.text().replace("mm", "").strip())
++                    y = float(fy.text().replace("mm", "").strip())
++                except ValueError:
++                    return
++                QtCore.QTimer.singleShot(0, lambda: self.move(index, x, y))
++
++            fx.returnPressed.connect(commit)
++            fy.returnPressed.connect(commit)
++            lay.addWidget(fx, row, 1)
++            lay.addWidget(fy, row, 2)
++            rm = QtWidgets.QToolButton()
++            rm.setText("✕")
++            rm.setToolTip(translate("Unified_Hole", "Remove this hole"))
++            rm.setEnabled(len(self.points()) > 1)
++            rm.clicked.connect(lambda _=False, index=index: QtCore.QTimer.singleShot(0, lambda: self.remove(index)))
++            lay.addWidget(rm, row, 3)
++            self.rows.append((fx, fy))
++
++    def _watch(self):
++        if not Gui.Control.activeDialog() or self._panel_place() is None:
++            if not Gui.Control.activeDialog():
++                self.close()
++            return
++        if self.box is None or not _alive(self.box):
++            self.rebuild()
++
++    def close(self):
++        self.timer.stop()
++        try:
++            Gui.Selection.removeObserver(self)
++        except Exception:
++            pass
++        global _current
++        if _current is self:
++            _current = None
++
++
++def _alive(w):
++    try:
++        import shiboken6
++
++        return shiboken6.isValid(w)
++    except Exception:
++        return True
++
++
++_current = None
++
++
++def start(sketch, face_obj, face_name):
++    """Called by Unified_Hole once the hole's panel is open"""
++    global _current
++    if _current is not None:
++        _current.close()
++    _current = HolePositions(None, sketch, face_obj, face_name)
++    return _current
++
++
++def current():
++    return _current
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index b921a9ed5..abb2cd9ee 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -83,6 +83,14 @@ class UnifiedWorkbench(Workbench):
+ 
+             TaskPanelsGui.install()
+             SelectionWordsGui.install()
++            # 組立で同じ部品をもう 1 つ（Ctrl+C/V）・格子に並べる、木のダブルクリックで別ファイルへ飛ばない
++            import AssemblyCopiesGui
++
++            AssemblyCopiesGui.install()
++            # ねじは穴に、図面の中心線は穴についていく。最後の 3D を閉じたら文書を閉じる（保存を聞く）
++            import FollowGui
++
++            FollowGui.install()
+ 
+         # 道具に重ねたマウスで、その道具の結果を半透明で下見する（文書は変えない）
+         import ToolPreviewGui
+@@ -122,6 +130,17 @@ def _integrated_defaults():
+         draft.SetBool("dxfShowDialog", False)
+ 
+ 
++    # New drawings on the A4 sheet whose title block is in Japanese (usability test 0.6.9:
++    # "Title", "Created by" stayed in English)
++    import os
++
++    files = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/TechDraw/Files")
++    if not files.GetString("TemplateFile", ""):
++        ja = os.path.join(FreeCAD.getHomePath(), "Mod", "Unified", "A4_Landscape_JIS_ja.svg")
++        if os.path.isfile(ja):
++            files.SetString("TemplateFile", ja)
++
++
+ _integrated_defaults()
+ 
+ # 設定の画面（編集 → 設定 → 標準）に「ネットワーク」（プロキシと会社の証明書）と「AI チャット」（API キー）を足す。
+diff --git a/src/Mod/Unified/LooseOutline.py b/src/Mod/Unified/LooseOutline.py
+index 930dcf4bb..8e581292a 100644
+--- a/src/Mod/Unified/LooseOutline.py
++++ b/src/Mod/Unified/LooseOutline.py
+@@ -72,6 +72,78 @@ def outline_for(picked_objects, picked_edges, candidates):
+     return loops, used
+ 
+ 
++def _is_rectangle(wire):
++    """Four straight edges along the axes"""
++    edges = wire.Edges
++    if len(edges) != 4:
++        return False
++    for e in edges:
++        if type(e.Curve).__name__ not in ("Line", "LineSegment"):
++            return False
++        d = e.Curve.Direction
++        if not (abs(d.x) > 0.9999 or abs(d.y) > 0.9999):
++            return False
++    return True
++
++
++def _inside(box, point, tol=1e-6):
++    return box.XMin - tol <= point.x <= box.XMax + tol and box.YMin - tol <= point.y <= box.YMax + tol
++
++
++def _text_points(doc):
++    out = []
++    for o in doc.Objects:
++        if o.isDerivedFrom("App::Annotation") or getattr(o, "Proxy", None).__class__.__name__ in ("Text", "DraftText"):
++            p = getattr(o, "Placement", None)
++            if p is not None:
++                out.append(p.Base)
++            elif hasattr(o, "Position"):
++                out.append(o.Position)
++    return out
++
++
++def split_frame(loops, edges, texts=()):
++    """The drawing's frame and the boxes of its title block, apart from the outlines.
++
++    Frame: a rectangle round (nearly) everything. Boxes: rectangles with text inside (title
++    block, notes). Returns (outlines, frames)."""
++    if not loops:
++        return [], []
++    import Part
++
++    whole = Part.Compound(list(edges)).BoundBox if edges else None
++    frames, outlines = [], []
++    for w in loops:
++        b = w.BoundBox
++        if _is_rectangle(w):
++            if whole is not None and b.XLength * b.YLength >= 0.8 * whole.XLength * whole.YLength:
++                frames.append(w)
++                continue
++            if any(_inside(b, t) for t in texts):
++                frames.append(w)
++                continue
++        outlines.append(w)
++    return outlines, frames
++
++
++def open_chains(edges, loops):
++    """The runs of lines that do not close (not in any closed loop)"""
++    import Part
++
++    used = set()
++    for w in loops:
++        for e in w.Edges:
++            used.add(_key(e))
++    rest = [e for e in edges if _key(e) not in used]
++    return [g for g in Part.sortEdges(rest) if g] if rest else []
++
++
++def _key(edge):
++    a, b = edge.ParameterRange
++    p = edge.valueAt((a + b) / 2)
++    return (round(p.x, 4), round(p.y, 4), round(p.z, 4))
++
++
+ def adopt():
+     """Make a part (body) from the closed outline of the picked loose lines.
+ 
+@@ -88,6 +160,34 @@ def adopt():
+         picked_edges += subs or s.Object.Shape.Edges
+     candidates = [o for o in doc.Objects if _is_loose_2d(o) and o.Visibility]
+     loops, used = outline_for(picked, picked_edges, candidates)
++    # The drawing's frame and title block are no outline of a part (usability test 0.6.9:
++    # the frame became the plate and the part's lines were dropped without a word)
++    all_edges = [e for o in used or picked for e in o.Shape.Edges]
++    loops, frames = split_frame(loops, all_edges, _text_points(doc))
++    chains = open_chains([e for o in picked for e in o.Shape.Edges], loops + frames)
++    if frames:
++        App.Console.PrintMessage(
++            App.Qt.translate("Unified", "Left out {} frame or title block rectangle(s) of the drawing.").format(len(frames))
++            + "\n"
++        )
++    if chains:
++        import Part
++
++        # Where the lines that do not close are, all together (a drawn part is often many runs)
++        largest = Part.Compound([e for g in chains for e in g]).BoundBox
++        biggest_loop = max((w.BoundBox.XLength * w.BoundBox.YLength for w in loops), default=0)
++        if largest.XLength * largest.YLength > biggest_loop:
++            # The lines that look like the part's outline do not close: say so, make nothing
++            App.Console.PrintUserWarning(
++                App.Qt.translate(
++                    "Unified",
++                    "{} runs of lines do not close (over {:.0f} × {:.0f} mm), so the outline "
++                    "cannot be extruded. Make it a sketch to close the gaps (\"Make a sketch to fix\"), "
++                    "or pick the lines of one closed outline.",
++                ).format(len(chains), largest.XLength, largest.YLength)
++                + "\n"
++            )
++            return None
+     if not loops:
+         App.Console.PrintUserWarning(
+             App.Qt.translate(
+diff --git a/src/Mod/Unified/PartsShelf.py b/src/Mod/Unified/PartsShelf.py
+index 69d2852ac..25452c18a 100644
+--- a/src/Mod/Unified/PartsShelf.py
++++ b/src/Mod/Unified/PartsShelf.py
+@@ -853,8 +853,18 @@ def plan_for_hole(hole, kind=None, size=None, length=None, washers=None, nut=Non
+     (from what it holds and the thread; else the given one), plain + spring washer under the head
+     (washers), a nut on the far side (nut: default for a bolt through clearance holes only), and
+     `plate`: the thickness of a plate on top that is not modelled (the head sits that much higher)."""
+-    kind = kind or default_kind(hole)
+     m = SIZE[size] if size else hole.metric
++    if size and hole.thread > 1e-6 and m.d < hole.diameter - 0.05:
++        # A screw thinner than the hole (M5 in a ⌀6 hole): the hole is a clearance hole, the screw
++        # goes through what it holds into a nut (usability test 0.6.9: M5×8 in a 15 mm plate)
++        import copy
++
++        hole = copy.copy(hole)
++        hole.clamp = hole.clamp + hole.thread
++        hole.thread = 0.0
++        if kind is None:
++            kind = "hex_bolt_full"
++    kind = kind or default_kind(hole)
+     k = KIND[kind]
+     headed = kind in HEADED
+     if washers is None:
+@@ -1049,14 +1059,93 @@ def place_link(doc, original, placement, container=None):
+ 
+ 
+ def put_plan(doc, plan, container=None):
+-    """Put the screw (and washers, nut) of a plan into the document; returns the links"""
++    """Put the screw (and washers, nut) of a plan into the document; returns the links. Each
++    remembers its hole, so that it follows the hole when the hole moves (follow_holes)."""
+     links = []
++    hole = plan.hole
+     for item in plan.items:
+         original = fastener_original(doc, item.kind, item.size, item.length)
+-        links.append(place_link(doc, original, item.placement, container))
++        link = place_link(doc, original, item.placement, container)
++        try:
++            _remember_hole(link, hole)
++        except Exception:
++            pass
++        links.append(link)
+     return links
+ 
+ 
++def _remember_hole(link, hole):
++    for name, kind, doc in (
++        ("ShelfHoleAt", "App::PropertyVector", "Where the hole's axis was (to follow it)"),
++        ("ShelfHoleAxis", "App::PropertyVector", "The hole's direction"),
++        ("ShelfHoleDiameter", "App::PropertyFloat", "The hole's diameter"),
++    ):
++        if not hasattr(link, name):
++            link.addProperty(kind, name, "Shelf", doc)
++            link.setPropertyStatus(name, "Hidden")
++    link.ShelfHoleAt = hole.entry
++    link.ShelfHoleAxis = hole.direction
++    link.ShelfHoleDiameter = float(hole.diameter)
++
++
++def _axis_distance(point, center, axis):
++    v = point - center
++    a = App.Vector(axis).normalize()
++    return (v - a * v.dot(a)).Length
++
++
++def follow_holes(doc):
++    """Screws, washers and nuts go with their hole when it has moved (usability test 0.6.9: the
++    hole was moved, the screw stayed where it was). Returns the number of parts moved."""
++    groups = {}
++    for o in doc.Objects:
++        if o.isDerivedFrom("App::Link") and hasattr(o, "ShelfHoleAt"):
++            key = (tuple(round(c, 4) for c in o.ShelfHoleAt), tuple(round(c, 4) for c in o.ShelfHoleAxis),
++                   round(o.ShelfHoleDiameter, 4))
++            groups.setdefault(key, []).append(o)
++    if not groups:
++        return 0
++    cylinders = []
++    for _label, shape in solids_of_document(doc):
++        for f in shape.Faces:
++            if type(f.Surface).__name__ == "Cylinder":
++                cylinders.append((f.Surface.Center, App.Vector(f.Surface.Axis), 2 * f.Surface.Radius))
++    stay, lost = [], []
++    for key, links in groups.items():
++        at, axis, d = App.Vector(*key[0]), App.Vector(*key[1]), key[2]
++        fits = [c for c in cylinders if abs(c[2] - d) < 1e-3 and abs(abs(c[1].normalize().dot(axis.normalize())) - 1) < 1e-6]
++        if any(_axis_distance(at, c[0], c[1]) < 1e-4 for c in fits):
++            stay.append((at, axis, d))
++        else:
++            lost.append((key, at, axis, d, links, fits))
++    moved = 0
++    taken = list(stay)
++    for key, at, axis, d, links, fits in lost:
++        free = [c for c in fits if not any(_axis_distance(t[0], c[0], c[1]) < 1e-4 and abs(t[2] - d) < 1e-3 for t in taken)]
++        if not free:
++            continue
++        c = min(free, key=lambda c: _axis_distance(at, c[0], c[1]))
++        a = c[1].normalize()
++        v = at - c[0]
++        foot = c[0] + a * v.dot(a)
++        delta = foot - at
++        for link in links:
++            pl = App.Placement(link.Placement)
++            parent = link.getParentGeoFeatureGroup() if hasattr(link, "getParentGeoFeatureGroup") else None
++            local = delta
++            if parent is not None:
++                try:
++                    local = parent.getGlobalPlacement().Rotation.inverted().multVec(delta)
++                except Exception:
++                    pass
++            pl.Base = pl.Base + local
++            link.Placement = pl
++            link.ShelfHoleAt = at + delta
++            moved += 1
++        taken.append((at + delta, axis, d))
++    return moved
++
++
+ def put_profile(doc, key, a, b, face_normal=None, container=None):
+     length = (App.Vector(b) - App.Vector(a)).Length
+     original = profile_original(doc, key, length)
+diff --git a/src/Mod/Unified/Search.svg b/src/Mod/Unified/Search.svg
+new file mode 100644
+index 000000000..31cdad4ad
+--- /dev/null
++++ b/src/Mod/Unified/Search.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="26" cy="26" r="17" fill="#e8f0fb" stroke="#2f6fd0" stroke-width="6"/><path d="M38 38 L56 56" stroke="#2f6fd0" stroke-width="8" stroke-linecap="round"/></svg>
+diff --git a/src/Mod/Unified/SnapToolsGui.py b/src/Mod/Unified/SnapToolsGui.py
+index 13b8d5299..84cb500ea 100644
+--- a/src/Mod/Unified/SnapToolsGui.py
++++ b/src/Mod/Unified/SnapToolsGui.py
+@@ -800,6 +800,15 @@ class SnapPanel:
+         if self.a is not None and self.b is not None and movables:
+             for m in movables:
+                 problem = S.check_movable(m)
++                if problem in ("expression", "readonly") and self.mode == "snap" and not self.objects:
++                    # The first pick is held (grounded, e.g. the plate the parts go on): move the
++                    # other one onto it instead of stopping (usability test 0.6.9)
++                    others = S.movable_candidates(self.b[0])
++                    if others and S.check_movable(others[0]) not in ("expression", "readonly"):
++                        if not getattr(self, "_auto_swapped", False):
++                            self._auto_swapped = True
++                            self._swap()
++                            return
+                 if problem in ("expression", "readonly"):
+                     self.message.setText(
+                         tr("{} cannot be moved here: its placement is set by a formula or locked").format(m.obj.Label)
+@@ -897,6 +906,11 @@ class SnapPanel:
+     def _swap(self):
+         if self.a is None or self.b is None:
+             return
++        held = S.movable_candidates(self.b[0])
++        if held and S.check_movable(held[0]) in ("expression", "readonly"):
++            # The other one is held where it is (grounded): it never moves, nor turns over
++            self.message.setText(tr("{} stays where it is (it is fixed)").format(held[0].obj.Label))
++            return
+         self.transaction.abort()
+         self.move = None
+         a, b = self.b, self.a
+diff --git a/src/Mod/Unified/TaskPanels.py b/src/Mod/Unified/TaskPanels.py
+index 1f1463fa3..a146badfd 100644
+--- a/src/Mod/Unified/TaskPanels.py
++++ b/src/Mod/Unified/TaskPanels.py
+@@ -56,7 +56,8 @@ PANELS = {
+         "first": ["Diameter", "DepthType", "Depth"],
+         # a threaded hole shows its thread
+         "unusual": {"ThreadType": 0, "HoleCutType": 0},
+-        "with": ["ThreadSize", "ThreadClass", "ThreadFit", "Threaded", "ModelThread", "labelThreadSize"],
++        "with": ["ThreadSize", "ThreadClass", "ThreadFit", "Threaded", "ModelThread", "labelThreadSize",
++                 "UnifiedHolePositions"],  # the holes and their positions (HoleMultiGui.py)
+         # in the row of the depth, but rarely changed: the angle of the drill's tip
+         "fold": ["DrillFrame"],
+     },
+diff --git a/src/Mod/Unified/TestAssemblyCopies.py b/src/Mod/Unified/TestAssemblyCopies.py
+new file mode 100644
+index 000000000..22cf8d143
+--- /dev/null
++++ b/src/Mod/Unified/TestAssemblyCopies.py
+@@ -0,0 +1,55 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of AssemblyCopies (more of the same part in an assembly), headless:
++#   FreeCADCmd -t TestAssemblyCopies
++
++import unittest
++
++import FreeCAD as App
++import Part
++
++import AssemblyCopies as AC
++
++
++class AssemblyCopiesTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("AssemblyCopiesTest")
++        self.doc.UndoMode = 1
++        self.src = App.newDocument("AssemblyCopiesPillar")
++        pillar = self.src.addObject("Part::Box", "Pillar")
++        pillar.Length, pillar.Width, pillar.Height = 20, 20, 50
++        self.src.recompute()
++        import tempfile, os
++        self.tmp = tempfile.mkdtemp()
++        self.src.saveAs(os.path.join(self.tmp, "pillar.FCStd"))
++        self.doc.saveAs(os.path.join(self.tmp, "plate.FCStd"))
++        import UtilsAssembly  # noqa: F401  (the assembly module)
++
++        self.asm = self.doc.addObject("Assembly::AssemblyObject", "Assembly")
++        self.link = self.doc.addObject("App::Link", "Pillar")
++        self.link.setLink(pillar)
++        self.asm.addObject(self.link)
++        self.doc.recompute()
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++        App.closeDocument(self.src.Name)
++
++    def test_another_beside_it(self):
++        new = AC.duplicate([self.link])
++        self.assertEqual(len(new), 1)
++        self.assertIs(new[0].LinkedObject, self.link.LinkedObject)
++        self.assertIs(AC.assembly_of(new[0]), self.asm)
++        self.assertGreater(new[0].Placement.Base.x, 20)
++        self.doc.undo()
++        self.assertEqual(len([o for o in self.asm.Group if o.isDerivedFrom("App::Link")]), 1)
++
++    def test_four_corners(self):
++        self.assertEqual(len(AC.grid_offsets(2, 2, 80, 40)), 3)
++        AC.grid(self.link, 2, 2, 80, 40)
++        places = sorted((round(o.Placement.Base.x), round(o.Placement.Base.y))
++                        for o in self.asm.Group if o.isDerivedFrom("App::Link"))
++        self.assertEqual(places, [(0, 0), (0, 40), (80, 0), (80, 40)])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestCommandSearch.py b/src/Mod/Unified/TestCommandSearch.py
+index 6ca444d32..de3699caa 100644
+--- a/src/Mod/Unified/TestCommandSearch.py
++++ b/src/Mod/Unified/TestCommandSearch.py
+@@ -102,5 +102,25 @@ class TestCatalog(unittest.TestCase):
+                 self.assertIn(got, ok)
+ 
+ 
++
++class DisambiguateTest(unittest.TestCase):
++    def test_same_names_say_where(self):
++        import CommandSearchCore as C
++
++        found = [
++            {"name": "Sketcher_Dimension", "ja": "寸法", "en": "Dimension", "wb": "SketcherWorkbench"},
++            {"name": "Sketcher_CompDimensionTools", "ja": "寸法", "en": "Dimension", "wb": "SketcherWorkbench"},
++            {"name": "TechDraw_Dimension", "ja": "寸法", "en": "Dimension", "wb": "TechDrawWorkbench"},
++            {"name": "PartDesign_Pad", "ja": "押し出す", "en": "Pad", "wb": "PartDesignWorkbench"},
++        ]
++        shown = C.disambiguate(found)
++        names = [e["name"] for e, _ in shown]
++        self.assertNotIn("Sketcher_CompDimensionTools", names)
++        extras = dict((e["name"], x) for e, x in shown)
++        self.assertTrue(extras["Sketcher_Dimension"])
++        self.assertTrue(extras["TechDraw_Dimension"])
++        self.assertNotEqual(extras["Sketcher_Dimension"], extras["TechDraw_Dimension"])
++        self.assertEqual(extras["PartDesign_Pad"], "")
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/src/Mod/Unified/TestDrawingAuto.py b/src/Mod/Unified/TestDrawingAuto.py
+index 3ed3e5c31..225eaa2bd 100644
+--- a/src/Mod/Unified/TestDrawingAuto.py
++++ b/src/Mod/Unified/TestDrawingAuto.py
+@@ -46,6 +46,48 @@ class TestDrawingAuto(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_rounded_corners_are_not_holes(self):
++        # Usability test 0.6.9: the R5 corners were called "4×⌀10 drill" over the real holes
++        doc = FirstSteps.sample_plate("DrawingAutoRounded")
++        try:
++            import Part
++
++            body = doc.getObject("Body")
++            tip = body.Tip
++            shape = tip.Shape
++            vertical = ["Edge%d" % (i + 1) for i, e in enumerate(shape.Edges)
++                        if type(e.Curve).__name__ == "Line" and abs(App.Vector(e.Curve.Direction).z) > 0.999
++                        and len(shape.ancestorsOfType(e, Part.Face)) == 2]
++            fillet = body.newObject("PartDesign::Fillet", "Fillet")
++            fillet.Base = (tip, vertical)
++            fillet.Radius = 5
++            doc.recompute()
++            self.assertTrue(fillet.Shape.isValid())
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            tpl = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            tpl.Template = App.getResourceDir() + "Mod/TechDraw/Templates/ISO/A4_Landscape_ISO5457_minimal.svg"
++            page.Template = tpl
++            g = doc.addObject("TechDraw::DrawProjGroup", "ProjGroup")
++            page.addView(g)
++            g.Source = [body]
++            g.addProjection("Front")
++            g.Anchor.Direction = App.Vector(0, 0, 1)
++            g.Anchor.XDirection = App.Vector(1, 0, 0)
++            doc.recompute()
++            added = DrawingAuto.complete(page, g)
++            holes = [d for d in doc.Objects if d.isDerivedFrom("TechDraw::DrawViewDimension") and d.Type == "Diameter"]
++            self.assertEqual(len(holes), 1)
++            self.assertTrue(holes[0].FormatSpec.startswith("4×⌀"))
++            self.assertAlmostEqual(holes[0].getRawValue(), 6.0, places=3)
++            self.assertEqual(added["center_lines"], 4)
++            # where the holes are: from the left edge and from the bottom edge
++            pos = sorted((d.Type, round(d.getRawValue(), 3)) for d in doc.Objects
++                         if d.isDerivedFrom("TechDraw::DrawViewDimension") and d.References2D
++                         and d.References2D[0][1][0].startswith("Edge") and d.Type in ("DistanceX", "DistanceY"))
++            self.assertEqual(pos, [("DistanceX", 8.0), ("DistanceX", 72.0), ("DistanceY", 8.0), ("DistanceY", 42.0)])
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/src/Mod/Unified/TestLooseOutline.py b/src/Mod/Unified/TestLooseOutline.py
+new file mode 100644
+index 000000000..aae94cfa9
+--- /dev/null
++++ b/src/Mod/Unified/TestLooseOutline.py
+@@ -0,0 +1,48 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Tests of LooseOutline (the outline of an opened drawing's lines), headless:
++#   FreeCADCmd -t TestLooseOutline
++
++import unittest
++
++import FreeCAD as App
++import Part
++
++import LooseOutline as L
++
++
++def rect(x0, y0, x1, y1):
++    p = [App.Vector(x0, y0, 0), App.Vector(x1, y0, 0), App.Vector(x1, y1, 0), App.Vector(x0, y1, 0)]
++    return [Part.LineSegment(p[i], p[(i + 1) % 4]).toShape() for i in range(4)]
++
++
++class LooseOutlineTest(unittest.TestCase):
++    def test_the_frame_is_no_outline(self):
++        # Usability test 0.6.9: the drawing's frame became the plate
++        frame = rect(0, 0, 297, 210)
++        part = rect(50, 50, 130, 100)
++        edges = frame + part
++        loops = L.closed_loops(edges)
++        outlines, frames = L.split_frame(loops, edges)
++        self.assertEqual(len(frames), 1)
++        self.assertEqual(len(outlines), 1)
++        self.assertAlmostEqual(outlines[0].BoundBox.XLength, 80)
++        self.assertEqual(L.open_chains(edges, loops), [])
++
++    def test_a_title_box_with_text(self):
++        edges = rect(0, 0, 297, 210) + rect(200, 5, 290, 40) + rect(50, 50, 130, 100)
++        loops = L.closed_loops(edges)
++        outlines, frames = L.split_frame(loops, edges, [App.Vector(210, 20, 0)])
++        self.assertEqual(len(frames), 2)
++        self.assertEqual([round(w.BoundBox.XLength) for w in outlines], [80])
++
++    def test_lines_that_do_not_close_are_counted(self):
++        open_line = rect(50, 50, 130, 100)[:3]
++        edges = rect(0, 0, 297, 210) + open_line
++        loops = L.closed_loops(edges)
++        outlines, frames = L.split_frame(loops, edges)
++        self.assertEqual(outlines, [])
++        self.assertEqual(len(L.open_chains(edges, loops)), 1)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestPartsShelf.py b/src/Mod/Unified/TestPartsShelf.py
+index b1d2976fd..fc6591950 100644
+--- a/src/Mod/Unified/TestPartsShelf.py
++++ b/src/Mod/Unified/TestPartsShelf.py
+@@ -260,6 +260,14 @@ class DocumentTest(unittest.TestCase):
+     def tearDown(self):
+         App.closeDocument(self.doc.Name)
+ 
++    def test_thinner_screw_goes_through_with_a_nut(self):
++        # Usability test 0.6.9: M5 picked for a ⌀6 hole in a 15 mm plate gave M5×8
++        box = Part.makeBox(100, 60, 15).cut(Part.makeCylinder(3, 17, App.Vector(10, 10, -1)))
++        hole = PS.analyze_hole(_cyl_face(box, 6.0), [("plate", box)], view_direction=App.Vector(0, 0, -1))
++        plan = PS.plan_for_hole(hole, size="M5")
++        self.assertGreaterEqual(plan.length, 15 + 4)
++        self.assertTrue(plan.nut)
++
+     def test_links_share_originals(self):
+         plate = self.doc.addObject("Part::Feature", "Plate")
+         plate.Shape = _plate((60, 30, 10), (0, 0, 0), [(15, 15, 6.6, None, None), (45, 15, 6.6, None, None)])
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 6fe80ea35..c377ff3ae 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -172,9 +172,59 @@ class PlacePartCommand:
+         doc = App.ActiveDocument
+         if not any(o.isDerivedFrom("Assembly::AssemblyObject") for o in doc.Objects):
+             Gui.runCommand("Assembly_CreateAssembly")
++        try:
++            hold_current_part(doc)
++        except Exception as e:
++            App.Console.PrintWarning("Unified: the part of this file in the assembly: {}\n".format(e))
+         Gui.runCommand("Assembly_InsertLink")
+ 
+ 
++def _solid_volume(obj):
++    try:
++        return obj.Shape.Volume
++    except Exception:
++        return 0.0
++
++
++def hold_current_part(doc):
++    """The part this file is about goes into its assembly and stays where it is (grounded), so
++    that the parts put in move onto it (usability test 0.6.9: the first part put in was
++    grounded instead, "it cannot be moved", and swapping turned the plate upside down)"""
++    import UtilsAssembly
++
++    asm = UtilsAssembly.activeAssembly()
++    if asm is None:
++        asms = [o for o in doc.Objects if o.isDerivedFrom("Assembly::AssemblyObject")]
++        asm = asms[0] if asms else None
++    if asm is None or UtilsAssembly.isAssemblyGrounded():
++        return None
++    inside = set(o.Name for o in asm.OutListRecursive)
++    parts = [
++        o for o in doc.RootObjects
++        if o is not asm
++        and (o.isDerivedFrom("PartDesign::Body") or o.isDerivedFrom("Part::Feature") or o.isDerivedFrom("App::Part"))
++        and not o.isDerivedFrom("Assembly::AssemblyObject")
++        and o.Name not in inside
++        and _solid_volume(o) > 0
++        and getattr(o, "Visibility", True)
++    ]
++    if not parts:
++        return None
++    doc.openTransaction(translate("Unified", "Put this file's part into the assembly"))
++    try:
++        for o in parts:
++            asm.addObject(o)
++        base = max(parts, key=_solid_volume)
++        import CommandCreateJoint
++
++        CommandCreateJoint.createGroundedJoint(base)
++    except Exception:
++        doc.abortTransaction()
++        raise
++    doc.commitTransaction()
++    return base
++
++
+ class EditSourceSketchCommand:
+     def GetResources(self):
+         return {
+@@ -231,6 +281,14 @@ def _picked_edges():
+     return s.Object, [(n, e) for n, e in zip(s.SubElementNames, s.SubObjects) if n.startswith("Edge")]
+ 
+ 
++def _add_in_view(doc, obj, sub, edge):
++    """Pick as if clicked in the 3D view (with a point): the bar of tools stays next to the
++    picks, its number field ready for the radius ("3" and Enter, as the guide says)"""
++    a, b = edge.ParameterRange
++    p = edge.valueAt((a + b) / 2)
++    Gui.Selection.addSelection(doc.Name, obj.Name, sub, p.x, p.y, p.z)
++
++
+ class SelectParallelEdgesCommand:
+     """The other straight edges of the shape in the same direction (the four vertical edges of
+     a box, to round them at once)"""
+@@ -258,7 +316,7 @@ class SelectParallelEdgesCommand:
+                 # Not the seam of a round face (a hole's wall): it is no corner to round
+                 if len(shape.ancestorsOfType(e, Part.Face)) < 2:
+                     continue
+-                Gui.Selection.addSelection(doc.Name, obj.Name, "Edge%d" % i)
++                _add_in_view(doc, obj, "Edge%d" % i, e)
+ 
+ 
+ class SelectSameCirclesCommand:
+@@ -283,10 +341,58 @@ class SelectSameCirclesCommand:
+         doc = obj.Document
+         for i, e in enumerate(obj.Shape.Edges, start=1):
+             if type(e.Curve).__name__ == "Circle" and abs(e.Curve.Radius - r0) < 1e-6:
+-                Gui.Selection.addSelection(doc.Name, obj.Name, "Edge%d" % i)
++                _add_in_view(doc, obj, "Edge%d" % i, e)
++
++
++def _picked_drawing_view():
++    for s in Gui.Selection.getSelectionEx("", 0):
++        o = s.Object
++        if o.isDerivedFrom("TechDraw::DrawViewPart"):
++            return o
++    return None
++
++
++class HolePositionsCommand:
++    """Where the holes of a drawing's view are: from the left and the bottom edge to each
++    column and row of holes (the circles' centers; a click on a circle picks its center lines)"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "TechDraw_HorizontalDimension",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_HolePositions", "Hole Positions"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_HolePositions",
++                "Dimensions from the left and the bottom edge to each column and row of holes of the picked view",
++            ),
++        }
++
++    def IsActive(self):
++        return _picked_drawing_view() is not None
++
++    def Activated(self):
++        import DrawingAuto
++
++        view = _picked_drawing_view()
++        page = next((p for p in view.InList if p.isDerivedFrom("TechDraw::DrawPage")), None)
++        if page is None:
++            for g in view.InList:
++                page = next((p for p in g.InList if p.isDerivedFrom("TechDraw::DrawPage")), None)
++                if page:
++                    break
++        if page is None:
++            return
++        doc = view.Document
++        doc.openTransaction(translate("Unified_HolePositions", "Hole Positions"))
++        made = DrawingAuto.hole_positions(page, view)
++        doc.recompute()
++        doc.commitTransaction()
++        Gui.getMainWindow().statusBar().showMessage(
++            translate("Unified", "{} dimension(s) of where the holes are").format(len(made)), 4000
++        )
+ 
+ 
+ for _name, _cmd in (
++    ("Unified_HolePositions", HolePositionsCommand()),
+     ("Unified_SelectParallelEdges", SelectParallelEdgesCommand()),
+     ("Unified_SelectSameCircles", SelectSameCirclesCommand()),
+     ("Unified_NewPart", NewPartCommand()),
+@@ -518,9 +624,19 @@ def one_key_command(event):
+     return KEYS[text]
+ 
+ 
++# More filters of the same events (one Python filter for the whole application, not one each)
++EXTRA_FILTERS = []
++
++
+ class KeyFilter(QtCore.QObject):
+     def eventFilter(self, obj, event):
+-        if event.type() == QtCore.QEvent.ShortcutOverride and isinstance(obj, QtWidgets.QWidget):
++        t = event.type()
++        if EXTRA_FILTERS and t in (QtCore.QEvent.ShortcutOverride, QtCore.QEvent.KeyPress,
++                                   QtCore.QEvent.MouseButtonDblClick):
++            for f in EXTRA_FILTERS:
++                if f.eventFilter(obj, event):
++                    return True
++        if t == QtCore.QEvent.ShortcutOverride and isinstance(obj, QtWidgets.QWidget):
+             name = one_key_command(event)
+             if name:
+                 event.accept()
+@@ -670,6 +786,57 @@ def command_action(command, parent):
+     return action
+ 
+ 
++def _quietly(view, action):
++    """A camera move without its animation (a click right after it must hit what it aimed at)"""
++    try:
++        was = view.isAnimationEnabled()
++        view.setAnimationEnabled(False)
++    except Exception:
++        was = None
++    try:
++        action()
++    finally:
++        if was is not None:
++            try:
++                view.setAnimationEnabled(was)
++            except Exception:
++                pass
++
++
++def keep_model_in_view():
++    """Zoom out (never in) when a part of the model is off the view"""
++    gdoc = Gui.ActiveDocument
++    if gdoc is None:
++        return
++    try:
++        view = gdoc.ActiveView
++        width, height = view.getSize()
++    except Exception:
++        return
++    box = None
++    for o in gdoc.Document.Objects:
++        try:
++            if not o.ViewObject or not o.ViewObject.Visibility or not hasattr(o, "Shape") or o.Shape.isNull():
++                continue
++            if not o.Shape.Solids:
++                continue
++            b = o.Shape.BoundBox
++        except Exception:
++            continue
++        if box is None:
++            box = App.BoundBox(b)
++        else:
++            box.add(b)
++    if box is None:
++        return
++    for i in range(8):
++        p = App.Vector(box.XMax if i & 1 else box.XMin, box.YMax if i & 2 else box.YMin, box.ZMax if i & 4 else box.ZMin)
++        x, y = view.getPointOnViewport(p)
++        if x < 0 or y < 0 or x > width or y > height:
++            _quietly(view, lambda: (view.fitAll(), clear_of_panel()))
++            return
++
++
+ def clear_of_panel():
+     """The task panel lies over the right of the view: move the camera so that what was in the
+     middle of the view is in the middle of the part left free"""
+@@ -836,7 +1003,19 @@ class StepBand(QtWidgets.QToolBar):
+             self.undo_start = None
+             text = key[1]
+             # The whole model in sight while its panel is open, beside the panel
+-            QtCore.QTimer.singleShot(200, lambda: (Gui.SendMsgToActiveView("ViewFit"), clear_of_panel()))
++            # At once and without the animation: a plane shown to be picked must be where it is
++            # when the user clicks (usability test 0.6.9: the first click missed the plane)
++            def fit_beside_panel():
++                gdoc = Gui.ActiveDocument
++                if gdoc is None:
++                    return
++                try:
++                    view = gdoc.ActiveView
++                except Exception:
++                    return
++                _quietly(view, lambda: (Gui.SendMsgToActiveView("ViewFit"), clear_of_panel()))
++
++            QtCore.QTimer.singleShot(0, fit_beside_panel)
+             title.setText(
+                 translate("Unified", "Working on “{}”").format(text) if text else translate("Unified", "A tool is open")
+             )
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index a51966408..9230529f7 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -124,6 +124,10 @@ class HoleCommand:
+         FreeCADGui.Selection.clearSelection()
+         FreeCADGui.Selection.addSelection(sketch)
+         FreeCADGui.runCommand("PartDesign_Hole")
++        # Further clicks on the face add holes; their positions can be typed on the panel
++        import HoleMultiGui
++
++        HoleMultiGui.start(sketch, obj, face_name)
+ 
+         # If the hole is cancelled, do not leave the sketch behind
+         def remove_if_unused():
+diff --git a/src/Mod/Unified/UnifiedFiles.py b/src/Mod/Unified/UnifiedFiles.py
+index 79953f2f2..b5d4a5000 100644
+--- a/src/Mod/Unified/UnifiedFiles.py
++++ b/src/Mod/Unified/UnifiedFiles.py
+@@ -219,7 +219,7 @@ class PrintDialog:
+         ext = "3mf" if self.fmt3mf.isChecked() else "stl"
+         doc = App.ActiveDocument
+         start = os.path.join(os.path.dirname(doc.FileName) if doc and doc.FileName else os.path.expanduser("~"),
+-                             (self.objs[0].Label if len(self.objs) == 1 else (doc.Label if doc else "print")) + "." + ext)
++                             ((doc.Label if doc else self.objs[0].Label) if self.objs else "print") + "." + ext)
+         path, _ = QtWidgets.QFileDialog.getSaveFileName(
+             self.dialog, translate("UnifiedFiles", "Export for 3D printing"), start,
+             "3MF (*.3mf)" if ext == "3mf" else "STL (*.stl)")
+@@ -408,6 +408,13 @@ class OpenedBand:
+         Gui.Selection.clearSelection()
+         for o in self.lines():
+             Gui.Selection.addSelection(doc.Name, o.Name)
++        import LooseOutline
++
++        # The outline first (the frame left out): if the lines do not close, the reason is
++        # said and nothing is made (not the frame as a plate, not a question about bodies)
++        if LooseOutline.adopt() is None:
++            Gui.Selection.clearSelection()
++            return
+         Gui.runCommand("PartDesign_Pad")
+         self.dismiss()
+ 
+-- 
+2.43.0
+

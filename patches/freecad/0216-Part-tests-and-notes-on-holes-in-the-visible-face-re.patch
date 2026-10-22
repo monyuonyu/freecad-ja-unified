@@ -1,7 +1,7 @@
 From 45ef55013693d3fb8d447586cd806ddd93b41493 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 09:58:16 +0900
-Subject: [PATCH 216/288] Part: tests and notes on holes in the visible face
+Subject: [PATCH 216/291] Part: tests and notes on holes in the visible face
  regions
 
 Field report: projectVisible gave holes=0 in three real scenes.  Checked:
