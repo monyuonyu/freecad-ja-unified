@@ -1,0 +1,588 @@
+From b71f3d6d3f54a7ab6124cadcab929fec43d40a06 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:43:10 +0900
+Subject: [PATCH 294/297] Engine field test fixes: crossing outlines, scripted
+ patterns, the constraint list, recovery, long bolts
+
+- PartDesign: closed outlines of a sketch that cross each other (a
+  connecting rod's eyes and web) are joined, the ones inside another cut
+  out; the pad was only a part of the shape without a word.
+- PartDesign: a mirror or pattern made by a script becomes the part's end
+  and gets its base once it has its originals (it looked like a step of a
+  MultiTransform when added): the next step no longer splits the part.
+- Sketcher: a row of the constraint list left by a constraint that is gone
+  (a dimension cancelled with Esc) no longer crashes on a double-click; the
+  list is filled again.
+- Recovery data every 2 minutes (was 15); the first-start choice is kept
+  at once (a crash brought the first-start questions back).
+- Parts shelf: longer than the standard table, the needed length is made
+  (rounded up to 5 mm) and said, with stud bolts as the other way.
+
+Tests: FreeCADCmd -t TestPartDesignFixes, -t TestPartsShelf
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/App/FeatureSketchBased.cpp | 154 +++++++++++++++++-
+ src/Mod/PartDesign/App/FeatureTransformed.cpp |  16 ++
+ .../Sketcher/Gui/TaskSketcherConstraints.cpp  |  33 +++-
+ src/Mod/Start/Gui/StartView.cpp               |   3 +
+ src/Mod/Unified/CMakeLists.txt                |   2 +-
+ src/Mod/Unified/InitGui.py                    |   8 +
+ src/Mod/Unified/PartsShelf.py                 |  23 ++-
+ src/Mod/Unified/PartsShelfGui.py              |   6 +-
+ src/Mod/Unified/TestPartDesignFixes.py        |  96 +++++++++++
+ src/Mod/Unified/TestPartsShelf.py             |  11 ++
+ 10 files changed, 340 insertions(+), 12 deletions(-)
+ create mode 100644 src/Mod/Unified/TestPartDesignFixes.py
+
+diff --git a/src/Mod/PartDesign/App/FeatureSketchBased.cpp b/src/Mod/PartDesign/App/FeatureSketchBased.cpp
+index f6b17718c..5b7446041 100644
+--- a/src/Mod/PartDesign/App/FeatureSketchBased.cpp
++++ b/src/Mod/PartDesign/App/FeatureSketchBased.cpp
+@@ -30,6 +30,11 @@
+ #include <Bnd_Box.hxx>
+ #include <BRep_Builder.hxx>
+ #include <BRep_Tool.hxx>
++#include <BRepAlgoAPI_Cut.hxx>
++#include <BRepAlgoAPI_Fuse.hxx>
++#include <BRepClass_FaceClassifier.hxx>
++#include <ShapeUpgrade_UnifySameDomain.hxx>
++#include <TopTools_ListOfShape.hxx>
+ #include <BRepAdaptor_Curve.hxx>
+ #include <BRepAdaptor_Surface.hxx>
+ #include <BRepBndLib.hxx>
+@@ -221,6 +226,133 @@ Part::Feature* ProfileBased::getVerifiedObject(bool silent) const
+ 
+     return static_cast<Part::Feature*>(result);
+ }
++namespace
++{
++// Closed outlines of a sketch that cross each other (a connecting rod: two eyes and the web
++// between them, overlapping both). The usual face maker takes them as nested and the result
++// was only a part of the shape, without a word (engine field test 0.6.9). The faces of the
++// outlines are combined as most CAD do: the outer ones joined, the ones inside another
++// outline cut out (and so on, inside a hole: an island).
++TopoDS_Shape facesOfCrossingOutlines(const std::vector<TopoDS_Wire>& wires)
++{
++    if (wires.size() < 2) {
++        return {};
++    }
++    const double tol = Precision::Confusion() * 10;
++    bool crossing = false;
++    for (size_t i = 0; i < wires.size() && !crossing; ++i) {
++        for (size_t j = i + 1; j < wires.size() && !crossing; ++j) {
++            BRepExtrema_DistShapeShape dist(wires[i], wires[j]);
++            if (dist.IsDone() && dist.Value() <= tol) {
++                crossing = true;
++            }
++        }
++    }
++    if (!crossing) {
++        return {};
++    }
++    std::vector<TopoDS_Face> faces;
++    for (const auto& w : wires) {
++        BRepBuilderAPI_MakeFace mk(w, Standard_True);
++        if (!mk.IsDone()) {
++            return {};
++        }
++        TopoDS_Face f = mk.Face();
++        GProp_GProps props;
++        BRepGProp::SurfaceProperties(f, props);
++        if (props.Mass() < 0) {
++            f.Reverse();
++        }
++        faces.push_back(f);
++    }
++    // How deep each outline lies: inside how many other faces (a point of it inside, and not
++    // touching that one's outline)
++    std::vector<int> depth(wires.size(), 0);
++    for (size_t i = 0; i < wires.size(); ++i) {
++        TopExp_Explorer ex(wires[i], TopAbs_VERTEX);
++        if (!ex.More()) {
++            continue;
++        }
++        gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(ex.Current()));
++        for (size_t j = 0; j < wires.size(); ++j) {
++            if (i == j) {
++                continue;
++            }
++            BRepExtrema_DistShapeShape dist(wires[i], wires[j]);
++            if (dist.IsDone() && dist.Value() <= tol) {
++                continue;  // crossing: side by side, not inside
++            }
++            BRepClass_FaceClassifier cls(faces[j], p, tol);
++            if (cls.State() == TopAbs_IN) {
++                ++depth[i];
++            }
++        }
++    }
++    int deepest = *std::max_element(depth.begin(), depth.end());
++    TopoDS_Shape result;
++    for (int d = 0; d <= deepest; ++d) {
++        TopTools_ListOfShape tools;
++        for (size_t i = 0; i < faces.size(); ++i) {
++            if (depth[i] == d) {
++                tools.Append(faces[i]);
++            }
++        }
++        if (tools.IsEmpty()) {
++            continue;
++        }
++        if (result.IsNull()) {
++            // the outer ones joined
++            TopoDS_Shape joined = tools.First();
++            TopTools_ListOfShape rest(tools);
++            rest.RemoveFirst();
++            if (!rest.IsEmpty()) {
++                BRepAlgoAPI_Fuse fuse;
++                TopTools_ListOfShape args;
++                args.Append(joined);
++                fuse.SetArguments(args);
++                fuse.SetTools(rest);
++                fuse.Build();
++                if (!fuse.IsDone()) {
++                    return {};
++                }
++                joined = fuse.Shape();
++            }
++            result = joined;
++        }
++        else if (d % 2 == 1) {
++            BRepAlgoAPI_Cut cut;
++            TopTools_ListOfShape args;
++            args.Append(result);
++            cut.SetArguments(args);
++            cut.SetTools(tools);
++            cut.Build();
++            if (!cut.IsDone()) {
++                return {};
++            }
++            result = cut.Shape();
++        }
++        else {
++            BRepAlgoAPI_Fuse fuse;
++            TopTools_ListOfShape args;
++            args.Append(result);
++            fuse.SetArguments(args);
++            fuse.SetTools(tools);
++            fuse.Build();
++            if (!fuse.IsDone()) {
++                return {};
++            }
++            result = fuse.Shape();
++        }
++    }
++    if (result.IsNull()) {
++        return {};
++    }
++    ShapeUpgrade_UnifySameDomain unify(result, Standard_True, Standard_True, Standard_False);
++    unify.Build();
++    return unify.Shape();
++}
++}  // namespace
++
+ TopoShape ProfileBased::getTopoShapeVerifiedFace(
+     bool silent,
+     bool allowOpen,
+@@ -327,7 +459,27 @@ TopoShape ProfileBased::getTopoShapeVerifiedFace(
+                             }
+                         }
+                     }
+-                    if (!shape.isNull()) {
++                    TopoDS_Shape crossing;
++                    if (!shape.isNull() && obj->isDerivedFrom<Part::Part2DObject>()) {
++                        std::vector<TopoDS_Wire> closed;
++                        bool allClosed = true;
++                        for (auto& wire : shape.getSubTopoShapes(TopAbs_WIRE)) {
++                            if (!wire.isClosed()) {
++                                allClosed = false;
++                                break;
++                            }
++                            closed.push_back(TopoDS::Wire(wire.getShape()));
++                        }
++                        if (allClosed) {
++                            crossing = facesOfCrossingOutlines(closed);
++                        }
++                    }
++                    if (!crossing.IsNull()) {
++                        TopoShape faces(crossing);
++                        faces.Hasher = shape.Hasher;
++                        shape = faces;
++                    }
++                    else if (!shape.isNull()) {
+                         if (AllowMultiFace.getValue()) {
+                             shape = shape.makeElementFace();  // default to use FaceMakerBullseye
+                         }
+diff --git a/src/Mod/PartDesign/App/FeatureTransformed.cpp b/src/Mod/PartDesign/App/FeatureTransformed.cpp
+index 6f98c04e7..69a42a329 100644
+--- a/src/Mod/PartDesign/App/FeatureTransformed.cpp
++++ b/src/Mod/PartDesign/App/FeatureTransformed.cpp
+@@ -44,6 +44,7 @@
+ #include <Mod/Part/App/modelRefine.h>
+ 
+ #include "FeatureTransformed.h"
++#include <App/Document.h>
+ #include "Body.h"
+ #include "FeatureAddSub.h"
+ #include "FeatureMultiTransform.h"
+@@ -311,6 +312,21 @@ void Transformed::onChanged(const App::Property* prop)
+         auto const mode = static_cast<Mode>(TransformMode.getValue());
+         Originals.setStatus(App::Property::Status::Hidden, mode == Mode::WholeShape);
+     }
++    // Made by a script: Body.newObject() added it before it had its originals, when it looked
++    // like a step of a MultiTransform (not a solid step): it got no base and the part's end
++    // stayed before it, so the next step was built without the pattern and the part split in
++    // two (engine field test 0.6.9). Now that it has originals: a solid step like any other.
++    if (prop == &Originals && !Originals.getValues().empty() && !BaseFeature.getValue()
++        && !isRestoring() && getDocument() && !getDocument()->isPerformingTransaction()
++        && !isMultiTransformChild()) {
++        if (auto* body = Body::findBodyOf(this); body && Body::isSolidFeature(this)) {
++            App::DocumentObject* prev = body->getPrevSolidFeature(this);
++            body->setBaseProperty(this);
++            if (body->Tip.getValue() == prev && prev) {
++                body->Tip.setValue(this);
++            }
++        }
++    }
+ 
+     FeatureRefine::onChanged(prop);
+ }
+diff --git a/src/Mod/Sketcher/Gui/TaskSketcherConstraints.cpp b/src/Mod/Sketcher/Gui/TaskSketcherConstraints.cpp
+index 900c4232c..fb58ec05e 100644
+--- a/src/Mod/Sketcher/Gui/TaskSketcherConstraints.cpp
++++ b/src/Mod/Sketcher/Gui/TaskSketcherConstraints.cpp
+@@ -448,6 +448,13 @@ public:
+             return QListWidgetItem::data(role);
+     }
+ 
++    // The item still shows a constraint of the sketch (one cancelled or deleted leaves its row
++    // behind until the list is filled again; the checks below are asserts, gone in a release)
++    bool exists() const
++    {
++        return sketch && ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize();
++    }
++
+     Sketcher::ConstraintType constraintType() const
+     {
+         assert(ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize());
+@@ -503,21 +510,27 @@ public:
+ 
+     bool isDriving() const
+     {
+-        assert(ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize());
++        if (!exists()) {
++            return false;
++        }
+ 
+         return sketch->Constraints[ConstraintNbr]->isDriving;
+     }
+ 
+     bool isInVirtualSpace() const
+     {
+-        assert(ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize());
++        if (!exists()) {
++            return false;
++        }
+ 
+         return sketch->Constraints[ConstraintNbr]->isInVirtualSpace;
+     }
+ 
+     bool isActive() const
+     {
+-        assert(ConstraintNbr >= 0 && ConstraintNbr < sketch->Constraints.getSize());
++        if (!exists()) {
++            return false;
++        }
+ 
+         return sketch->Constraints[ConstraintNbr]->isActive;
+     }
+@@ -644,7 +657,7 @@ void ConstraintView::contextMenuEvent(QContextMenuEvent* event)
+ 
+     // Non-driving-constraints/measurements
+     ConstraintItem* it = dynamic_cast<ConstraintItem*>(item);
+-    if (it) {
++    if (it && it->exists()) {
+         // if its the right constraint
+         if (it->isDimensional()) {
+ 
+@@ -714,7 +727,7 @@ void ConstraintView::updateDrivingStatus()
+     QListWidgetItem* item = currentItem();
+ 
+     ConstraintItem* it = dynamic_cast<ConstraintItem*>(item);
+-    if (it) {
++    if (it && it->exists()) {
+         Q_EMIT onUpdateDrivingStatus(item, !it->isDriving());
+     }
+ }
+@@ -1294,7 +1307,7 @@ void TaskSketcherConstraints::changeFilteredVisibility(bool show, ActionTarget t
+         if (processItem) {// The item is shown in the filtered list
+             const ConstraintItem* it = dynamic_cast<const ConstraintItem*>(item);
+ 
+-            if (!it)
++            if (!it || !it->exists())
+                 continue;
+ 
+             // must change state is shown and is to be hidden or hidden and must change state is
+@@ -1343,6 +1356,12 @@ void TaskSketcherConstraints::onListWidgetConstraintsItemActivated(QListWidgetIt
+     ConstraintItem* it = dynamic_cast<ConstraintItem*>(item);
+     if (!it)
+         return;
++    if (!it->exists()) {
++        // A row left by a constraint that is gone (e.g. a dimension cancelled with Esc): the
++        // list again from the sketch, never a crash (engine field test 0.6.9)
++        slotConstraintsChanged();
++        return;
++    }
+ 
+     // if its the right constraint
+     if (it->isDimensional()) {
+@@ -1365,7 +1384,7 @@ void TaskSketcherConstraints::onListWidgetConstraintsItemActivated(QListWidgetIt
+ void TaskSketcherConstraints::onListWidgetConstraintsItemChanged(QListWidgetItem* item)
+ {
+     const ConstraintItem* it = dynamic_cast<const ConstraintItem*>(item);
+-    if (!it || inEditMode)
++    if (!it || inEditMode || !it->exists())
+         return;
+ 
+     inEditMode = true;
+diff --git a/src/Mod/Start/Gui/StartView.cpp b/src/Mod/Start/Gui/StartView.cpp
+index cce82ad52..6d09d8532 100644
+--- a/src/Mod/Start/Gui/StartView.cpp
++++ b/src/Mod/Start/Gui/StartView.cpp
+@@ -489,6 +489,9 @@ void StartView::firstStartWidgetDismissed()
+         "User parameter:BaseApp/Preferences/Mod/Start"
+     );
+     hGrp->SetBool("FirstStart2024", false);
++    // Kept at once: a crash before quitting must not bring the first-start questions back
++    // (engine field test 0.6.9)
++    App::GetApplication().GetUserParameter().SaveDocument();
+     _contents->setCurrentIndex(1);
+ }
+ 
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 46600ecb8..e192a5cbe 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -71,7 +71,7 @@ endif(BUILD_GUI)
+ # The "in effect up to here" line of a part's history (the body's Tip, never named so), what a
+ # pick is called in words, and the short task panels: the logic tested headless
+ # ("FreeCADCmd -t TestHistoryLine", "FreeCADCmd -t TestSelectionWords", "FreeCADCmd -t TestWording")
+-list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py TestAssemblySolve.py
++list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py TestAssemblySolve.py TestPartDesignFixes.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py)
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index abb2cd9ee..3f4057877 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -130,6 +130,14 @@ def _integrated_defaults():
+         draft.SetBool("dxfShowDialog", False)
+ 
+ 
++    # Recovery data every 2 minutes (15 by default: a crash after 15 minutes of work could leave
++    # nothing to recover; engine field test 0.6.9)
++    document = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Document")
++    if unset_int(document, "AutoSaveTimeout"):
++        document.SetInt("AutoSaveTimeout", 2)
++    if unset_bool(document, "AutoSaveEnabled"):
++        document.SetBool("AutoSaveEnabled", True)
++
+     # New drawings on the A4 sheet whose title block is in Japanese (usability test 0.6.9:
+     # "Title", "Created by" stayed in English)
+     import os
+diff --git a/src/Mod/Unified/PartsShelf.py b/src/Mod/Unified/PartsShelf.py
+index 25452c18a..6558cff17 100644
+--- a/src/Mod/Unified/PartsShelf.py
++++ b/src/Mod/Unified/PartsShelf.py
+@@ -908,6 +908,12 @@ def plan_for_hole(hole, kind=None, size=None, length=None, washers=None, nut=Non
+         chosen = pick_length(lengths, needed)
+     if k.length and chosen is None:
+         chosen = needed or 10.0
++    beyond = False
++    if k.length and needed and chosen is not None and chosen < needed - 1e-6 and not length:
++        # Longer than the longest of the standard table (engine field test 0.6.9: 139 mm needed,
++        # M8×80 given without a word): the length that is needed, rounded up to 5 mm, and said
++        chosen = float(math.ceil((needed - 1e-6) / 5.0) * 5.0)
++        beyond = True
+     if kind in ("hex_nut", "plain_washer", "spring_washer"):
+         # On the surface at the entry, toward the outside
+         items.append(Item(kind, m.name, None, _place(App.Vector(0, 0, 1), App.Vector(), -n, hole.point(hole.seat - plate))))
+@@ -925,7 +931,22 @@ def plan_for_hole(hole, kind=None, size=None, length=None, washers=None, nut=Non
+             items.append(Item("plain_washer", m.name, None, _place(App.Vector(0, 0, 1), App.Vector(), n, hole.point(far))))
+             far += m.washer_h
+         items.append(Item("hex_nut", m.name, None, _place(App.Vector(0, 0, 1), App.Vector(), n, hole.point(far))))
+-    return Plan(hole, kind, m.name, chosen, washers, nut, plate, items, needed)
++    plan = Plan(hole, kind, m.name, chosen, washers, nut, plate, items, needed)
++    plan.beyond_table = beyond
++    plan.table_longest = lengths[-1] if lengths else None
++    return plan
++
++
++def plan_note(plan):
++    """What to know about a plan before ordering, or "" """
++    if getattr(plan, "beyond_table", False):
++        return translate(
++            "PartsShelf",
++            "{} mm is needed, longer than the standard table ({} mm at most): {} put in at {} mm. "
++            "Check that it can be bought, or use a stud bolt / threaded rod with nuts.",
++        ).format("{:g}".format(round(plan.needed, 1)), "{:g}".format(plan.table_longest or 0),
++                 size_label(plan.size), "{:g}".format(plan.length))
++    return ""
+ 
+ 
+ # --------------------------------------------------------------------------- the document
+diff --git a/src/Mod/Unified/PartsShelfGui.py b/src/Mod/Unified/PartsShelfGui.py
+index 33a0a4856..9452fa039 100644
+--- a/src/Mod/Unified/PartsShelfGui.py
++++ b/src/Mod/Unified/PartsShelfGui.py
+@@ -570,8 +570,9 @@ class ShelfPanel:
+             QtWidgets.QApplication.restoreOverrideCursor()
+         self.doc.commitTransaction()
+         self.last = ("fastener", hole, links)
++        note = PS.plan_note(plan)
+         self._say(tr("Put: {} (Ctrl+Z takes it back; changing the options above changes it)").format(
+-            PS.joined(_count([i.label() for i in plan.items]))))
++            PS.joined(_count([i.label() for i in plan.items]))) + ("\n" + note if note else ""), bool(note))
+ 
+     def _remove_last(self):
+         if self.last is None:
+@@ -600,8 +601,9 @@ class ShelfPanel:
+             return
+         self.doc.commitTransaction()
+         self.last = ("fastener", hole, links)
++        note = PS.plan_note(plan)
+         self._say(tr("Put: {} (Ctrl+Z takes it back; changing the options above changes it)").format(
+-            PS.joined(_count([i.label() for i in plan.items]))))
++            PS.joined(_count([i.label() for i in plan.items]))) + ("\n" + note if note else ""), bool(note))
+ 
+     def _insert_into_hole(self):
+         if self.hole is None:
+diff --git a/src/Mod/Unified/TestPartDesignFixes.py b/src/Mod/Unified/TestPartDesignFixes.py
+new file mode 100644
+index 000000000..808b77a0d
+--- /dev/null
++++ b/src/Mod/Unified/TestPartDesignFixes.py
+@@ -0,0 +1,96 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Steps of a part that silently went wrong (engine field test 0.6.9), headless:
++#   FreeCADCmd -t TestPartDesignFixes
++
++import unittest
++
++import FreeCAD as App
++import Part
++
++V = App.Vector
++
++
++def circle(sk, c, r):
++    sk.addGeometry(Part.Circle(V(c[0], c[1], 0), V(0, 0, 1), r))
++
++
++class PartDesignFixesTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("PartDesignFixes")
++        self.body = self.doc.addObject("PartDesign::Body", "Body")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def sketch(self):
++        sk = self.body.newObject("Sketcher::SketchObject", "Sketch")
++        sk.AttachmentSupport = (self.body.Origin.OriginFeatures[3], [""])
++        sk.MapMode = "FlatFace"
++        return sk
++
++    def test_crossing_outlines_are_joined(self):
++        # a connecting rod: two eyes and a web over both, the bores inside the eyes
++        sk = self.sketch()
++        circle(sk, (0, 0), 20)
++        circle(sk, (100, 0), 12)
++        circle(sk, (0, 0), 8)
++        circle(sk, (100, 0), 5)
++        pts = [V(10, -12, 0), V(95, -7, 0), V(95, 7, 0), V(10, 12, 0)]
++        for i in range(4):
++            sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 4]))
++        pad = self.body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sk
++        pad.Length = 15
++        self.doc.recompute()
++        f = [Part.Face(Part.Wire(Part.Circle(V(0, 0, 0), V(0, 0, 1), 20).toShape())),
++             Part.Face(Part.Wire(Part.Circle(V(100, 0, 0), V(0, 0, 1), 12).toShape())),
++             Part.Face(Part.makePolygon(pts + [pts[0]]))]
++        want = f[0].fuse(f[1]).fuse(f[2]).removeSplitter()
++        want = want.cut(Part.Face(Part.Wire(Part.Circle(V(0, 0, 0), V(0, 0, 1), 8).toShape())))
++        want = want.cut(Part.Face(Part.Wire(Part.Circle(V(100, 0, 0), V(0, 0, 1), 5).toShape())))
++        self.assertTrue(pad.Shape.isValid())
++        self.assertEqual(len(pad.Shape.Solids), 1)
++        self.assertAlmostEqual(pad.Shape.Volume, want.Area * 15, delta=1.0)
++
++    def test_nested_outlines_unchanged(self):
++        # a ring: as before (the usual face maker)
++        sk = self.sketch()
++        circle(sk, (0, 0), 20)
++        circle(sk, (0, 0), 10)
++        pad = self.body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sk
++        pad.Length = 5
++        self.doc.recompute()
++        self.assertAlmostEqual(pad.Shape.Volume, 3.141592653589793 * (400 - 100) * 5, delta=0.5)
++
++    def test_pattern_made_by_a_script_is_the_end(self):
++        sk = self.sketch()
++        circle(sk, (20, 0), 5)
++        pad = self.body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sk
++        pad.Length = 5
++        self.doc.recompute()
++        for kind, setup in (
++            ("PartDesign::Mirrored", lambda o: setattr(o, "MirrorPlane", (self.body.Origin.OriginFeatures[5], [""]))),
++            ("PartDesign::PolarPattern", lambda o: (setattr(o, "Axis", (self.body.Origin.OriginFeatures[2], [""])),
++                                                    setattr(o, "Occurrences", 3))),
++        ):
++            last = self.body.Tip
++            f = self.body.newObject(kind, kind.split("::")[1])
++            f.Originals = [pad]
++            setup(f)
++            self.doc.recompute()
++            self.assertIs(self.body.Tip, f, kind)
++            self.assertIs(f.BaseFeature, last, kind)
++        # the next step builds on the pattern: one solid
++        sk2 = self.sketch()
++        circle(sk2, (0, 0), 30)
++        pad2 = self.body.newObject("PartDesign::Pad", "Pad001")
++        pad2.Profile = sk2
++        pad2.Length = 2
++        self.doc.recompute()
++        self.assertEqual(len(self.body.Shape.Solids), 1)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/src/Mod/Unified/TestPartsShelf.py b/src/Mod/Unified/TestPartsShelf.py
+index fc6591950..e223cf125 100644
+--- a/src/Mod/Unified/TestPartsShelf.py
++++ b/src/Mod/Unified/TestPartsShelf.py
+@@ -260,6 +260,17 @@ class DocumentTest(unittest.TestCase):
+     def tearDown(self):
+         App.closeDocument(self.doc.Name)
+ 
++    def test_longer_than_the_table_is_said(self):
++        # Engine field test 0.6.9: 132 mm needed, M8×80 given without a word
++        top = Part.makeBox(60, 60, 120).cut(Part.makeCylinder(4.5, 122, App.Vector(30, 30, -1)))
++        low = Part.makeBox(60, 60, 40, App.Vector(0, 0, -40)).cut(Part.makeCylinder(3.4, 25, App.Vector(30, 30, -25)))
++        hole = PS.analyze_hole(_cyl_face(top, 9.0), [("top", top), ("low", low)], view_direction=App.Vector(0, 0, -1))
++        plan = PS.plan_for_hole(hole, kind="socket_head")
++        self.assertGreaterEqual(plan.length, plan.needed)
++        self.assertTrue(plan.beyond_table)
++        self.assertIn(str(int(plan.length)), PS.plan_note(plan))
++        self.assertEqual(plan.items[0].length, plan.length)
++
+     def test_thinner_screw_goes_through_with_a_nut(self):
+         # Usability test 0.6.9: M5 picked for a ⌀6 hole in a 15 mm plate gave M5×8
+         box = Part.makeBox(100, 60, 15).cut(Part.makeCylinder(3, 17, App.Vector(10, 10, -1)))
+-- 
+2.43.0
+

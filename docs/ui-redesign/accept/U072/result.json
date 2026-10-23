@@ -1,0 +1,30 @@
+{
+ "constraint_list": {
+  "circle_pixel": "None",
+  "constraints_after_escape": 0,
+  "list_found": true,
+  "rows": 0,
+  "still_running": true
+ },
+ "joint_small_hole": {
+  "assembly_not_active_before": true,
+  "joint_panel_opened": true,
+  "under_cursor": "Face3",
+  "picked": [
+   "[<Part::Feature>, ['Edge10', 'Edge10']]"
+  ],
+  "small_hole_picked": true
+ },
+ "click_without_hover": {
+  "picked": [
+   "Face6"
+  ],
+  "first_click_picks": true,
+  "view_not_turned": true
+ },
+ "digits_in_sketch": {
+  "view_not_turned": true
+ },
+ "failed": [],
+ "passed": 8
+}

@@ -1,0 +1,129 @@
+From c7919254a39b3d8098781eb9fbf13da212b38208 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:33:38 +0900
+Subject: [PATCH 292/297] App: a spreadsheet cell's change reaches the
+ expressions that use its alias
+
+With the fine-grained recompute the dependents of a recomputed object are
+touched by the names of its changed properties. A spreadsheet's cell is
+known by two names ("A1" and its alias "k"): the change of "A1" never
+reached "Params.k", so no expression using a cell by its alias followed a
+change (engine field test 0.6.9; stock 1.1.3 had no fine-grained recompute).
+The names now resolve to the property before they are compared.
+
+Test: FreeCADCmd -t TestRecompute
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Document.cpp             | 13 ++++++-
+ src/Mod/Unified/CMakeLists.txt   |  2 +-
+ src/Mod/Unified/TestRecompute.py | 60 ++++++++++++++++++++++++++++++++
+ 3 files changed, 73 insertions(+), 2 deletions(-)
+ create mode 100644 src/Mod/Unified/TestRecompute.py
+
+diff --git a/src/App/Document.cpp b/src/App/Document.cpp
+index 58a35ca6d..fe9fa6384 100644
+--- a/src/App/Document.cpp
++++ b/src/App/Document.cpp
+@@ -2981,7 +2981,18 @@ int Document::recompute(const std::vector<DocumentObject*>& objs,
+                         // set all dependent objects touched based on properties
+                         std::vector<DepEdge> inList = obj->getInListProp();
+                         for (auto& [objFrom, propFrom, objTo, propTo] : inList) {
+-                            if (obj->touchedProps.contains(propTo) || propTo.empty()) {
++                            // A property may be known by two names: a spreadsheet's
++                            // cell "A1" and its alias "k". "Params.k" must follow a change of
++                            // "A1" (comparing the names only, it never did)
++                            auto underAnotherName = [obj](const std::string& name) {
++                                Property* target = obj->getPropertyByName(name.c_str());
++                                return target
++                                    && std::ranges::any_of(obj->touchedProps, [&](const auto& t) {
++                                           return obj->getPropertyByName(t.c_str()) == target;
++                                       });
++                            };
++                            if (obj->touchedProps.contains(propTo) || propTo.empty()
++                                || underAnotherName(propTo)) {
+                                 objFrom->enforceRecompute(propFrom);
+                             }
+                         }
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 01e387116..7b8c387e8 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -71,7 +71,7 @@ endif(BUILD_GUI)
+ # The "in effect up to here" line of a part's history (the body's Tip, never named so), what a
+ # pick is called in words, and the short task panels: the logic tested headless
+ # ("FreeCADCmd -t TestHistoryLine", "FreeCADCmd -t TestSelectionWords", "FreeCADCmd -t TestWording")
+-list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py
++list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py)
+diff --git a/src/Mod/Unified/TestRecompute.py b/src/Mod/Unified/TestRecompute.py
+new file mode 100644
+index 000000000..0c198d1ae
+--- /dev/null
++++ b/src/Mod/Unified/TestRecompute.py
+@@ -0,0 +1,60 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Parametric design: a change of a spreadsheet cell reaches what uses it, headless:
++#   FreeCADCmd -t TestRecompute
++# (engine field test 0.6.9: with the fine-grained recompute a cell "A1" with the alias "k" never
++# reached "Params.k" — the names were compared, not the properties)
++
++import os
++import tempfile
++import unittest
++
++import FreeCAD as App
++
++
++class RecomputeTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("RecomputeTest")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def test_alias_follows_the_cell(self):
++        d = self.doc
++        s = d.addObject("Spreadsheet::Sheet", "Params")
++        s.set("A1", "1")
++        s.setAlias("A1", "k")
++        b = d.addObject("Part::Box", "Box")
++        b.setExpression("Length", "Params.k * 10")
++        d.recompute()
++        self.assertAlmostEqual(b.Length.Value, 10)
++        for v in (2, 3, 4):
++            s.set("A1", str(v))
++            d.recompute()
++            self.assertAlmostEqual(b.Length.Value, 10 * v)
++        s.set("k", "5")
++        d.recompute()
++        self.assertAlmostEqual(b.Length.Value, 50)
++
++    def test_cell_without_alias_and_after_reopening(self):
++        d = self.doc
++        s = d.addObject("Spreadsheet::Sheet", "Params")
++        s.set("B2", "3")
++        b = d.addObject("Part::Box", "Box")
++        b.setExpression("Height", "Params.B2 * 2")
++        d.recompute()
++        s.set("B2", "4")
++        d.recompute()
++        self.assertAlmostEqual(b.Height.Value, 8)
++        path = os.path.join(tempfile.mkdtemp(), "params.FCStd")
++        d.saveAs(path)
++        App.closeDocument(d.Name)
++        self.doc = App.openDocument(path)
++        s = self.doc.getObject("Params")
++        b = self.doc.getObject("Box")
++        s.set("B2", "6")
++        self.doc.recompute()
++        self.assertAlmostEqual(b.Height.Value, 12)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

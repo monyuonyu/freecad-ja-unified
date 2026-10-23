@@ -1,0 +1,226 @@
+From a00e67f78e9ef925e67b01b1cb6bc23abed6bcc3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:52:33 +0900
+Subject: [PATCH 295/297] Assembly joints without activating the assembly;
+ small holes win the pick; picks refused in words
+
+- The joint tools work on the document's only assembly without
+  double-clicking it first (it is made active when a joint starts).
+- Picking a joint's element: a round face or circle edge a few pixels
+  from a click on a flat face wins (a small pin hole lost to the face
+  around it).
+- A pick a tool does not take is said in words, not as
+  "Unnamed.Body.Sketch001.Constraint7"; a constraint's symbol says to pick
+  a line, a circle or a point.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Selection/Selection.cpp        | 39 ++++++++++++---
+ src/Mod/Assembly/CommandCreateJoint.py |  2 +
+ src/Mod/Assembly/JointObject.py        | 68 ++++++++++++++++++++++++++
+ src/Mod/Assembly/UtilsAssembly.py      | 31 +++++++++++-
+ 4 files changed, 132 insertions(+), 8 deletions(-)
+
+diff --git a/src/Gui/Selection/Selection.cpp b/src/Gui/Selection/Selection.cpp
+index c885c00bc..8f98c889b 100644
+--- a/src/Gui/Selection/Selection.cpp
++++ b/src/Gui/Selection/Selection.cpp
+@@ -916,6 +916,14 @@ bool SelectionSingleton::hasSelectionGate(App::Document* /*pDoc*/) const
+     return ActiveGate != nullptr;
+ }
+ 
++namespace Gui
++{
++namespace
++{
++QString describePick(const char* documentName, const char* objectName, const char* subName);
++}
++}  // namespace Gui
++
+ int SelectionSingleton::setPreselect(
+     const char* pDocName,
+     const char* pObjectName,
+@@ -977,12 +985,31 @@ int SelectionSingleton::setPreselect(
+             else {
+                 msg = QCoreApplication::translate("SelectionFilter", "Not allowed:");
+             }
+-            msg.append(QStringLiteral(" %1.%2.%3 ")
+-                           .arg(
+-                               QString::fromLatin1(pDocName),
+-                               QString::fromLatin1(pObjectName),
+-                               QString::fromLatin1(pSubName)
+-                           ));
++            if (App::isSingleWorkbench()) {
++                // Words, not internal names ("Unnamed.Body.Sketch001.Constraint7"): what it is
++                // and what to pick instead (engine field test 0.6.9)
++                std::string sub = pSubName ? pSubName : "";
++                std::string element = sub.substr(sub.find_last_of('.') + 1);
++                if (element.rfind("Constraint", 0) == 0) {
++                    msg = QCoreApplication::translate(
++                        "SelectionFilter",
++                        "A constraint's symbol cannot be picked for this: pick a line, a circle or a point"
++                    );
++                }
++                else {
++                    QString words = describePick(pDocName, pObjectName, pSubName);
++                    msg = QCoreApplication::translate("SelectionFilter", "This tool does not take %1")
++                              .arg(words.isEmpty() ? QString::fromUtf8(pObjectName) : words);
++                }
++            }
++            else {
++                msg.append(QStringLiteral(" %1.%2.%3 ")
++                               .arg(
++                                   QString::fromLatin1(pDocName),
++                                   QString::fromLatin1(pObjectName),
++                                   QString::fromLatin1(pSubName)
++                               ));
++            }
+ 
+             if (getMainWindow()) {
+                 getMainWindow()->showMessage(msg);
+diff --git a/src/Mod/Assembly/CommandCreateJoint.py b/src/Mod/Assembly/CommandCreateJoint.py
+index b5e216407..f1cb9661b 100644
+--- a/src/Mod/Assembly/CommandCreateJoint.py
++++ b/src/Mod/Assembly/CommandCreateJoint.py
+@@ -52,6 +52,8 @@ def isCreateJointActive():
+ def activateJoint(index):
+     if JointObject.activeTask:
+         JointObject.activeTask.reject()
++    # The sole assembly of the document, without double-clicking it first
++    UtilsAssembly.ensureActiveAssembly()
+ 
+     Gui.addModule("JointObject")  # NOLINT
+     Gui.doCommand(f"panel = JointObject.TaskAssemblyCreateJoint({index})")
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 96e275087..c8a2c615d 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -2397,7 +2397,75 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         return UtilsAssembly.getMovingPart(ref)
+ 
+     # selectionObserver stuff
++    def _hole_near(self, doc_name, obj_name, sub_name, mousePos):
++        """A round face (a hole's wall, a pin) or a circle edge a few pixels from a pick on a flat
++        face: small holes are hard to hit, the face around them won (engine field test 0.6.9).
++        Returns (obj_name, sub_name, point) or None."""
++        element = sub_name.split(".")[-1] if sub_name else ""
++        if not element.startswith("Face") or not hasattr(self, "view") or self.view is None:
++            return None
++        # Only for the panel that is open (a closed one's view may be gone with its document)
++        if activeTask is not self or not Gui.Control.activeDialog():
++            return None
++        try:
++            if self.assembly.Document.Name != doc_name:
++                return None
++        except Exception:
++            return None
++        root = App.getDocument(doc_name).getObject(obj_name)
++        try:
++            picked = root.getSubObject(sub_name)
++        except Exception:
++            picked = None
++        if picked is not None and type(getattr(picked, "Surface", None)).__name__ in ("Cylinder", "Cone"):
++            return None
++        try:
++            cx, cy = self.view.getPointOnViewport(App.Vector(*mousePos))
++        except Exception:
++            return None
++        import math
++
++        best = None
++        for radius in (3, 5, 7, 9, 12):
++            for k in range(16):
++                a = 2 * math.pi * k / 16
++                info = self.view.getObjectInfo((int(cx + radius * math.cos(a)), int(cy + radius * math.sin(a))))
++                if not info or info.get("Document") != doc_name:
++                    continue
++                sub = info.get("SubName") or info.get("Component", "")
++                comp = info.get("Component", "")
++                if not comp.startswith(("Face", "Edge")):
++                    continue
++                # The element as a path from the picked root (the assembly), like the pick
++                try:
++                    el = root.getSubObject(sub)
++                    if el is None:
++                        el = App.getDocument(doc_name).getObject(info.get("Object", "")).getSubObject(comp)
++                except Exception:
++                    continue
++                if el is None:
++                    continue
++                round_face = comp.startswith("Face") and type(getattr(el, "Surface", None)).__name__ == "Cylinder"
++                circle = comp.startswith("Edge") and type(getattr(el, "Curve", None)).__name__ == "Circle"
++                if round_face or circle:
++                    best = (obj_name, sub, (info.get("x", 0), info.get("y", 0), info.get("z", 0)))
++                    break
++            if best:
++                break
++        return best
++
+     def addSelection(self, doc_name, obj_name, sub_name, mousePos):
++        # A hole next to the click wins over the flat face around it
++        if not getattr(self, "_swapping_pick", False):
++            near = self._hole_near(doc_name, obj_name, sub_name, mousePos)
++            if near is not None:
++                self._swapping_pick = True
++                try:
++                    Gui.Selection.removeSelection(doc_name, obj_name, sub_name)
++                    Gui.Selection.addSelection(doc_name, near[0], near[1], *near[2])
++                finally:
++                    self._swapping_pick = False
++                return
+         rootObj = App.getDocument(doc_name).getObject(obj_name)
+ 
+         comp, new_sub = UtilsAssembly.getComponentReference(self.assembly, rootObj, sub_name)
+diff --git a/src/Mod/Assembly/UtilsAssembly.py b/src/Mod/Assembly/UtilsAssembly.py
+index 50eb918c5..0262424be 100644
+--- a/src/Mod/Assembly/UtilsAssembly.py
++++ b/src/Mod/Assembly/UtilsAssembly.py
+@@ -69,8 +69,35 @@ def activePart():
+     return None
+ 
+ 
++def soleAssembly():
++    """In the integrated environment (no workbenches, no modes): the only assembly of the active
++    document, which the assembly tools use without first double-clicking it (engine field test
++    0.6.9: the joints did nothing until the assembly was "activated")"""
++    try:
++        if Gui.activeWorkbench().name() != "UnifiedWorkbench":
++            return None
++    except Exception:
++        return None
++    doc = App.ActiveDocument
++    if doc is None:
++        return None
++    assemblies = [o for o in doc.Objects if o.isDerivedFrom("Assembly::AssemblyObject")]
++    return assemblies[0] if len(assemblies) == 1 else None
++
++
++def ensureActiveAssembly():
++    """The active assembly; the sole one of the document is made active (edited) if none is"""
++    assembly = activeAssembly()
++    if assembly is None:
++        sole = soleAssembly()
++        if sole is not None and Gui.ActiveDocument is not None:
++            Gui.ActiveDocument.setEdit(sole)
++            assembly = activeAssembly()
++    return assembly
++
++
+ def isAssemblyCommandActive():
+-    return activeAssembly() is not None and not Gui.Control.activeDialog()
++    return (activeAssembly() is not None or soleAssembly() is not None) and not Gui.Control.activeDialog()
+ 
+ 
+ def provisionalDir():
+@@ -126,7 +153,7 @@ def isDocTemporary(doc):
+ def assembly_has_at_least_n_parts(n):
+     assembly = activeAssembly()
+     if not assembly:
+-        assembly = activePart()
++        assembly = activePart() or soleAssembly()
+         if not assembly:
+             return False
+     i = number_of_components_in(assembly)
+-- 
+2.43.0
+

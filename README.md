@@ -298,6 +298,19 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.2
+
+Fixes from the engine field test of 0.6.9, each reproduced on 0.7.0 first (the tests fail there and pass here); GUI acceptance in [docs/ui-redesign/accept/U072](docs/ui-redesign/accept/U072).
+
+- Spreadsheet cells with an alias now drive the expressions that use them (the fine-grained recompute compared property names; "A1" and its alias "k" are one property) — `FreeCADCmd -t TestRecompute`
+- Assemblies driven by a big step (a crank 0→90°) walk there in steps of at most 15° instead of silently dropping the driving joint; solve() returns -7 if the joints still do not hold — `-t TestAssemblySolve`
+- Crossing closed outlines in one sketch are joined (inner ones cut out) instead of a silently partial pad — `-t TestPartDesignFixes`
+- Mirror/pattern features made by scripts become the body's tip
+- No crash on a stale row of the sketch constraint list; recovery data every 2 minutes; the first-start choice is saved at once
+- Joints work on the document's only assembly without activating it; small holes win the pick over the face around them
+- Digits never turn the view while sketching; refused picks are explained in words
+- Parts shelf: bolts longer than the standard table are made at the needed length and flagged
+
 ## Changes in 0.7.1
 
 Fixes from the first-time-user test of 0.6.9 ([docs/ui-redesign/usability-0.6.9/report.md](docs/ui-redesign/usability-0.6.9/report.md)); acceptance in [docs/ui-redesign/accept/U071](docs/ui-redesign/accept/U071) (`tests/ui/u071_check.py`, 42 checks with real input; the same steps fail 12 checks on 0.7.0).

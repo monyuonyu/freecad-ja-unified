@@ -1,0 +1,324 @@
+From 390774294e07ba42743d426ece2c0b4a17733247 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:36:49 +0900
+Subject: [PATCH 293/297] Assembly: a big step of a driving value walks there
+ instead of dropping the driver
+
+Driving a joint by a big step (a crank from 0 to 90 degrees) did not
+converge: the solver dropped the driving joint as redundant, solve()
+returned 0 and the parts did not move (engine field test 0.6.9). After a
+solve the joints that pin parts together (fixed, revolute, ball) are
+checked; if they do not hold, the joints' placements are walked from the
+last solve that held to the asked ones in steps of at most 15 degrees.
+If they still do not hold, solve() returns -7 with a warning.
+
+Test: FreeCADCmd -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 134 +++++++++++++++++++++++-
+ src/Mod/Assembly/App/AssemblyObject.h   |  11 ++
+ src/Mod/Unified/CMakeLists.txt          |   2 +-
+ src/Mod/Unified/TestAssemblySolve.py    |  66 ++++++++++++
+ 4 files changed, 208 insertions(+), 5 deletions(-)
+ create mode 100644 src/Mod/Unified/TestAssemblySolve.py
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 171363a63..d683b8a31 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -24,6 +24,7 @@
+ #include <boost/core/ignore_unused.hpp>
+ #include <algorithm>
+ #include <cmath>
++#include <cstring>
+ #include <algorithm>
+ #include <vector>
+ #include <unordered_map>
+@@ -315,6 +316,81 @@ int AssemblyObject::solve(bool enableRedo)
+     // updateSolveStatus() solves on demand; suppress that while a solve is running.
+     Base::StateLocker lock(solveInProgress);
+ 
++    std::vector<App::DocumentObject*> joints;
++    int rc = solveOnce(enableRedo, joints);
++    if (rc != 0 || jointsHold(joints)) {
++        if (rc == 0) {
++            rememberHeldJoints(joints);
++        }
++        return rc;
++    }
++
++    // Not held: walk from the joints' placements of the last solve that held to the asked
++    // ones in steps of at most 15 degrees, each solve starting from the last one's result
++    double angle = 0.0;
++    double distance = 0.0;
++    bool known = false;
++    for (auto* joint : joints) {
++        auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
++        if (it == lastHeldJointPlacements.end()) {
++            continue;
++        }
++        known = true;
++        const Base::Placement now1 = App::GeoFeature::getPlacementFromProp(joint, "Placement1");
++        const Base::Placement now2 = App::GeoFeature::getPlacementFromProp(joint, "Placement2");
++        for (const auto& [was, now] : {std::pair {it->second.first, now1}, std::pair {it->second.second, now2}}) {
++            Base::Rotation delta = was.getRotation().inverse() * now.getRotation();
++            Base::Vector3d axis;
++            double a = 0.0;
++            delta.getValue(axis, a);
++            angle = std::max(angle, std::fabs(a));
++            distance = std::max(distance, (now.getPosition() - was.getPosition()).Length());
++        }
++    }
++    if (!known) {
++        FC_WARN("Assembly " << getFullName() << ": the joints do not hold after solving");
++        return -7;
++    }
++    const int steps = std::clamp(
++        static_cast<int>(std::ceil(angle / (M_PI / 12.0))),
++        2,
++        48
++    );
++    for (int k = 1; k <= steps; ++k) {
++        const double t = static_cast<double>(k) / steps;
++        jointPlacementOverride.clear();
++        if (k < steps) {
++            for (auto* joint : joints) {
++                auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
++                if (it == lastHeldJointPlacements.end()) {
++                    continue;
++                }
++                auto blend = [t](const Base::Placement& a, const Base::Placement& b) {
++                    return Base::Placement::slerp(a, b, t);
++                };
++                jointPlacementOverride[joint] = {
++                    blend(it->second.first, App::GeoFeature::getPlacementFromProp(joint, "Placement1")),
++                    blend(it->second.second, App::GeoFeature::getPlacementFromProp(joint, "Placement2")),
++                };
++            }
++        }
++        std::vector<App::DocumentObject*> stepJoints;
++        rc = solveOnce(false, stepJoints);
++        if (rc != 0) {
++            break;
++        }
++    }
++    jointPlacementOverride.clear();
++    if (rc == 0 && jointsHold(joints)) {
++        rememberHeldJoints(joints);
++        return 0;
++    }
++    FC_WARN("Assembly " << getFullName() << ": the joints do not hold after solving");
++    return rc != 0 ? rc : -7;
++}
++
++int AssemblyObject::solveOnce(bool enableRedo, std::vector<App::DocumentObject*>& joints)
++{
+     ensureIdentityPlacements();
+ 
+     syncGroundedJoints();
+@@ -331,7 +407,7 @@ int AssemblyObject::solve(bool enableRedo)
+         return -6;
+     }
+ 
+-    std::vector<App::DocumentObject*> joints = getJoints();
++    joints = getJoints();
+ 
+     removeUnconnectedJoints(joints, groundedObjs);
+ 
+@@ -368,6 +444,56 @@ int AssemblyObject::solve(bool enableRedo)
+     return 0;
+ }
+ 
++Base::Placement AssemblyObject::jointPlacement(App::DocumentObject* joint, const char* plcName) const
++{
++    auto it = jointPlacementOverride.find(joint);
++    if (it != jointPlacementOverride.end()) {
++        return std::strcmp(plcName, "Placement2") == 0 ? it->second.second : it->second.first;
++    }
++    return App::GeoFeature::getPlacementFromProp(joint, plcName);
++}
++
++bool AssemblyObject::jointsHold(const std::vector<App::DocumentObject*>& joints) const
++{
++    // The joints that pin both sides together: their two placements meet (and for a fixed
++    // joint, turn the same way)
++    for (auto* joint : joints) {
++        auto* type = joint->getPropertyByName<App::PropertyEnumeration>("JointType");
++        if (!type || !type->getValueAsString()) {
++            continue;
++        }
++        const std::string kind = type->getValueAsString();
++        if (kind != "Fixed" && kind != "Revolute" && kind != "Ball") {
++            continue;
++        }
++        if (joint->getPropertyByName<App::PropertyBool>("Suppressed")
++            && joint->getPropertyByName<App::PropertyBool>("Suppressed")->getValue()) {
++            continue;
++        }
++        const Base::Placement a = getJointSideGlobalPlacement(joint, "Reference1", "Placement1");
++        const Base::Placement b = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
++        const double scale = std::max(1.0, std::max(a.getPosition().Length(), b.getPosition().Length()));
++        if ((a.getPosition() - b.getPosition()).Length() > 1e-6 * scale) {
++            return false;
++        }
++        if (kind == "Fixed" && !a.getRotation().isSame(b.getRotation(), 1e-6)) {
++            return false;
++        }
++    }
++    return true;
++}
++
++void AssemblyObject::rememberHeldJoints(const std::vector<App::DocumentObject*>& joints)
++{
++    lastHeldJointPlacements.clear();
++    for (auto* joint : joints) {
++        lastHeldJointPlacements[joint->getNameInDocument()] = {
++            App::GeoFeature::getPlacementFromProp(joint, "Placement1"),
++            App::GeoFeature::getPlacementFromProp(joint, "Placement2"),
++        };
++    }
++}
++
+ void AssemblyObject::updateSolveStatus()
+ {
+     lastRedundantJoints.clear();
+@@ -2316,7 +2442,7 @@ std::string AssemblyObject::handleOneSideOfJoint(
+ 
+     MbDPartData data = getMbDData(part);
+     std::shared_ptr<ASMTPart> mbdPart = data.part;
+-    Base::Placement plc = getPlacementFromProp(joint, propPlcName);
++    Base::Placement plc = jointPlacement(joint, propPlcName);
+     // Now we have plc which is the JCS placement, but its relative to the Object, not to the
+     // containing Part.
+     auto* ref = dynamic_cast<App::PropertyXLinkSub*>(joint->getPropertyByName(propRefName));
+@@ -2368,10 +2494,10 @@ void AssemblyObject::getRackPinionMarkers(
+ 
+     App::DocumentObject* part1 = getMovingPartFromRef(joint, "Reference1");
+     App::DocumentObject* obj1 = getObjFromJointRef(joint, "Reference1");
+-    Base::Placement plc1 = getPlacementFromProp(joint, "Placement1");
++    Base::Placement plc1 = jointPlacement(joint, "Placement1");
+ 
+     App::DocumentObject* obj2 = getObjFromJointRef(joint, "Reference2");
+-    Base::Placement plc2 = getPlacementFromProp(joint, "Placement2");
++    Base::Placement plc2 = jointPlacement(joint, "Placement2");
+ 
+     if (!part1 || !obj1) {
+         Base::Console().warning("Reference1 of Joint {} is bad.\n", joint->getFullName());
+diff --git a/src/Mod/Assembly/App/AssemblyObject.h b/src/Mod/Assembly/App/AssemblyObject.h
+index 63bb7168d..468fee5e6 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.h
++++ b/src/Mod/Assembly/App/AssemblyObject.h
+@@ -24,6 +24,7 @@
+ 
+ #pragma once
+ 
++#include <map>
+ #include <boost/signals2.hpp>
+ #include <unordered_map>
+ #include <vector>
+@@ -285,6 +286,16 @@ private:
+ 
+     // True while solve() is running; breaks the solve()/updateSolveStatus() cycle.
+     bool solveInProgress {false};
++    // A big step of a driving value (e.g. a crank angle from 0 to 90 degrees) may not
++    // converge: the solver then drops the driving joint as redundant and the parts stay. The
++    // joints' placements of the last solve that held, to walk there in small steps.
++    std::map<std::string, std::pair<Base::Placement, Base::Placement>> lastHeldJointPlacements;
++    // While walking: the placements the joints use instead of their own
++    std::map<const App::DocumentObject*, std::pair<Base::Placement, Base::Placement>> jointPlacementOverride;
++    Base::Placement jointPlacement(App::DocumentObject* joint, const char* plcName) const;
++    int solveOnce(bool enableRedo, std::vector<App::DocumentObject*>& joints);
++    bool jointsHold(const std::vector<App::DocumentObject*>& joints) const;
++    void rememberHeldJoints(const std::vector<App::DocumentObject*>& joints);
+ 
+     int lastDoF;
+     bool lastHasConflict;
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 7b8c387e8..46600ecb8 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -71,7 +71,7 @@ endif(BUILD_GUI)
+ # The "in effect up to here" line of a part's history (the body's Tip, never named so), what a
+ # pick is called in words, and the short task panels: the logic tested headless
+ # ("FreeCADCmd -t TestHistoryLine", "FreeCADCmd -t TestSelectionWords", "FreeCADCmd -t TestWording")
+-list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py
++list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py TestAssemblySolve.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+     list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py)
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+new file mode 100644
+index 000000000..6a7982caf
+--- /dev/null
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -0,0 +1,66 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# An assembly driven by a big step (a crank from 0 to 90 degrees at once) follows, headless:
++#   FreeCADCmd -t TestAssemblySolve
++# (engine field test 0.6.9: the solver dropped the driving joint as redundant and returned 0
++# while the parts stayed)
++
++import math
++import unittest
++
++import FreeCAD as App
++
++
++def build():
++    import JointObject
++
++    V, R, P = App.Vector, App.Rotation, App.Placement
++    V, R, P = App.Vector, App.Rotation, App.Placement
++    doc = App.newDocument("bigstep")
++    sheet = doc.addObject("Spreadsheet::Sheet", "Params"); sheet.set("A1", "0"); sheet.setAlias("A1", "theta")
++    asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++    jg = asm.newObject("Assembly::JointGroup", "Joints")
++    def box(name, pl):
++        b = asm.newObject("Part::Box", name); b.Length = b.Width = b.Height = 5; b.Placement = pl; return b
++    base = box("Base", P())
++    crank = box("Crank", P())
++    L, r = 100.0, 30.0
++    h = math.sqrt(L*L - r*r)
++    rod = box("Rod", P(V(r, 0, 0), R(V(0, 1, 0), math.degrees(math.atan2(-r, h)))))
++    piston = box("Piston", P(V(0, 0, h), R()))
++    g = jg.newObject("App::FeaturePython", "Ground"); JointObject.GroundedJoint(g, base)
++    RY = R(V(1, 0, 0), -90)
++    def joint(kind, name, a, pa, b, pb, expr1=None):
++        j = jg.newObject("App::FeaturePython", name)
++        JointObject.Joint(j, JointObject.JointTypes.index(kind))
++        j.Detach1 = True; j.Detach2 = True
++        j.Reference1 = (a, ["", ""]); j.Reference2 = (b, ["", ""])
++        j.Placement1 = pa; j.Placement2 = pb
++        if expr1: j.setExpression("Placement1", expr1)
++        return j
++    joint("Fixed", "Drive", base, P(), crank, P(), "placement(vector(0; 0; 0); rotation(vector(0; 1; 0); Params.theta))")
++    joint("Revolute", "CrankRod", crank, P(V(r, 0, 0), RY), rod, P(V(0, 0, 0), RY))
++    joint("Revolute", "RodPiston", rod, P(V(0, 0, L), RY), piston, P(V(0, 0, 0), RY))
++    joint("Slider", "PistonSlide", base, P(), piston, P())
++
++    doc.recompute()
++    return doc, sheet, asm, piston, r, L
++
++
++class AssemblySolveTest(unittest.TestCase):
++    def test_big_steps_of_the_crank(self):
++        doc, sheet, asm, piston, r, L = build()
++        try:
++            self.assertEqual(asm.solve(), 0)
++            for th in (90, 180, 270, 15, 0):
++                sheet.set("theta", str(th))
++                doc.recompute()
++                self.assertEqual(asm.solve(), 0)
++                t = math.radians(th)
++                want = -r * math.sin(t) + math.sqrt(L * L - (r * math.cos(t)) ** 2)
++                self.assertAlmostEqual(piston.Placement.Base.z, want, places=3, msg="theta {}".format(th))
++        finally:
++            App.closeDocument(doc.Name)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

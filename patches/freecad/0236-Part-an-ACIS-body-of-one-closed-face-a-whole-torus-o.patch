@@ -1,7 +1,7 @@
 From 622c17ebaa86c92b4c94adaea36ea4c704f12e0f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 08:41:41 +0900
-Subject: [PATCH 236/291] Part: an ACIS body of one closed face (a whole torus
+Subject: [PATCH 236/297] Part: an ACIS body of one closed face (a whole torus
  or sphere) becomes a solid
 
 Sewing leaves a single face alone, so no shell was found and the body came out

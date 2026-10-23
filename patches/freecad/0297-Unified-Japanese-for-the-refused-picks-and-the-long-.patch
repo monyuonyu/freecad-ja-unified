@@ -1,0 +1,45 @@
+From 09d182bd0215ecfbfa985325c9bc43e25326386d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 23 Oct 2026 08:53:41 +0900
+Subject: [PATCH 297/297] Unified: Japanese for the refused picks and the long
+ bolt note
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Resources/translations/UnifiedWording_ja.ts   | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 4ae73add6..67ac4a852 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -11765,6 +11765,10 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <source>through</source>
+         <translation>通し穴</translation>
+     </message>
++    <message>
++        <source>{} mm is needed, longer than the standard table ({} mm at most): {} put in at {} mm. Check that it can be bought, or use a stud bolt / threaded rod with nuts.</source>
++        <translation>{} mm 必要ですが、規格の表の最長は {} mm です。{} を {} mm で入れました。買えるか確かめるか、植込みボルト・寸切りボルトとナットにしてください。</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_InsertScrew</name>
+@@ -12758,4 +12762,15 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>この穴を消す</translation>
+     </message>
+ </context>
++<context>
++    <name>SelectionFilter</name>
++    <message>
++        <source>A constraint's symbol cannot be picked for this: pick a line, a circle or a point</source>
++        <translation>拘束の記号はここでは選べません。線・円・点を選んでください</translation>
++    </message>
++    <message>
++        <source>This tool does not take %1</source>
++        <translation>この道具では「%1」は選べません</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

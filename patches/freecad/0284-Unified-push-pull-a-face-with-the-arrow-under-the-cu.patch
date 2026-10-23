@@ -1,7 +1,7 @@
 From 73e06dea49378bac1544876107adcdd89bfaa723 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:31:27 +0900
-Subject: [PATCH 284/291] Unified: push/pull a face with the arrow under the
+Subject: [PATCH 284/297] Unified: push/pull a face with the arrow under the
  cursor; the driving numbers on the model
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
