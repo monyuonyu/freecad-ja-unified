@@ -232,6 +232,21 @@ jobs:
           Get-Content $log
           if ($code -ne 0) { throw "freecadcmd failed to print Japanese under cp1252 (exit code $code)" }
 
+      # Windows: 図面の PDF を画面なしで（子の freecadcmd が画面を offscreen で立ち上げる）。offscreen の部品が同梱に無いと失敗する
+      - name: "Windows: drawing PDF without the screen"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'fc-pdf-appdata'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'fc-pdf-localappdata'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $out = & $cmd -t TestDrawingPdf 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Output $out
+          if ($code -ne 0 -or $out -notmatch '(?m)^OK') { throw "TestDrawingPdf failed (exit code $code)" }
+
       - name: "Windows: upload"
         if: runner.os == 'Windows'
         shell: bash

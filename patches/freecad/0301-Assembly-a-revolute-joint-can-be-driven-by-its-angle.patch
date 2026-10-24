@@ -1,0 +1,227 @@
+From bff08a4b1ba339ac22ee29102731022bdd9cfc80 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:17:45 +0900
+Subject: [PATCH 301/320] Assembly: a revolute joint can be driven by its angle
+ (AngleDriven)
+
+There was no proper way to turn a crank by an expression: the engine field
+test drove it with a fixed joint whose Placement1 was an expression of a
+rotation. A revolute joint now has AngleDriven; on, the second part is
+turned to the joint's Angle about the joint's axis (Angle can be an
+expression such as Params.theta). It is solved as a fixed joint whose first
+placement is turned by the angle, so the walk of big steps and the check
+that the joints hold see the angle too. In a simulation the motions turn
+the joint as before.
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 49 +++++++++++++++++++------
+ src/Mod/Assembly/JointObject.py         | 14 ++++++-
+ src/Mod/Unified/TestAssemblySolve.py    | 25 +++++++++++--
+ 3 files changed, 73 insertions(+), 15 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 8a25b35f0..6821563dd 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -106,6 +106,29 @@ struct RotationJointSide
+     const char* carrierPlcName = nullptr;
+ };
+ 
++// A revolute joint with AngleDriven on is turned to its Angle (an expression such as
++// Params.theta drives a crank): solved as a fixed joint whose first placement is turned by
++// the angle about its z axis.
++bool isAngleDriven(const App::DocumentObject* joint)
++{
++    if (!joint || getJointType(joint) != JointType::Revolute) {
++        return false;
++    }
++    auto* driven = joint->getPropertyByName<App::PropertyBool>("AngleDriven");
++    return driven && driven->getValue();
++}
++
++Base::Placement jointPlacementFromProp(App::DocumentObject* joint, const char* plcName)
++{
++    Base::Placement plc = App::GeoFeature::getPlacementFromProp(joint, plcName);
++    if (std::strcmp(plcName, "Placement1") == 0 && isAngleDriven(joint)) {
++        auto* angle = joint->getPropertyByName<App::PropertyFloat>("Angle");
++        const double a = angle ? Base::toRadians(angle->getValue()) : 0.0;
++        plc = plc * Base::Placement(Base::Vector3d(), Base::Rotation(Base::Vector3d(0, 0, 1), a));
++    }
++    return plc;
++}
++
+ Base::Placement getJointSideGlobalPlacement(
+     App::DocumentObject* joint,
+     const char* refName,
+@@ -121,8 +144,7 @@ Base::Placement getJointSideGlobalPlacement(
+         return {};
+     }
+ 
+-    return App::GeoFeature::getGlobalPlacement(nullptr, ref)
+-        * App::GeoFeature::getPlacementFromProp(joint, plcName);
++    return App::GeoFeature::getGlobalPlacement(nullptr, ref) * jointPlacementFromProp(joint, plcName);
+ }
+ 
+ bool axesAreCoaxial(const Base::Placement& plc1, const Base::Placement& plc2)
+@@ -333,8 +355,8 @@ int AssemblyObject::solve(bool enableRedo)
+     double angle = 0.0;
+     double distance = 0.0;
+     for (auto* joint : joints) {
+-        const Base::Placement now1 = App::GeoFeature::getPlacementFromProp(joint, "Placement1");
+-        const Base::Placement now2 = App::GeoFeature::getPlacementFromProp(joint, "Placement2");
++        const Base::Placement now1 = jointPlacementFromProp(joint, "Placement1");
++        const Base::Placement now2 = jointPlacementFromProp(joint, "Placement2");
+         auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
+         if (it != lastHeldJointPlacements.end()) {
+             start[joint] = it->second;
+@@ -372,8 +394,8 @@ int AssemblyObject::solve(bool enableRedo)
+                     return Base::Placement::slerp(a, b, t);
+                 };
+                 jointPlacementOverride[joint] = {
+-                    blend(was.first, App::GeoFeature::getPlacementFromProp(joint, "Placement1")),
+-                    blend(was.second, App::GeoFeature::getPlacementFromProp(joint, "Placement2")),
++                    blend(was.first, jointPlacementFromProp(joint, "Placement1")),
++                    blend(was.second, jointPlacementFromProp(joint, "Placement2")),
+                 };
+             }
+         }
+@@ -453,7 +475,7 @@ Base::Placement AssemblyObject::jointPlacement(App::DocumentObject* joint, const
+     if (it != jointPlacementOverride.end()) {
+         return std::strcmp(plcName, "Placement2") == 0 ? it->second.second : it->second.first;
+     }
+-    return App::GeoFeature::getPlacementFromProp(joint, plcName);
++    return jointPlacementFromProp(joint, plcName);
+ }
+ 
+ bool AssemblyObject::jointsHold(const std::vector<App::DocumentObject*>& joints) const
+@@ -479,7 +501,7 @@ bool AssemblyObject::jointsHold(const std::vector<App::DocumentObject*>& joints)
+         if ((a.getPosition() - b.getPosition()).Length() > 1e-6 * scale) {
+             return false;
+         }
+-        if (kind == "Fixed" && !a.getRotation().isSame(b.getRotation(), 1e-6)) {
++        if ((kind == "Fixed" || isAngleDriven(joint)) && !a.getRotation().isSame(b.getRotation(), 1e-6)) {
+             return false;
+         }
+     }
+@@ -491,8 +513,8 @@ void AssemblyObject::rememberHeldJoints(const std::vector<App::DocumentObject*>&
+     lastHeldJointPlacements.clear();
+     for (auto* joint : joints) {
+         lastHeldJointPlacements[joint->getNameInDocument()] = {
+-            App::GeoFeature::getPlacementFromProp(joint, "Placement1"),
+-            App::GeoFeature::getPlacementFromProp(joint, "Placement2"),
++            jointPlacementFromProp(joint, "Placement1"),
++            jointPlacementFromProp(joint, "Placement2"),
+         };
+     }
+ }
+@@ -1950,6 +1972,10 @@ std::shared_ptr<ASMTJoint> AssemblyObject::makeMbdJointOfType(App::DocumentObjec
+             return CREATE<ASMTFixedJoint>::With();
+ 
+         case JointType::Revolute:
++            // in a simulation the motions turn the joints
++            if (isAngleDriven(joint) && motions.empty()) {
++                return CREATE<ASMTFixedJoint>::With();
++            }
+             return CREATE<ASMTRevoluteJoint>::With();
+ 
+         case JointType::Cylindrical:
+@@ -2266,7 +2292,8 @@ std::vector<std::shared_ptr<MbD::ASMTJoint>> AssemblyObject::makeMbdJoint(App::D
+                 }
+             }
+         }
+-        if (jointType == JointType::Revolute || jointType == JointType::Cylindrical) {
++        if ((jointType == JointType::Revolute && !isAngleDriven(joint))
++            || jointType == JointType::Cylindrical) {
+             auto* pRotMin = dynamic_cast<App::PropertyFloat*>(joint->getPropertyByName("AngleMin"));
+             auto* pRotMax = dynamic_cast<App::PropertyFloat*>(joint->getPropertyByName("AngleMax"));
+             auto* pMinEnabled = dynamic_cast<App::PropertyBool*>(
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index c86138455..8e9fe4a0f 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -287,6 +287,18 @@ class Joint:
+         if not hasattr(joint, "Angle"):
+             self.addAngleProperty(joint)
+ 
++        if not hasattr(joint, "AngleDriven"):
++            joint.addProperty(
++                "App::PropertyBool",
++                "AngleDriven",
++                "Joint",
++                QT_TRANSLATE_NOOP(
++                    "App::Property",
++                    "Revolute joint: turn the second part to Angle (give Angle an expression such as Params.theta to drive a crank)",
++                ),
++                locked=True,
++            )
++
+         if not hasattr(joint, "Distance"):
+             self.addDistanceProperty(joint)
+ 
+@@ -387,7 +399,7 @@ class Joint:
+             "Joint",
+             QT_TRANSLATE_NOOP(
+                 "App::Property",
+-                "This is the angle of the joint. It is used only by the Angle joint.",
++                "This is the angle of the joint. It is used by the Angle joint and by a Revolute joint with AngleDriven.",
+             ),
+             locked=True,
+         )
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index f8e0953fe..8453583e8 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -10,10 +10,9 @@ import unittest
+ import FreeCAD as App
+ 
+ 
+-def build():
++def build(revolute_drive=False):
+     import JointObject
+ 
+-    V, R, P = App.Vector, App.Rotation, App.Placement
+     V, R, P = App.Vector, App.Rotation, App.Placement
+     doc = App.newDocument("bigstep")
+     sheet = doc.addObject("Spreadsheet::Sheet", "Params"); sheet.set("A1", "0"); sheet.setAlias("A1", "theta")
+@@ -37,7 +36,13 @@ def build():
+         j.Placement1 = pa; j.Placement2 = pb
+         if expr1: j.setExpression("Placement1", expr1)
+         return j
+-    joint("Fixed", "Drive", base, P(), crank, P(), "placement(vector(0; 0; 0); rotation(vector(0; 1; 0); Params.theta))")
++    if revolute_drive:
++        # the official way: a revolute joint turned to its Angle (axis along y: z of RY)
++        d = joint("Revolute", "Drive", base, P(V(), RY), crank, P(V(), RY))
++        d.AngleDriven = True
++        d.setExpression("Angle", "Params.theta")
++    else:
++        joint("Fixed", "Drive", base, P(), crank, P(), "placement(vector(0; 0; 0); rotation(vector(0; 1; 0); Params.theta))")
+     joint("Revolute", "CrankRod", crank, P(V(r, 0, 0), RY), rod, P(V(0, 0, 0), RY))
+     joint("Revolute", "RodPiston", rod, P(V(0, 0, L), RY), piston, P(V(0, 0, 0), RY))
+     joint("Slider", "PistonSlide", base, P(), piston, P())
+@@ -61,6 +66,20 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_revolute_joint_driven_by_its_angle(self):
++        doc, sheet, asm, piston, r, L = build(revolute_drive=True)
++        try:
++            self.assertEqual(asm.solve(), 0)
++            for th in (30, 90, 180, 270, 0):
++                sheet.set("theta", str(th))
++                doc.recompute()
++                self.assertEqual(asm.solve(), 0)
++                t = math.radians(th)
++                want = -r * math.sin(t) + math.sqrt(L * L - (r * math.cos(t)) ** 2)
++                self.assertAlmostEqual(piston.Placement.Base.z, want, places=3, msg="theta {}".format(th))
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_big_step_right_after_opening(self):
+         # no solve that held is remembered in a file just opened: the walk starts where the parts are
+         import os
+-- 
+2.43.0
+

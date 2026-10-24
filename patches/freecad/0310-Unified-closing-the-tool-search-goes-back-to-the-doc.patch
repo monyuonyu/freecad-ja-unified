@@ -1,0 +1,44 @@
+From 4acca70728ccdd9536f76f903eb75a22125a7cba Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:21:34 +0900
+Subject: [PATCH 310/320] Unified: closing the tool search goes back to the
+ document's window it was opened over
+
+In the engine field test 0.7.3 closing Ctrl+K (Esc or Enter) made another
+document active three times out of three, and the chosen joint tool ran in
+that document. Not reproduced here with xdotool; the window it was opened
+over is remembered and made active again when the search closes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandSearchGui.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/Mod/Unified/CommandSearchGui.py b/src/Mod/Unified/CommandSearchGui.py
+index 7e295f2fa..ae5570268 100644
+--- a/src/Mod/Unified/CommandSearchGui.py
++++ b/src/Mod/Unified/CommandSearchGui.py
+@@ -230,6 +230,10 @@ class SearchPopup(QtWidgets.QFrame):
+         self.setGeometry((mw.width() - width) // 2, 44, width, height)
+         self.places = where_shown()
+         entries()
++        # the document's window it was opened over: hiding moves the focus to the next widget,
++        # which can be another document's window (the tool then ran in the wrong document)
++        mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
++        self.opened_over = mdi.activeSubWindow() if mdi else None
+         self.show()
+         self.raise_()
+         self.edit.setText(text)
+@@ -255,6 +259,9 @@ class SearchPopup(QtWidgets.QFrame):
+     def close_popup(self):
+         self.hide()
+         mdi = Gui.getMainWindow().findChild(QtWidgets.QMdiArea)
++        was = getattr(self, "opened_over", None)
++        if mdi and was is not None and was in mdi.subWindowList() and mdi.activeSubWindow() is not was:
++            mdi.setActiveSubWindow(was)
+         sub = mdi.activeSubWindow() if mdi else None
+         if sub and sub.widget():
+             sub.widget().setFocus()
+-- 
+2.43.0
+

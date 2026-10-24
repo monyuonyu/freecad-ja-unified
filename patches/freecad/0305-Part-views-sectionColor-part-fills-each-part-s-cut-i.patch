@@ -1,0 +1,149 @@
+From 2c9724db6991f63f6ff7f28e14865cf40f12fdae Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:35:51 +0900
+Subject: [PATCH 305/320] Part views: sectionColor="part" fills each part's cut
+ in its own colour
+
+A section of an assembly filled every cut face with the same colour, so
+which cut belongs to which part was hard to read (engine field test).
+sectionColor="part" (CLI --section-color part, or r,g,b) fills each part's
+cut with a darker shade of the part's colour, still hatched.
+
+Test: FreeCADCmd -t parttests.TestPartViews
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |  2 ++
+ src/Mod/Part/App/ViewTools.cpp          |  4 ++++
+ src/Mod/Part/App/ViewTools.h            |  2 ++
+ src/Mod/Part/App/ViewToolsPy.cpp        | 14 +++++++++++---
+ src/Mod/Part/PartViews.py               |  3 +++
+ src/Mod/Part/parttests/TestPartViews.py | 11 +++++++++++
+ 6 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index afc1c98cf..749213aac 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2489,6 +2489,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("region", boost::program_options::value<std::string>(), "Zoom --render/--export-* to a box in model coordinates: xmin,ymin,zmin,xmax,ymax,zmax")
+     ("focus", boost::program_options::value<std::string>(), "Zoom --render/--export-* to objects (names or labels, separated by commas)")
+     ("section", boost::program_options::value<std::string>(), "Cut --render/--export-* with a plane and fill the cut faces: z=10 (cut away z > 10), -x=5 (cut away x < 5) or px,py,pz,nx,ny,nz (cut away the side the normal points to)")
++    ("section-color", boost::program_options::value<std::string>(), "Colour of the cut faces of --section: part (a darker shade of each part's colour) or r,g,b (0-1)")
+     ("deflection", boost::program_options::value<std::string>(), "Tessellation tolerance for --render/--export-* in model units (larger is coarser and faster; default from the size of the model)")
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+     ("progress", "Progress of --render/--export-* on stderr")
+@@ -2734,6 +2735,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"region", "RenderRegion"},
+         {"focus", "RenderFocus"},
+         {"section", "RenderSection"},
++        {"section-color", "RenderSectionColor"},
+         {"deflection", "RenderDeflection"},
+         {"max-seconds", "RenderMaxSeconds"},
+         {"export-svg", "ExportSvg"},
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 3133a2e73..7644fbf7d 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -1065,6 +1065,10 @@ std::vector<SceneItem> Part::ViewTools::sectionItems(
+         SceneItem& res = out[i];
+         res = in;
+         res.sectionColor = vo.sectionColor;
++        if (vo.sectionColorByPart) {
++            // darker than the part's outside, so that the cut reads as a cut
++            res.sectionColor = {in.color[0] * 0.72F, in.color[1] * 0.72F, in.color[2] * 0.72F};
++        }
+         if (in.shape.IsNull()) {
+             if (!in.meshFacets.empty()) {
+                 clipMesh(res, P, N);
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index d1ae77e06..eb18207c2 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -56,6 +56,8 @@ struct ViewOptions
+     gp_Pnt sectionPoint;
+     gp_Dir sectionNormal {0, 0, 1};
+     Color sectionColor {0.93F, 0.45F, 0.38F};
++    /// sectionColor="part": each part's cut faces in a darker shade of the part's colour
++    bool sectionColorByPart = false;
+     bool sectionHatch = true;
+     /// Progress messages on stderr
+     bool progress = false;
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index 2fb3eefe7..c64342114 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -347,7 +347,13 @@ ViewOptions takeViewOptions(Py::Dict& kw, PyObject*& up)
+         vo.sectionNormal = gp_Dir(n.XYZ());
+     }
+     if (PyObject* o = take("sectionColor")) {
+-        vo.sectionColor = toColor(hold(o));
++        Py::Object value = hold(o);
++        if (value.isString() && Py::String(value).as_std_string() == "part") {
++            vo.sectionColorByPart = true;
++        }
++        else {
++            vo.sectionColor = toColor(value);
++        }
+     }
+     if (PyObject* o = take("hatch")) {
+         vo.sectionHatch = PyObject_IsTrue(hold(o).ptr()) == 1;
+@@ -695,7 +701,8 @@ PyMethodDef methods[] = {
+      "    or (point, point); focus: zoom to objects/shapes (their box plus 3 %).\n"
+      "  section: (point, normal) cuts the shapes with the plane and removes the side the\n"
+      "    normal points to; cut faces are filled with sectionColor and hatched (hatch=False:\n"
+-     "    plain).  Meshes are clipped without filling.\n"
++     "    plain; sectionColor=\"part\": each part's cut in a darker shade of its colour).\n"
++     "    Meshes are clipped without filling.\n"
+      "  progress=True: progress on stderr; maxSeconds (or timeout): stop after that time\n"
+      "    and return what is done (nearest faces first) with a RuntimeWarning; threads.\n"
+      },
+@@ -720,7 +727,8 @@ PyMethodDef methods[] = {
+      "    or (point, point); focus: zoom to objects/shapes (their box plus 3 %).\n"
+      "  section: (point, normal) cuts the shapes with the plane and removes the side the\n"
+      "    normal points to; cut faces are filled with sectionColor and hatched (hatch=False:\n"
+-     "    plain).  Meshes are clipped without filling.\n"
++     "    plain; sectionColor=\"part\": each part's cut in a darker shade of its colour).\n"
++     "    Meshes are clipped without filling.\n"
+      "  progress=True: progress on stderr; maxSeconds (or timeout): stop after that time\n"
+      "    and return what is done (nearest faces first) with a RuntimeWarning; threads.\n"
+      },
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index c35b92166..8610ac746 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1213,6 +1213,9 @@ def cli_view_options(doc):
+         kw["focus"] = _find_objects(doc, _config("RenderFocus"))
+     if _config("RenderSection"):
+         kw["section"] = parse_section(_config("RenderSection"))
++    color = _config("RenderSectionColor")
++    if color:
++        kw["sectionColor"] = "part" if color == "part" else tuple(_numbers(color, 3, "section-color"))
+     if _config("RenderMaxSeconds"):
+         kw["maxSeconds"] = float(_config("RenderMaxSeconds"))
+     if _config("RenderProgress"):
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 5a0a7f767..f747d6f6c 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -601,6 +601,17 @@ class TestPartViewOptions(unittest.TestCase):
+                                    section=(App.Vector(0, 0, 1), App.Vector(0, 0, -1)))  # fmt: skip
+         self.assertEqual({f["item"] for f in data["faces"]}, {0, 1})
+ 
++    def testSectionColorOfEachPart(self):
++        # sectionColor="part": each part's cut in a darker shade of its own colour
++        items = [{"shape": Part.makeBox(10, 10, 10), "color": (1, 0, 0)},
++                 {"shape": Part.makeBox(10, 10, 10, App.Vector(20, 0, 0)), "color": (0, 0, 1)}]  # fmt: skip
++        section = (App.Vector(0, 0, 5), App.Vector(0, 0, 1))
++        def cut_colors(**kw):
++            data = Part.projectVisible(items, view="top", section=section, **kw)
++            return {f["item"]: tuple(round(c, 3) for c in f["color"]) for f in data["faces"] if f["section"]}
++        self.assertEqual(cut_colors(), {0: (0.93, 0.45, 0.38), 1: (0.93, 0.45, 0.38)})
++        self.assertEqual(cut_colors(sectionColor="part"), {0: (0.72, 0, 0), 1: (0, 0, 0.72)})
++
+     def testSectionInPictureAndFiles(self):
+         png = os.path.join(self.dir, "s.png")
+         Part.renderImage(self.holed, png, view="iso", width=80, height=60, style="hidden-lines",
+-- 
+2.43.0
+

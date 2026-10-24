@@ -1,0 +1,166 @@
+From 1a2384f29b2768fa2942bdbabcd7424766fe1eaf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:42:13 +0900
+Subject: [PATCH 306/320] Assembly: "Turn to an angle" and the tooth counts in
+ the joint panel
+
+The revolute joint's panel gets a check box "Turn to an angle" with its
+angle (a formula such as Params.theta can be given there), on the row of
+the rotation, which a revolute joint does not use (the angle's row shares
+its place with the reverse buttons). Gears and belts get the tooth counts
+next to the radii ("(radius)" while 0). Changing them solves at once.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py               | 80 +++++++++++++++++++
+ .../translations/UnifiedWording_ja.ts         | 20 +++++
+ 2 files changed, 100 insertions(+)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 06c59335b..baa39f2ac 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -830,6 +830,14 @@ class Joint:
+                 self.preventParallel(joint)
+             solveIfAllowed(self.getAssembly(joint))
+ 
++        if (prop == "AngleDriven" or (prop == "Angle" and getattr(joint, "AngleDriven", False))) and (
++            joint.JointType == "Revolute"
++        ):
++            solveIfAllowed(self.getAssembly(joint))
++
++        if prop in ("Teeth1", "Teeth2") and joint.JointType in ("Gears", "Belt"):
++            solveIfAllowed(self.getAssembly(joint))
++
+     def execute(self, joint):
+         errStr = joint.Label + ": " + QT_TRANSLATE_NOOP("Assembly", "Broken link in: ")
+         if (
+@@ -1823,6 +1831,7 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+             self.createJointObject()
+             self.visibilityBackup = False
+ 
++        self.addDriveAndTeethFields()
+         self.jForm.angleSpinbox.valueChanged.connect(self.onAngleChanged)
+         self.jForm.distanceSpinbox.valueChanged.connect(self.onDistanceChanged)
+         self.jForm.distanceSpinbox2.valueChanged.connect(self.onDistance2Changed)
+@@ -2013,6 +2022,69 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+     def onAngleChanged(self, quantity):
+         self.joint.Angle = self.jForm.angleSpinbox.property("rawValue")
+ 
++    def addDriveAndTeethFields(self):
++        """A revolute joint turned by its angle (an expression can drive it: Params.theta), and
++        tooth counts for gears and belts (the ratio of sprockets is of their teeth)"""
++        from PySide import QtWidgets
++
++        form = self.jForm
++        # on the row of the rotation, empty for a revolute joint (the angle's row shares its
++        # place with the reverse buttons)
++        row = form.findChild(QtWidgets.QHBoxLayout, "hLayoutRotation")
++        self.angleDriveCheckbox = QtWidgets.QCheckBox(translate("Assembly", "Turn to an angle"))
++        self.angleDriveCheckbox.setToolTip(
++            translate(
++                "Assembly",
++                "The second part turns to the angle given here. Right-click the angle (or type =) "
++                "for a formula such as Params.theta: changing the value turns the parts.",
++            )
++        )
++        self.angleDriveCheckbox.setChecked(bool(getattr(self.joint, "AngleDriven", False)))
++        self.angleDriveCheckbox.toggled.connect(self.onAngleDrivenToggled)
++        self.driveAngleSpinbox = Gui.UiLoader().createWidget("Gui::QuantitySpinBox")
++        self.driveAngleSpinbox.setObjectName("driveAngleSpinbox")
++        self.driveAngleSpinbox.setProperty("unit", "deg")
++        self.driveAngleSpinbox.setSizePolicy(
++            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
++        )
++        self.driveAngleSpinbox.setProperty("rawValue", self.joint.Angle.Value)
++        self.driveAngleBinding = Gui.ExpressionBinding(self.driveAngleSpinbox).bind(
++            self.joint, "Angle"
++        )
++        self.driveAngleSpinbox.valueChanged.connect(self.onDriveAngleChanged)
++        row.addWidget(self.angleDriveCheckbox)
++        row.addWidget(self.driveAngleSpinbox)
++
++        self.teethSpinboxes = []
++        for layoutName, prop in (("hLayoutDistance", "Teeth1"), ("hLayoutDistance2", "Teeth2")):
++            label = QtWidgets.QLabel(translate("Assembly", "Teeth"))
++            box = QtWidgets.QSpinBox()
++            box.setRange(0, 10000)
++            box.setSpecialValueText(translate("Assembly", "(radius)"))
++            box.setToolTip(
++                translate(
++                    "Assembly",
++                    "Number of teeth. With both given, the ratio is of the teeth instead of the "
++                    "radii (sprockets and gears).",
++                )
++            )
++            box.setValue(int(getattr(self.joint, prop, 0) or 0))
++            box.valueChanged.connect(lambda value, prop=prop: self.onTeethChanged(prop, value))
++            layout = form.findChild(QtWidgets.QHBoxLayout, layoutName)
++            layout.addWidget(label)
++            layout.addWidget(box)
++            self.teethSpinboxes.append((label, box))
++
++    def onAngleDrivenToggled(self, on):
++        self.joint.AngleDriven = on
++        self.adaptUi()
++
++    def onDriveAngleChanged(self, quantity):
++        self.joint.Angle = self.driveAngleSpinbox.property("rawValue")
++
++    def onTeethChanged(self, prop, value):
++        setattr(self.joint, prop, value)
++
+     def onDistanceChanged(self, quantity):
+         self.joint.Distance = self.jForm.distanceSpinbox.property("rawValue")
+ 
+@@ -2073,8 +2145,16 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         jType = self.jType
+ 
+         needAngle = jType in JointUsingAngle
++        drive = getattr(self, "angleDriveCheckbox", None)
++        if drive is not None:
++            drive.setVisible(jType == "Revolute")
++            self.driveAngleSpinbox.setVisible(jType == "Revolute")
++            self.driveAngleSpinbox.setEnabled(drive.isChecked())
+         self.jForm.angleLabel.setVisible(needAngle)
+         self.jForm.angleSpinbox.setVisible(needAngle)
++        for label, box in getattr(self, "teethSpinboxes", []):
++            label.setVisible(jType in ("Gears", "Belt"))
++            box.setVisible(jType in ("Gears", "Belt"))
+ 
+         needDistance = jType in JointUsingDistance
+         self.jForm.distanceLabel.setVisible(needDistance)
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 67ac4a852..1d3bbee76 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -130,6 +130,26 @@ so that self intersection is avoided.</source>
+ </context>
+ <context>
+     <name>Assembly</name>
++    <message>
++        <source>Turn to an angle</source>
++        <translation>角度で回す</translation>
++    </message>
++    <message>
++        <source>The second part turns to the angle given here. Right-click the angle (or type =) for a formula such as Params.theta: changing the value turns the parts.</source>
++        <translation>2 つ目の部品をここの角度まで回します。角度の欄で = を打つ（または右クリック）と Params.theta のような式にでき、値を変えると部品が回ります。</translation>
++    </message>
++    <message>
++        <source>Teeth</source>
++        <translation>歯数</translation>
++    </message>
++    <message>
++        <source>(radius)</source>
++        <translation>（半径で）</translation>
++    </message>
++    <message>
++        <source>Number of teeth. With both given, the ratio is of the teeth instead of the radii (sprockets and gears).</source>
++        <translation>歯の数。両方に入れると、半径ではなく歯数の比で回ります（スプロケット・歯車）。</translation>
++    </message>
+     <message>
+         <source>Disabled</source>
+         <translation>そのまま</translation>
+-- 
+2.43.0
+

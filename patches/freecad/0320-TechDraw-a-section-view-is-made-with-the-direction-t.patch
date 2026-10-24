@@ -1,0 +1,65 @@
+From f310fdfd507a5850ff03350dd0e59424b1d42cbf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:36:29 +0900
+Subject: [PATCH 320/320] TechDraw: a section view is made with the direction
+ the panel shows and the next free letter
+
+"Finish" without pressing a direction button said "nothing to apply, no
+section direction picked" though the panel showed the current view
+direction, and a new section had no symbol ("SECTION -") (engine field
+test 0.7.3). The shown direction is used, and the symbol is the next free
+letter (A, B, ...).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/TaskSectionView.cpp | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/Mod/TechDraw/Gui/TaskSectionView.cpp b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+index ddc8a4da9..c1731f057 100644
+--- a/src/Mod/TechDraw/Gui/TaskSectionView.cpp
++++ b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+@@ -23,6 +23,7 @@
+  ***************************************************************************/
+ 
+ #include <QMessageBox>
++#include <set>
+ #include <cmath>
+ 
+ #include "Widgets/CompassWidget.h"
+@@ -134,6 +135,20 @@ void TaskSectionView::setUiPrimary()
+ {
+     setWindowTitle(QObject::tr("Create Section View"));
+ 
++    // The next free letter as the symbol (the caption was "SECTION -" with none)
++    if (ui->leSymbol->text().trimmed().isEmpty() && m_base && m_base->getDocument()) {
++        std::set<std::string> used;
++        for (auto* obj : m_base->getDocument()->getObjectsOfType<TechDraw::DrawViewSection>()) {
++            used.insert(obj->SectionSymbol.getValue());
++        }
++        for (char c = 'A'; c <= 'Z'; ++c) {
++            if (used.count(std::string(1, c)) == 0) {
++                ui->leSymbol->setText(QString(QChar::fromLatin1(c)));
++                break;
++            }
++        }
++    }
++
+     // note DPGI will have a custom scale type and scale = 1.0.  In this case,
+     // we need the values from the parent DPG!
+     ui->sbScale->setValue(m_base->getScale());
+@@ -694,6 +709,11 @@ double TaskSectionView::requiredRotation(double inputAngle)
+ 
+ bool TaskSectionView::accept()
+ {
++    // No direction button pressed: the direction the panel shows (it said "current view
++    // direction (1,0,0)" and then "nothing to apply"; engine field test 0.7.3)
++    if (m_dirName.empty()) {
++        applyAligned();
++    }
+     apply(true);
+     Gui::Command::doCommand(Gui::Command::Gui, "Gui.ActiveDocument.resetEdit()");
+     return true;
+-- 
+2.43.0
+

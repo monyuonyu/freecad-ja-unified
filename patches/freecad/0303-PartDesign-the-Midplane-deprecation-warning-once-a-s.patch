@@ -1,0 +1,97 @@
+From ac2367f6f40e313b7fe4c46bfbe8b00872ccb82e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:21:46 +0900
+Subject: [PATCH 303/320] PartDesign: the Midplane deprecation warning once a
+ session
+
+A script that sets Midplane on many pads and revolutions printed the
+warning for each (15 lines for one engine build). The first one warns, the
+others go to the log.
+
+Test: FreeCADCmd -t TestPartDesignApp
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/App/FeatureExtrude.cpp  | 28 +++++++++++++++-------
+ src/Mod/PartDesign/App/FeatureRevolved.cpp | 26 ++++++++++++++------
+ 2 files changed, 39 insertions(+), 15 deletions(-)
+
+diff --git a/src/Mod/PartDesign/App/FeatureExtrude.cpp b/src/Mod/PartDesign/App/FeatureExtrude.cpp
+index 7072e7ec3..4cf04b182 100644
+--- a/src/Mod/PartDesign/App/FeatureExtrude.cpp
++++ b/src/Mod/PartDesign/App/FeatureExtrude.cpp
+@@ -162,14 +162,26 @@ void FeatureExtrude::onChanged(const App::Property* prop)
+         if (SideType.getValueAsString() != std::string(impliedSideType)) {
+             App::DocumentObject* obj = Profile.getValue();
+             auto baseName = obj ? obj->getNameInDocument() : "";
+-            Base::Console().warning(
+-                "The 'Midplane' property being set for the extrusion of {} is deprecated and has "
+-                "been replaced by the 'SideType' property in FeatureExtrude; assuming "
+-                "SideType='{}'. Please update your script, this property will be removed in a"
+-                " future version.\n",
+-                baseName,
+-                impliedSideType
+-            );
++            // once a session: a script that builds many features otherwise fills the log
++            static bool warned = false;
++            if (!warned) {
++                warned = true;
++                Base::Console().warning(
++                    "The 'Midplane' property being set for the extrusion of {} is deprecated and has "
++                    "been replaced by the 'SideType' property in FeatureExtrude; assuming "
++                    "SideType='{}'. Please update your script, this property will be removed in a"
++                    " future version.\n",
++                    baseName,
++                    impliedSideType
++                );
++            }
++            else {
++                Base::Console().log(
++                    "Midplane of the extrusion of {}: SideType='{}'\n",
++                    baseName,
++                    impliedSideType
++                );
++            }
+             SideType.setValue(impliedSideType);
+         }
+     }
+diff --git a/src/Mod/PartDesign/App/FeatureRevolved.cpp b/src/Mod/PartDesign/App/FeatureRevolved.cpp
+index 6057ea7d2..86fa1fa31 100644
+--- a/src/Mod/PartDesign/App/FeatureRevolved.cpp
++++ b/src/Mod/PartDesign/App/FeatureRevolved.cpp
+@@ -184,13 +184,25 @@ void Revolved::onChanged(const App::Property* prop)
+         if (SideType.getValueAsString() != std::string(impliedSideType)) {
+             App::DocumentObject* obj = Profile.getValue();
+             auto baseName = obj ? obj->getNameInDocument() : "";
+-            Base::Console().warning(
+-                "The 'Midplane' property being set for the revolution of {} is deprecated and has "
+-                "been replaced by the 'SideType' property in Revolved; assuming SideType='{}'."
+-                " Please update your script, this property will be removed in a future version.\n",
+-                baseName,
+-                impliedSideType
+-            );
++            // once a session: a script that builds many features otherwise fills the log
++            static bool warned = false;
++            if (!warned) {
++                warned = true;
++                Base::Console().warning(
++                    "The 'Midplane' property being set for the revolution of {} is deprecated and has "
++                    "been replaced by the 'SideType' property in Revolved; assuming SideType='{}'."
++                    " Please update your script, this property will be removed in a future version.\n",
++                    baseName,
++                    impliedSideType
++                );
++            }
++            else {
++                Base::Console().log(
++                    "Midplane of the revolution of {}: SideType='{}'\n",
++                    baseName,
++                    impliedSideType
++                );
++            }
+             SideType.setValue(impliedSideType);
+         }
+     }
+-- 
+2.43.0
+

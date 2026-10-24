@@ -1,0 +1,94 @@
+From 2c17c8a792738817f0ddfb8783b78479c33d0cab Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:11:30 +0900
+Subject: [PATCH 299/320] Assembly: a joint reference of one name is the
+ element's centre
+
+A script that set Reference1 = (obj, ["Face1"]) got the joint at the
+origin without a word (findPlacement wanted two names), and with
+(obj, [""]) a reopened file warned "invalid Reference1 ... list index out
+of range" (engine field test). One name now means the element and its
+centre, like ["Face1", "Face1"]; the property is left as written (an
+assembly link maps array joints with one name).
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py      |  8 +++-----
+ src/Mod/Assembly/UtilsAssembly.py    |  5 +++--
+ src/Mod/Unified/TestAssemblySolve.py | 17 +++++++++++++++++
+ 3 files changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index c8a2c615d..c86138455 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -590,11 +590,9 @@ class Joint:
+                     refObj = refObj.getLinkedObject(False)
+ 
+                     doc_name = refObj.Document.Name
+-                    sub1 = UtilsAssembly.fixBodyExtraFeatureInSub(doc_name, ref[1][0])
+-                    sub2 = UtilsAssembly.fixBodyExtraFeatureInSub(doc_name, ref[1][1])
+-
+-                    if sub1 != ref[1][0] or sub2 != ref[1][1]:
+-                        setattr(joint, reference_attr, (ref[0], [sub1, sub2]))
++                    subs = [UtilsAssembly.fixBodyExtraFeatureInSub(doc_name, s) for s in ref[1]]
++                    if subs != list(ref[1]):
++                        setattr(joint, reference_attr, (ref[0], subs))
+ 
+             except (AttributeError, IndexError, TypeError) as e:
+                 App.Console.PrintWarning(
+diff --git a/src/Mod/Assembly/UtilsAssembly.py b/src/Mod/Assembly/UtilsAssembly.py
+index 0262424be..5c8c8cbd9 100644
+--- a/src/Mod/Assembly/UtilsAssembly.py
++++ b/src/Mod/Assembly/UtilsAssembly.py
+@@ -1098,14 +1098,15 @@ So here we want to find a placement that corresponds to a local coordinate syste
+ 
+ 
+ def findPlacement(ref, ignoreVertex=False):
+-    if not isRefValid(ref, 2):
++    if not isRefValid(ref, 1):
+         return App.Placement()
+     obj = getObject(ref)
+     if not obj:
+         return App.Placement()
+ 
+     elt = getElementName(ref[1][0])
+-    vtx = getElementName(ref[1][1])
++    # one name (a script's (obj, ["Face1"])) is the element and its centre, like ["Face1", "Face1"]
++    vtx = getElementName(ref[1][1] if len(ref[1]) > 1 else ref[1][0])
+ 
+     if not elt or not vtx:
+         # case of whole parts such as PartDesign::Body or App/PartDesign::CordinateSystem/Point/Line/Plane.
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 6a479884f..f8e0953fe 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -82,6 +82,23 @@ class AssemblySolveTest(unittest.TestCase):
+             App.closeDocument(doc.Name)
+             os.remove(path)
+ 
++    def test_a_reference_of_one_name(self):
++        # (obj, ["Face6"]) is the face's centre like (obj, ["Face6", "Face6"]); it was the origin
++        import JointObject
++
++        doc = App.newDocument("onename")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            box = asm.newObject("Part::Box", "Box")
++            doc.recompute()
++            j = jg.newObject("App::FeaturePython", "J")
++            JointObject.Joint(j, JointObject.JointTypes.index("Fixed"))
++            j.Reference1 = (box, ["Face6"])
++            self.assertTrue(j.Placement1.Base.isEqual(App.Vector(5, 5, 10), 1e-9), j.Placement1)
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 34ccb624401c4aad1d9f06f2de9334d0be9d4e06 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:19:49 +0900
-Subject: [PATCH 223/298] Mesh: OFF reader no longer loops forever without a
+Subject: [PATCH 223/320] Mesh: OFF reader no longer loops forever without a
  count line
 
 The counts may follow the keyword ("OFF8 6 12 # comment" in trimesh's

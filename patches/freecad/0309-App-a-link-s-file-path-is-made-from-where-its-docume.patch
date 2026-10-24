@@ -1,0 +1,105 @@
+From 80088b3fc8e84edc343f1f70c1bbd98e02e5b1cf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:18:00 +0900
+Subject: [PATCH 309/320] App: a link's file path is made from where its
+ document is saved now
+
+An external link's relative path was made when the link was set. An
+assembly is kept in a provisional folder until it is saved; after "Save
+as" elsewhere its links still said ../../../../../../../model73/crank.FCStd
+(relative to the provisional folder), and the file opened alone lost every
+part (engine field test 0.7.3). Saving writes the path relative to the
+document's file now (the file may not exist yet: its folder is used).
+
+Test: FreeCADCmd -t TestUnifiedFiles, -t Document
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/PropertyLinks.cpp           | 22 +++++++++++++++++
+ src/Mod/Unified/TestUnifiedFiles.py | 38 +++++++++++++++++++++++++++++
+ 2 files changed, 60 insertions(+)
+
+diff --git a/src/App/PropertyLinks.cpp b/src/App/PropertyLinks.cpp
+index ec2636287..7b7001504 100644
+--- a/src/App/PropertyLinks.cpp
++++ b/src/App/PropertyLinks.cpp
+@@ -4235,6 +4235,28 @@ void PropertyXLink::Save(Base::Writer& writer) const
+                 path = _path.c_str();
+             }
+         }
++        else if (docInfo && docInfo->pcDoc && !filePath.empty()
++                 && !QFileInfo(QString::fromUtf8(filePath.c_str())).isAbsolute()) {
++            // The relative path from where the owner is saved now: it was made when the link
++            // was set, and saving the owner somewhere else (an unsaved assembly kept in a
++            // provisional folder, then "Save as") wrote the old one - reopened, every part
++            // was lost.  The file being written may not exist yet: take its folder.
++            const char* own = owner->getDocument()->getFileName();
++            const char* target = docInfo->pcDoc->getFileName();
++            if (!Base::Tools::isNullOrEmpty(own) && !Base::Tools::isNullOrEmpty(target)) {
++                QString ownDir = QFileInfo(QString::fromUtf8(own)).absolutePath();
++                QString canonDir = QFileInfo(ownDir).canonicalFilePath();
++                QString targetPath = QFileInfo(QString::fromUtf8(target)).canonicalFilePath();
++                if (targetPath.isEmpty()) {
++                    targetPath = QFileInfo(QString::fromUtf8(target)).absoluteFilePath();
++                }
++                _path = QDir(canonDir.isEmpty() ? ownDir : canonDir)
++                            .relativeFilePath(targetPath)
++                            .toUtf8()
++                            .constData();
++                path = _path.c_str();
++            }
++        }
+         writer.Stream() << writer.ind() << "<XLink file=\"" << encodeAttribute(path)
+                         << "\" stamp=\""
+                         << (docInfo && docInfo->pcDoc ? docInfo->pcDoc->LastModifiedDate.getValue()
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index cdf9d8c21..ee61b2aa5 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -56,5 +56,43 @@ class TestUnifiedFiles(unittest.TestCase):
+         self.assertIsNone(F.kind_of_document(self.doc))
+ 
+ 
++
++class TestLinkPathAfterSaveAs(unittest.TestCase):
++    """An assembly is kept in a provisional folder until it is saved: its links to the parts
++    were written relative to that folder after "Save as" elsewhere, and reopened, every part
++    was lost (engine field test 0.7.3)"""
++
++    def test_reopened_alone(self):
++        import os
++        import shutil
++        import tempfile
++
++        tmp = tempfile.mkdtemp()
++        try:
++            os.makedirs(os.path.join(tmp, "provisional", "a", "b"))
++            os.makedirs(os.path.join(tmp, "model"))
++            part = App.newDocument("linkpart")
++            box = part.addObject("Part::Box", "Box")
++            part.recompute()
++            part.saveAs(os.path.join(tmp, "model", "part.FCStd"))
++            asm = App.newDocument("linkasm")
++            asm.saveAs(os.path.join(tmp, "provisional", "a", "b", "unsaved.FCStd"))
++            link = asm.addObject("App::Link", "L")
++            link.LinkedObject = box
++            path = os.path.join(tmp, "model", "asm.FCStd")
++            asm.saveAs(path)
++            App.closeDocument(asm.Name)
++            App.closeDocument(part.Name)
++            asm = App.openDocument(path)
++            try:
++                self.assertIsNotNone(asm.getObject("L").LinkedObject)
++                self.assertAlmostEqual(asm.getObject("L").Shape.Volume, 1000, places=6)
++            finally:
++                for d in list(App.listDocuments().values()):
++                    App.closeDocument(d.Name)
++        finally:
++            shutil.rmtree(tmp)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

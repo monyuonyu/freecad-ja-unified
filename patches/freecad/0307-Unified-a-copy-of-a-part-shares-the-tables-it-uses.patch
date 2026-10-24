@@ -1,0 +1,103 @@
+From c6a7e31fcaaf2fc3d0c96a4ff40975927b06f377 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:43:25 +0900
+Subject: [PATCH 307/320] Unified: a copy of a part shares the tables it uses
+
+Copying a body or a part (Ctrl+drag, "move a copy") made a deep copy: the
+table of parameters it used was copied too, and the copy followed the new
+table (Params001) - changing Params changed only the original, silently
+(engine field test, doc.copyObject(body, True)). Only what is inside the
+part (at any depth, its origin too) is copied now; what it uses from
+outside stays shared.
+
+Test: FreeCADCmd -t TestSnapMath
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/SnapMath.py     | 23 +++++++++++++++++++++--
+ src/Mod/Unified/TestSnapMath.py | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/SnapMath.py b/src/Mod/Unified/SnapMath.py
+index 97641a742..38f1d41f3 100644
+--- a/src/Mod/Unified/SnapMath.py
++++ b/src/Mod/Unified/SnapMath.py
+@@ -469,8 +469,13 @@ def copy_of(movable, pick=None):
+     """A copy of the object, in the same container, at the same place (for "move a copy")."""
+     obj = movable.obj
+     doc = obj.Document
+-    deep = obj.isDerivedFrom("PartDesign::Body") or obj.isDerivedFrom("App::Part")
+-    new = doc.copyObject(obj, deep)
++    if obj.isDerivedFrom("PartDesign::Body") or obj.isDerivedFrom("App::Part"):
++        # what is inside the part, not what it uses from outside: a table of parameters
++        # shared by many parts stays one table (a deep copy made the copy follow its own)
++        own = [obj] + [o for o in obj.OutListRecursive if _inside(o, obj)]
++        new = doc.copyObject(own, False)[0]
++    else:
++        new = doc.copyObject(obj, False)
+     container = None
+     if pick is not None and movable.depth >= 1:
+         objs = pick.objects()
+@@ -490,6 +495,20 @@ def copy_of(movable, pick=None):
+     return copy
+ 
+ 
++def _inside(obj, container):
++    """obj is in container (at any depth; an origin's axes and planes too)"""
++    seen = set()
++    while obj is not None and obj.Name not in seen:
++        seen.add(obj.Name)
++        parent = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
++        if parent is None:
++            parent = next((o for o in obj.InList if o.isDerivedFrom("App::Origin")), None)
++        if parent == container:
++            return True
++        obj = parent
++    return False
++
++
+ def describe(movable):
+     return movable.obj.Label
+ 
+diff --git a/src/Mod/Unified/TestSnapMath.py b/src/Mod/Unified/TestSnapMath.py
+index 09c5eeabf..5756bd7f0 100644
+--- a/src/Mod/Unified/TestSnapMath.py
++++ b/src/Mod/Unified/TestSnapMath.py
+@@ -302,6 +302,34 @@ class SnapMathTest(unittest.TestCase):
+         # The original stays
+         self.assertTrue(a.Placement.isIdentity())
+ 
++    def test_copy_of_a_body_shares_its_table(self):
++        # a copy of a body that uses a shared table of parameters follows the same table
++        # (a deep copy made a table of its own: the copy no longer followed)
++        import Part
++
++        sheet = self.doc.addObject("Spreadsheet::Sheet", "Params")
++        sheet.set("A1", "10")
++        sheet.setAlias("A1", "k")
++        body = self.doc.addObject("PartDesign::Body", "Body")
++        sketch = body.newObject("Sketcher::SketchObject", "Sketch")
++        sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
++        sketch.MapMode = "FlatFace"
++        sketch.addGeometry(Part.Circle(App.Vector(), App.Vector(0, 0, 1), 5))
++        pad = body.newObject("PartDesign::Pad", "Pad")
++        pad.Profile = sketch
++        pad.setExpression("Length", "Params.k")
++        self.doc.recompute()
++        copy = S.copy_of(S.Movable(body, App.Placement(), 0)).obj
++        self.doc.recompute()
++        sheets = [o for o in self.doc.Objects if o.TypeId == "Spreadsheet::Sheet"]
++        self.assertEqual(sheets, [sheet])
++        pad2 = [o for o in copy.Group if o.TypeId == "PartDesign::Pad"][0]
++        sheet.set("A1", "20")
++        self.doc.recompute()
++        self.assertAlmostEqual(pad2.Length.Value, 20)
++        sketch2 = [o for o in copy.Group if o.TypeId == "Sketcher::SketchObject"][0]
++        self.assertIn(sketch2.AttachmentSupport[0][0], copy.Origin.OriginFeatures)
++
+     def test_edge_points(self):
+         a = self.box("A")
+         c = self.doc.addObject("Part::Cylinder", "C")
+-- 
+2.43.0
+

@@ -1,0 +1,41 @@
+From 9b00a4c1961b7962c40d733649c5b6c7bc2ddd02 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:30:47 +0900
+Subject: [PATCH 316/320] PartDesign: a picked sketch stands for its steps in a
+ pattern or mirror
+
+With a sketch picked, a linear pattern repeated the whole shape without a
+word (the panel's list was empty): a fin's sketch picked, the cylinder
+came 9 times (engine field test 0.7.3). A picked sketch stands for the
+steps made from it (its pad or pocket).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/Command.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/Command.cpp b/src/Mod/PartDesign/Gui/Command.cpp
+index bc84992c1..282a74f7c 100644
+--- a/src/Mod/PartDesign/Gui/Command.cpp
++++ b/src/Mod/PartDesign/Gui/Command.cpp
+@@ -2339,6 +2339,17 @@ void prepareTransformed(
+     std::vector<App::DocumentObject*> features = cmd->getSelection().getObjectsOfType(
+         PartDesign::Feature::getClassTypeId()
+     );
++    // A picked sketch stands for the steps made from it (a fin's sketch: the fin's pad). The
++    // whole shape was patterned without a word (engine field test 0.7.3: the cylinder 9 times)
++    for (auto* sketch : cmd->getSelection().getObjectsOfType(Part::Part2DObject::getClassTypeId())) {
++        for (auto* user : sketch->getInList()) {
++            auto* profiled = freecad_cast<PartDesign::ProfileBased*>(user);
++            if (profiled && profiled->Profile.getValue() == sketch
++                && std::find(features.begin(), features.end(), user) == features.end()) {
++                features.push_back(user);
++            }
++        }
++    }
+ 
+     PartDesign::Body* activeBody = PartDesignGui::getBody(true);
+     for (auto feature : features) {
+-- 
+2.43.0
+

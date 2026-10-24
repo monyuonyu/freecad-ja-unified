@@ -1,0 +1,64 @@
+From d60a17ddb567759b1a8d6a08b94dfc26a9626a8b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:30:47 +0900
+Subject: [PATCH 315/320] Unified: a number typed on the bar is used when its
+ button is pressed, too
+
+Typing 15 in the bar's field and pressing "Extrude" opened the panel with
+10 mm: the number was used only with Enter (engine field test 0.7.3). A
+number typed there and then the tool's button: used as with Enter.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 19 +++++++++++++++----
+ 1 file changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 312a30e40..1712e7bc8 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -8,6 +8,7 @@
+ #include <QHBoxLayout>
+ #include <QLabel>
+ #include <QLineEdit>
++#include <QPointer>
+ #include <QKeyEvent>
+ #include <QMouseEvent>
+ #include <QTimer>
+@@ -391,11 +392,8 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+         const std::string name = action.command;
+         // Which tool the button runs: its preview on hover (ToolPreviewGui.py)
+         button->setProperty("unifiedCommand", QString::fromStdString(name));
+-        connect(button, &QToolButton::clicked, this, [this, name]() {
+-            dismiss();
+-            runRules("run", name);
+-        });
+         layout->addWidget(button);
++        QPointer<QLineEdit> typed;
+         // The number of the first tool that takes one, right next to it: type it and Enter.
+         // The tool's full panel is a click on its button.
+         if (!action.unit.isEmpty() && !fieldShown) {
+@@ -412,7 +410,20 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+                 QTimer::singleShot(0, [name, value]() { runRules("run_with_value", name, value); });
+             });
+             layout->addWidget(field);
++            typed = field;
+         }
++        // A number typed in the field and then the button: the number is used as with Enter
++        // (it was dropped and the panel opened with the old one; engine field test 0.7.3)
++        connect(button, &QToolButton::clicked, this, [this, name, typed]() {
++            if (typed && typed->isModified() && !typed->text().trimmed().isEmpty()) {
++                QString value = typed->text().trimmed();
++                dismiss();
++                QTimer::singleShot(0, [name, value]() { runRules("run_with_value", name, value); });
++                return;
++            }
++            dismiss();
++            runRules("run", name);
++        });
+         ++shown;
+     }
+     if (shown == 0) {
+-- 
+2.43.0
+

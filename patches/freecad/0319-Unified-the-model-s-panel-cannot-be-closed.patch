@@ -1,0 +1,38 @@
+From be32dadcee2fbba8b551273e34144f2d73a931ec Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:35:10 +0900
+Subject: [PATCH 319/320] Unified: the model's panel cannot be closed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Its ✕ was hit by a click meant for the task panel, and bringing it back
+took ☰ → View → Panels → Model (engine field test 0.7.3). The panel has no
+close button and is shown at start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedChrome.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index b5be5b13e..f856c07a3 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -1278,6 +1278,13 @@ def install_left():
+     else:
+         tree.SetInt("DocumentMode", 0)
+     show_properties(params().GetBool("ShowProperties", False))
++    # The model's panel cannot be closed: its ✕ was hit by a click meant for the task panel, and
++    # bringing it back took ☰ → View → Panels → Model (engine field test 0.7.3)
++    for dock in Gui.getMainWindow().findChildren(QtWidgets.QDockWidget):
++        inner = dock.widget()
++        if dock.objectName() == "Model" or (inner is not None and inner.objectName() == "Model"):
++            dock.setFeatures(dock.features() & ~QtWidgets.QDockWidget.DockWidgetClosable)
++            dock.show()
+ 
+ 
+ def install():
+-- 
+2.43.0
+

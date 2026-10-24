@@ -1,0 +1,192 @@
+From 38132c6cd8bd497cfad554733fc9c019e918d5d0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:33:08 +0900
+Subject: [PATCH 317/320] Unified: a hole on a round end goes to its centre; a
+ hole across a round face
+
+- Hole on a flat face clicked near the middle of a round end or eye (half
+  its radius): at the circle's centre. A connecting rod's eye could not
+  be given a centred hole; a sketch and a pocket were made instead.
+- Hole on a cylindrical outside face (a piston's pin hole): the bar offers
+  it, and it goes in along the face's normal at the click. Before, it was
+  not offered (0.7.3) or went the wrong way (0.6.9).
+(engine field test 0.7.3)
+
+Test: FreeCADCmd -t TestSnapMath, -t TestContextRules
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/ContextRules.py    |  2 +
+ src/Mod/Unified/SnapMath.py        | 15 +++++++
+ src/Mod/Unified/TestSnapMath.py    | 11 +++++
+ src/Mod/Unified/UnifiedCommands.py | 72 ++++++++++++++++++++++++++++--
+ 4 files changed, 97 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index e5918b6e4..7fe9aeb48 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -60,6 +60,8 @@ RULES = {
+         A("Unified_InsertScrew", T("Insert screw")),
+         # a round face of a part of an assembly: a crank, a wheel turns there, held by the ground
+         A("Unified_HingeToGround", T("Turns in place")),
++        # a hole across a round outside face (a piston's pin hole), along the face's normal
++        A("Unified_Hole", T("Hole")),
+         A("Unified_FaceDiameter", T("Diameter"), DIAMETER),
+         A("Std_Measure", T("Measure")),
+         A("Unified_SnapAxes", T("Line up axes")),
+diff --git a/src/Mod/Unified/SnapMath.py b/src/Mod/Unified/SnapMath.py
+index 38f1d41f3..c81c425e5 100644
+--- a/src/Mod/Unified/SnapMath.py
++++ b/src/Mod/Unified/SnapMath.py
+@@ -509,6 +509,21 @@ def _inside(obj, container):
+     return False
+ 
+ 
++def round_center_near(face, point, share=0.5):
++    """The centre of a circle of the face (an edge, or the arc of a rounded end) when the point
++    is within `share` of its radius from it: a hole clicked near the middle of a connecting
++    rod's eye goes to the eye's centre. The smallest such circle, or None."""
++    best = None
++    for e in face.Edges:
++        c = e.Curve
++        if c.TypeId != "Part::GeomCircle":
++            continue
++        d = (point - c.Center).Length
++        if d <= share * c.Radius and (best is None or c.Radius < best[0]):
++            best = (c.Radius, App.Vector(c.Center))
++    return None if best is None else best[1]
++
++
+ def describe(movable):
+     return movable.obj.Label
+ 
+diff --git a/src/Mod/Unified/TestSnapMath.py b/src/Mod/Unified/TestSnapMath.py
+index 5756bd7f0..6ca598f33 100644
+--- a/src/Mod/Unified/TestSnapMath.py
++++ b/src/Mod/Unified/TestSnapMath.py
+@@ -330,6 +330,17 @@ class SnapMathTest(unittest.TestCase):
+         sketch2 = [o for o in copy.Group if o.TypeId == "Sketcher::SketchObject"][0]
+         self.assertIn(sketch2.AttachmentSupport[0][0], copy.Origin.OriginFeatures)
+ 
++    def test_round_center_near(self):
++        # a click near the middle of a rod's round end goes to its centre; far from it, stays
++        import Part
++
++        plate = Part.makeBox(28, 60, 5, App.Vector(-14, -50, 0)).fuse(
++            Part.makeCylinder(14, 5, App.Vector(0, -50, 0))).removeSplitter()
++        top = [f for f in plate.Faces if f.BoundBox.ZMin > 4.9][0]
++        near = S.round_center_near(top, App.Vector(-1.25, -53.2, 5))
++        self.assertTrue(near.isEqual(App.Vector(0, -50, 5), 1e-9))
++        self.assertIsNone(S.round_center_near(top, App.Vector(0, 0, 5)))
++
+     def test_edge_points(self):
+         a = self.box("A")
+         c = self.doc.addObject("Part::Cylinder", "C")
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 9230529f7..99363f911 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -27,8 +27,56 @@ def _picked_plane_face():
+     if not isinstance(face.Surface, Part.Plane):
+         return None
+     # The hole goes where the face was clicked, also on faces with round edges (a fillet's
+-    # arc, another hole). PartDesign's hole at a circle's center is there for a picked circle.
+-    return obj, name, sel.PickedPoints[0]
++    # arc, another hole). Near the middle of a round end or eye: its centre (engine field test
++    # 0.7.3: a hole on a connecting rod's eye could not be put at the eye's centre)
++    import SnapMath
++
++    point = sel.PickedPoints[0]
++    return obj, name, SnapMath.round_center_near(face, point) or point
++
++
++def _picked_round_face():
++    """A cylindrical outside face of a solid picked in the 3D view, with the picked point and
++    the face's outward normal there (a hole goes in along it: a piston's pin hole)"""
++    import Part
++
++    selection = FreeCADGui.Selection.getSelectionEx()
++    if len(selection) != 1 or len(selection[0].SubElementNames) != 1:
++        return None
++    sel = selection[0]
++    name = sel.SubElementNames[0]
++    if not name.startswith("Face") or not sel.PickedPoints or sel.Object.isDerivedFrom("Sketcher::SketchObject"):
++        return None
++    face = sel.SubObjects[0]
++    if not isinstance(face.Surface, Part.Cylinder):
++        return None
++    point = sel.PickedPoints[0]
++    u, v = face.Surface.parameter(point)
++    normal = face.normalAt(u, v)
++    # an outside face: the normal points away from the axis (a hole's own wall points inward)
++    radial = point - face.Surface.Center
++    radial = radial - face.Surface.Axis * radial.dot(face.Surface.Axis)
++    if radial.Length < 1e-9 or normal.dot(radial) <= 0:
++        return None
++    return sel.Object, name, point, normal
++
++
++def _hole_on_round_face(obj, point, normal):
++    """The sketch of a hole on a cylindrical face: a point on a plane touching the face there,
++    facing out (the hole goes in along the face's normal, toward the axis). None outside a body."""
++    import Part
++
++    body = obj.getParentGeoFeatureGroup()
++    if body is None or not body.isDerivedFrom("PartDesign::Body"):
++        return None
++    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
++    sketch.MapMode = "Deactivated"
++    local = body.getGlobalPlacement().inverse()
++    where = FreeCAD.Placement(point, FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), normal))
++    sketch.Placement = local.multiply(where)
++    sketch.addGeometry(Part.Point(FreeCAD.Vector(0, 0, 0)))
++    body.Document.recompute()
++    return sketch
+ 
+ 
+ class _PickFacePanel:
+@@ -89,7 +137,8 @@ class HoleCommand:
+         }
+ 
+     def IsActive(self):
+-        return FreeCADGui.isCommandActive("PartDesign_Hole") or _picked_plane_face() is not None
++        return (FreeCADGui.isCommandActive("PartDesign_Hole") or _picked_plane_face() is not None
++                or _picked_round_face() is not None)  # fmt: skip
+ 
+     def Activated(self):
+         if not FreeCADGui.Selection.getSelectionEx():
+@@ -98,6 +147,10 @@ class HoleCommand:
+             return
+         picked = _picked_plane_face()
+         if not picked:
++            round_face = _picked_round_face()
++            if round_face:
++                self.on_round_face(*round_face)
++                return
+             FreeCADGui.runCommand("PartDesign_Hole")
+             return
+         obj, face_name, point = picked
+@@ -149,6 +202,19 @@ class HoleCommand:
+ 
+         QtCore.QTimer.singleShot(300, remove_if_unused)
+ 
++    def on_round_face(self, obj, face_name, point, normal):
++        doc = obj.Document
++        doc.openTransaction(translate("Unified_Hole", "Hole position"))
++        sketch = _hole_on_round_face(obj, point, normal)
++        doc.commitTransaction()
++        if sketch is None:
++            FreeCADGui.runCommand("PartDesign_Hole")
++            return
++        sketch.ViewObject.Visibility = False
++        FreeCADGui.Selection.clearSelection()
++        FreeCADGui.Selection.addSelection(sketch)
++        FreeCADGui.runCommand("PartDesign_Hole")
++
+ 
+ FreeCADGui.addCommand("Unified_Hole", HoleCommand())
+ 
+-- 
+2.43.0
+

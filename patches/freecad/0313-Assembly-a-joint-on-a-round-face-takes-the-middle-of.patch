@@ -1,0 +1,111 @@
+From 59b89bf031e04c6fba48783b18aa0e496a4d4256 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:27:24 +0900
+Subject: [PATCH 313/320] Assembly: a joint on a round face takes the middle of
+ the whole hole or shaft
+
+A hole through two walls (a piston's pin hole) or two journals of a crank
+are several faces on one axis with one radius. A joint on one of them took
+that face's middle: the pin sat 23.3 mm off the piston's centre and the
+crank 36.25 mm off its bearings, and the only way back was an offset
+number not shown anywhere (engine field test 0.7.3). The middle of all the
+faces on the axis with the radius is taken now; a lone face is as before,
+and a circle edge still gives its own centre.
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/UtilsAssembly.py    | 35 ++++++++++++++++++++++++++++
+ src/Mod/Unified/TestAssemblySolve.py | 22 +++++++++++++++++
+ 2 files changed, 57 insertions(+)
+
+diff --git a/src/Mod/Assembly/UtilsAssembly.py b/src/Mod/Assembly/UtilsAssembly.py
+index 5c8c8cbd9..ca70482b8 100644
+--- a/src/Mod/Assembly/UtilsAssembly.py
++++ b/src/Mod/Assembly/UtilsAssembly.py
+@@ -1179,6 +1179,9 @@ def findPlacement(ref, ignoreVertex=False):
+                 centerPoint = surface.Center + centerOfG
+                 centerPoint = centerPoint + App.Vector().projectToLine(centerOfG, surface.Axis)
+                 plc.Base = centerPoint
++                middle = boreMiddle(obj.Shape, surface)
++                if middle is not None:
++                    plc.Base = middle
+             elif surface.TypeId == "Part::GeomTorus" or surface.TypeId == "Part::GeomSphere":
+                 plc.Base = surface.Center
+             elif surface.TypeId == "Part::GeomCone":
+@@ -1232,6 +1235,38 @@ def findPlacement(ref, ignoreVertex=False):
+     return plc
+ 
+ 
++def boreMiddle(shape, surface):
++    """The middle of a hole or shaft made of several faces on one axis with one radius (a pin
++    hole through both walls of a piston, the two journals of a crank): a joint on one of them
++    put the part off by half the hole (engine field test 0.7.3: 23.3 mm, 36.25 mm). None when
++    the face is alone. A circle edge still gives its own centre."""
++    axis = App.Vector(surface.Axis)
++    axis.normalize()
++    origin = App.Vector(surface.Center)
++    tol = 1e-6 * max(1.0, surface.Radius)
++    lo = hi = None
++    count = 0
++    for f in shape.Faces:
++        s = f.Surface
++        if s.TypeId != "Part::GeomCylinder" or abs(s.Radius - surface.Radius) > tol:
++            continue
++        a = App.Vector(s.Axis)
++        a.normalize()
++        if abs(abs(a.dot(axis)) - 1.0) > 1e-9:
++            continue
++        d = App.Vector(s.Center) - origin
++        if (d - axis * d.dot(axis)).Length > tol:
++            continue
++        count += 1
++        for v in f.Vertexes:
++            t = (v.Point - origin).dot(axis)
++            lo = t if lo is None else min(lo, t)
++            hi = t if hi is None else max(hi, t)
++    if count < 2 or lo is None:
++        return None
++    return origin + axis * ((lo + hi) / 2)
++
++
+ def get_element(shape, name):
+     element = shape.getElement(name)
+     if element is None:
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index da9b2c57f..51354d6f1 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -106,6 +106,28 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_hole_through_two_walls_is_centred(self):
++        # a joint on one face of a pin hole through both walls of a piston: the middle of the hole
++        import Part
++        import UtilsAssembly
++
++        outer = Part.makeBox(40, 40, 40, App.Vector(-20, -20, 0))
++        inner = Part.makeBox(20, 44, 30, App.Vector(-10, -22, 0))
++        shape = outer.cut(inner).cut(Part.makeCylinder(5, 60, App.Vector(-30, 0, 20), App.Vector(1, 0, 0)))
++        doc = App.newDocument("bore")
++        try:
++            obj = doc.addObject("Part::Feature", "Piston")
++            obj.Shape = shape
++            holes = ["Face%d" % (i + 1) for i, f in enumerate(shape.Faces) if f.Surface.TypeId == "Part::GeomCylinder"]
++            self.assertEqual(len(holes), 2)
++            for face in holes:
++                self.assertTrue(UtilsAssembly.findPlacement((obj, [face, face])).Base.isEqual(App.Vector(0, 0, 20), 1e-9))
++            # a lone face: its own middle as before
++            obj.Shape = Part.makeCylinder(5, 10)
++            self.assertTrue(UtilsAssembly.findPlacement((obj, ["Face1", "Face1"])).Base.isEqual(App.Vector(0, 0, 5), 1e-9))
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_hinge_to_ground(self):
+         # a crank turns in place on the ground (no case part); Turn to an angle turns it
+         import AssemblyCopies
+-- 
+2.43.0
+

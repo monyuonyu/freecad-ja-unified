@@ -1,0 +1,317 @@
+From bfae23bdd2f7d25d37a3ffbac2abb22dd27f44de Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:32:14 +0900
+Subject: [PATCH 304/320] CLI: --export-drawings writes the drawing pages as
+ PDF without the screen
+
+A PDF of a TechDraw page needed the GUI (TechDrawGui.exportPageAsPdf): the
+engine field test started the GUI for each drawing, 2 minutes a sheet.
+FreeCADCmd model.FCStd --export-drawings out.pdf (and
+DrawingPdf.export(path, out, pages=None)) runs a child FreeCADCmd that starts
+the GUI offscreen, opens the file without a 3D view (offscreen has no
+OpenGL; opening with one hung), waits for the views' lines and writes one
+PDF a page (out.pdf, or out_<page>.pdf for more pages, or a name with
+{page}). The child ends without tearing the GUI down, which crashed in
+FreeCADCmd. The main window is not hidden: hidden, the lines came out
+thick. 10 s for the connecting rod's drawing; no page: exit code 1.
+
+Test: FreeCADCmd -t TestDrawingPdf
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp           |   3 +
+ src/Mod/Part/PartViews.py         |   7 ++
+ src/Mod/Unified/CMakeLists.txt    |   2 +
+ src/Mod/Unified/DrawingPdf.py     | 143 ++++++++++++++++++++++++++++++
+ src/Mod/Unified/TestDrawingPdf.py |  63 +++++++++++++
+ 5 files changed, 218 insertions(+)
+ create mode 100644 src/Mod/Unified/DrawingPdf.py
+ create mode 100644 src/Mod/Unified/TestDrawingPdf.py
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 9d317625e..afc1c98cf 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2492,6 +2492,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("deflection", boost::program_options::value<std::string>(), "Tessellation tolerance for --render/--export-* in model units (larger is coarser and faster; default from the size of the model)")
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+     ("progress", "Progress of --render/--export-* on stderr")
++    ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+@@ -2740,6 +2741,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-pptx", "ExportPptx"},
+         {"export-edges", "ExportEdges"},
+         {"interference-report", "InterferenceReport"},
++        {"export-drawings", "ExportDrawings"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+         if (vm.contains(option)) {
+@@ -3441,6 +3443,7 @@ void Application::processCmdLineFiles()
+         "ExportSvg",
+         "ExportPolygons",
+         "ExportPptx",
++        "ExportDrawings",
+     };
+     if (std::any_of(std::begin(viewKeys), std::end(viewKeys), [&cfg](const char* key) {
+             return cfg.contains(key);
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 17619da3a..c35b92166 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -24,6 +24,7 @@ Groups: PPTX gets nested group shapes, SVG nested <g> (inkscape:label) and JSON
+ groups, links), then one group per object.  A dict item's "group" ("a/b/c") or a string
+ property "Group" of an object replaces the path; see scene_entries.
+     FreeCADCmd model.FCStd --interference [--interference-report report.json]
++    FreeCADCmd model.FCStd --export-drawings out.pdf   (the TechDraw pages; see DrawingPdf)
+ 
+ Python:
+ 
+@@ -1268,6 +1269,12 @@ def cli_main():
+         if pptx:
+             export_pptx(path=pptx, data=data, edges=modes["pptx"])
+             print("Wrote %s (edges: %s)" % (pptx, modes["pptx"]))
++    drawings = _config("ExportDrawings")
++    if drawings:
++        import DrawingPdf
++
++        for name in DrawingPdf.export(doc, drawings):
++            print("Wrote %s" % name)
+     report = _config("InterferenceReport")
+     if report:
+         found, st = interference(doc, stats=True)
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index e192a5cbe..e40894b33 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -17,6 +17,8 @@ set(Unified_Scripts
+     ContextRules.py
+     TestContextRules.py
+     DrawingAuto.py
++    DrawingPdf.py
++    TestDrawingPdf.py
+     UnifiedFiles.py
+     TestUnifiedFiles.py
+     TestDrawingAuto.py
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+new file mode 100644
+index 000000000..e709f8f17
+--- /dev/null
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -0,0 +1,143 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""PDF of the drawing pages without the screen:
++
++    FreeCADCmd model.FCStd --export-drawings out.pdf
++    DrawingPdf.export("model.FCStd", "out.pdf")     # -> [written files]
++
++TechDraw draws its pages with the scene of the GUI, so a child FreeCADCmd starts the GUI
++offscreen (nothing is shown), waits for the views' lines, writes the PDFs and ends without
++tearing the GUI down (that crashed in FreeCADCmd). One page: out.pdf; more: out_<page>.pdf,
++or a name with {page} in it.
++"""
++
++import json
++import os
++import re
++import subprocess
++import sys
++import tempfile
++import time
++
++import FreeCAD as App
++
++JOB_ENV = "FREECAD_DRAWING_PDF_JOB"
++
++
++def output_names(out, labels):
++    """The file of each page: out for one page, out_<label>.pdf or out with {page} for more"""
++    def safe(label):
++        return re.sub(r'[\\/:*?"<>|\s]+', "_", label).strip("_") or "page"
++
++    if "{page}" in out:
++        return [out.replace("{page}", safe(label)) for label in labels]
++    if len(labels) == 1:
++        return [out]
++    stem, ext = os.path.splitext(out)
++    names, seen = [], set()
++    for label in labels:
++        name = stem + "_" + safe(label)
++        while name in seen:
++            name += "_"
++        seen.add(name)
++        names.append(name + (ext or ".pdf"))
++    return names
++
++
++def _freecadcmd():
++    home = App.getHomePath()
++    for d in (os.path.join(home, "bin"), os.path.dirname(sys.executable)):
++        for name in ("FreeCADCmd.exe", "FreeCADCmd", "freecadcmd"):
++            path = os.path.join(d, name)
++            if os.path.isfile(path):
++                return path
++    raise RuntimeError("FreeCADCmd was not found next to " + home)
++
++
++def export(path, out, pages=None, seconds=120):
++    """Write the drawing pages of the file `path` (all, or the names/labels in `pages`) as PDF.
++    Returns the files written; raises RuntimeError with the reason otherwise."""
++    if not isinstance(path, str):  # a document
++        if not path.FileName:
++            raise RuntimeError("Save the document first: the drawings are read from its file")
++        path = path.FileName
++    with tempfile.TemporaryDirectory() as tmp:
++        result = os.path.join(tmp, "result.json")
++        job = {"path": os.path.abspath(path), "out": os.path.abspath(out), "pages": pages,
++               "seconds": seconds, "result": result}  # fmt: skip
++        env = dict(os.environ)
++        env[JOB_ENV] = json.dumps(job)
++        env["QT_QPA_PLATFORM"] = "offscreen"
++        code = "import DrawingPdf\nDrawingPdf._child()\n"
++        proc = subprocess.run([_freecadcmd(), "-c", code], env=env, stdout=subprocess.PIPE,
++                              stderr=subprocess.STDOUT, timeout=seconds + 120)  # fmt: skip
++        try:
++            with open(result, encoding="utf-8") as f:
++                done = json.load(f)
++        except (OSError, ValueError):
++            tail = proc.stdout.decode("utf-8", "replace").strip().splitlines()[-5:]
++            raise RuntimeError("The drawing export stopped: " + " / ".join(tail))
++    if done.get("error"):
++        raise RuntimeError(done["error"])
++    return done["written"]
++
++
++def _child():
++    job = json.loads(os.environ[JOB_ENV])
++
++    def finish(**result):
++        with open(job["result"], "w", encoding="utf-8") as f:
++            json.dump(result, f, ensure_ascii=False)
++        sys.stdout.flush()
++        sys.stderr.flush()
++        os._exit(0)
++
++    try:
++        import FreeCADGui as Gui
++
++        Gui.showMainWindow()
++        from PySide import QtWidgets
++
++        doc = App.openDocument(job["path"], hidden=True)  # no 3D view: offscreen has no OpenGL
++        doc.recompute()
++        pages = [o for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawPage")]
++        if job["pages"]:
++            wanted = set(job["pages"])
++            pages = [p for p in pages if p.Name in wanted or p.Label in wanted]
++        if not pages:
++            finish(error="No drawing page in " + job["path"]
++                   + (" named " + ", ".join(job["pages"]) if job["pages"] else ""))
++        import TechDrawGui
++
++        views = [v for v in doc.Objects if v.isDerivedFrom("TechDraw::DrawViewPart")
++                 and any(p in v.InListRecursive for p in pages)]  # fmt: skip
++        end = time.time() + job["seconds"]
++        while time.time() < end:
++            QtWidgets.QApplication.processEvents()
++            if all(_has_lines(v) for v in views):
++                break
++            time.sleep(0.05)
++        late = [v.Label for v in views if not _has_lines(v)]
++        if late:
++            finish(error="The lines of these views were not ready in %d s: %s"
++                   % (job["seconds"], ", ".join(late)))
++        for _ in range(10):  # let the scene take the last results (dimensions, labels)
++            QtWidgets.QApplication.processEvents()
++            time.sleep(0.02)
++        names = output_names(job["out"], [p.Label for p in pages])
++        for page, name in zip(pages, names):
++            folder = os.path.dirname(name)
++            if folder:
++                os.makedirs(folder, exist_ok=True)
++            TechDrawGui.exportPageAsPdf(page, name)
++            if not os.path.isfile(name) or os.path.getsize(name) == 0:
++                finish(error="Writing %s failed" % name)
++        finish(written=names)
++    except Exception as e:  # report and end: the GUI must not be torn down
++        finish(error="%s: %s" % (type(e).__name__, e))
++
++
++def _has_lines(view):
++    try:
++        return bool(view.getVisibleEdges())
++    except Exception:
++        return False
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+new file mode 100644
+index 000000000..69e4a4dfb
+--- /dev/null
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -0,0 +1,63 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# PDF of the drawing pages without the screen (engine field test: a drawing PDF needed the GUI):
++#   FreeCADCmd -t TestDrawingPdf
++
++import os
++import shutil
++import tempfile
++import unittest
++
++import FreeCAD as App
++
++import DrawingPdf
++
++
++class OutputNamesTest(unittest.TestCase):
++    def test_names(self):
++        self.assertEqual(DrawingPdf.output_names("a/out.pdf", ["Page"]), ["a/out.pdf"])
++        self.assertEqual(DrawingPdf.output_names("out.pdf", ["部品図", "組立図"]), ["out_部品図.pdf", "out_組立図.pdf"])
++        self.assertEqual(DrawingPdf.output_names("out.pdf", ["A", "A"]), ["out_A.pdf", "out_A_.pdf"])
++        self.assertEqual(DrawingPdf.output_names("d/{page}.pdf", ["x y", "z/w"]), ["d/x_y.pdf", "d/z_w.pdf"])
++
++
++class ExportTest(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.mkdtemp()
++        doc = App.newDocument("drawpdf")
++        box = doc.addObject("Part::Box", "Box")
++        template = os.path.join(App.getResourceDir(), "Mod", "TechDraw", "Templates",
++                                "Default_Template_A4_Landscape.svg")  # fmt: skip
++        for label in ("部品図", "Second"):
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            page.Label = label
++            tpl = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            tpl.Template = template
++            page.Template = tpl
++            view = doc.addObject("TechDraw::DrawViewPart", "View")
++            page.addView(view)
++            view.Source = [box]
++        doc.recompute()
++        self.path = os.path.join(self.tmp, "m.FCStd")
++        doc.saveAs(self.path)
++        App.closeDocument(doc.Name)
++
++    def tearDown(self):
++        shutil.rmtree(self.tmp)
++
++    def test_all_pages(self):
++        written = DrawingPdf.export(self.path, os.path.join(self.tmp, "out.pdf"))
++        self.assertEqual([os.path.basename(w) for w in written], ["out_部品図.pdf", "out_Second.pdf"])
++        for w in written:
++            with open(w, "rb") as f:
++                self.assertEqual(f.read(5), b"%PDF-")
++
++    def test_one_page_and_a_missing_one(self):
++        out = os.path.join(self.tmp, "one.pdf")
++        self.assertEqual(DrawingPdf.export(self.path, out, pages=["Second"]), [out])
++        with self.assertRaises(RuntimeError) as ctx:
++            DrawingPdf.export(self.path, out, pages=["Nothing"])
++        self.assertIn("No drawing page", str(ctx.exception))
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

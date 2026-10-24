@@ -298,6 +298,14 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.4
+
+The GUI-only engine test was run again on 0.7.3 (4 of 6 tasks done; 2 on 0.6.9); what it found and the rest of the CLI items are fixed.
+
+- Assembly: a solve whose joints do not hold puts the parts back and the design check names the joint and how far off it is (`assembly.getBrokenJoints()`); an assembly kept in the provisional folder and then "Save as" elsewhere wrote its links relative to the old folder and lost every part when opened alone (also upstream) - fixed; "Turn to an angle" on revolute joints (an expression such as `Params.theta` drives a crank); "Turns in place" for one round face (a revolute joint to the ground); joints on a hole through two walls or two journals take the middle of the whole bore; tooth counts for gears and belts; copying a part keeps the shared table; "Make Drawing" works on a part file used by an assembly
+- Parts and drawings: sketches open orthographic with a section view; a number typed on the bar is used when its button is pressed; a picked sketch stands for its steps in a pattern; holes snap to a round end's centre and go radially into cylindrical faces; a round face no longer opens the raw attachment panel for a new sketch; section views use the shown direction and the next free letter; the model panel cannot be closed
+- CLI: `--export-drawings out.pdf` (TechDraw pages as PDF without the screen), `findInterferences(moving=...)` (32 s to 3 s per pose), `--section-color part`, one Midplane warning per session
+
 ## Changes in 0.7.3
 
 - **A big step of an assembly's driving value did not move right after opening the file** (left over from 0.7.2): the walk from the last solve that held kept that pose only in memory, so in a file just opened a crank from 0 to 90 degrees stopped with -7. Without such a pose the walk now starts from where the parts are. `-t TestAssemblySolve` (a test after reopening was added)

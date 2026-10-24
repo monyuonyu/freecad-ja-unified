@@ -1,0 +1,211 @@
+From 769e0a0e4c3c072beacbad7bec7c40cf5c346fb3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:26:35 +0900
+Subject: [PATCH 312/320] Unified: "Turns in place" - a part of an assembly
+ turns about a round face, held by the ground
+
+A joint needed two parts: a crank could not be made to turn on the ground,
+and fixing it to the ground stopped it (engine field test 0.7.3: a case
+part was made only to hold the crank). One round face (or circle) of a
+part of an assembly offers "Turns in place" on the bar: a revolute joint
+to the assembly's origin where the part is now. "Turn to an angle" in the
+joint turns it.
+
+Test: FreeCADCmd -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopies.py             | 23 ++++++++
+ src/Mod/Unified/AssemblyCopiesGui.py          | 57 +++++++++++++++++++
+ src/Mod/Unified/ContextRules.py               |  2 +
+ .../Gui/Resources/translations/Unified_ja.ts  | 25 ++++++++
+ src/Mod/Unified/TestAssemblySolve.py          | 28 +++++++++
+ 5 files changed, 135 insertions(+)
+
+diff --git a/src/Mod/Unified/AssemblyCopies.py b/src/Mod/Unified/AssemblyCopies.py
+index 40172a8b4..b15f61c39 100644
+--- a/src/Mod/Unified/AssemblyCopies.py
++++ b/src/Mod/Unified/AssemblyCopies.py
+@@ -97,3 +97,26 @@ def grid(obj, columns, rows, dx, dy):
+         raise
+     doc.commitTransaction()
+     return out
++
++
++def hinge_to_ground(assembly, part, sub):
++    """A revolute joint between the round face or circle `sub` of `part` (a part of the assembly)
++    and the ground (the assembly's origin), where the part is now: a crank turns in place
++    without a case part to hold it. Returns the joint."""
++    import JointObject
++    import UtilsAssembly
++
++    group = UtilsAssembly.getJointGroup(assembly)
++    joint = group.newObject("App::FeaturePython", "Revolute")
++    JointObject.Joint(joint, JointObject.JointTypes.index("Revolute"))
++    joint.Label = App.Qt.translate("Unified", "Turns in place")
++    joint.Reference2 = (part, [sub, sub])
++    # the ground's side: the same place, fixed to the origin
++    where = part.Placement.multiply(joint.Placement2)
++    joint.Detach1 = True
++    joint.Reference1 = (assembly.Origin, ["", ""])
++    joint.Placement1 = where
++    if App.GuiUp:
++        JointObject.ViewProviderJoint(joint.ViewObject)
++    assembly.Document.recompute()
++    return joint
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index a10ab9cb9..710c81f31 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -220,5 +220,62 @@ def install():
+         UnifiedChrome.EXTRA_FILTERS.append(_filter)
+ 
+ 
++class HingeToGroundCommand:
++    """One round face (or circle) of a part of an assembly: the part turns about it, in place"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "Assembly_CreateJointRevolute",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_HingeToGround", "Turns in Place"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_HingeToGround",
++                "The part turns about the picked round face, where it is now (held by the ground: "
++                "no other part is needed). Then “Turn to an angle” in the joint turns it.",
++            ),
++        }
++
++    def picked(self):
++        sel = Gui.Selection.getSelectionEx("", 0)
++        if len(sel) != 1 or len(sel[0].SubElementNames) != 1:
++            return None
++        obj, sub = sel[0].Object, sel[0].SubElementNames[0]
++        names = sub.split(".")
++        if obj.isDerivedFrom("Assembly::AssemblyObject"):
++            assembly = obj
++        else:
++            assembly = next((obj.Document.getObject(n) for n in names
++                             if obj.Document.getObject(n) is not None
++                             and obj.Document.getObject(n).isDerivedFrom("Assembly::AssemblyObject")), None)  # fmt: skip
++        if assembly is None:
++            return None
++        import UtilsAssembly
++
++        part, rel = UtilsAssembly.getComponentReference(assembly, obj, sub)
++        if part is None or not rel:
++            return None
++        element = rel.split(".")[-1]
++        if not (element.startswith("Face") or element.startswith("Edge")):
++            return None
++        return assembly, part, rel
++
++    def IsActive(self):
++        return not Gui.Control.activeDialog() and self.picked() is not None
++
++    def Activated(self):
++        found = self.picked()
++        if found is None:
++            return
++        assembly, part, sub = found
++        doc = assembly.Document
++        doc.openTransaction(translate("Unified", "Turns in place"))
++        try:
++            joint = AC.hinge_to_ground(assembly, part, sub)
++        finally:
++            doc.commitTransaction()
++        Gui.Selection.clearSelection()
++        Gui.Selection.addSelection(joint)
++
++
+ Gui.addCommand("Unified_GridCopies", GridCopiesCommand())
+ Gui.addCommand("Unified_AnotherPart", DuplicateCommand())
++Gui.addCommand("Unified_HingeToGround", HingeToGroundCommand())
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 82ff27d0d..e5918b6e4 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -58,6 +58,8 @@ RULES = {
+     ],
+     "round face": [
+         A("Unified_InsertScrew", T("Insert screw")),
++        # a round face of a part of an assembly: a crank, a wheel turns there, held by the ground
++        A("Unified_HingeToGround", T("Turns in place")),
+         A("Unified_FaceDiameter", T("Diameter"), DIAMETER),
+         A("Std_Measure", T("Measure")),
+         A("Unified_SnapAxes", T("Line up axes")),
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index ddb4ec35f..776fa2968 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1120,4 +1120,29 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>システムのプロキシ: なし（直接つなぐ）</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_HingeToGround</name>
++    <message>
++        <source>Turns in Place</source>
++        <translation>その場で回す</translation>
++    </message>
++    <message>
++        <source>The part turns about the picked round face, where it is now (held by the ground: no other part is needed). Then “Turn to an angle” in the joint turns it.</source>
++        <translation>選んだ丸い面を軸に、今の場所で部品が回るようにします（地面が支えるので、ほかの部品は要りません）。ジョイントの「角度で回す」で回せます。</translation>
++    </message>
++</context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Turns in place</source>
++        <translation>その場で回す</translation>
++    </message>
++</context>
++<context>
++    <name>Unified</name>
++    <message>
++        <source>Turns in place</source>
++        <translation>その場で回す</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 424418017..da9b2c57f 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -106,6 +106,34 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_hinge_to_ground(self):
++        # a crank turns in place on the ground (no case part); Turn to an angle turns it
++        import AssemblyCopies
++
++        doc = App.newDocument("ground")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            asm.newObject("Assembly::JointGroup", "Joints")
++            crank = asm.newObject("Part::Cylinder", "Crank")
++            at = App.Placement(App.Vector(30, 20, 5), App.Rotation(App.Vector(1, 0, 0), 90))
++            crank.Placement = at
++            doc.recompute()
++            joint = AssemblyCopies.hinge_to_ground(asm, crank, "Face1")
++            self.assertEqual(asm.solve(), 0)
++            self.assertTrue(crank.Placement.isSame(at, 1e-9))
++            joint.AngleDriven = True
++            joint.Angle = 90
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertTrue(crank.Placement.Base.isEqual(at.Base, 1e-9))
++            # turned 90 degrees about its own axis (the cylinder's z)
++            axis = at.Rotation.multVec(App.Vector(0, 0, 1))
++            self.assertTrue(crank.Placement.Rotation.multVec(App.Vector(0, 0, 1)).isEqual(axis, 1e-9))
++            self.assertAlmostEqual(math.degrees((at.Rotation.inverted() * crank.Placement.Rotation).Angle), 90, places=6)
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_big_step_right_after_opening(self):
+         # no solve that held is remembered in a file just opened: the walk starts where the parts are
+         import os
+-- 
+2.43.0
+

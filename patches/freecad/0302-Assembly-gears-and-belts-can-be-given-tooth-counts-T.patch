@@ -1,0 +1,125 @@
+From 2b4ea2e591ec2d001ec6f613e2fa3aa002667050 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:21:45 +0900
+Subject: [PATCH 302/320] Assembly: gears and belts can be given tooth counts
+ (Teeth1, Teeth2)
+
+Gears and Belt joints took the ratio from two radii; the pitch radii of
+sprockets (12.27 and 24.33 mm for 14 and 28 teeth) are not in the ratio of
+their teeth, so a cam chain was 0.4 degrees off at 90 degrees (engine field
+test). With both tooth counts given, the ratio is of the teeth.
+
+Test: FreeCADCmd -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 22 ++++++++------
+ src/Mod/Assembly/JointObject.py         |  7 +++++
+ src/Mod/Unified/TestAssemblySolve.py    | 38 +++++++++++++++++++++++++
+ 3 files changed, 58 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 6821563dd..bf2ab1ff7 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -2027,17 +2027,21 @@ std::shared_ptr<ASMTJoint> AssemblyObject::makeMbdJointOfType(App::DocumentObjec
+             return mbdJoint;
+         }
+ 
+-        case JointType::Gears: {
+-            auto mbdJoint = CREATE<ASMTGearJoint>::With();
+-            mbdJoint->radiusI = getJointDistance(joint);
+-            mbdJoint->radiusJ = getJointDistance2(joint);
+-            return mbdJoint;
+-        }
+-
++        case JointType::Gears:
+         case JointType::Belt: {
++            // only the ratio counts: tooth counts (Teeth1, Teeth2) when both are given, as
++            // pitch radii of sprockets are not in the ratio of their teeth
++            double sizeI = getJointDistance(joint);
++            double sizeJ = getJointDistance2(joint);
++            auto* teeth1 = joint->getPropertyByName<App::PropertyInteger>("Teeth1");
++            auto* teeth2 = joint->getPropertyByName<App::PropertyInteger>("Teeth2");
++            if (teeth1 && teeth2 && teeth1->getValue() > 0 && teeth2->getValue() > 0) {
++                sizeI = teeth1->getValue();
++                sizeJ = teeth2->getValue();
++            }
+             auto mbdJoint = CREATE<ASMTGearJoint>::With();
+-            mbdJoint->radiusI = getJointDistance(joint);
+-            mbdJoint->radiusJ = -getJointDistance2(joint);
++            mbdJoint->radiusI = sizeI;
++            mbdJoint->radiusJ = type == JointType::Belt ? -sizeJ : sizeJ;
+             return mbdJoint;
+         }
+ 
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 8e9fe4a0f..06c59335b 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -287,6 +287,13 @@ class Joint:
+         if not hasattr(joint, "Angle"):
+             self.addAngleProperty(joint)
+ 
++        for name, tip in (
++            ("Teeth1", QT_TRANSLATE_NOOP("App::Property", "Gears and Belt: teeth of the first wheel; with Teeth2, the ratio is of the teeth instead of the radii")),
++            ("Teeth2", QT_TRANSLATE_NOOP("App::Property", "Gears and Belt: teeth of the second wheel (0: use the radii)")),
++        ):
++            if not hasattr(joint, name):
++                joint.addProperty("App::PropertyInteger", name, "Joint", tip, locked=True)
++
+         if not hasattr(joint, "AngleDriven"):
+             joint.addProperty(
+                 "App::PropertyBool",
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 8453583e8..248529cca 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -118,6 +118,44 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_belt_of_tooth_counts(self):
++        # sprockets of 14 and 28 teeth: pitch radii 12.27 and 24.33 are not 1:2, the teeth are
++        import JointObject
++
++        V, P = App.Vector, App.Placement
++        doc = App.newDocument("belt")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            base = asm.newObject("Part::Box", "Base")
++            w1 = asm.newObject("Part::Cylinder", "W1")
++            w2 = asm.newObject("Part::Cylinder", "W2")
++            w2.Placement = P(V(100, 0, 0), App.Rotation())
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), base)
++            def joint(kind, name, a, pa, b, pb):
++                j = jg.newObject("App::FeaturePython", name)
++                JointObject.Joint(j, JointObject.JointTypes.index(kind))
++                j.Detach1 = True; j.Detach2 = True
++                j.Reference1 = (a, ["", ""]); j.Reference2 = (b, ["", ""])
++                j.Placement1 = pa; j.Placement2 = pb
++                return j
++            drive = joint("Revolute", "Drive", base, P(), w1, P())
++            drive.AngleDriven = True
++            joint("Revolute", "Axle2", base, P(V(100, 0, 0), App.Rotation()), w2, P())
++            belt = joint("Belt", "Chain", w1, P(), w2, P())
++            belt.Distance = 12.27; belt.Distance2 = 24.33
++            belt.Teeth1 = 14; belt.Teeth2 = 28
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            drive.Angle = 90
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertAlmostEqual(math.degrees(w1.Placement.Rotation.Angle), 90, places=6)
++            self.assertAlmostEqual(math.degrees(w2.Placement.Rotation.Angle), 45, places=6)
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

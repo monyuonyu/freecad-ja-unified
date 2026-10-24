@@ -1,0 +1,191 @@
+From b98f5a8a8db49415e78cf3763f3f1be331260473 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:14:23 +0900
+Subject: [PATCH 300/320] Part: findInterferences(moving=[...]) tests only the
+ pairs with a moving part
+
+Checking a mechanism pose by pose repeated the booleans of the still parts
+against each other every time: 73 parts of the engine field test took
+32 s per pose. With the indices of the moving parts (crank, rod, piston,
+pin) only their pairs are tested: 3 s, the same pairs. PartViews
+interference(moving=[labels]) passes it on.
+
+Test: FreeCADCmd -t parttests.TestPartViews
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp          |  6 ++++-
+ src/Mod/Part/App/ViewTools.h            |  7 ++++--
+ src/Mod/Part/App/ViewToolsPy.cpp        | 31 +++++++++++++++++++++----
+ src/Mod/Part/PartViews.py               | 14 ++++++++---
+ src/Mod/Part/parttests/TestPartViews.py |  7 ++++++
+ 5 files changed, 54 insertions(+), 11 deletions(-)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 5624225e0..3133a2e73 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -2125,7 +2125,8 @@ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+     double tolerance,
+     double minVolume,
+     int threads,
+-    InterferenceStats* stats
++    InterferenceStats* stats,
++    const std::vector<bool>* moving
+ )
+ {
+     using clock = std::chrono::steady_clock;
+@@ -2169,6 +2170,9 @@ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+             }
+             int a = std::min(order[i], order[j]);
+             int b = std::max(order[i], order[j]);
++            if (moving && !(*moving)[a] && !(*moving)[b]) {
++                continue;
++            }
+             candidates.emplace_back(a, b);
+         }
+     }
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index 35c512088..d1ae77e06 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -185,13 +185,16 @@ struct InterferenceStats
+ 
+ /// Pairs of shapes whose common volume is larger than \a minVolume.  Bounding boxes
+ /// (sweep and prune) select the candidate pairs; only those get a boolean common,
+-/// spread over \a threads threads (0: all cores).
++/// spread over \a threads threads (0: all cores).  With \a moving (one flag per shape),
++/// only pairs with at least one moving shape are tested (a mechanism in many poses: the
++/// still parts do not change against each other).
+ PartExport std::vector<InterferencePair> findInterferences(
+     const std::vector<TopoDS_Shape>& shapes,
+     double tolerance,
+     double minVolume,
+     int threads,
+-    InterferenceStats* stats = nullptr
++    InterferenceStats* stats = nullptr,
++    const std::vector<bool>* moving = nullptr
+ );
+ 
+ /// Adds the Python functions of the headless views to the Part module
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index d85e3ee8f..2fb3eefe7 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -552,12 +552,13 @@ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ 
+ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ {
+-    static const char* kwlist[] = {"shapes", "tolerance", "minVolume", "threads", "stats", nullptr};
++    static const char* kwlist[] = {"shapes", "tolerance", "minVolume", "threads", "stats", "moving", nullptr};
+     PyObject* objs {};
+     double tolerance = 0.0, minVolume = 1e-6;
+     int threads = 0;
+     PyObject* withStats = Py_False;
+-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|ddiO!", const_cast<char**>(kwlist), &objs, &tolerance, &minVolume, &threads, &PyBool_Type, &withStats)) {
++    PyObject* movingObj = Py_None;
++    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|ddiO!O", const_cast<char**>(kwlist), &objs, &tolerance, &minVolume, &threads, &PyBool_Type, &withStats, &movingObj)) {
+         return nullptr;
+     }
+     try {
+@@ -573,12 +574,29 @@ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds
+             }
+             shapes.push_back(static_cast<Part::TopoShapePy*>(obj.ptr())->getTopoShapePtr()->getShape());
+         }
++        // moving: indices into shapes (the parts that move); the others are only tested
++        // against them
++        std::vector<bool> moving;
++        if (movingObj != Py_None) {
++            moving.assign(shapes.size(), false);
++            for (const auto& o : Py::Sequence(movingObj)) {
++                if (!PyLong_Check(o.ptr())) {
++                    throw Py::TypeError("findInterferences: moving is a list of indices into shapes");
++                }
++                long i = Py::Long(o).as_long();
++                if (i < 0 || i >= (long)shapes.size()) {
++                    throw Py::IndexError("findInterferences: an index of moving is out of the shapes");
++                }
++                moving[i] = true;
++            }
++        }
+         InterferenceStats stats;
+         std::vector<InterferencePair> pairs;
+         {
+             Py_BEGIN_ALLOW_THREADS
+             try {
+-                pairs = findInterferences(shapes, tolerance, minVolume, threads, &stats);
++                pairs = findInterferences(shapes, tolerance, minVolume, threads, &stats,
++                                          movingObj != Py_None ? &moving : nullptr);
+             }
+             catch (...) {
+                 Py_BLOCK_THREADS
+@@ -753,11 +771,14 @@ PyMethodDef methods[] = {
+     {"findInterferences",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(findInterferencesPy)),
+      METH_VARARGS | METH_KEYWORDS,
+-     "findInterferences(shapes, tolerance=0, minVolume=1e-6, threads=0, stats=False)\n"
++     "findInterferences(shapes, tolerance=0, minVolume=1e-6, threads=0, stats=False,\n"
++     "                  moving=None)\n"
+      "Pairs (i, j, volume) of shapes that overlap by more than minVolume.  Bounding boxes\n"
+      "pick the candidate pairs; only those get a boolean common (in parallel threads).\n"
+      "A volume of -1 means the boolean failed for that pair.  With stats=True returns\n"
+-     "(pairs, {'candidates', 'secondsBoxes', 'secondsBooleans', 'shapes'})."},
++     "(pairs, {'candidates', 'secondsBoxes', 'secondsBooleans', 'shapes'}).  moving: indices\n"
++     "of the shapes that move; pairs of two still shapes are then not tested (check a\n"
++     "mechanism pose by pose against the still parts once)."},
+     {nullptr, nullptr, 0, nullptr},
+ };
+ 
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index fb5a27347..17619da3a 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1131,16 +1131,24 @@ def part_export_svg(objects, filename, view="iso", edges="all", group=True, line
+             "groups": groups, "complete": data.get("complete", True)}  # fmt: skip
+ 
+ 
+-def interference(source=None, tolerance=0.0, min_volume=1e-6, threads=0, stats=False):
+-    """[(name_a, name_b, volume)] of overlapping solids.  With stats=True: (pairs, stats)."""
++def interference(source=None, tolerance=0.0, min_volume=1e-6, threads=0, stats=False, moving=None):
++    """[(name_a, name_b, volume)] of overlapping solids.  With stats=True: (pairs, stats).
++    moving: names (labels) of the parts that move; then only pairs with one of them are tested."""
+     shapes, names = [], []
+     for e in scene_entries(source, group=False):
+         if not isinstance(e.item, Part.Shape) or not e.item.Solids:
+             continue
+         shapes.append(e.item)
+         names.append(e.label)
++    kw = {}
++    if moving is not None:
++        wanted = set(moving)
++        kw["moving"] = [i for i, n in enumerate(names) if n in wanted]
++        unknown = wanted - set(names)
++        if unknown:
++            raise ValueError("interference: no solid named " + ", ".join(sorted(unknown)))
+     found, st = Part.findInterferences(shapes, tolerance=tolerance, minVolume=min_volume,
+-                                       threads=threads, stats=True)  # fmt: skip
++                                       threads=threads, stats=True, **kw)  # fmt: skip
+     result = [(names[a], names[b], vol) for a, b, vol in found]
+     return (result, st) if stats else result
+ 
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 456356449..5a0a7f767 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -557,6 +557,13 @@ class TestPartViews(unittest.TestCase):
+         self.assertEqual(stats["candidates"], 3)
+         self.assertEqual(Part.findInterferences([a, d]), [])
+         self.assertEqual(len(Part.findInterferences([a, b, c, d], threads=1)), 2)
++        # moving: only pairs with a moving shape (c moves: b-c stays, a-b is not tested)
++        pairs, stats = Part.findInterferences([a, b, c, d], stats=True, moving=[2])
++        self.assertEqual([(i, j) for i, j, v in pairs], [(1, 2)])
++        self.assertEqual(stats["candidates"], 2)
++        self.assertEqual(Part.findInterferences([a, b, c, d], moving=[]), [])
++        with self.assertRaises(IndexError):
++            Part.findInterferences([a, b], moving=[2])
+ 
+ 
+ def _poly_area(poly):
+-- 
+2.43.0
+

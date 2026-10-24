@@ -1,0 +1,37 @@
+From 4a623a2290b972ba7d85b21fd05590d5ac3a564f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:34:43 +0900
+Subject: [PATCH 318/320] PartDesign: a new sketch with a round face picked
+ asks for a plane
+
+A round face picked (a piston's skirt; Esc does not drop the pick) and
+"New sketch" opened the attachment's raw panel with "inertial" modes and
+warnings about the inertia tensor (engine field test 0.7.3). In the
+integrated environment the face is dropped and the planes to choose from
+come.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index e56ee8c14..8f40b338e 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -1063,6 +1063,12 @@ void SketchWorkflow::tryCreateSketch()
+         catch (const SupportNotPlanarException&) {
+             // Fall through to attachment dialog
+         }
++        // In the integrated environment a face that cannot carry a sketch (a round one) is
++        // dropped: the planes to choose from come, not the attachment's raw panel with
++        // "inertial" modes (engine field test 0.7.3: a piston's skirt was still picked)
++        if (App::isSingleWorkbench()) {
++            Gui::Selection().clearSelection();
++        }
+     }
+ 
+     SketchRequestSelection requestSelection {guidocument, activeBody};
+-- 
+2.43.0
+

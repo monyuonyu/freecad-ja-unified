@@ -1,0 +1,178 @@
+From 1f5c88c9eeffda750cc8dc38380e8eed6f945564 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:22:36 +0900
+Subject: [PATCH 311/320] Unified: a part linked from an assembly in another
+ file is still a part of its own file
+
+doc.RootObjects leaves out an object that an object of another document
+uses: once the assembly linked the connecting rod, "Make Drawing" in the
+rod's file said there was no part to draw (engine field test 0.7.3), and
+dragging, push/pull, export and the parts not in an assembly missed it
+too. UnifiedFiles.root_objects(doc): what nothing in the same document
+uses.
+
+Test: FreeCADCmd -t TestUnifiedFiles
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/MagnetDragGui.py    |  3 ++-
+ src/Mod/Unified/PartsShelf.py       |  3 ++-
+ src/Mod/Unified/PushPullGui.py      |  3 ++-
+ src/Mod/Unified/TestUnifiedFiles.py | 20 ++++++++++++++++++++
+ src/Mod/Unified/UnifiedChrome.py    |  5 +++--
+ src/Mod/Unified/UnifiedFiles.py     |  8 +++++++-
+ 6 files changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Unified/MagnetDragGui.py b/src/Mod/Unified/MagnetDragGui.py
+index dd20df5a1..7cfd7269e 100644
+--- a/src/Mod/Unified/MagnetDragGui.py
++++ b/src/Mod/Unified/MagnetDragGui.py
+@@ -20,6 +20,7 @@ import FreeCADGui as Gui
+ from PySide import QtCore, QtGui, QtWidgets
+ 
+ import MagnetDrag as M
++import UnifiedFiles
+ import SnapMath as S
+ 
+ translate = App.Qt.translate
+@@ -120,7 +121,7 @@ def _leaves(doc):
+             return
+         out.append((root, sub))
+ 
+-    for root in doc.RootObjects:
++    for root in UnifiedFiles.root_objects(doc):
+         if not _visible(root):
+             continue
+         walk(root, root, "", 0)
+diff --git a/src/Mod/Unified/PartsShelf.py b/src/Mod/Unified/PartsShelf.py
+index 6558cff17..94a4a4dd6 100644
+--- a/src/Mod/Unified/PartsShelf.py
++++ b/src/Mod/Unified/PartsShelf.py
+@@ -25,6 +25,7 @@ import math
+ import os
+ 
+ import FreeCAD as App
++import UnifiedFiles
+ 
+ import SnapMath
+ 
+@@ -1383,7 +1384,7 @@ def company_shape(path):
+     doc = already[0] if already else App.openDocument(path, hidden=True)
+     try:
+         shapes = []
+-        for o in doc.RootObjects:
++        for o in UnifiedFiles.root_objects(doc):
+             if o.isDerivedFrom("App::DocumentObjectGroup") and not o.isDerivedFrom("App::Part"):
+                 continue
+             if not (o.isDerivedFrom("Part::Feature") or o.isDerivedFrom("App::Part") or o.isDerivedFrom("App::Link")):
+diff --git a/src/Mod/Unified/PushPullGui.py b/src/Mod/Unified/PushPullGui.py
+index a6fdd6431..5f1e7dfb1 100644
+--- a/src/Mod/Unified/PushPullGui.py
++++ b/src/Mod/Unified/PushPullGui.py
+@@ -20,6 +20,7 @@ import Part
+ from PySide import QtCore, QtGui, QtWidgets
+ 
+ import PushPull as PP
++import UnifiedFiles
+ import SnapMath as S
+ 
+ CTX = "Unified_PushPull"
+@@ -134,7 +135,7 @@ def _pick_at(view, xy):
+ 
+ def _visible_shapes(doc):
+     out = []
+-    for obj in doc.RootObjects:
++    for obj in UnifiedFiles.root_objects(doc):
+         vo = getattr(obj, "ViewObject", None)
+         if vo is None or not vo.Visibility:
+             continue
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index ee61b2aa5..a3ad55810 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -57,6 +57,26 @@ class TestUnifiedFiles(unittest.TestCase):
+ 
+ 
+ 
++class TestRootObjects(unittest.TestCase):
++    def test_a_part_linked_from_another_document(self):
++        # doc.RootObjects leaves the body out once an assembly elsewhere links it
++        import os
++        import tempfile
++
++        tmp = tempfile.mkdtemp()
++        part = App.newDocument("rootpart")
++        asm = App.newDocument("rootasm")
++        try:
++            body = part.addObject("PartDesign::Body", "Body")
++            part.saveAs(os.path.join(tmp, "p.FCStd"))
++            asm.saveAs(os.path.join(tmp, "a.FCStd"))
++            asm.addObject("App::Link", "L").LinkedObject = body
++            self.assertEqual(F.root_objects(part), [body])
++        finally:
++            App.closeDocument(asm.Name)
++            App.closeDocument(part.Name)
++
++
+ class TestLinkPathAfterSaveAs(unittest.TestCase):
+     """An assembly is kept in a provisional folder until it is saved: its links to the parts
+     were written relative to that folder after "Save as" elsewhere, and reopened, every part
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 2f331c26c..b5be5b13e 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -19,6 +19,7 @@ import Part
+ from PySide import QtCore, QtGui, QtWidgets
+ 
+ import CommandSearchCore as core
++import UnifiedFiles
+ 
+ translate = App.Qt.translate
+ HERE = os.path.dirname(os.path.abspath(__file__))
+@@ -86,7 +87,7 @@ def _shapes_to_draw():
+     if not doc:
+         return []
+     out = []
+-    for obj in doc.RootObjects:
++    for obj in UnifiedFiles.root_objects(doc):
+         if obj.isDerivedFrom("TechDraw::DrawPage"):
+             continue
+         if obj.isDerivedFrom("App::Part") or obj.isDerivedFrom("Part::Feature") or obj.isDerivedFrom("App::Link"):
+@@ -200,7 +201,7 @@ def hold_current_part(doc):
+         return None
+     inside = set(o.Name for o in asm.OutListRecursive)
+     parts = [
+-        o for o in doc.RootObjects
++        o for o in UnifiedFiles.root_objects(doc)
+         if o is not asm
+         and (o.isDerivedFrom("PartDesign::Body") or o.isDerivedFrom("Part::Feature") or o.isDerivedFrom("App::Part"))
+         and not o.isDerivedFrom("Assembly::AssemblyObject")
+diff --git a/src/Mod/Unified/UnifiedFiles.py b/src/Mod/Unified/UnifiedFiles.py
+index b5d4a5000..23d6966a0 100644
+--- a/src/Mod/Unified/UnifiedFiles.py
++++ b/src/Mod/Unified/UnifiedFiles.py
+@@ -15,6 +15,12 @@ import FreeCAD as App
+ translate = App.Qt.translate
+ 
+ 
++
++def root_objects(doc):
++    """The tops of the document: used by nothing in it. doc.RootObjects also leaves out a part
++    that an assembly in another document links to (the part could not be drawn, dragged, ...)"""
++    return [o for o in doc.Objects if not any(p.Document == doc for p in o.InList)]
++
+ def QT_TRANSLATE_NOOP(context, text):
+     return text
+ 
+@@ -277,7 +283,7 @@ class ExportCADCommand:
+ 
+     def Activated(self):
+         Gui, QtCore, QtGui, QtWidgets = _gui()
+-        objs = _picked() or [o for o in App.ActiveDocument.RootObjects if o.isDerivedFrom("Part::Feature")
++        objs = _picked() or [o for o in root_objects(App.ActiveDocument) if o.isDerivedFrom("Part::Feature")
+                              or o.isDerivedFrom("App::Part") or o.isDerivedFrom("App::Link")]
+         doc = App.ActiveDocument
+         start = os.path.join(os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~"), doc.Label + ".step")
+-- 
+2.43.0
+

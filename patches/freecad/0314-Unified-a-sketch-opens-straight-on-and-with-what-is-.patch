@@ -1,0 +1,39 @@
+From e9e81a7d0aa34662f720c38347ad3e2f46a2ec91 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 11:28:12 +0900
+Subject: [PATCH 314/320] Unified: a sketch opens straight on and with what is
+ in front of it cut away
+
+A groove's or a pin hole's sketch on a plane through a piston was hidden by
+the solid and seen in perspective: every sketch of the engine field tests
+(0.6.9, 0.7.3: 7 times) needed "V, O" and hiding the body. Sketcher's own
+settings "force orthographic" and "section view" are on by default in the
+integrated environment (a choice made in the preferences stays).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/InitGui.py | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 3f4057877..f57df01d8 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -130,6 +130,14 @@ def _integrated_defaults():
+         draft.SetBool("dxfShowDialog", False)
+ 
+ 
++    # A sketch opens looking straight at it (no perspective) and with what is in front of its
++    # plane cut away: a groove's sketch inside a piston was hidden by the solid, every time
++    # (engine field tests 0.6.9 and 0.7.3: "V, O" and hiding the body with Space, 7 times)
++    sketcher = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Sketcher/General")
++    for name in ("ForceOrtho", "SectionView"):
++        if unset_bool(sketcher, name):
++            sketcher.SetBool(name, True)
++
+     # Recovery data every 2 minutes (15 by default: a crash after 15 minutes of work could leave
+     # nothing to recover; engine field test 0.6.9)
+     document = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Document")
+-- 
+2.43.0
+
