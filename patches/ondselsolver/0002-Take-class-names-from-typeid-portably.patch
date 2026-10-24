@@ -1,7 +1,7 @@
 From 9a032e1c151cb3799cfa064d2af026f742b10a52 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 27 Sep 2026 17:41:51 +0900
-Subject: [PATCH 2/2] Take class names from typeid portably
+Subject: [PATCH 2/3] Take class names from typeid portably
 
 ASMTItem::classname(), Item::classname(), the printOn() methods and the
 time series labels cut a fixed number of characters off typeid(...).name(),

@@ -39,7 +39,7 @@ The aim is the whole engine both by script and with the screen; the valve train 
 Screen
 - One working screen without workbenches; the next actions next to what is picked (type a number, Enter)
 - Magnet snapping, Excel-like aligning, push/pull faces with an arrow, automatic measuring of two picks
-- Assembly: joints on the middle of holes and shafts, "Turns in place", "Slides in place", "Turn to an angle", gear ratios by tooth counts, motion to video (MP4, from 0.7.7)
+- Assembly: joints on the middle of holes and shafts, "Turns in place", "Slides in place", "Turn to an angle", gear ratios by tooth counts, motion to video (MP4)
 - Parts shelf (JIS fasteners, aluminium frames, company parts), automatic drawing dimensions and a Japanese title block
 - Design check (overlaps, broken shapes, joints that do not hold, ...) and an AI chat that works on the model
 
@@ -335,6 +335,15 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.7.7
+
+From the GUI-only test of the valve train and the whole engine (0.7.6) and the company's test:
+
+- "Motion to Video": a revolute joint picked offers "Video"; the joint is turned over a range and the 3D view is taken as seen (direction, section, colours) into an MP4 (bundled ffmpeg; else GIF), 720 degrees too; free parts are said
+- Gears and belts keep their timing (a cam on a 14/28 chain was half a turn off past 180 degrees: the relation was taken anew at each solve); an axis turned over counts as not holding
+- A joint's angle formula can be kept; "Put Part" and grounding work on a reopened assembly; parts put in are named by their file; the bar for a joint picked in the tree; the bar's number field is typed over
+- DWG export keeps the texts and writes R2018 (was R14, texts lost); this version's converter is used after an update; DWG/DXF texts are read by default; `--export-drawings` leaves out pages without a sheet with a warning
 
 ## Changes in 0.7.6
 

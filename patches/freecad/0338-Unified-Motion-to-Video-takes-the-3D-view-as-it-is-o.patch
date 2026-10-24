@@ -1,0 +1,198 @@
+From 884890f02af55dbcbbaac405f4accc482f11448a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 21:50:18 +0900
+Subject: [PATCH 338/341] Unified: Motion to Video takes the 3D view as it is
+ on the screen
+
+The pictures were drawn again (saveImage): the view's section (clipping)
+was lost, parts were seen through and the framing differed; the panel,
+open while recording, narrowed the view; all the joints came back visible.
+The panel closes first, the pick's highlight and the joints' markers are
+put away (only those that were shown come back), and each picture is the
+3D view's framebuffer. The progress is on the status bar.
+(engine field test 0.7.6)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  |   7 +
+ src/Mod/Unified/MotionVideoGui.py             | 124 ++++++++++--------
+ 2 files changed, 79 insertions(+), 52 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index fc314aa1c..3194a1112 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1232,4 +1232,11 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>動画</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_MotionVideo</name>
++    <message>
++        <source>Video: picture {} of {}</source>
++        <translation>動画: {} / {} コマ</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/MotionVideoGui.py b/src/Mod/Unified/MotionVideoGui.py
+index 4a48f7ae2..b85586df9 100644
+--- a/src/Mod/Unified/MotionVideoGui.py
++++ b/src/Mod/Unified/MotionVideoGui.py
+@@ -31,10 +31,12 @@ class MotionPanel:
+         self.form = QtWidgets.QWidget()
+         self.form.setWindowTitle(translate("Unified_MotionVideo", "Motion to Video"))
+         lay = QtWidgets.QFormLayout(self.form)
+-        lay.addRow(QtWidgets.QLabel(translate(
++        intro = QtWidgets.QLabel(translate(
+             "Unified_MotionVideo",
+             "The joint “{}” is turned step by step; each step is taken from the 3D view as it is "
+-            "seen now (turn and cut the view first).").format(joint.Label)))
++            "seen now (turn and cut the view first).").format(joint.Label))
++        intro.setWordWrap(True)  # it ran out of the panel on the right
++        lay.addRow(intro)
+         def number(value, low, high, suffix="", decimals=0):
+             box = QtWidgets.QDoubleSpinBox()
+             box.setRange(low, high)
+@@ -59,9 +61,6 @@ class MotionPanel:
+         row.addWidget(self.path)
+         row.addWidget(browse)
+         lay.addRow(translate("Unified_MotionVideo", "Save as"), row)
+-        self.progress = QtWidgets.QProgressBar()
+-        self.progress.setVisible(False)
+-        lay.addRow(self.progress)
+ 
+     def choose(self):
+         path, _ = QtWidgets.QFileDialog.getSaveFileName(
+@@ -71,54 +70,11 @@ class MotionPanel:
+             self.path.setText(path)
+ 
+     def accept(self):
+-        view = Gui.ActiveDocument.ActiveView
+-        widget = Gui.getMainWindow().centralWidget()
+-        size = view.getSize() if hasattr(view, "getSize") else (800, 600)
+-        w, h = int(size[0]) // 2 * 2, int(size[1]) // 2 * 2
+-        count = int(self.frames.value())
+-        self.progress.setRange(0, count)
+-        self.progress.setVisible(True)
+-        done = [0]
+-
+-        def draw(path):
+-            QtWidgets.QApplication.processEvents()
+-            view.saveImage(path, w, h, "Current")
+-            done[0] += 1
+-            self.progress.setValue(done[0])
+-            QtWidgets.QApplication.processEvents()
+-
+-        joint = self.joint
+-        # the joints' markers are not part of the picture
+-        hidden = []
+-        for o in joint.Document.Objects:
+-            if o.isDerivedFrom("Assembly::JointGroup") and o.ViewObject and o.ViewObject.Visibility:
+-                o.ViewObject.Visibility = False
+-                hidden.append(o)
+-        was_driven = bool(getattr(joint, "AngleDriven", False))
+-        if not was_driven:
+-            joint.AngleDriven = True
+-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+-        try:
+-            written, failed = MotionVideo.export(joint, self.path.text(), self.start.value(), self.end.value(),
+-                                                 count, int(self.fps.value()), draw=draw)  # fmt: skip
+-        except Exception as e:
+-            QtWidgets.QApplication.restoreOverrideCursor()
+-            QtWidgets.QMessageBox.warning(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"),
+-                                          str(e))  # fmt: skip
+-            return False
+-        finally:
+-            if not was_driven:
+-                joint.AngleDriven = False
+-            for o in hidden:
+-                o.ViewObject.Visibility = True
+-        QtWidgets.QApplication.restoreOverrideCursor()
+-        text = translate("Unified_MotionVideo", "Written: {}").format(written)
+-        if failed:
+-            text += "\n" + translate(
+-                "Unified_MotionVideo", "The joints did not hold at {} of the angles (e.g. {:g}°): the parts may jump there."
+-            ).format(len(failed), failed[0])
+-        QtWidgets.QMessageBox.information(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"), text)
++        # the panel goes first: open, it narrows the 3D view (the video was framed differently)
++        settings = (self.joint, self.path.text(), self.start.value(), self.end.value(), int(self.frames.value()),
++                    int(self.fps.value()))  # fmt: skip
+         Gui.Control.closeDialog()
++        QtCore.QTimer.singleShot(200, lambda: record(*settings))
+         return True
+ 
+     def reject(self):
+@@ -126,6 +82,70 @@ class MotionPanel:
+         return True
+ 
+ 
++def grab(path):
++    """The 3D view's picture as it is on the screen (its section, transparency and zoom; a
++    picture drawn again lost the view's clipping)"""
++    view = Gui.ActiveDocument.ActiveView
++    view.redraw()
++    QtWidgets.QApplication.processEvents()
++    gl = view.graphicsView().viewport() if hasattr(view, "graphicsView") else None
++    if gl is not None and hasattr(gl, "grabFramebuffer"):
++        image = gl.grabFramebuffer()
++        if image.width() % 2 or image.height() % 2:  # video encoders want even sizes
++            image = image.copy(0, 0, image.width() // 2 * 2, image.height() // 2 * 2)
++        image.save(path)
++    else:
++        size = view.getSize()
++        view.saveImage(path, int(size[0]) // 2 * 2, int(size[1]) // 2 * 2, "Current")
++
++
++def record(joint, path, start, end, frames, fps):
++    doc = joint.Document
++    bar = Gui.getMainWindow().statusBar()
++    # the joints' markers and the pick's highlight are not part of the picture
++    picked = Gui.Selection.getSelectionEx()
++    Gui.Selection.clearSelection()
++    hidden = []
++    for o in doc.Objects:
++        if hasattr(o, "JointType") or hasattr(o, "ObjectToGround"):
++            vo = getattr(o, "ViewObject", None)
++            if vo is not None and vo.Visibility:
++                vo.Visibility = False
++                hidden.append(o)
++    done = [0]
++
++    def draw(p):
++        grab(p)
++        done[0] += 1
++        bar.showMessage(translate("Unified_MotionVideo", "Video: picture {} of {}").format(done[0], frames))
++
++    was_driven = bool(getattr(joint, "AngleDriven", False))
++    if not was_driven:
++        joint.AngleDriven = True
++    QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++    try:
++        written, failed = MotionVideo.export(joint, path, start, end, frames, fps, draw=draw)
++    except Exception as e:
++        QtWidgets.QApplication.restoreOverrideCursor()
++        QtWidgets.QMessageBox.warning(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"), str(e))
++        return
++    finally:
++        if not was_driven:
++            joint.AngleDriven = False
++        for o in hidden:
++            o.ViewObject.Visibility = True
++        for s in picked:
++            Gui.Selection.addSelection(s.Object)
++        bar.clearMessage()
++    QtWidgets.QApplication.restoreOverrideCursor()
++    text = translate("Unified_MotionVideo", "Written: {}").format(written)
++    if failed:
++        text += "\n" + translate(
++            "Unified_MotionVideo", "The joints did not hold at {} of the angles (e.g. {:g}°): the parts may jump there."
++        ).format(len(failed), failed[0])
++    QtWidgets.QMessageBox.information(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"), text)
++
++
+ class MotionVideoCommand:
+     def GetResources(self):
+         return {
+-- 
+2.43.0
+

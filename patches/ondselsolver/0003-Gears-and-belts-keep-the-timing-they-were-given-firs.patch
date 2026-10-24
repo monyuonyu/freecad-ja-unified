@@ -1,0 +1,252 @@
+From 3fbf84f53aaec375ddbcfafa1f471c067eb42dde Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 21:58:49 +0900
+Subject: [PATCH 3/3] Gears and belts keep the timing they were given first
+ (phase)
+
+The constant of a gear constraint was taken from the wheels as they were
+at each solve, with angles measured within one turn: a wheel that had
+moved kept its new timing, and a turn measured from the other side
+shifted a cam by half a turn without a word. With a phase given, the
+constant is the phase shifted by whole turns of either wheel to be the
+nearest to the wheels' relation now (GearPhase.h); the constant of the
+last solve can be read back (ASMTGearJoint::solvedConstant).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ OndselSolver/ASMTGearJoint.cpp           |  7 +++++
+ OndselSolver/ASMTGearJoint.h             |  3 ++
+ OndselSolver/CoaxialGearConstraintIJ.cpp |  3 +-
+ OndselSolver/CoaxialGearConstraintIJ.h   |  3 ++
+ OndselSolver/GearConstraintIJ.cpp        |  3 +-
+ OndselSolver/GearConstraintIJ.h          |  2 ++
+ OndselSolver/GearJoint.cpp               | 10 +++++++
+ OndselSolver/GearJoint.h                 |  3 ++
+ OndselSolver/GearPhase.h                 | 38 ++++++++++++++++++++++++
+ 9 files changed, 70 insertions(+), 2 deletions(-)
+ create mode 100644 OndselSolver/GearPhase.h
+
+diff --git a/OndselSolver/ASMTGearJoint.cpp b/OndselSolver/ASMTGearJoint.cpp
+index 9fa2b1e..e6fa10f 100644
+--- a/OndselSolver/ASMTGearJoint.cpp
++++ b/OndselSolver/ASMTGearJoint.cpp
+@@ -79,6 +79,7 @@ void MbD::ASMTGearJoint::createMbD(std::shared_ptr<System> mbdSys, std::shared_p
+ 	auto gearJoint = std::static_pointer_cast<GearJoint>(mbdObject);
+ 	gearJoint->radiusI = radiusI;
+ 	gearJoint->radiusJ = radiusJ;
++	gearJoint->phase = phase;
+ 	if (!markerK.empty()) {
+ 		auto mrkK = std::static_pointer_cast<EndFramec>(root()->markerAt(markerK)->mbdObject);
+ 		gearJoint->setCarrierFrame(mrkK);
+@@ -104,3 +105,9 @@ void MbD::ASMTGearJoint::storeOnLevel(std::ofstream& os, size_t level)
+ 	//storeOnLevelString(os, level + 1, "constant");
+ 	//storeOnLevelDouble(os, level + 2, aConstant);
+ }
++
++double MbD::ASMTGearJoint::solvedConstant() const
++{
++	auto gearJoint = std::dynamic_pointer_cast<GearJoint>(mbdObject);
++	return gearJoint ? gearJoint->solvedConstant() : std::numeric_limits<double>::quiet_NaN();
++}
+diff --git a/OndselSolver/ASMTGearJoint.h b/OndselSolver/ASMTGearJoint.h
+index 5b48f5e..4490f54 100644
+--- a/OndselSolver/ASMTGearJoint.h
++++ b/OndselSolver/ASMTGearJoint.h
+@@ -9,6 +9,7 @@
+ #pragma once
+ 
+ #include "ASMTJoint.h"
++#include <limits>
+ 
+ namespace MbD {
+     class ASMTGearJoint : public ASMTJoint
+@@ -27,5 +28,7 @@ namespace MbD {
+ 
+         std::string markerK;
+         double radiusI = 0.0, radiusJ = 0.0, aConstant = 0.0;
++        double phase = std::numeric_limits<double>::quiet_NaN();  // the constant it was given first (GearPhase.h)
++        double solvedConstant() const;  // the constant of the last solve
+     };
+ }
+diff --git a/OndselSolver/CoaxialGearConstraintIJ.cpp b/OndselSolver/CoaxialGearConstraintIJ.cpp
+index 4f9e0ba..faed7a6 100644
+--- a/OndselSolver/CoaxialGearConstraintIJ.cpp
++++ b/OndselSolver/CoaxialGearConstraintIJ.cpp
+@@ -7,6 +7,7 @@
+  ***************************************************************************/
+ 
+ #include "CoaxialGearConstraintIJ.h"
++#include "GearPhase.h"
+ 
+ #include <cassert>
+ #include <limits>
+@@ -163,7 +164,7 @@ void MbD::CoaxialGearConstraintIJ::postInput()
+     angleKI->postInput();
+     angleKJ->postInput();
+     if (aConstant == std::numeric_limits<double>::min()) {
+-        aConstant = angleKJ->value() + (ratio() * angleKI->value());
++        aConstant = snapGearConstant(phase, angleKJ->value() + (ratio() * angleKI->value()), ratio());
+     }
+     Constraint::postInput();
+ }
+diff --git a/OndselSolver/CoaxialGearConstraintIJ.h b/OndselSolver/CoaxialGearConstraintIJ.h
+index 69129e2..5e4243c 100644
+--- a/OndselSolver/CoaxialGearConstraintIJ.h
++++ b/OndselSolver/CoaxialGearConstraintIJ.h
+@@ -8,6 +8,8 @@
+ 
+ #pragma once
+ 
++#include <limits>
++
+ #include "Constraint.h"
+ 
+ namespace MbD {
+@@ -48,6 +50,7 @@ namespace MbD {
+         EndFrmsptr frmI, frmJ, frmK;
+         std::shared_ptr<AngleZIeqcJeqc> angleKI, angleKJ;
+         double radiusI = 0.0, radiusJ = 0.0;
++        double phase = std::numeric_limits<double>::quiet_NaN();  // see GearPhase.h
+ 
+         FRowDsptr pGpEI, pGpEJ, pGpEK;
+         FMatDsptr ppGpEIpEI, ppGpEJpEJ, ppGpEKpEK, ppGpEKpEI, ppGpEKpEJ;
+diff --git a/OndselSolver/GearConstraintIJ.cpp b/OndselSolver/GearConstraintIJ.cpp
+index 02e777a..98cf9e1 100644
+--- a/OndselSolver/GearConstraintIJ.cpp
++++ b/OndselSolver/GearConstraintIJ.cpp
+@@ -7,6 +7,7 @@
+  ***************************************************************************/
+  
+ #include "GearConstraintIJ.h"
++#include "GearPhase.h"
+ #include "GearConstraintIqcJqc.h"
+ #include "EndFrameqc.h"
+ 
+@@ -58,7 +59,7 @@ void MbD::GearConstraintIJ::postInput()
+ 	orbitIeJe->postInput();
+ 	orbitJeIe->postInput();
+ 	if (aConstant == std::numeric_limits<double>::min()) {
+-		aConstant = orbitJeIe->value() + (this->ratio() * orbitIeJe->value());
++		aConstant = snapGearConstant(phase, orbitJeIe->value() + (this->ratio() * orbitIeJe->value()), this->ratio());
+ 	}
+ 	ConstraintIJ::postInput();
+ }
+diff --git a/OndselSolver/GearConstraintIJ.h b/OndselSolver/GearConstraintIJ.h
+index a4e769b..2d3eed6 100644
+--- a/OndselSolver/GearConstraintIJ.h
++++ b/OndselSolver/GearConstraintIJ.h
+@@ -10,6 +10,7 @@
+ 
+ #include "ConstraintIJ.h"
+ #include "OrbitAngleZIecJec.h"
++#include <limits>
+ 
+ namespace MbD {
+ 	class GearConstraintIJ : public ConstraintIJ
+@@ -35,6 +36,7 @@ namespace MbD {
+ 
+ 		std::shared_ptr<OrbitAngleZIecJec> orbitIeJe, orbitJeIe;
+ 		double radiusI, radiusJ;
++		double phase = std::numeric_limits<double>::quiet_NaN();  // see GearPhase.h
+ 	};
+ }
+ 
+diff --git a/OndselSolver/GearJoint.cpp b/OndselSolver/GearJoint.cpp
+index 67602b0..328e5f9 100644
+--- a/OndselSolver/GearJoint.cpp
++++ b/OndselSolver/GearJoint.cpp
+@@ -101,6 +101,7 @@ void MbD::GearJoint::initializeGlobally()
+ 			gearIJK->radiusI = radiusI;
+ 			gearIJK->radiusJ = radiusJ;
+ 			gearIJK->setConstant(std::numeric_limits<double>::min());
++			gearIJK->phase = phase;
+ 			addConstraint(gearIJK);
+ 		}
+ 		else {
+@@ -108,6 +109,7 @@ void MbD::GearJoint::initializeGlobally()
+ 			gearIJ->radiusI = radiusI;
+ 			gearIJ->radiusJ = radiusJ;
+ 			gearIJ->setConstant(std::numeric_limits<double>::min());
++			gearIJ->phase = phase;
+ 			addConstraint(gearIJ);
+ 		}
+ 		this->root()->hasChanged = true;
+@@ -116,3 +118,11 @@ void MbD::GearJoint::initializeGlobally()
+ 		Joint::initializeGlobally();
+ 	}
+ }
++
++double MbD::GearJoint::solvedConstant() const
++{
++	if (constraints->empty()) {
++		return std::numeric_limits<double>::quiet_NaN();
++	}
++	return constraints->front()->aConstant;
++}
+diff --git a/OndselSolver/GearJoint.h b/OndselSolver/GearJoint.h
+index e842398..cb89108 100644
+--- a/OndselSolver/GearJoint.h
++++ b/OndselSolver/GearJoint.h
+@@ -9,6 +9,7 @@
+ #pragma once
+ 
+ #include "Joint.h"
++#include <limits>
+ 
+ namespace MbD {
+ 	class GearJoint : public Joint
+@@ -24,5 +25,7 @@ namespace MbD {
+ 
+ 		EndFrmsptr frmK;
+ 		double radiusI = 0.0, radiusJ = 0.0, aConstant = 0.0;
++		double phase = std::numeric_limits<double>::quiet_NaN();  // see GearPhase.h
++		double solvedConstant() const;
+ 	};
+ }
+diff --git a/OndselSolver/GearPhase.h b/OndselSolver/GearPhase.h
+new file mode 100644
+index 0000000..25bca59
+--- /dev/null
++++ b/OndselSolver/GearPhase.h
+@@ -0,0 +1,38 @@
++/***************************************************************************
++ *   Copyright (c) 2023 Ondsel, Inc.                                       *
++ *                                                                         *
++ *   This file is part of OndselSolver.                                    *
++ *                                                                         *
++ *   See LICENSE file for details about copyright.                         *
++ ***************************************************************************/
++
++#pragma once
++
++#include <cmath>
++#include <limits>
++
++namespace MbD {
++	// A gear's (or belt's) constant: the one of its phase, the relation it was given first,
++	// shifted by whole turns of either wheel to be the nearest to the relation the wheels
++	// have now. The angles are measured within one turn when a solve starts: without the phase
++	// the constant was taken from the wheels as they were, and a wheel that had moved (dragged,
++	// or a turn measured from the other side) kept the new timing without a word.
++	inline double snapGearConstant(double phase, double now, double ratio)
++	{
++		if (std::isnan(phase)) {
++			return now;
++		}
++		const double turn = 2.0 * M_PI;
++		double best = now, bestDistance = std::numeric_limits<double>::infinity();
++		for (int n = -12; n <= 12; ++n) {
++			const double base = phase + n * turn * ratio;
++			const double c = base + std::round((now - base) / turn) * turn;
++			const double d = std::fabs(c - now);
++			if (d < bestDistance) {
++				bestDistance = d;
++				best = c;
++			}
++		}
++		return best;
++	}
++}
+-- 
+2.43.0
+

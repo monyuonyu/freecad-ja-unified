@@ -1,0 +1,47 @@
+From 7362ec00bb1ab5912a6bd88351c111be37551d1e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 20:46:19 +0900
+Subject: [PATCH 335/341] Bundle: ffmpeg comes with FreeCAD (MP4 for "Motion to
+ Video")
+
+Its libraries were in the bundles already; the program was left out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh   | 6 ++++++
+ package/bundle/windows/create_bundle.sh | 2 ++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 26220ddda..2a525c97e 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -24,6 +24,12 @@ cp ${conda_env}/bin_tmp/pyside6-rcc ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/gmsh ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/dot ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/unflatten ${conda_env}/bin/
++# ffmpeg: "Motion to Video" makes MP4 with it (its libraries are in the bundle already)
++if [ -x ${conda_env}/bin_tmp/ffmpeg ]; then
++  cp ${conda_env}/bin_tmp/ffmpeg ${conda_env}/bin/
++else
++  echo "warning: no ffmpeg in the environment: videos will be GIF"
++fi
+ rm -rf ${conda_env}/bin_tmp
+ 
+ sed -i '1s|.*|#!/usr/bin/env python|' ${conda_env}/bin/pip
+diff --git a/package/bundle/windows/create_bundle.sh b/package/bundle/windows/create_bundle.sh
+index a261d1d3c..1cad6ad1e 100644
+--- a/package/bundle/windows/create_bundle.sh
++++ b/package/bundle/windows/create_bundle.sh
+@@ -20,6 +20,8 @@ cp -a ${conda_env}/Library/bin/ccx.exe ${copy_dir}/bin
+ cp -a ${conda_env}/Library/bin/gmsh.exe ${copy_dir}/bin
+ cp -a ${conda_env}/Library/bin/dot.exe ${copy_dir}/bin
+ cp -a ${conda_env}/Library/bin/unflatten.exe ${copy_dir}/bin
++# ffmpeg: "Motion to Video" makes MP4 with it (its DLLs are copied with the others)
++cp -a ${conda_env}/Library/bin/ffmpeg.exe ${copy_dir}/bin || echo "warning: no ffmpeg.exe: videos will be GIF"
+ cp -a ${conda_env}/Library/mingw-w64/bin/* ${copy_dir}/bin
+ # copy resources -- perhaps needs reduction
+ cp -a ${conda_env}/Library/share ${copy_dir}/share
+-- 
+2.43.0
+

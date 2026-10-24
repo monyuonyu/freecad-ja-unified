@@ -1,7 +1,7 @@
 From 73fa7fa0a2e3a22be67ffa7555ea14bd97838051 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:45:39 +0900
-Subject: [PATCH 332/333] TechDraw: a new section view goes where no view is
+Subject: [PATCH 332/341] TechDraw: a new section view goes where no view is
 
 A new section view was put in the middle of the page, on the right view
 (engine field tests 0.7.4, 0.7.5). It goes right of the page's views,

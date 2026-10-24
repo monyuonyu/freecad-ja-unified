@@ -1,0 +1,184 @@
+From 4e35463ee867853949dd6aa69cd192f04c6238fa Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 21:58:49 +0900
+Subject: [PATCH 339/341] Assembly: gears and belts keep their timing; an axis
+ that turned over does not hold
+
+- A gear's or belt's timing is kept in the joint (GearPhase, from its
+  first solve) and given to the solver: a cam driven by a 14/28 chain was
+  half a turn off past 180 degrees of the crank, and a nudged cam kept
+  the new timing (engine field test 0.7.6). Changing the joint's wheels,
+  sizes or teeth forgets it.
+- A revolute, cylindrical or slider joint whose axes turned over since the
+  last solve that held does not hold (another, wrong, answer of the
+  solver); axes picked facing opposite ways stay fine.
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/3rdParty/OndselSolver               |  2 +-
+ src/Mod/Assembly/App/AssemblyObject.cpp | 49 +++++++++++++++++++++++++
+ src/Mod/Assembly/App/AssemblyObject.h   |  9 +++++
+ src/Mod/Assembly/JointObject.py         |  6 +++
+ 4 files changed, 65 insertions(+), 1 deletion(-)
+
+diff --git a/src/3rdParty/OndselSolver b/src/3rdParty/OndselSolver
+index 9a032e1c1..3fbf84f53 160000
+--- a/src/3rdParty/OndselSolver
++++ b/src/3rdParty/OndselSolver
+@@ -1 +1 @@
+-Subproject commit 9a032e1c151cb3799cfa064d2af026f742b10a52
++Subproject commit 3fbf84f53aaec375ddbcfafa1f471c067eb42dde
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 565f05761..060ebb7f7 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -360,6 +360,7 @@ int AssemblyObject::solve(bool enableRedo)
+     if (rc != 0 || jointsHold(joints)) {
+         if (rc == 0) {
+             rememberHeldJoints(joints);
++            storeGearPhases();
+         }
+         return rc;
+     }
+@@ -425,6 +426,7 @@ int AssemblyObject::solve(bool enableRedo)
+     jointPlacementOverride.clear();
+     if (rc == 0 && jointsHold(joints)) {
+         rememberHeldJoints(joints);
++        storeGearPhases();
+         return 0;
+     }
+     std::string names;
+@@ -438,8 +440,32 @@ int AssemblyObject::solve(bool enableRedo)
+     return rc != 0 ? rc : -7;
+ }
+ 
++// A gear's or belt's timing: the relation of its wheels' angles at its first solve is kept in the
++// joint (GearPhase); later solves keep to it, whole turns of either wheel apart (a cam whose
++// angle was taken anew at each solve could lose its timing without a word; engine field test
++// 0.7.6). Changing the joint's wheels or teeth forgets it (JointObject.py).
++void AssemblyObject::storeGearPhases()
++{
++    for (auto& [joint, mbdJoint] : gearJoints) {
++        if (!joint || joint->getPropertyByName("GearPhase")) {
++            continue;
++        }
++        const double constant = mbdJoint->solvedConstant();
++        if (std::isnan(constant)) {
++            continue;
++        }
++        auto* prop = dynamic_cast<App::PropertyFloat*>(joint->addDynamicProperty(
++            "App::PropertyFloat", "GearPhase", "Joint",
++            "The timing of the wheels kept from the first solve (radians)", App::Prop_Hidden));
++        if (prop) {
++            prop->setValue(constant);
++        }
++    }
++}
++
+ int AssemblyObject::solveOnce(bool enableRedo, std::vector<App::DocumentObject*>& joints)
+ {
++    gearJoints.clear();
+     ensureIdentityPlacements();
+ 
+     syncGroundedJoints();
+@@ -557,6 +583,13 @@ AssemblyObject::brokenJoints(const std::vector<App::DocumentObject*>& joints) co
+         }
+         else if (kind != "Ball") {
+             angle = std::acos(std::clamp(std::fabs(za.Dot(zb)), -1.0, 1.0));
++            // the axes may face the same or opposite ways (as the faces were picked), but not
++            // turn over since the last solve that held: that is another, wrong, answer of the
++            // solver (a cam flipped upside down, still on its axis; engine field test 0.7.6)
++            auto it = heldAxisSign.find(joint->getNameInDocument());
++            if (it != heldAxisSign.end() && (za.Dot(zb) < 0 ? -1 : 1) != it->second) {
++                angle = M_PI;
++            }
+         }
+         // the solver converges to about 1e-9 of the model's size; well above that is broken
+         if (gap > std::max(1e-4, 1e-7 * scale) || angle > 1e-5) {
+@@ -569,7 +602,18 @@ AssemblyObject::brokenJoints(const std::vector<App::DocumentObject*>& joints) co
+ void AssemblyObject::rememberHeldJoints(const std::vector<App::DocumentObject*>& joints)
+ {
+     lastHeldJointPlacements.clear();
++    heldAxisSign.clear();
+     for (auto* joint : joints) {
++        auto* type = joint->getPropertyByName<App::PropertyEnumeration>("JointType");
++        const std::string kind = type && type->getValueAsString() ? type->getValueAsString() : "";
++        if ((kind == "Revolute" || kind == "Cylindrical" || kind == "Slider")
++            && getMovingPartFromRef(joint, "Reference1") && getMovingPartFromRef(joint, "Reference2")) {
++            const Base::Placement a = getJointSideGlobalPlacement(joint, "Reference1", "Placement1");
++            const Base::Placement b = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
++            const double d = a.getRotation().multVec(Base::Vector3d(0, 0, 1))
++                                 .Dot(b.getRotation().multVec(Base::Vector3d(0, 0, 1)));
++            heldAxisSign[joint->getNameInDocument()] = d < 0 ? -1 : 1;
++        }
+         lastHeldJointPlacements[joint->getNameInDocument()] = {
+             jointPlacementFromProp(joint, "Placement1"),
+             jointPlacementFromProp(joint, "Placement2"),
+@@ -2100,6 +2144,11 @@ std::shared_ptr<ASMTJoint> AssemblyObject::makeMbdJointOfType(App::DocumentObjec
+             auto mbdJoint = CREATE<ASMTGearJoint>::With();
+             mbdJoint->radiusI = sizeI;
+             mbdJoint->radiusJ = type == JointType::Belt ? -sizeJ : sizeJ;
++            // the timing it was given first, kept with the joint (see storeGearPhases)
++            if (auto* phase = joint->getPropertyByName<App::PropertyFloat>("GearPhase")) {
++                mbdJoint->phase = phase->getValue();
++            }
++            gearJoints.emplace_back(joint, mbdJoint);
+             return mbdJoint;
+         }
+ 
+diff --git a/src/Mod/Assembly/App/AssemblyObject.h b/src/Mod/Assembly/App/AssemblyObject.h
+index aaf33ff5e..b0dfbe25b 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.h
++++ b/src/Mod/Assembly/App/AssemblyObject.h
+@@ -42,6 +42,7 @@ namespace MbD
+ class ASMTPart;
+ class ASMTAssembly;
+ class ASMTJoint;
++class ASMTGearJoint;
+ class ASMTMarker;
+ class ASMTPart;
+ }  // namespace MbD
+@@ -290,6 +291,8 @@ private:
+     // converge: the solver then drops the driving joint as redundant and the parts stay. The
+     // joints' placements of the last solve that held, to walk there in small steps.
+     std::map<std::string, std::pair<Base::Placement, Base::Placement>> lastHeldJointPlacements;
++    // revolute, cylindrical, slider: did their axes face the same way (1) or not (-1) then
++    std::map<std::string, int> heldAxisSign;
+     // While walking: the placements the joints use instead of their own
+     std::map<const App::DocumentObject*, std::pair<Base::Placement, Base::Placement>> jointPlacementOverride;
+     Base::Placement jointPlacement(App::DocumentObject* joint, const char* plcName) const;
+@@ -308,6 +311,12 @@ public:
+     std::vector<BrokenJoint> brokenJoints(const std::vector<App::DocumentObject*>& joints) const;
+     std::vector<BrokenJoint> brokenJoints();
+ 
++private:
++    void storeGearPhases();
++    std::vector<std::pair<App::DocumentObject*, std::shared_ptr<MbD::ASMTGearJoint>>> gearJoints;
++
++public:
++
+ private:
+     void rememberHeldJoints(const std::vector<App::DocumentObject*>& joints);
+ 
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index baa39f2ac..a98bf2082 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -835,6 +835,12 @@ class Joint:
+         ):
+             solveIfAllowed(self.getAssembly(joint))
+ 
++        # a gear's kept timing (GearPhase, AssemblyObject::storeGearPhases) is for these wheels:
++        # another wheel, size or count of teeth takes it anew at the next solve
++        if prop in ("Reference1", "Reference2", "Distance", "Distance2", "Teeth1", "Teeth2", "JointType") \
++                and "GearPhase" in joint.PropertiesList:
++            joint.removeProperty("GearPhase")
++
+         if prop in ("Teeth1", "Teeth2") and joint.JointType in ("Gears", "Belt"):
+             solveIfAllowed(self.getAssembly(joint))
+ 
+-- 
+2.43.0
+

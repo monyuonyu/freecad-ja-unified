@@ -1,0 +1,537 @@
+From 5cae4f0867009dfc5fecd5e7c6b783f93db182d7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 20:45:54 +0900
+Subject: [PATCH 334/341] Unified: "Motion to Video" - an assembly moving, as a
+ video
+
+The engine's animation could only be made by a script drawing each crank
+angle. A revolute joint picked offers "Video" on the bar: it is turned
+from one angle to another in steps ("Turn to an angle" for the time of
+the video), each step is taken from the 3D view as it is seen (direction,
+section, colours; the joints' markers hidden), and the pictures become an
+MP4 with ffmpeg (H.264), else an animated GIF. Angles where the joints do
+not hold are said. MotionVideo.export(joint, out, ...) does the same
+without the screen with Part's renderImage, in one frame for all the
+pictures (the box the parts sweep).
+
+Test: FreeCADCmd -t TestMotionVideo
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt                |   4 +-
+ src/Mod/Unified/ContextRules.py               |   2 +
+ .../Gui/Resources/translations/Unified_ja.ts  |  58 ++++++
+ src/Mod/Unified/InitGui.py                    |   2 +
+ src/Mod/Unified/MotionVideo.py                | 172 ++++++++++++++++++
+ src/Mod/Unified/MotionVideoGui.py             | 150 +++++++++++++++
+ src/Mod/Unified/TestMotionVideo.py            |  47 +++++
+ 7 files changed, 434 insertions(+), 1 deletion(-)
+ create mode 100644 src/Mod/Unified/MotionVideo.py
+ create mode 100644 src/Mod/Unified/MotionVideoGui.py
+ create mode 100644 src/Mod/Unified/TestMotionVideo.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index e40894b33..638961b5e 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -18,6 +18,8 @@ set(Unified_Scripts
+     TestContextRules.py
+     DrawingAuto.py
+     DrawingPdf.py
++    MotionVideo.py
++    TestMotionVideo.py
+     TestDrawingPdf.py
+     UnifiedFiles.py
+     TestUnifiedFiles.py
+@@ -76,7 +78,7 @@ endif(BUILD_GUI)
+ list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py TestAssemblySolve.py TestPartDesignFixes.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py)
++    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py MotionVideoGui.py)
+ endif(BUILD_GUI)
+ 
+ # The A4 sheet with its title block in Japanese (the default sheet of new drawings)
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 09e2c8535..ac463e387 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -194,6 +194,8 @@ RULES = {
+         A("TechDraw_ExportPageSVG", T("SVG")),
+     ],
+     "joint": [
++        # a revolute joint: the assembly moving, as a video
++        A("Unified_MotionVideo", T("Video")),
+         A("Std_ToggleVisibility", T("Hide")),
+         A("Std_Delete", T("Delete")),
+     ],
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index dc65ae484..fc314aa1c 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1174,4 +1174,62 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>地面とのジョイント</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_MotionVideo</name>
++    <message>
++        <source>Motion to Video</source>
++        <translation>動きを動画に</translation>
++    </message>
++    <message>
++        <source>The joint “{}” is turned step by step; each step is taken from the 3D view as it is seen now (turn and cut the view first).</source>
++        <translation>ジョイント「{}」を少しずつ回し、そのたびに 3D 画面を今の見え方のまま撮ります（先に向きや断面を決めてください）。</translation>
++    </message>
++    <message>
++        <source>From</source>
++        <translation>始め</translation>
++    </message>
++    <message>
++        <source>To</source>
++        <translation>終わり</translation>
++    </message>
++    <message>
++        <source>Pictures</source>
++        <translation>コマ数</translation>
++    </message>
++    <message>
++        <source>Pictures a second</source>
++        <translation>1 秒のコマ数</translation>
++    </message>
++    <message>
++        <source>Choose…</source>
++        <translation>選ぶ…</translation>
++    </message>
++    <message>
++        <source>Save as</source>
++        <translation>保存先</translation>
++    </message>
++    <message>
++        <source>Save the video</source>
++        <translation>動画の保存先</translation>
++    </message>
++    <message>
++        <source>Written: {}</source>
++        <translation>書き出しました: {}</translation>
++    </message>
++    <message>
++        <source>The joints did not hold at {} of the angles (e.g. {:g}°): the parts may jump there.</source>
++        <translation>{} 個の角度でジョイントが成り立ちませんでした（例 {:g}°）。そこでは部品が飛んで見えることがあります。</translation>
++    </message>
++    <message>
++        <source>Turn the picked revolute joint from one angle to another and save what the 3D view shows as a video (MP4)</source>
++        <translation>選んだ回転ジョイントを角度の範囲で回し、3D 画面に見えているとおりを動画（MP4）にします</translation>
++    </message>
++</context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Video</source>
++        <translation>動画</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index f57df01d8..38191c5f2 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -87,6 +87,8 @@ class UnifiedWorkbench(Workbench):
+             import AssemblyCopiesGui
+ 
+             AssemblyCopiesGui.install()
++            # 回転ジョイントを回して、3D の見えているとおりに動画にする
++            import MotionVideoGui  # noqa: F401
+             # ねじは穴に、図面の中心線は穴についていく。最後の 3D を閉じたら文書を閉じる（保存を聞く）
+             import FollowGui
+ 
+diff --git a/src/Mod/Unified/MotionVideo.py b/src/Mod/Unified/MotionVideo.py
+new file mode 100644
+index 000000000..a57a3f75d
+--- /dev/null
++++ b/src/Mod/Unified/MotionVideo.py
+@@ -0,0 +1,172 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""A video of an assembly moving: a joint turned to its angle ("Turn to an angle") step by step,
++each step drawn, the pictures made into an MP4 (with ffmpeg) or else an animated GIF.
++
++    import MotionVideo
++    MotionVideo.export(joint, "crank.mp4", start=0, end=720, frames=72)
++
++Without the screen the pictures are drawn by Part.renderImage (view, size, section as there);
++on the screen the command "Motion to Video" takes them from the 3D view as it is seen.
++"""
++
++import os
++import shutil
++import subprocess
++import tempfile
++
++import FreeCAD as App
++
++
++def assembly_of(joint):
++    for o in joint.InListRecursive:
++        if o.isDerivedFrom("Assembly::AssemblyObject"):
++            return o
++    return None
++
++
++def drivable(joint):
++    """A joint that a video can turn: a revolute joint turned to its angle"""
++    return getattr(joint, "JointType", "") == "Revolute" and bool(getattr(joint, "AngleDriven", False))
++
++
++def angles(start, end, frames):
++    """`frames` angles from start, evenly to end (end itself left out when it is a whole turn
++    away from start: the video loops without showing the same picture twice)"""
++    frames = max(2, int(frames))
++    whole = abs(end - start) % 360 < 1e-9 and end != start
++    n = frames if whole else frames - 1
++    return [start + (end - start) * i / n for i in range(frames)]
++
++
++def formula(obj, prop):
++    for path, expr in obj.ExpressionEngine:
++        if path == prop:
++            return expr
++    return None
++
++
++def pose(joint, angle):
++    """Turn the joint to the angle and solve its assembly. False if it does not hold there."""
++    if formula(joint, "Angle"):
++        joint.setExpression("Angle", None)
++    joint.Angle = angle
++    asm = assembly_of(joint)
++    doc = joint.Document
++    doc.recompute()
++    return asm is None or asm.solve() == 0
++
++
++def _visible_box(doc):
++    import PartViews
++
++    box = App.BoundBox()
++    for e in PartViews.scene_entries(doc, group=False):
++        item = e.item
++        if hasattr(item, "BoundBox") and item.BoundBox.isValid():
++            box.add(item.BoundBox)
++    return box
++
++
++def ffmpeg():
++    """The ffmpeg program: the one that comes with this FreeCAD, else one on the PATH"""
++    import sys
++
++    home = App.getHomePath()
++    # next to FreeCAD, else in the Python's environment (conda: bin, Library/bin on Windows)
++    for d in (os.path.join(home, "bin"), home, os.path.join(sys.prefix, "bin"),
++              os.path.join(sys.prefix, "Library", "bin")):  # fmt: skip
++        for name in ("ffmpeg.exe", "ffmpeg"):
++            p = os.path.join(d, name)
++            if os.path.isfile(p):
++                return p
++    return shutil.which("ffmpeg")
++
++
++def _encoder(exe):
++    try:
++        out = subprocess.run([exe, "-hide_banner", "-encoders"], capture_output=True, text=True,
++                             timeout=30).stdout  # fmt: skip
++    except Exception:
++        return None
++    for name in ("libopenh264", "libx264", "h264_mf", "mpeg4"):
++        if " %s " % name in out:
++            return name
++    return None
++
++
++def encode(pattern, count, out, fps=24):
++    """Make the pictures pattern % 0..count-1 into `out`: MP4 with ffmpeg; GIF with PIL when the
++    name ends in .gif or ffmpeg is missing (then the name gets .gif). Returns the file written."""
++    if not out.lower().endswith(".gif"):
++        exe = ffmpeg()
++        enc = _encoder(exe) if exe else None
++        if enc:
++            cmd = [exe, "-hide_banner", "-loglevel", "error", "-y", "-framerate", str(fps), "-i", pattern,
++                   "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2:color=white,format=yuv420p", "-c:v", enc]  # fmt: skip
++            if enc == "libx264":
++                cmd += ["-crf", "20"]
++            elif enc in ("libopenh264", "mpeg4"):
++                cmd += ["-b:v", "4M"]
++            cmd += ["-movflags", "+faststart", out]
++            proc = subprocess.run(cmd, capture_output=True, text=True)
++            if proc.returncode == 0 and os.path.isfile(out) and os.path.getsize(out) > 0:
++                return out
++            App.Console.PrintWarning("Motion video: ffmpeg failed: %s\n" % proc.stderr.strip()[-300:])
++        out = os.path.splitext(out)[0] + ".gif"
++        App.Console.PrintWarning("Motion video: no ffmpeg for MP4; written as GIF: %s\n" % out)
++    from PIL import Image
++
++    pictures = [Image.open(pattern % i).convert("RGB") for i in range(count)]
++    pictures[0].save(out, save_all=True, append_images=pictures[1:], duration=int(1000 / fps), loop=0,
++                     optimize=True)  # fmt: skip
++    return out
++
++
++def export(joint, out, start=0.0, end=360.0, frames=72, fps=24, view="iso", size=(800, 600),
++           draw=None, **view_kw):  # fmt: skip
++    """Turn `joint` (a revolute joint with "Turn to an angle") from start to end in `frames`
++    steps and write the video `out`. draw(path) draws one picture (default: Part's renderImage
++    of the document's visible parts, view/size/section as in PartViews.render). The joint's angle
++    (and its formula) is put back. Returns (file written, [angles where the joints did not hold])."""
++    if not drivable(joint):
++        raise ValueError("The joint is not a revolute joint turned to its angle (Turn to an angle)")
++    doc = joint.Document
++    was = joint.Angle.Value
++    was_formula = formula(joint, "Angle")
++    failed = []
++    tmp = tempfile.mkdtemp(prefix="motion")
++    pattern = os.path.join(tmp, "frame_%04d.png")
++    try:
++        steps = angles(start, end, frames)
++        if draw is None:
++            import PartViews
++
++            if "region" not in view_kw and "focus" not in view_kw:
++                # the same frame for every picture: the box the parts sweep (fitted to each
++                # picture, a moving piston stood still and the rest jumped)
++                swept = App.BoundBox()
++                for a in steps:
++                    pose(joint, a)
++                    swept.add(_visible_box(doc))
++                if swept.isValid():
++                    view_kw["region"] = (swept.XMin, swept.YMin, swept.ZMin, swept.XMax, swept.YMax, swept.ZMax)
++
++            def draw(path):
++                PartViews.render(doc, path, view=view, size="%dx%d" % tuple(size), **view_kw)
++
++        for i, a in enumerate(steps):
++            if not pose(joint, a):
++                failed.append(a)
++            draw(pattern % i)
++        written = encode(pattern, len(steps), out, fps)
++    finally:
++        if was_formula:
++            joint.setExpression("Angle", was_formula)
++        else:
++            joint.Angle = was
++        doc.recompute()
++        asm = assembly_of(joint)
++        if asm is not None:
++            asm.solve()
++        shutil.rmtree(tmp, ignore_errors=True)
++    return written, failed
+diff --git a/src/Mod/Unified/MotionVideoGui.py b/src/Mod/Unified/MotionVideoGui.py
+new file mode 100644
+index 000000000..4a48f7ae2
+--- /dev/null
++++ b/src/Mod/Unified/MotionVideoGui.py
+@@ -0,0 +1,150 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++""""Motion to Video": a revolute joint picked, it is turned from one angle to another and each
++step is taken from the 3D view as it is seen (direction, section, colours), then made an MP4
++(or a GIF without ffmpeg). The logic is in MotionVideo.py."""
++
++import os
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import MotionVideo
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def picked_joint():
++    sel = Gui.Selection.getSelection()
++    if len(sel) == 1 and getattr(sel[0], "JointType", "") == "Revolute":
++        return sel[0]
++    return None
++
++
++class MotionPanel:
++    def __init__(self, joint):
++        self.joint = joint
++        self.form = QtWidgets.QWidget()
++        self.form.setWindowTitle(translate("Unified_MotionVideo", "Motion to Video"))
++        lay = QtWidgets.QFormLayout(self.form)
++        lay.addRow(QtWidgets.QLabel(translate(
++            "Unified_MotionVideo",
++            "The joint “{}” is turned step by step; each step is taken from the 3D view as it is "
++            "seen now (turn and cut the view first).").format(joint.Label)))
++        def number(value, low, high, suffix="", decimals=0):
++            box = QtWidgets.QDoubleSpinBox()
++            box.setRange(low, high)
++            box.setDecimals(decimals)
++            box.setValue(value)
++            box.setSuffix(suffix)
++            return box
++        self.start = number(0, -36000, 36000, "°")
++        self.end = number(360, -36000, 36000, "°")
++        self.frames = number(72, 2, 3600)
++        self.fps = number(24, 1, 120)
++        lay.addRow(translate("Unified_MotionVideo", "From"), self.start)
++        lay.addRow(translate("Unified_MotionVideo", "To"), self.end)
++        lay.addRow(translate("Unified_MotionVideo", "Pictures"), self.frames)
++        lay.addRow(translate("Unified_MotionVideo", "Pictures a second"), self.fps)
++        row = QtWidgets.QHBoxLayout()
++        doc = joint.Document
++        folder = os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~")
++        self.path = QtWidgets.QLineEdit(os.path.join(folder, doc.Label + "_motion.mp4"))
++        browse = QtWidgets.QPushButton(translate("Unified_MotionVideo", "Choose…"))
++        browse.clicked.connect(self.choose)
++        row.addWidget(self.path)
++        row.addWidget(browse)
++        lay.addRow(translate("Unified_MotionVideo", "Save as"), row)
++        self.progress = QtWidgets.QProgressBar()
++        self.progress.setVisible(False)
++        lay.addRow(self.progress)
++
++    def choose(self):
++        path, _ = QtWidgets.QFileDialog.getSaveFileName(
++            Gui.getMainWindow(), translate("Unified_MotionVideo", "Save the video"), self.path.text(),
++            "MP4 (*.mp4);;GIF (*.gif)")  # fmt: skip
++        if path:
++            self.path.setText(path)
++
++    def accept(self):
++        view = Gui.ActiveDocument.ActiveView
++        widget = Gui.getMainWindow().centralWidget()
++        size = view.getSize() if hasattr(view, "getSize") else (800, 600)
++        w, h = int(size[0]) // 2 * 2, int(size[1]) // 2 * 2
++        count = int(self.frames.value())
++        self.progress.setRange(0, count)
++        self.progress.setVisible(True)
++        done = [0]
++
++        def draw(path):
++            QtWidgets.QApplication.processEvents()
++            view.saveImage(path, w, h, "Current")
++            done[0] += 1
++            self.progress.setValue(done[0])
++            QtWidgets.QApplication.processEvents()
++
++        joint = self.joint
++        # the joints' markers are not part of the picture
++        hidden = []
++        for o in joint.Document.Objects:
++            if o.isDerivedFrom("Assembly::JointGroup") and o.ViewObject and o.ViewObject.Visibility:
++                o.ViewObject.Visibility = False
++                hidden.append(o)
++        was_driven = bool(getattr(joint, "AngleDriven", False))
++        if not was_driven:
++            joint.AngleDriven = True
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++        try:
++            written, failed = MotionVideo.export(joint, self.path.text(), self.start.value(), self.end.value(),
++                                                 count, int(self.fps.value()), draw=draw)  # fmt: skip
++        except Exception as e:
++            QtWidgets.QApplication.restoreOverrideCursor()
++            QtWidgets.QMessageBox.warning(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"),
++                                          str(e))  # fmt: skip
++            return False
++        finally:
++            if not was_driven:
++                joint.AngleDriven = False
++            for o in hidden:
++                o.ViewObject.Visibility = True
++        QtWidgets.QApplication.restoreOverrideCursor()
++        text = translate("Unified_MotionVideo", "Written: {}").format(written)
++        if failed:
++            text += "\n" + translate(
++                "Unified_MotionVideo", "The joints did not hold at {} of the angles (e.g. {:g}°): the parts may jump there."
++            ).format(len(failed), failed[0])
++        QtWidgets.QMessageBox.information(Gui.getMainWindow(), translate("Unified_MotionVideo", "Motion to Video"), text)
++        Gui.Control.closeDialog()
++        return True
++
++    def reject(self):
++        Gui.Control.closeDialog()
++        return True
++
++
++class MotionVideoCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Assembly_CreateJointRevolute",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_MotionVideo", "Motion to Video"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_MotionVideo",
++                "Turn the picked revolute joint from one angle to another and save what the 3D view "
++                "shows as a video (MP4)",
++            ),
++        }
++
++    def IsActive(self):
++        return picked_joint() is not None and not Gui.Control.activeDialog()
++
++    def Activated(self):
++        joint = picked_joint()
++        if joint is not None:
++            Gui.Control.showDialog(MotionPanel(joint))
++
++
++Gui.addCommand("Unified_MotionVideo", MotionVideoCommand())
+diff --git a/src/Mod/Unified/TestMotionVideo.py b/src/Mod/Unified/TestMotionVideo.py
+new file mode 100644
+index 000000000..4ddf6be37
+--- /dev/null
++++ b/src/Mod/Unified/TestMotionVideo.py
+@@ -0,0 +1,47 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# A video of an assembly moving (MotionVideo.py), without the screen:
++#   FreeCADCmd -t TestMotionVideo
++
++import os
++import shutil
++import tempfile
++import unittest
++
++import FreeCAD as App
++
++import MotionVideo
++
++
++class MotionVideoTest(unittest.TestCase):
++    def test_angles(self):
++        self.assertEqual(MotionVideo.angles(0, 360, 4), [0, 90, 180, 270])  # a whole turn: 360 left out
++        self.assertEqual(MotionVideo.angles(0, 90, 4), [0, 30, 60, 90])
++
++    def test_crank(self):
++        import TestAssemblySolve
++
++        doc, sheet, asm, piston, r, L = TestAssemblySolve.build(revolute_drive=True)
++        tmp = tempfile.mkdtemp()
++        try:
++            asm.Type = "Assembly"
++            drive = doc.getObject("Drive")
++            out, failed = MotionVideo.export(drive, os.path.join(tmp, "crank.gif"), 0, 360, 8,
++                                             view="front", size=(160, 160))  # fmt: skip
++            self.assertEqual(failed, [])
++            self.assertTrue(out.endswith(".gif") and os.path.getsize(out) > 0)
++            from PIL import Image
++
++            self.assertEqual(Image.open(out).n_frames, 8)
++            # the formula of the angle is put back
++            self.assertIn("Params.theta", MotionVideo.formula(drive, "Angle"))
++            if MotionVideo.ffmpeg():
++                out, failed = MotionVideo.export(drive, os.path.join(tmp, "crank.mp4"), 0, 360, 8,
++                                                 view="front", size=(160, 160))  # fmt: skip
++                self.assertTrue(out.endswith(".mp4") and os.path.getsize(out) > 0)
++        finally:
++            App.closeDocument(doc.Name)
++            shutil.rmtree(tmp)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

@@ -1,0 +1,131 @@
+From e93a3f3df954de7692d942515c5cba877f1a6fe1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 21:48:43 +0900
+Subject: [PATCH 337/341] Unified: a formula can be kept in a task panel; the
+ bar's number is typed over; put part and grounding work on a reopened
+ assembly
+
+- The OK of a formula dialog over a task panel was hidden with the panel's
+  own buttons: a formula for a joint's angle could not be kept.
+- A click into the bar's number field selects it ("10 mm" then 60 made
+  "10 m60m" and a 70 m pad without a word); digits typed with the bar up
+  count as typed for its buttons.
+- "Put Part" and "Toggle grounded" did nothing in a reopened assembly
+  until it was double-clicked: they use the document's only assembly.
+(engine field test 0.7.6)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/CommandCreateJoint.py |  8 ++++----
+ src/Mod/Assembly/CommandInsertLink.py  |  4 +++-
+ src/Mod/Unified/Gui/ContextBar.cpp     |  2 ++
+ src/Mod/Unified/UnifiedChrome.py       | 10 ++++++++--
+ 4 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Assembly/CommandCreateJoint.py b/src/Mod/Assembly/CommandCreateJoint.py
+index f1cb9661b..283f9f4fa 100644
+--- a/src/Mod/Assembly/CommandCreateJoint.py
++++ b/src/Mod/Assembly/CommandCreateJoint.py
+@@ -403,7 +403,7 @@ class CommandGroupGearBelt:
+ 
+ 
+ def createJointRigidGroupJoint(objs):
+-    if not UtilsAssembly.activeAssembly():
++    if not UtilsAssembly.ensureActiveAssembly():
+         return None
+ 
+     if len(objs) < 2:
+@@ -427,7 +427,7 @@ def createJointRigidGroupJoint(objs):
+ 
+ 
+ def createGroundedJoint(obj):
+-    if not UtilsAssembly.activeAssembly():
++    if not UtilsAssembly.ensureActiveAssembly():
+         return
+ 
+     Gui.addModule("UtilsAssembly")
+@@ -470,13 +470,13 @@ class CommandToggleGrounded:
+         )
+ 
+     def Activated(self):
+-        assembly = UtilsAssembly.activeAssembly()
++        selection = Gui.Selection.getSelectionEx("*", 0)
++        assembly = UtilsAssembly.ensureActiveAssembly()
+         if not assembly:
+             return
+ 
+         joint_group = UtilsAssembly.getJointGroup(assembly)
+ 
+-        selection = Gui.Selection.getSelectionEx("*", 0)
+         if not selection:
+             return
+ 
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index a2b75ffe9..5e0400029 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -89,7 +89,9 @@ class CommandInsertLink:
+         return UtilsAssembly.isAssemblyCommandActive()
+ 
+     def Activated(self):
+-        assembly = UtilsAssembly.activeAssembly()
++        # the document's only assembly, also when it was not double-clicked first (a reopened
++        # assembly put no part in, without a word; engine field test 0.7.6)
++        assembly = UtilsAssembly.ensureActiveAssembly()
+         if not assembly:
+             return
+         view = Gui.activeDocument().activeView()
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index b8795a0c0..034755e7a 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -526,6 +526,7 @@ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+             }
+             field->setFocus();
+             field->setText(text);
++            field->setModified(true);  // typed: the tool's button uses it
+             return true;
+         }
+     }
+@@ -568,6 +569,7 @@ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+                 && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
+                 field->setFocus();
+                 field->setText(text);
++                field->setModified(true);  // typed: the tool's button uses it
+                 return true;
+             }
+             dismiss();
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index ffcfce407..1b92436d9 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -663,6 +663,9 @@ class KeyFilter(QtCore.QObject):
+             if spin is None and isinstance(obj, QtWidgets.QLineEdit) \
+                     and isinstance(obj.parent(), QtWidgets.QAbstractSpinBox):
+                 spin = obj.parent()
++            # the bar's number field too ("10 mm" then 60 typed made "10 m60m", 70 m; 0.7.6)
++            if spin is None and isinstance(obj, QtWidgets.QLineEdit) and obj.objectName() == "UnifiedContextField":
++                spin = obj
+             if spin is not None:
+                 if t == QtCore.QEvent.FocusIn:
+                     if event.reason() in (QtCore.Qt.MouseFocusReason, QtCore.Qt.ActiveWindowFocusReason):
+@@ -945,11 +948,14 @@ def task_buttons():
+ def hide_task_buttons():
+     for box in QtWidgets.QApplication.allWidgets():
+         if isinstance(box, QtWidgets.QDialogButtonBox) and box.isVisible():
+-            w, names = box, []
++            w, names, classes = box, [], []
+             while w is not None:
+                 names.append(w.objectName())
++                classes.append(w.metaObject().className())
+                 w = w.parentWidget()
+-            if "Tasks" in names:
++            # the task panel's own OK/Cancel (the band has them); not those of a dialog over it:
++            # a formula's OK was hidden and the formula could not be kept (engine field test 0.7.6)
++            if "Tasks" in names and not any("DlgExpressionInput" in c or c == "QDialog" for c in classes):
+                 box.hide()
+ 
+ 
+-- 
+2.43.0
+

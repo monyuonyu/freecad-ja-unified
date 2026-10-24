@@ -1,7 +1,7 @@
 From c6a7e31fcaaf2fc3d0c96a4ff40975927b06f377 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:43:25 +0900
-Subject: [PATCH 307/333] Unified: a copy of a part shares the tables it uses
+Subject: [PATCH 307/341] Unified: a copy of a part shares the tables it uses
 
 Copying a body or a part (Ctrl+drag, "move a copy") made a deep copy: the
 table of parameters it used was copied too, and the copy followed the new

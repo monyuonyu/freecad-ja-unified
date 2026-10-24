@@ -1,7 +1,7 @@
 From 69a6d1c4e78f998388f804fd879f214e62f5fe68 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:41:01 +0900
-Subject: [PATCH 251/333] Unified: a step in the same window, not another mode
+Subject: [PATCH 251/341] Unified: a step in the same window, not another mode
  (sketch, tool panels)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

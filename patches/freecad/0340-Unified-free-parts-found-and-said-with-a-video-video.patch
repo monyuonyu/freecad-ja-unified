@@ -1,0 +1,286 @@
+From 58dece3e8b8a7d0da9cb0f925c40e85649becd4d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 22:00:39 +0900
+Subject: [PATCH 340/341] Unified: free parts found and said with a video;
+ videos past 360 degrees; parts named by their file; the bar for a joint
+ picked in the tree
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- AssemblyCopies.free_parts(assembly): each part nudged one way at a time
+  and the assembly solved again; a part that stays moved is free (no joint
+  holds it). Motion to Video says which parts are free (they stand still
+  or jump in the video).
+- A video's angle is given within one turn: the joint's angle stops at
+  +-360 degrees and a 0-720 degree video stood still past 360.
+- A part of another file put into an assembly is called by its file's
+  name when its body has the default name (部品004 ... 部品014 said
+  nothing).
+- A joint picked in the tree gets the bar (Video was found only by
+  searching).
+(engine field test 0.7.6)
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestMotionVideo
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/CommandInsertLink.py         |  7 ++-
+ src/Mod/Unified/AssemblyCopies.py             | 52 ++++++++++++++++
+ src/Mod/Unified/Gui/ContextBar.cpp            |  6 +-
+ .../Gui/Resources/translations/Unified_ja.ts  |  7 +++
+ src/Mod/Unified/MotionVideo.py                |  5 +-
+ src/Mod/Unified/MotionVideoGui.py             | 16 +++++
+ src/Mod/Unified/TestAssemblySolve.py          | 61 +++++++++++++++++++
+ 7 files changed, 151 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index 5e0400029..899a0debe 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -455,7 +455,12 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+ 
+         if not copyInstead:
+             addedObject.LinkedObject = selectedPart
+-        addedObject.Label = selectedPart.Label  # non-ASCII characters fails with newObject. #12164
++        # A part of another file is called by its file's name (each part file's body is called
++        # "部品" / "Body": the engine's parts were 部品004 ... 部品014; engine field test 0.7.6)
++        if selectedPart.Document != self.doc and selectedPart.Label in ("Body", "部品", "Part", "パーツ"):
++            addedObject.Label = selectedPart.Document.Label
++        else:
++            addedObject.Label = selectedPart.Label  # non-ASCII characters fails with newObject. #12164
+         addedObject.recompute()
+ 
+         insertionDict = {}
+diff --git a/src/Mod/Unified/AssemblyCopies.py b/src/Mod/Unified/AssemblyCopies.py
+index 239f6ce0e..ec30f3900 100644
+--- a/src/Mod/Unified/AssemblyCopies.py
++++ b/src/Mod/Unified/AssemblyCopies.py
+@@ -8,6 +8,8 @@ four corners" had no way: Ctrl+C / Ctrl+V did nothing, the pattern made one row)
+ App side only ("FreeCADCmd -t TestAssemblyCopies"); the keys and the panel: AssemblyCopiesGui.py.
+ """
+ 
++import math
++
+ import FreeCAD as App
+ 
+ translate = App.Qt.translate
+@@ -135,3 +137,53 @@ def joint_to_ground(assembly, part, sub, kind, label):
+         JointObject.ViewProviderJoint(joint.ViewObject)
+     assembly.Document.recompute()
+     return joint
++
++
++def free_parts(assembly, turn=5.0, shift=1.0):
++    """The parts of the assembly that its joints leave free to move (a cylinder joined to its
++    piston only by a cylindrical joint, not fixed to the ground: it may turn about the piston, and
++    a solve then took another pose without a word; engine field test 0.7.6).
++    Each part is nudged, one way at a time (turned a little about x, y, z, shifted along them),
++    and the assembly solved again: a part the joints hold comes back (or cannot be solved
++    there), a free one stays moved. The parts are put back. [(part, how far)]."""
++    parts = [o for o in assembly.Group if hasattr(o, "Placement") and hasattr(o, "Shape")
++             and not o.isDerivedFrom("Assembly::JointGroup")]  # fmt: skip
++    grounded = set()
++    for o in assembly.OutListRecursive:
++        target = getattr(o, "ObjectToGround", None)
++        if target is not None:
++            grounded.add(target.Name)
++    if assembly.solve() != 0:
++        return []
++    start = {p.Name: App.Placement(p.Placement) for p in parts}
++    axes = (App.Vector(1, 0, 0), App.Vector(0, 1, 0), App.Vector(0, 0, 1))
++    nudges = [App.Rotation(a, turn) for a in axes] + [a * shift for a in axes]
++    free = []
++    for part in parts:
++        if part.Name in grounded:
++            continue
++        try:
++            centre = part.Shape.BoundBox.Center
++            size = max(1.0, part.Shape.BoundBox.DiagonalLength)
++        except Exception:
++            continue
++        moved = 0.0
++        for n in nudges:
++            if isinstance(n, App.Rotation):
++                nudge = App.Placement(App.Vector(), n, centre)
++            else:
++                nudge = App.Placement(n, App.Rotation())
++            part.Placement = nudge.multiply(start[part.Name])
++            if assembly.solve() == 0:
++                now, was = part.Placement, start[part.Name]
++                # how far it stayed: shift against its size, turn in radians
++                moved = max((now.Base - was.Base).Length / size, (was.Rotation.inverted() * now.Rotation).Angle)
++            for p in parts:
++                if not p.Placement.isSame(start[p.Name], 1e-12):
++                    p.Placement = start[p.Name]
++            assembly.solve()
++            if moved > 1e-3:
++                break
++        if moved > 1e-3:
++            free.append((part, moved))
++    return free
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 034755e7a..00e9ba8f1 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -344,7 +344,11 @@ void ContextBar::refresh()
+     // Only for picks in the 3D view (or right after closing a sketch), and not while a tool
+     // is running or something is edited
+     // On a drawing page, picks carry no picked point: every pick there is in the view
+-    bool inView = anchored || pickedInView || isPage;
++    // a joint picked in the tree too: its markers are small in the view, and its tools ("Video")
++    // were only found by searching (engine field test 0.7.6)
++    bool jointPicked = selection.size() == 1 && selection.front().getObject()
++        && selection.front().getObject()->getPropertyByName("JointType");
++    bool inView = anchored || pickedInView || isPage || jointPicked;
+     bool usable = view && inView && !Gui::Control().activeDialog() && !editingSomething();
+     std::vector<Action> actions = usable ? actionsForSelection() : std::vector<Action> {};
+     if (!actions.empty()) {
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 3194a1112..6ddaf36ed 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1239,4 +1239,11 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>動画: {} / {} コマ</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_MotionVideo</name>
++    <message>
++        <source>Not held by any joint, free to move: {}. They stand still or jump in the video; join them (or make them not move).</source>
++        <translation>ジョイントで決まっておらず、自由に動ける部品: {}。動画では止まって見えるか、飛んで見えます。ジョイントでつなぐか、「動かない」にしてください。</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/MotionVideo.py b/src/Mod/Unified/MotionVideo.py
+index a57a3f75d..23dd25f85 100644
+--- a/src/Mod/Unified/MotionVideo.py
++++ b/src/Mod/Unified/MotionVideo.py
+@@ -9,6 +9,7 @@ Without the screen the pictures are drawn by Part.renderImage (view, size, secti
+ on the screen the command "Motion to Video" takes them from the 3D view as it is seen.
+ """
+ 
++import math
+ import os
+ import shutil
+ import subprocess
+@@ -49,7 +50,9 @@ def pose(joint, angle):
+     """Turn the joint to the angle and solve its assembly. False if it does not hold there."""
+     if formula(joint, "Angle"):
+         joint.setExpression("Angle", None)
+-    joint.Angle = angle
++    # the angle property stops at +-360 degrees; a turned joint is the same a whole turn on
++    # (a 0 to 720 degree video stood still past 360; gears keep their timing over whole turns)
++    joint.Angle = math.fmod(angle, 360.0)
+     asm = assembly_of(joint)
+     doc = joint.Document
+     doc.recompute()
+diff --git a/src/Mod/Unified/MotionVideoGui.py b/src/Mod/Unified/MotionVideoGui.py
+index b85586df9..d0f3dc200 100644
+--- a/src/Mod/Unified/MotionVideoGui.py
++++ b/src/Mod/Unified/MotionVideoGui.py
+@@ -123,6 +123,16 @@ def record(joint, path, start, end, frames, fps):
+     if not was_driven:
+         joint.AngleDriven = True
+     QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++    # parts the joints leave free stand still or jump in the video: said with the result
++    free = []
++    asm = MotionVideo.assembly_of(joint)
++    if asm is not None:
++        import AssemblyCopies
++
++        try:
++            free = [p.Label for p, _ in AssemblyCopies.free_parts(asm)]
++        except Exception:
++            free = []
+     try:
+         written, failed = MotionVideo.export(joint, path, start, end, frames, fps, draw=draw)
+     except Exception as e:
+@@ -139,6 +149,12 @@ def record(joint, path, start, end, frames, fps):
+         bar.clearMessage()
+     QtWidgets.QApplication.restoreOverrideCursor()
+     text = translate("Unified_MotionVideo", "Written: {}").format(written)
++    if free:
++        text += "\n" + translate(
++            "Unified_MotionVideo",
++            "Not held by any joint, free to move: {}. They stand still or jump in the video; join them "
++            "(or make them not move)."
++        ).format(", ".join(free[:8]) + (" …" if len(free) > 8 else ""))
+     if failed:
+         text += "\n" + translate(
+             "Unified_MotionVideo", "The joints did not hold at {} of the angles (e.g. {:g}°): the parts may jump there."
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index c0eadb1a1..6f5f53887 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -161,6 +161,67 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_belt_keeps_its_timing(self):
++        # 14/28 teeth: the second wheel turns half as far over a whole turn of the first, and a
++        # nudge of it does not change its timing (engine field test 0.7.6: half a turn off)
++        import AssemblyCopies
++        import JointObject
++
++        V, P = App.Vector, App.Placement
++        doc = App.newDocument("timing")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            base = asm.newObject("Part::Box", "Base")
++            w1 = asm.newObject("Part::Cylinder", "W1")
++            w2 = asm.newObject("Part::Cylinder", "W2")
++            w2.Placement = P(V(100, 0, 0), App.Rotation())
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), base)
++            def joint(kind, name, a, pa, b, pb):
++                j = jg.newObject("App::FeaturePython", name)
++                JointObject.Joint(j, JointObject.JointTypes.index(kind))
++                j.Detach1 = True; j.Detach2 = True
++                j.Reference1 = (a, ["", ""]); j.Reference2 = (b, ["", ""])
++                j.Placement1 = pa; j.Placement2 = pb
++                return j
++            drive = joint("Revolute", "Drive", base, P(), w1, P())
++            drive.AngleDriven = True
++            joint("Revolute", "Axle2", base, P(V(100, 0, 0), App.Rotation()), w2, P())
++            belt = joint("Belt", "Chain", w1, P(), w2, P())
++            belt.Distance = 12; belt.Distance2 = 24; belt.Teeth1 = 14; belt.Teeth2 = 28
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            def turned(o):
++                r = o.Placement.Rotation
++                return math.degrees(r.Angle) * (1 if r.Axis.z >= 0 else -1) % 360
++            for t in range(0, 360, 30):
++                drive.Angle = t
++                doc.recompute()
++                self.assertEqual(asm.solve(), 0)
++                self.assertAlmostEqual(turned(w2), t / 2.0, places=4, msg="crank {}".format(t))
++            w2.Placement = P(w2.Placement.Base, App.Rotation(V(0, 0, 1), 20).multiply(w2.Placement.Rotation))
++            self.assertEqual(asm.solve(), 0)
++            self.assertAlmostEqual(turned(w2), 330 / 2.0, places=4)
++            self.assertEqual(AssemblyCopies.free_parts(asm), [])
++        finally:
++            App.closeDocument(doc.Name)
++
++    def test_free_parts(self):
++        # a part with no joint is free; the parts of a driven crank are not
++        import AssemblyCopies
++
++        doc, sheet, asm, piston, r, L = build(revolute_drive=True)
++        try:
++            asm.Type = "Assembly"
++            self.assertEqual(AssemblyCopies.free_parts(asm), [])
++            loose = asm.newObject("Part::Box", "Loose")
++            doc.recompute()
++            self.assertEqual([p.Name for p, m in AssemblyCopies.free_parts(asm)], ["Loose"])
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_parts_put_beside_each_other(self):
+         # each part put in goes to the right of the others, not on top of them
+         import UtilsAssembly
+-- 
+2.43.0
+

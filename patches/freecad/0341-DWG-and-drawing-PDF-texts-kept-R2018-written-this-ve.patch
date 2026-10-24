@@ -1,0 +1,1753 @@
+From 474d2f54fe0fb53d58495e6f770da20e77b70c05 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 22:07:49 +0900
+Subject: [PATCH 341/341] DWG and drawing PDF: texts kept, R2018 written, this
+ version's converter, pages without a sheet
+
+From the company's test of 0.7.6:
+- A DWG written from a drawing lost every text: the DXF writer left out
+  Draft texts. They are written as TEXT (one per line, the Draft text
+  height). DWG is written as R2018 (dxf2dwg wrote the DXF's own version,
+  R14; preference Mod/Draft DWGExportVersion).
+- The converter that comes with this FreeCAD is used first; a path left in
+  the settings by another version's bundle is replaced at start (an
+  update kept using the old dxf2dwg).
+- Texts and dimensions of DWG/DXF are read by default (Mod/Draft dxftext;
+  a choice made in the preferences stays).
+- A drawing page without its sheet (no template, or one without a file)
+  is left out of --export-drawings with a warning; it stopped the export,
+  or gave a blank PDF. A page without a template has an A4 landscape's
+  size (asked for its size, it threw and the file did not open).
+
+Tests: FreeCADCmd -t TestUnifiedFiles (DWG text round trip with a
+converter), -t TestDrawingPdf, -t TestTechDrawApp
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Draft/importDWG.py          |   13 +-
+ src/Mod/Import/App/AppImportPy.cpp  | 1482 ++++++++++++++-------------
+ src/Mod/TechDraw/App/DrawPage.cpp   |   14 +-
+ src/Mod/Unified/DrawingPdf.py       |   21 +-
+ src/Mod/Unified/Init.py             |   25 +-
+ src/Mod/Unified/TestDrawingPdf.py   |   10 +
+ src/Mod/Unified/TestUnifiedFiles.py |   36 +
+ 7 files changed, 865 insertions(+), 736 deletions(-)
+
+diff --git a/src/Mod/Draft/importDWG.py b/src/Mod/Draft/importDWG.py
+index 8ceba7eaf..5c5ca1135 100644
+--- a/src/Mod/Draft/importDWG.py
++++ b/src/Mod/Draft/importDWG.py
+@@ -157,6 +157,13 @@ def get_libredwg_converter(typ):
+     import os
+     import platform
+ 
++    # The converter that comes with this FreeCAD first: a path kept in the settings of an older
++    # version pointed at that version's converter after an update (company test 0.7.6)
++    for name in (typ + ".exe", typ):
++        bundled = os.path.join(FreeCAD.getHomePath(), "bin", name)
++        if os.path.isfile(bundled):
++            return bundled
++
+     path = params.get_param("TeighaFileConverter")
+ 
+     if "dwg2dxf" in path or "dxf2dwg" in path:  # path set manually
+@@ -384,7 +391,11 @@ def convertToDwg(dxffilename, dwgfilename):
+     if conv in [0, 1]:  # LibreDWG
+         libredwg = get_libredwg_converter("dxf2dwg")
+         if libredwg is not None:
+-            cmdline = [libredwg, dxffilename, "-y", "-o", dwgfilename]
++            # The version to write (dxf2dwg wrote the DXF's own, R14; company test 0.7.6)
++            version = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetString(
++                "DWGExportVersion", "r2018"
++            )
++            cmdline = [libredwg, dxffilename, "-y", "--as", version, "-o", dwgfilename]
+             FCC.PrintMessage(translate("draft", "Converting:") + " " + str(cmdline) + "\n")
+             proc = subprocess.Popen(cmdline)
+             proc.communicate()
+diff --git a/src/Mod/Import/App/AppImportPy.cpp b/src/Mod/Import/App/AppImportPy.cpp
+index ed1be0e5c..1a37d1acd 100644
+--- a/src/Mod/Import/App/AppImportPy.cpp
++++ b/src/Mod/Import/App/AppImportPy.cpp
+@@ -1,726 +1,756 @@
+-// SPDX-License-Identifier: LGPL-2.1-or-later
+-
+-/***************************************************************************
+- *   Copyright (c) 2013 Werner Mayer <wmayer[at]users.sourceforge.net>     *
+- *                                                                         *
+- *   This file is part of the FreeCAD CAx development system.              *
+- *                                                                         *
+- *   This library is free software; you can redistribute it and/or         *
+- *   modify it under the terms of the GNU Library General Public           *
+- *   License as published by the Free Software Foundation; either          *
+- *   version 2 of the License, or (at your option) any later version.      *
+- *                                                                         *
+- *   This library  is distributed in the hope that it will be useful,      *
+- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+- *   GNU Library General Public License for more details.                  *
+- *                                                                         *
+- *   You should have received a copy of the GNU Library General Public     *
+- *   License along with this library; see the file COPYING.LIB. If not,    *
+- *   write to the Free Software Foundation, Inc., 59 Temple Place,         *
+- *   Suite 330, Boston, MA  02111-1307, USA                                *
+- *                                                                         *
+- ***************************************************************************/
+-
+-#if defined(__MINGW32__)
+-# define WNT  // avoid conflict with GUID
+-#endif
+-
+-#include <boost/algorithm/string/predicate.hpp>
+-#include <boost/range/adaptor/indexed.hpp>
+-#if defined(__clang__)
+-# pragma clang diagnostic push
+-# pragma clang diagnostic ignored "-Wextra-semi"
+-#endif
+-#include <Interface_Static.hxx>
+-#include <OSD_Exception.hxx>
+-#include <Standard_Version.hxx>
+-#include <TColStd_IndexedDataMapOfStringString.hxx>
+-#include <TDocStd_Document.hxx>
+-#include <Transfer_TransientProcess.hxx>
+-#include <XCAFApp_Application.hxx>
+-#include <XCAFDoc_DocumentTool.hxx>
+-#include <XSControl_TransferReader.hxx>
+-#include <XSControl_WorkSession.hxx>
+-#include <Message_ProgressRange.hxx>
+-
+-#if defined(__clang__)
+-# pragma clang diagnostic pop
+-#endif
+-
+-#include <chrono>
+-#include "dxf/ImpExpDxf.h"
+-#include "SketchExportHelper.h"
+-#include <App/Application.h>
+-#include <App/Document.h>
+-#include <App/Link.h>
+-#include <App/DocumentObjectPy.h>
+-#include <Base/Console.h>
+-#include <Base/PyWrapParseTupleAndKeywords.h>
+-#include <Mod/Part/App/ImportIges.h>
+-#include <Mod/Part/App/ImportStep.h>
+-#include <Mod/Part/App/Interface.h>
+-#include <Mod/Part/App/OCAF/ImportExportSettings.h>
+-#include <Mod/Part/App/PartFeature.h>
+-#include <Mod/Part/App/PartFeaturePy.h>
+-#include <Mod/Part/App/TopoShapePy.h>
+-#include <Mod/Part/App/encodeFilename.h>
+-
+-#include "ImportOCAF2.h"
+-#include "ReaderGltf.h"
+-#include "ReaderIges.h"
+-#include "ReaderStep.h"
+-#include "WriterGltf.h"
+-#include "WriterIges.h"
+-#include "WriterStep.h"
+-
+-namespace Import
+-{
+-
+-namespace
+-{
+-// Shape written to DXF for one object: sketches flattened onto XY, Part features and links with
+-// their placement. Null for anything else.
+-TopoDS_Shape shapeForDxf(App::DocumentObject* obj)
+-{
+-    if (SketchExportHelper::isSketch(obj)) {
+-        // project sketch along sketch Z via hlrProjector to get geometry on XY plane
+-        return SketchExportHelper::getFlatSketchXY(obj);
+-    }
+-    // not groups and other containers: their children are in the list on their own
+-    if (!obj->isDerivedFrom<Part::Feature>() && !obj->isDerivedFrom<App::Link>()) {
+-        return {};
+-    }
+-    return Part::Feature::getShape(
+-        obj,
+-        Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform
+-    );
+-}
+-}  // namespace
+-
+-
+-class Module: public Py::ExtensionModule<Module>
+-{
+-public:
+-    Module()
+-        : Py::ExtensionModule<Module>("Import")
+-    {
+-        add_keyword_method(
+-            "open",
+-            &Module::importer,
+-            "open(string) -- Open the file and create a new document."
+-        );
+-        add_keyword_method(
+-            "insert",
+-            &Module::importer,
+-            "insert(string,string) -- Insert the file into the given document."
+-        );
+-        add_keyword_method(
+-            "export",
+-            &Module::exporter,
+-            "export(list,string) -- Export a list of objects into a single file."
+-        );
+-        add_varargs_method(
+-            "readDXF",
+-            &Module::readDXF,
+-            "readDXF(filename,[document,ignore_errors,option_source]): Imports a "
+-            "DXF file into the given document. ignore_errors is True by default."
+-        );
+-        add_varargs_method(
+-            "writeDXFShape",
+-            &Module::writeDXFShape,
+-            "writeDXFShape([shape],filename [version,usePolyline,optionSource]): "
+-            "Exports Shape(s) to a DXF file."
+-        );
+-        add_varargs_method(
+-            "writeDXFObject",
+-            &Module::writeDXFObject,
+-            "writeDXFObject([objects],filename [,version,usePolyline,optionSource]): Exports "
+-            "DocumentObject(s) to a DXF file."
+-        );
+-        initialize("This module is the Import module.");  // register with Python
+-    }
+-
+-    ~Module() override = default;
+-
+-private:
+-    Py::Object importer(const Py::Tuple& args, const Py::Dict& kwds)
+-    {
+-        char* Name = nullptr;
+-        char* DocName = nullptr;
+-        PyObject* importHidden = Py_None;
+-        PyObject* merge = Py_None;
+-        PyObject* useLinkGroup = Py_None;
+-        int mode = -1;
+-        static const std::array<const char*, 7>
+-            kwd_list {"name", "docName", "importHidden", "merge", "useLinkGroup", "mode", nullptr};
+-        if (!Base::Wrapped_ParseTupleAndKeywords(
+-                args.ptr(),
+-                kwds.ptr(),
+-                "et|sO!O!O!i",
+-                kwd_list,
+-                "utf-8",
+-                &Name,
+-                &DocName,
+-                &PyBool_Type,
+-                &importHidden,
+-                &PyBool_Type,
+-                &merge,
+-                &PyBool_Type,
+-                &useLinkGroup,
+-                &mode
+-            )) {
+-            throw Py::Exception();
+-        }
+-
+-        std::string Utf8Name = std::string(Name);
+-        PyMem_Free(Name);
+-
+-        try {
+-            Base::FileInfo file(Utf8Name.c_str());
+-
+-            App::Document* pcDoc = nullptr;
+-            if (DocName) {
+-                pcDoc = App::GetApplication().getDocument(DocName);
+-            }
+-            if (!pcDoc) {
+-                // Named after the file, as a document opened from a FreeCAD file is
+-                pcDoc = App::GetApplication().newDocument("Unnamed", file.fileNamePure().c_str());
+-            }
+-
+-            Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
+-            Handle(TDocStd_Document) hDoc;
+-            hApp->NewDocument(TCollection_ExtendedString("MDTV-CAF"), hDoc);
+-
+-            if (file.hasExtension({"stp", "step"})) {
+-                try {
+-                    Import::ReaderStep reader(file);
+-                    reader.read(hDoc);
+-                }
+-                catch (OSD_Exception& e) {
+-                    Base::Console().error("{}\n", e.GetMessageString());
+-                    Base::Console().message("Try to load STEP file without colors...\n");
+-
+-                    Part::ImportStepParts(pcDoc, Utf8Name.c_str());
+-                    pcDoc->recompute();
+-                }
+-            }
+-            else if (file.hasExtension({"igs", "iges"})) {
+-                try {
+-                    Import::ReaderIges reader(file);
+-                    reader.read(hDoc);
+-                }
+-                catch (OSD_Exception& e) {
+-                    Base::Console().error("{}\n", e.GetMessageString());
+-                    Base::Console().message("Try to load IGES file without colors...\n");
+-
+-                    Part::ImportIgesParts(pcDoc, Utf8Name.c_str());
+-                    pcDoc->recompute();
+-                }
+-            }
+-            else if (file.hasExtension({"glb", "gltf"})) {
+-                Import::ReaderGltf reader(file);
+-                reader.read(hDoc);
+-            }
+-            else {
+-                throw Py::Exception(PyExc_IOError, "no supported file format");
+-            }
+-
+-            ImportOCAFExt ocaf(hDoc, pcDoc, file.fileNamePure());
+-            ocaf.setImportOptions(ImportOCAFExt::customImportOptions());
+-            if (merge != Py_None) {
+-                ocaf.setMerge(Base::asBoolean(merge));
+-            }
+-            if (importHidden != Py_None) {
+-                ocaf.setImportHiddenObject(Base::asBoolean(importHidden));
+-            }
+-            if (useLinkGroup != Py_None) {
+-                ocaf.setUseLinkGroup(Base::asBoolean(useLinkGroup));
+-            }
+-            if (mode >= 0) {
+-                ocaf.setMode(mode);
+-            }
+-            ocaf.loadShapes();
+-
+-            hApp->Close(hDoc);
+-
+-            if (!ocaf.partColors.empty()) {
+-                Py::List list;
+-                for (auto& it : ocaf.partColors) {
+-                    Py::Tuple tuple(2);
+-                    tuple.setItem(0, Py::asObject(it.first->getPyObject()));
+-
+-                    App::PropertyColorList colors;
+-                    colors.setValues(it.second);
+-                    tuple.setItem(1, Py::asObject(colors.getPyObject()));
+-
+-                    list.append(tuple);
+-                }
+-
+-                return list;  // NOLINT
+-            }
+-        }
+-        catch (Standard_Failure& e) {
+-            throw Py::Exception(Base::PyExc_FC_GeneralError, e.GetMessageString());
+-        }
+-        catch (const Base::Exception& e) {
+-            e.setPyException();
+-            throw Py::Exception();
+-        }
+-
+-        return Py::None();
+-    }
+-    Py::Object exporter(const Py::Tuple& args, const Py::Dict& kwds)
+-    {
+-        PyObject* object = nullptr;
+-        char* Name = nullptr;
+-        PyObject* pyexportHidden = Py_None;
+-        PyObject* pylegacy = Py_None;
+-        PyObject* pykeepPlacement = Py_None;
+-        static const std::array<const char*, 6>
+-            kwd_list {"obj", "name", "exportHidden", "legacy", "keepPlacement", nullptr};
+-        if (!Base::Wrapped_ParseTupleAndKeywords(
+-                args.ptr(),
+-                kwds.ptr(),
+-                "Oet|O!O!O!",
+-                kwd_list,
+-                &object,
+-                "utf-8",
+-                &Name,
+-                &PyBool_Type,
+-                &pyexportHidden,
+-                &PyBool_Type,
+-                &pylegacy,
+-                &PyBool_Type,
+-                &pykeepPlacement
+-            )) {
+-            throw Py::Exception();
+-        }
+-
+-        std::string Utf8Name = std::string(Name);
+-        PyMem_Free(Name);
+-
+-        // clang-format off
+-        // determine export options
+-        Part::OCAF::ImportExportSettings settings;
+-
+-        bool legacyExport = (pylegacy         == Py_None ? settings.getExportLegacy()
+-                                                         : Base::asBoolean(pylegacy));
+-        bool exportHidden = (pyexportHidden   == Py_None ? settings.getExportHiddenObject()
+-                                                         : Base::asBoolean(pyexportHidden));
+-        bool keepPlacement = (pykeepPlacement == Py_None ? settings.getExportKeepPlacement()
+-                                                         : Base::asBoolean(pykeepPlacement));
+-        // clang-format on
+-
+-        try {
+-            Py::Sequence list(object);
+-            std::vector<App::DocumentObject*> objs;
+-            std::map<Part::Feature*, std::vector<Base::Color>> partColor;
+-            for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
+-                PyObject* item = (*it).ptr();
+-                if (PyObject_TypeCheck(item, &(App::DocumentObjectPy::Type))) {
+-                    auto pydoc = static_cast<App::DocumentObjectPy*>(item);
+-                    objs.push_back(pydoc->getDocumentObjectPtr());
+-                }
+-                else if (PyTuple_Check(item) && PyTuple_Size(item) == 2) {
+-                    Py::Tuple tuple(*it);
+-                    Py::Object item0 = tuple.getItem(0);
+-                    Py::Object item1 = tuple.getItem(1);
+-                    if (PyObject_TypeCheck(item0.ptr(), &(App::DocumentObjectPy::Type))) {
+-                        auto pydoc = static_cast<App::DocumentObjectPy*>(item0.ptr());
+-                        App::DocumentObject* obj = pydoc->getDocumentObjectPtr();
+-                        objs.push_back(obj);
+-                        if (Part::Feature* part = dynamic_cast<Part::Feature*>(obj)) {
+-                            App::PropertyColorList colors;
+-                            colors.setPyObject(item1.ptr());
+-                            partColor[part] = colors.getValues();
+-                        }
+-                    }
+-                }
+-            }
+-
+-            Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
+-            Handle(TDocStd_Document) hDoc;
+-            hApp->NewDocument(TCollection_ExtendedString("MDTV-CAF"), hDoc);
+-
+-            auto getShapeColors = [partColor](App::DocumentObject* obj, const char* subname) {
+-                std::map<std::string, Base::Color> cols;
+-                auto it = partColor.find(dynamic_cast<Part::Feature*>(obj));
+-                if (it != partColor.end() && boost::starts_with(subname, "Face")) {
+-                    const auto& colors = it->second;
+-                    std::string face("Face");
+-                    for (const auto& element : colors | boost::adaptors::indexed(1)) {
+-                        cols[face + std::to_string(element.index())] = element.value();
+-                    }
+-                }
+-                return cols;
+-            };
+-
+-            Import::ExportOCAF2 ocaf(hDoc, getShapeColors);
+-            if (!legacyExport || !ocaf.canFallback(objs)) {
+-                ocaf.setExportOptions(ExportOCAF2::customExportOptions());
+-                ocaf.setExportHiddenObject(exportHidden);
+-                ocaf.setKeepPlacement(keepPlacement);
+-
+-                ocaf.exportObjects(objs);
+-            }
+-            else {
+-                bool keepExplicitPlacement = true;
+-                ExportOCAFCmd ocaf(hDoc, keepExplicitPlacement);
+-                ocaf.setPartColorsMap(partColor);
+-                ocaf.exportObjects(objs);
+-            }
+-
+-            Base::FileInfo file(Utf8Name.c_str());
+-            if (file.hasExtension({"stp", "step"})) {
+-                Import::WriterStep writer(file);
+-                writer.write(hDoc);
+-            }
+-            else if (file.hasExtension({"igs", "iges"})) {
+-                Import::WriterIges writer(file);
+-                writer.write(hDoc);
+-            }
+-            else if (file.hasExtension({"glb", "gltf"})) {
+-                Import::WriterGltf writer(file);
+-                writer.write(hDoc);
+-            }
+-
+-            hApp->Close(hDoc);
+-        }
+-        catch (Standard_Failure& e) {
+-            throw Py::Exception(Base::PyExc_FC_GeneralError, e.GetMessageString());
+-        }
+-        catch (const Base::Exception& e) {
+-            e.setPyException();
+-            throw Py::Exception();
+-        }
+-
+-        return Py::None();
+-    }
+-
+-    // This readDXF method is an almost exact duplicate of the one in ImportGui::Module.
+-    // The only difference is the CDxfRead class derivation that is created.
+-    // It would seem desirable to have most of this code in just one place, passing it
+-    // e.g. a pointer to a function that does the 4 lines during the lifetime of the
+-    // CDxfRead object, but right now Import::Module and ImportGui::Module cannot see
+-    // each other's functions so this shared code would need some place to live where
+-    // both places could include a declaration.
+-    Py::Object readDXF(const Py::Tuple& args)
+-    {
+-        char* Name = nullptr;
+-        const char* DocName = nullptr;
+-        const char* optionSource = nullptr;
+-        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
+-        bool IgnoreErrors = true;
+-        if (
+-            !PyArg_ParseTuple(args.ptr(), "et|sbs", "utf-8", &Name, &DocName, &IgnoreErrors, &optionSource)
+-        ) {
+-            throw Py::Exception();
+-        }
+-
+-        std::string EncodedName = std::string(Name);
+-        PyMem_Free(Name);
+-
+-        Base::FileInfo file(EncodedName.c_str());
+-        if (!file.exists()) {
+-            throw Py::RuntimeError("File doesn't exist");
+-        }
+-
+-        if (optionSource) {
+-            defaultOptions = optionSource;
+-        }
+-
+-        App::Document* pcDoc = nullptr;
+-        if (DocName) {
+-            pcDoc = App::GetApplication().getDocument(DocName);
+-        }
+-        else {
+-            pcDoc = App::GetApplication().getActiveDocument();
+-        }
+-        if (!pcDoc) {
+-            pcDoc = App::GetApplication().newDocument(DocName);
+-        }
+-
+-        try {
+-            // read the DXF file
+-            ImpExpDxfRead dxf_file(EncodedName, pcDoc);
+-            dxf_file.setOptionSource(defaultOptions);
+-            dxf_file.setOptions();
+-
+-            auto startTime = std::chrono::high_resolution_clock::now();
+-            dxf_file.DoRead(IgnoreErrors);
+-            auto endTime = std::chrono::high_resolution_clock::now();
+-            std::chrono::duration<double> elapsed = endTime - startTime;
+-            dxf_file.setImportTime(elapsed.count());
+-
+-            pcDoc->recompute();
+-            return dxf_file.getStatsAsPyObject();
+-        }
+-        catch (const Standard_Failure& e) {
+-            throw Py::RuntimeError(e.GetMessageString());
+-        }
+-        catch (const Base::Exception& e) {
+-            throw Py::RuntimeError(e.what());
+-        }
+-    }
+-
+-
+-    Py::Object writeDXFShape(const Py::Tuple& args)
+-    {
+-        Base::Console().message("Imp:writeDXFShape()\n");
+-        PyObject* shapeObj = nullptr;
+-        char* fname = nullptr;
+-        std::string filePath;
+-        std::string layerName;
+-        const char* optionSource = nullptr;
+-        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
+-        int versionParm = -1;
+-        bool versionOverride = false;
+-        bool polyOverride = false;
+-        PyObject* usePolyline = Py_False;
+-
+-        // handle list of shapes
+-        if (PyArg_ParseTuple(
+-                args.ptr(),
+-                "O!et|iOs",
+-                &(PyList_Type),
+-                &shapeObj,
+-                "utf-8",
+-                &fname,
+-                &versionParm,
+-                &usePolyline,
+-                &optionSource
+-            )) {
+-            filePath = std::string(fname);
+-            layerName = "none";
+-            PyMem_Free(fname);
+-
+-            if ((versionParm == 12) || (versionParm == 14)) {
+-                versionOverride = true;
+-            }
+-            if (usePolyline == Py_True) {
+-                polyOverride = true;
+-            }
+-            if (optionSource) {
+-                defaultOptions = optionSource;
+-            }
+-
+-            try {
+-                ImpExpDxfWrite writer(filePath);
+-                writer.setOptionSource(defaultOptions);
+-                writer.setOptions();
+-                if (versionOverride) {
+-                    writer.setVersion(versionParm);
+-                }
+-                writer.setPolyOverride(polyOverride);
+-                writer.setLayerName(layerName);
+-                writer.init();
+-                Py::Sequence list(shapeObj);
+-                for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
+-                    if (PyObject_TypeCheck((*it).ptr(), &(Part::TopoShapePy::Type))) {
+-                        Part::TopoShape* ts
+-                            = static_cast<Part::TopoShapePy*>((*it).ptr())->getTopoShapePtr();
+-                        TopoDS_Shape shape = ts->getShape();
+-                        writer.exportShape(shape);
+-                    }
+-                }
+-                writer.endRun();
+-                return Py::None();
+-            }
+-            catch (const Base::Exception& e) {
+-                throw Py::RuntimeError(e.what());
+-            }
+-        }
+-
+-        PyErr_Clear();
+-        if (PyArg_ParseTuple(
+-                args.ptr(),
+-                "O!et|iOs",
+-                &(Part::TopoShapePy::Type),
+-                &shapeObj,
+-                "utf-8",
+-                &fname,
+-                &versionParm,
+-                &usePolyline,
+-                &optionSource
+-            )) {
+-            filePath = std::string(fname);
+-            layerName = "none";
+-            PyMem_Free(fname);
+-
+-            if ((versionParm == 12) || (versionParm == 14)) {
+-                versionOverride = true;
+-            }
+-            if (usePolyline == Py_True) {
+-                polyOverride = true;
+-            }
+-            if (optionSource) {
+-                defaultOptions = optionSource;
+-            }
+-
+-            try {
+-                ImpExpDxfWrite writer(filePath);
+-                writer.setOptionSource(defaultOptions);
+-                writer.setOptions();
+-                if (versionOverride) {
+-                    writer.setVersion(versionParm);
+-                }
+-                writer.setPolyOverride(polyOverride);
+-                writer.setLayerName(layerName);
+-                writer.init();
+-                Part::TopoShape* obj = static_cast<Part::TopoShapePy*>(shapeObj)->getTopoShapePtr();
+-                TopoDS_Shape shape = obj->getShape();
+-                writer.exportShape(shape);
+-                writer.endRun();
+-                return Py::None();
+-            }
+-            catch (const Base::Exception& e) {
+-                throw Py::RuntimeError(e.what());
+-            }
+-        }
+-
+-        throw Py::TypeError("expected ([Shape],path");
+-    }
+-
+-    Py::Object writeDXFObject(const Py::Tuple& args)
+-    {
+-        PyObject* docObj = nullptr;
+-        char* fname = nullptr;
+-        std::string filePath;
+-        std::string layerName;
+-        const char* optionSource = nullptr;
+-        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
+-        int versionParm = -1;
+-        bool versionOverride = false;
+-        bool polyOverride = false;
+-        PyObject* usePolyline = Py_False;
+-
+-        if (PyArg_ParseTuple(
+-                args.ptr(),
+-                "O!et|iOs",
+-                &(PyList_Type),
+-                &docObj,
+-                "utf-8",
+-                &fname,
+-                &versionParm,
+-                &usePolyline,
+-                &optionSource
+-            )) {
+-            filePath = std::string(fname);
+-            layerName = "none";
+-            PyMem_Free(fname);
+-
+-            if ((versionParm == 12) || (versionParm == 14)) {
+-                versionOverride = true;
+-            }
+-            if (usePolyline == Py_True) {
+-                polyOverride = true;
+-            }
+-
+-            if (optionSource) {
+-                defaultOptions = optionSource;
+-            }
+-
+-            try {
+-                ImpExpDxfWrite writer(filePath);
+-                writer.setOptionSource(defaultOptions);
+-                writer.setOptions();
+-                if (versionOverride) {
+-                    writer.setVersion(versionParm);
+-                }
+-                writer.setPolyOverride(polyOverride);
+-                writer.setLayerName(layerName);
+-                writer.init();
+-                Py::Sequence list(docObj);
+-                for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
+-                    // any object with a shape: Part features, but also App::Link (the block
+-                    // inserts of the DXF/DWG importer), which were silently left out
+-                    if (PyObject_TypeCheck((*it).ptr(), &(App::DocumentObjectPy::Type))) {
+-                        PyObject* item = (*it).ptr();
+-                        App::DocumentObject* obj
+-                            = static_cast<App::DocumentObjectPy*>(item)->getDocumentObjectPtr();
+-                        TopoDS_Shape shapeToExport = shapeForDxf(obj);
+-                        if (shapeToExport.IsNull()) {
+-                            continue;
+-                        }
+-                        layerName = obj->getNameInDocument();
+-                        writer.setLayerName(layerName);
+-                        writer.exportShape(shapeToExport);
+-                    }
+-                }
+-                writer.endRun();
+-                return Py::None();
+-            }
+-            catch (const Base::Exception& e) {
+-                throw Py::RuntimeError(e.what());
+-            }
+-        }
+-
+-        PyErr_Clear();
+-        if (PyArg_ParseTuple(
+-                args.ptr(),
+-                "O!et|iOs",
+-                &(App::DocumentObjectPy::Type),
+-                &docObj,
+-                "utf-8",
+-                &fname,
+-                &versionParm,
+-                &usePolyline,
+-                &optionSource
+-            )) {
+-            filePath = std::string(fname);
+-            layerName = "none";
+-            PyMem_Free(fname);
+-            App::DocumentObject* obj
+-                = static_cast<App::DocumentObjectPy*>(docObj)->getDocumentObjectPtr();
+-            Base::Console().message("Imp:writeDXFObject - docObj: {}\n", obj->getNameInDocument());
+-
+-            if ((versionParm == 12) || (versionParm == 14)) {
+-                versionOverride = true;
+-            }
+-            if (usePolyline == Py_True) {
+-                polyOverride = true;
+-            }
+-
+-            if (optionSource) {
+-                defaultOptions = optionSource;
+-            }
+-
+-            try {
+-                ImpExpDxfWrite writer(filePath);
+-                writer.setOptionSource(defaultOptions);
+-                writer.setOptions();
+-                if (versionOverride) {
+-                    writer.setVersion(versionParm);
+-                }
+-                writer.setPolyOverride(polyOverride);
+-                writer.setLayerName(layerName);
+-                writer.init();
+-                App::DocumentObject* obj
+-                    = static_cast<App::DocumentObjectPy*>(docObj)->getDocumentObjectPtr();
+-                layerName = obj->getNameInDocument();
+-                writer.setLayerName(layerName);
+-                // was a static_cast to Part::Feature of whatever object came in
+-                TopoDS_Shape shapeToExport = shapeForDxf(obj);
+-                if (!shapeToExport.IsNull()) {
+-                    writer.exportShape(shapeToExport);
+-                }
+-                writer.endRun();
+-                return Py::None();
+-            }
+-            catch (const Base::Exception& e) {
+-                throw Py::RuntimeError(e.what());
+-            }
+-        }
+-
+-        throw Py::TypeError("expected ([DocObject],path");
+-    }
+-};
+-
+-
+-PyObject* initModule()
+-{
+-    return Base::Interpreter().addModule(new Module);
+-}
+-
+-}  // namespace Import
++// SPDX-License-Identifier: LGPL-2.1-or-later
++
++/***************************************************************************
++ *   Copyright (c) 2013 Werner Mayer <wmayer[at]users.sourceforge.net>     *
++ *                                                                         *
++ *   This file is part of the FreeCAD CAx development system.              *
++ *                                                                         *
++ *   This library is free software; you can redistribute it and/or         *
++ *   modify it under the terms of the GNU Library General Public           *
++ *   License as published by the Free Software Foundation; either          *
++ *   version 2 of the License, or (at your option) any later version.      *
++ *                                                                         *
++ *   This library  is distributed in the hope that it will be useful,      *
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
++ *   GNU Library General Public License for more details.                  *
++ *                                                                         *
++ *   You should have received a copy of the GNU Library General Public     *
++ *   License along with this library; see the file COPYING.LIB. If not,    *
++ *   write to the Free Software Foundation, Inc., 59 Temple Place,         *
++ *   Suite 330, Boston, MA  02111-1307, USA                                *
++ *                                                                         *
++ ***************************************************************************/
++
++#if defined(__MINGW32__)
++# define WNT  // avoid conflict with GUID
++#endif
++
++#include <boost/algorithm/string/predicate.hpp>
++#include <boost/range/adaptor/indexed.hpp>
++#if defined(__clang__)
++# pragma clang diagnostic push
++# pragma clang diagnostic ignored "-Wextra-semi"
++#endif
++#include <Interface_Static.hxx>
++#include <OSD_Exception.hxx>
++#include <Standard_Version.hxx>
++#include <TColStd_IndexedDataMapOfStringString.hxx>
++#include <TDocStd_Document.hxx>
++#include <Transfer_TransientProcess.hxx>
++#include <XCAFApp_Application.hxx>
++#include <XCAFDoc_DocumentTool.hxx>
++#include <XSControl_TransferReader.hxx>
++#include <XSControl_WorkSession.hxx>
++#include <Message_ProgressRange.hxx>
++
++#if defined(__clang__)
++# pragma clang diagnostic pop
++#endif
++
++#include <chrono>
++#include "dxf/ImpExpDxf.h"
++#include "SketchExportHelper.h"
++#include <App/Application.h>
++#include <App/Document.h>
++#include <App/Link.h>
++#include <App/DocumentObjectPy.h>
++#include <Base/Console.h>
++#include <Base/PyWrapParseTupleAndKeywords.h>
++#include <Mod/Part/App/ImportIges.h>
++#include <Mod/Part/App/ImportStep.h>
++#include <Mod/Part/App/Interface.h>
++#include <Mod/Part/App/OCAF/ImportExportSettings.h>
++#include <Mod/Part/App/PartFeature.h>
++#include <Mod/Part/App/PartFeaturePy.h>
++#include <Mod/Part/App/TopoShapePy.h>
++#include <Mod/Part/App/encodeFilename.h>
++
++#include "ImportOCAF2.h"
++#include "ReaderGltf.h"
++#include "ReaderIges.h"
++#include "ReaderStep.h"
++#include "WriterGltf.h"
++#include "WriterIges.h"
++#include "WriterStep.h"
++
++namespace Import
++{
++
++namespace
++{
++// Shape written to DXF for one object: sketches flattened onto XY, Part features and links with
++// their placement. Null for anything else.
++TopoDS_Shape shapeForDxf(App::DocumentObject* obj)
++{
++    if (SketchExportHelper::isSketch(obj)) {
++        // project sketch along sketch Z via hlrProjector to get geometry on XY plane
++        return SketchExportHelper::getFlatSketchXY(obj);
++    }
++    // not groups and other containers: their children are in the list on their own
++    if (!obj->isDerivedFrom<Part::Feature>() && !obj->isDerivedFrom<App::Link>()) {
++        return {};
++    }
++    return Part::Feature::getShape(
++        obj,
++        Part::ShapeOption::ResolveLink | Part::ShapeOption::Transform
++    );
++}
++}  // namespace
++
++
++class Module: public Py::ExtensionModule<Module>
++{
++public:
++    Module()
++        : Py::ExtensionModule<Module>("Import")
++    {
++        add_keyword_method(
++            "open",
++            &Module::importer,
++            "open(string) -- Open the file and create a new document."
++        );
++        add_keyword_method(
++            "insert",
++            &Module::importer,
++            "insert(string,string) -- Insert the file into the given document."
++        );
++        add_keyword_method(
++            "export",
++            &Module::exporter,
++            "export(list,string) -- Export a list of objects into a single file."
++        );
++        add_varargs_method(
++            "readDXF",
++            &Module::readDXF,
++            "readDXF(filename,[document,ignore_errors,option_source]): Imports a "
++            "DXF file into the given document. ignore_errors is True by default."
++        );
++        add_varargs_method(
++            "writeDXFShape",
++            &Module::writeDXFShape,
++            "writeDXFShape([shape],filename [version,usePolyline,optionSource]): "
++            "Exports Shape(s) to a DXF file."
++        );
++        add_varargs_method(
++            "writeDXFObject",
++            &Module::writeDXFObject,
++            "writeDXFObject([objects],filename [,version,usePolyline,optionSource]): Exports "
++            "DocumentObject(s) to a DXF file."
++        );
++        initialize("This module is the Import module.");  // register with Python
++    }
++
++    ~Module() override = default;
++
++private:
++    Py::Object importer(const Py::Tuple& args, const Py::Dict& kwds)
++    {
++        char* Name = nullptr;
++        char* DocName = nullptr;
++        PyObject* importHidden = Py_None;
++        PyObject* merge = Py_None;
++        PyObject* useLinkGroup = Py_None;
++        int mode = -1;
++        static const std::array<const char*, 7>
++            kwd_list {"name", "docName", "importHidden", "merge", "useLinkGroup", "mode", nullptr};
++        if (!Base::Wrapped_ParseTupleAndKeywords(
++                args.ptr(),
++                kwds.ptr(),
++                "et|sO!O!O!i",
++                kwd_list,
++                "utf-8",
++                &Name,
++                &DocName,
++                &PyBool_Type,
++                &importHidden,
++                &PyBool_Type,
++                &merge,
++                &PyBool_Type,
++                &useLinkGroup,
++                &mode
++            )) {
++            throw Py::Exception();
++        }
++
++        std::string Utf8Name = std::string(Name);
++        PyMem_Free(Name);
++
++        try {
++            Base::FileInfo file(Utf8Name.c_str());
++
++            App::Document* pcDoc = nullptr;
++            if (DocName) {
++                pcDoc = App::GetApplication().getDocument(DocName);
++            }
++            if (!pcDoc) {
++                // Named after the file, as a document opened from a FreeCAD file is
++                pcDoc = App::GetApplication().newDocument("Unnamed", file.fileNamePure().c_str());
++            }
++
++            Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
++            Handle(TDocStd_Document) hDoc;
++            hApp->NewDocument(TCollection_ExtendedString("MDTV-CAF"), hDoc);
++
++            if (file.hasExtension({"stp", "step"})) {
++                try {
++                    Import::ReaderStep reader(file);
++                    reader.read(hDoc);
++                }
++                catch (OSD_Exception& e) {
++                    Base::Console().error("{}\n", e.GetMessageString());
++                    Base::Console().message("Try to load STEP file without colors...\n");
++
++                    Part::ImportStepParts(pcDoc, Utf8Name.c_str());
++                    pcDoc->recompute();
++                }
++            }
++            else if (file.hasExtension({"igs", "iges"})) {
++                try {
++                    Import::ReaderIges reader(file);
++                    reader.read(hDoc);
++                }
++                catch (OSD_Exception& e) {
++                    Base::Console().error("{}\n", e.GetMessageString());
++                    Base::Console().message("Try to load IGES file without colors...\n");
++
++                    Part::ImportIgesParts(pcDoc, Utf8Name.c_str());
++                    pcDoc->recompute();
++                }
++            }
++            else if (file.hasExtension({"glb", "gltf"})) {
++                Import::ReaderGltf reader(file);
++                reader.read(hDoc);
++            }
++            else {
++                throw Py::Exception(PyExc_IOError, "no supported file format");
++            }
++
++            ImportOCAFExt ocaf(hDoc, pcDoc, file.fileNamePure());
++            ocaf.setImportOptions(ImportOCAFExt::customImportOptions());
++            if (merge != Py_None) {
++                ocaf.setMerge(Base::asBoolean(merge));
++            }
++            if (importHidden != Py_None) {
++                ocaf.setImportHiddenObject(Base::asBoolean(importHidden));
++            }
++            if (useLinkGroup != Py_None) {
++                ocaf.setUseLinkGroup(Base::asBoolean(useLinkGroup));
++            }
++            if (mode >= 0) {
++                ocaf.setMode(mode);
++            }
++            ocaf.loadShapes();
++
++            hApp->Close(hDoc);
++
++            if (!ocaf.partColors.empty()) {
++                Py::List list;
++                for (auto& it : ocaf.partColors) {
++                    Py::Tuple tuple(2);
++                    tuple.setItem(0, Py::asObject(it.first->getPyObject()));
++
++                    App::PropertyColorList colors;
++                    colors.setValues(it.second);
++                    tuple.setItem(1, Py::asObject(colors.getPyObject()));
++
++                    list.append(tuple);
++                }
++
++                return list;  // NOLINT
++            }
++        }
++        catch (Standard_Failure& e) {
++            throw Py::Exception(Base::PyExc_FC_GeneralError, e.GetMessageString());
++        }
++        catch (const Base::Exception& e) {
++            e.setPyException();
++            throw Py::Exception();
++        }
++
++        return Py::None();
++    }
++    Py::Object exporter(const Py::Tuple& args, const Py::Dict& kwds)
++    {
++        PyObject* object = nullptr;
++        char* Name = nullptr;
++        PyObject* pyexportHidden = Py_None;
++        PyObject* pylegacy = Py_None;
++        PyObject* pykeepPlacement = Py_None;
++        static const std::array<const char*, 6>
++            kwd_list {"obj", "name", "exportHidden", "legacy", "keepPlacement", nullptr};
++        if (!Base::Wrapped_ParseTupleAndKeywords(
++                args.ptr(),
++                kwds.ptr(),
++                "Oet|O!O!O!",
++                kwd_list,
++                &object,
++                "utf-8",
++                &Name,
++                &PyBool_Type,
++                &pyexportHidden,
++                &PyBool_Type,
++                &pylegacy,
++                &PyBool_Type,
++                &pykeepPlacement
++            )) {
++            throw Py::Exception();
++        }
++
++        std::string Utf8Name = std::string(Name);
++        PyMem_Free(Name);
++
++        // clang-format off
++        // determine export options
++        Part::OCAF::ImportExportSettings settings;
++
++        bool legacyExport = (pylegacy         == Py_None ? settings.getExportLegacy()
++                                                         : Base::asBoolean(pylegacy));
++        bool exportHidden = (pyexportHidden   == Py_None ? settings.getExportHiddenObject()
++                                                         : Base::asBoolean(pyexportHidden));
++        bool keepPlacement = (pykeepPlacement == Py_None ? settings.getExportKeepPlacement()
++                                                         : Base::asBoolean(pykeepPlacement));
++        // clang-format on
++
++        try {
++            Py::Sequence list(object);
++            std::vector<App::DocumentObject*> objs;
++            std::map<Part::Feature*, std::vector<Base::Color>> partColor;
++            for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
++                PyObject* item = (*it).ptr();
++                if (PyObject_TypeCheck(item, &(App::DocumentObjectPy::Type))) {
++                    auto pydoc = static_cast<App::DocumentObjectPy*>(item);
++                    objs.push_back(pydoc->getDocumentObjectPtr());
++                }
++                else if (PyTuple_Check(item) && PyTuple_Size(item) == 2) {
++                    Py::Tuple tuple(*it);
++                    Py::Object item0 = tuple.getItem(0);
++                    Py::Object item1 = tuple.getItem(1);
++                    if (PyObject_TypeCheck(item0.ptr(), &(App::DocumentObjectPy::Type))) {
++                        auto pydoc = static_cast<App::DocumentObjectPy*>(item0.ptr());
++                        App::DocumentObject* obj = pydoc->getDocumentObjectPtr();
++                        objs.push_back(obj);
++                        if (Part::Feature* part = dynamic_cast<Part::Feature*>(obj)) {
++                            App::PropertyColorList colors;
++                            colors.setPyObject(item1.ptr());
++                            partColor[part] = colors.getValues();
++                        }
++                    }
++                }
++            }
++
++            Handle(XCAFApp_Application) hApp = XCAFApp_Application::GetApplication();
++            Handle(TDocStd_Document) hDoc;
++            hApp->NewDocument(TCollection_ExtendedString("MDTV-CAF"), hDoc);
++
++            auto getShapeColors = [partColor](App::DocumentObject* obj, const char* subname) {
++                std::map<std::string, Base::Color> cols;
++                auto it = partColor.find(dynamic_cast<Part::Feature*>(obj));
++                if (it != partColor.end() && boost::starts_with(subname, "Face")) {
++                    const auto& colors = it->second;
++                    std::string face("Face");
++                    for (const auto& element : colors | boost::adaptors::indexed(1)) {
++                        cols[face + std::to_string(element.index())] = element.value();
++                    }
++                }
++                return cols;
++            };
++
++            Import::ExportOCAF2 ocaf(hDoc, getShapeColors);
++            if (!legacyExport || !ocaf.canFallback(objs)) {
++                ocaf.setExportOptions(ExportOCAF2::customExportOptions());
++                ocaf.setExportHiddenObject(exportHidden);
++                ocaf.setKeepPlacement(keepPlacement);
++
++                ocaf.exportObjects(objs);
++            }
++            else {
++                bool keepExplicitPlacement = true;
++                ExportOCAFCmd ocaf(hDoc, keepExplicitPlacement);
++                ocaf.setPartColorsMap(partColor);
++                ocaf.exportObjects(objs);
++            }
++
++            Base::FileInfo file(Utf8Name.c_str());
++            if (file.hasExtension({"stp", "step"})) {
++                Import::WriterStep writer(file);
++                writer.write(hDoc);
++            }
++            else if (file.hasExtension({"igs", "iges"})) {
++                Import::WriterIges writer(file);
++                writer.write(hDoc);
++            }
++            else if (file.hasExtension({"glb", "gltf"})) {
++                Import::WriterGltf writer(file);
++                writer.write(hDoc);
++            }
++
++            hApp->Close(hDoc);
++        }
++        catch (Standard_Failure& e) {
++            throw Py::Exception(Base::PyExc_FC_GeneralError, e.GetMessageString());
++        }
++        catch (const Base::Exception& e) {
++            e.setPyException();
++            throw Py::Exception();
++        }
++
++        return Py::None();
++    }
++
++    // This readDXF method is an almost exact duplicate of the one in ImportGui::Module.
++    // The only difference is the CDxfRead class derivation that is created.
++    // It would seem desirable to have most of this code in just one place, passing it
++    // e.g. a pointer to a function that does the 4 lines during the lifetime of the
++    // CDxfRead object, but right now Import::Module and ImportGui::Module cannot see
++    // each other's functions so this shared code would need some place to live where
++    // both places could include a declaration.
++    Py::Object readDXF(const Py::Tuple& args)
++    {
++        char* Name = nullptr;
++        const char* DocName = nullptr;
++        const char* optionSource = nullptr;
++        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
++        bool IgnoreErrors = true;
++        if (
++            !PyArg_ParseTuple(args.ptr(), "et|sbs", "utf-8", &Name, &DocName, &IgnoreErrors, &optionSource)
++        ) {
++            throw Py::Exception();
++        }
++
++        std::string EncodedName = std::string(Name);
++        PyMem_Free(Name);
++
++        Base::FileInfo file(EncodedName.c_str());
++        if (!file.exists()) {
++            throw Py::RuntimeError("File doesn't exist");
++        }
++
++        if (optionSource) {
++            defaultOptions = optionSource;
++        }
++
++        App::Document* pcDoc = nullptr;
++        if (DocName) {
++            pcDoc = App::GetApplication().getDocument(DocName);
++        }
++        else {
++            pcDoc = App::GetApplication().getActiveDocument();
++        }
++        if (!pcDoc) {
++            pcDoc = App::GetApplication().newDocument(DocName);
++        }
++
++        try {
++            // read the DXF file
++            ImpExpDxfRead dxf_file(EncodedName, pcDoc);
++            dxf_file.setOptionSource(defaultOptions);
++            dxf_file.setOptions();
++
++            auto startTime = std::chrono::high_resolution_clock::now();
++            dxf_file.DoRead(IgnoreErrors);
++            auto endTime = std::chrono::high_resolution_clock::now();
++            std::chrono::duration<double> elapsed = endTime - startTime;
++            dxf_file.setImportTime(elapsed.count());
++
++            pcDoc->recompute();
++            return dxf_file.getStatsAsPyObject();
++        }
++        catch (const Standard_Failure& e) {
++            throw Py::RuntimeError(e.GetMessageString());
++        }
++        catch (const Base::Exception& e) {
++            throw Py::RuntimeError(e.what());
++        }
++    }
++
++
++    Py::Object writeDXFShape(const Py::Tuple& args)
++    {
++        Base::Console().message("Imp:writeDXFShape()\n");
++        PyObject* shapeObj = nullptr;
++        char* fname = nullptr;
++        std::string filePath;
++        std::string layerName;
++        const char* optionSource = nullptr;
++        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
++        int versionParm = -1;
++        bool versionOverride = false;
++        bool polyOverride = false;
++        PyObject* usePolyline = Py_False;
++
++        // handle list of shapes
++        if (PyArg_ParseTuple(
++                args.ptr(),
++                "O!et|iOs",
++                &(PyList_Type),
++                &shapeObj,
++                "utf-8",
++                &fname,
++                &versionParm,
++                &usePolyline,
++                &optionSource
++            )) {
++            filePath = std::string(fname);
++            layerName = "none";
++            PyMem_Free(fname);
++
++            if ((versionParm == 12) || (versionParm == 14)) {
++                versionOverride = true;
++            }
++            if (usePolyline == Py_True) {
++                polyOverride = true;
++            }
++            if (optionSource) {
++                defaultOptions = optionSource;
++            }
++
++            try {
++                ImpExpDxfWrite writer(filePath);
++                writer.setOptionSource(defaultOptions);
++                writer.setOptions();
++                if (versionOverride) {
++                    writer.setVersion(versionParm);
++                }
++                writer.setPolyOverride(polyOverride);
++                writer.setLayerName(layerName);
++                writer.init();
++                Py::Sequence list(shapeObj);
++                for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
++                    if (PyObject_TypeCheck((*it).ptr(), &(Part::TopoShapePy::Type))) {
++                        Part::TopoShape* ts
++                            = static_cast<Part::TopoShapePy*>((*it).ptr())->getTopoShapePtr();
++                        TopoDS_Shape shape = ts->getShape();
++                        writer.exportShape(shape);
++                    }
++                }
++                writer.endRun();
++                return Py::None();
++            }
++            catch (const Base::Exception& e) {
++                throw Py::RuntimeError(e.what());
++            }
++        }
++
++        PyErr_Clear();
++        if (PyArg_ParseTuple(
++                args.ptr(),
++                "O!et|iOs",
++                &(Part::TopoShapePy::Type),
++                &shapeObj,
++                "utf-8",
++                &fname,
++                &versionParm,
++                &usePolyline,
++                &optionSource
++            )) {
++            filePath = std::string(fname);
++            layerName = "none";
++            PyMem_Free(fname);
++
++            if ((versionParm == 12) || (versionParm == 14)) {
++                versionOverride = true;
++            }
++            if (usePolyline == Py_True) {
++                polyOverride = true;
++            }
++            if (optionSource) {
++                defaultOptions = optionSource;
++            }
++
++            try {
++                ImpExpDxfWrite writer(filePath);
++                writer.setOptionSource(defaultOptions);
++                writer.setOptions();
++                if (versionOverride) {
++                    writer.setVersion(versionParm);
++                }
++                writer.setPolyOverride(polyOverride);
++                writer.setLayerName(layerName);
++                writer.init();
++                Part::TopoShape* obj = static_cast<Part::TopoShapePy*>(shapeObj)->getTopoShapePtr();
++                TopoDS_Shape shape = obj->getShape();
++                writer.exportShape(shape);
++                writer.endRun();
++                return Py::None();
++            }
++            catch (const Base::Exception& e) {
++                throw Py::RuntimeError(e.what());
++            }
++        }
++
++        throw Py::TypeError("expected ([Shape],path");
++    }
++
++    static bool exportDraftText(ImpExpDxfWrite& writer, App::DocumentObject* obj)
++    {
++        auto* text = dynamic_cast<App::PropertyStringList*>(obj->getPropertyByName("Text"));
++        auto* placement = dynamic_cast<App::PropertyPlacement*>(obj->getPropertyByName("Placement"));
++        if (!text || !placement || obj->isDerivedFrom<Part::Feature>()) {
++            return false;
++        }
++        // the size is the view's; without it, the height of texts in the Draft preferences
++        const double size = App::GetApplication()
++                                .GetParameterGroupByPath("User parameter:BaseApp/Preferences/Mod/Draft")
++                                ->GetFloat("textheight", 3.5);
++        const Base::Placement plc = placement->getValue();
++        writer.setLayerName(obj->getNameInDocument());
++        const auto lines = text->getValues();
++        for (std::size_t i = 0; i < lines.size(); ++i) {
++            if (lines[i].empty()) {
++                continue;
++            }
++            Base::Vector3d at = plc.getPosition()
++                + plc.getRotation().multVec(Base::Vector3d(0, -1.5 * size * double(i), 0));
++            writer.exportText(lines[i].c_str(), at, at, size, 0);
++        }
++        return true;
++    }
++
++    Py::Object writeDXFObject(const Py::Tuple& args)
++    {
++        PyObject* docObj = nullptr;
++        char* fname = nullptr;
++        std::string filePath;
++        std::string layerName;
++        const char* optionSource = nullptr;
++        std::string defaultOptions = "User parameter:BaseApp/Preferences/Mod/Draft";
++        int versionParm = -1;
++        bool versionOverride = false;
++        bool polyOverride = false;
++        PyObject* usePolyline = Py_False;
++
++        if (PyArg_ParseTuple(
++                args.ptr(),
++                "O!et|iOs",
++                &(PyList_Type),
++                &docObj,
++                "utf-8",
++                &fname,
++                &versionParm,
++                &usePolyline,
++                &optionSource
++            )) {
++            filePath = std::string(fname);
++            layerName = "none";
++            PyMem_Free(fname);
++
++            if ((versionParm == 12) || (versionParm == 14)) {
++                versionOverride = true;
++            }
++            if (usePolyline == Py_True) {
++                polyOverride = true;
++            }
++
++            if (optionSource) {
++                defaultOptions = optionSource;
++            }
++
++            try {
++                ImpExpDxfWrite writer(filePath);
++                writer.setOptionSource(defaultOptions);
++                writer.setOptions();
++                if (versionOverride) {
++                    writer.setVersion(versionParm);
++                }
++                writer.setPolyOverride(polyOverride);
++                writer.setLayerName(layerName);
++                writer.init();
++                Py::Sequence list(docObj);
++                for (Py::Sequence::iterator it = list.begin(); it != list.end(); ++it) {
++                    // any object with a shape: Part features, but also App::Link (the block
++                    // inserts of the DXF/DWG importer), which were silently left out
++                    if (PyObject_TypeCheck((*it).ptr(), &(App::DocumentObjectPy::Type))) {
++                        PyObject* item = (*it).ptr();
++                        App::DocumentObject* obj
++                            = static_cast<App::DocumentObjectPy*>(item)->getDocumentObjectPtr();
++                        // A Draft text: its lines as TEXT (they were left out, so a DWG written
++                        // from a drawing lost every text; company test 0.7.6)
++                        if (exportDraftText(writer, obj)) {
++                            continue;
++                        }
++                        TopoDS_Shape shapeToExport = shapeForDxf(obj);
++                        if (shapeToExport.IsNull()) {
++                            continue;
++                        }
++                        layerName = obj->getNameInDocument();
++                        writer.setLayerName(layerName);
++                        writer.exportShape(shapeToExport);
++                    }
++                }
++                writer.endRun();
++                return Py::None();
++            }
++            catch (const Base::Exception& e) {
++                throw Py::RuntimeError(e.what());
++            }
++        }
++
++        PyErr_Clear();
++        if (PyArg_ParseTuple(
++                args.ptr(),
++                "O!et|iOs",
++                &(App::DocumentObjectPy::Type),
++                &docObj,
++                "utf-8",
++                &fname,
++                &versionParm,
++                &usePolyline,
++                &optionSource
++            )) {
++            filePath = std::string(fname);
++            layerName = "none";
++            PyMem_Free(fname);
++            App::DocumentObject* obj
++                = static_cast<App::DocumentObjectPy*>(docObj)->getDocumentObjectPtr();
++            Base::Console().message("Imp:writeDXFObject - docObj: {}\n", obj->getNameInDocument());
++
++            if ((versionParm == 12) || (versionParm == 14)) {
++                versionOverride = true;
++            }
++            if (usePolyline == Py_True) {
++                polyOverride = true;
++            }
++
++            if (optionSource) {
++                defaultOptions = optionSource;
++            }
++
++            try {
++                ImpExpDxfWrite writer(filePath);
++                writer.setOptionSource(defaultOptions);
++                writer.setOptions();
++                if (versionOverride) {
++                    writer.setVersion(versionParm);
++                }
++                writer.setPolyOverride(polyOverride);
++                writer.setLayerName(layerName);
++                writer.init();
++                App::DocumentObject* obj
++                    = static_cast<App::DocumentObjectPy*>(docObj)->getDocumentObjectPtr();
++                layerName = obj->getNameInDocument();
++                writer.setLayerName(layerName);
++                // was a static_cast to Part::Feature of whatever object came in
++                TopoDS_Shape shapeToExport = shapeForDxf(obj);
++                if (!shapeToExport.IsNull()) {
++                    writer.exportShape(shapeToExport);
++                }
++                writer.endRun();
++                return Py::None();
++            }
++            catch (const Base::Exception& e) {
++                throw Py::RuntimeError(e.what());
++            }
++        }
++
++        throw Py::TypeError("expected ([DocObject],path");
++    }
++};
++
++
++PyObject* initModule()
++{
++    return Base::Interpreter().addModule(new Module);
++}
++
++}  // namespace Import
+diff --git a/src/Mod/TechDraw/App/DrawPage.cpp b/src/Mod/TechDraw/App/DrawPage.cpp
+index 15b4cf7a6..5082d566e 100644
+--- a/src/Mod/TechDraw/App/DrawPage.cpp
++++ b/src/Mod/TechDraw/App/DrawPage.cpp
+@@ -190,8 +190,9 @@ double DrawPage::getPageWidth() const
+         TechDraw::DrawTemplate* templ = static_cast<TechDraw::DrawTemplate*>(obj);
+         return templ->getWidth();
+     }
+-
+-    throw Base::RuntimeError("Template not set for Page");
++    // No sheet: an A4 landscape's size (the exception stopped a file with such a page from
++    // opening in the GUI, and the PDF export without the screen; company test 0.7.6)
++    return 297.0;
+ }
+ 
+ double DrawPage::getPageHeight() const
+@@ -202,8 +203,9 @@ double DrawPage::getPageHeight() const
+         TechDraw::DrawTemplate* templ = static_cast<TechDraw::DrawTemplate*>(obj);
+         return templ->getHeight();
+     }
+-
+-    throw Base::RuntimeError("Template not set for Page");
++    // No sheet: an A4 landscape's size (the exception stopped a file with such a page from
++    // opening in the GUI, and the PDF export without the screen; company test 0.7.6)
++    return 210.0;
+ }
+ 
+ //orientation as text
+@@ -216,7 +218,7 @@ const char* DrawPage::getPageOrientation() const
+         TechDraw::DrawTemplate* templ = static_cast<TechDraw::DrawTemplate*>(obj);
+         return templ->Orientation.getValueAsString();
+     }
+-    throw Base::RuntimeError("Template not set for Page");
++    return "Landscape";  // no sheet: as getPageWidth
+ }
+ 
+ //orientation as 0(Portrait) or 1(Landscape)
+@@ -228,7 +230,7 @@ int DrawPage::getOrientation() const
+         auto* templ = static_cast<DrawTemplate*>(obj);
+         return templ->Orientation.getValue();
+     }
+-    throw Base::RuntimeError("Template not set for Page");
++    return 1;  // no sheet: landscape, as getPageWidth
+ }
+ 
+ int DrawPage::addView(App::DocumentObject* docObj, bool setPosition)
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index 0ad7d4f9c..b152dfb9a 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -123,6 +123,22 @@ def _child():
+         if not pages:
+             finish(error="No drawing page in " + job["path"]
+                    + (" named " + ", ".join(job["pages"]) if job["pages"] else ""))
++        # a page without its sheet (no template, or a template without a file) is left out with
++        # a word: one such page stopped all, or gave a blank PDF (company test 0.7.6)
++        usable = []
++        for p in pages:
++            tpl = getattr(p, "Template", None)
++            # the sheet kept in the file (PageResult), else the file it came from
++            kept = getattr(tpl, "PageResult", "") if tpl is not None else ""
++            path = getattr(tpl, "Template", "") if tpl is not None else ""
++            if not (kept and os.path.isfile(kept)) and not (path and os.path.isfile(path)):
++                warnings.append("Page %s left out: it has no sheet (template)%s"
++                                % (p.Label, "" if tpl is None else " file: %r" % path))
++            else:
++                usable.append(p)
++        if not usable:
++            finish(error="No page has a sheet (template): " + "; ".join(warnings))
++        pages = usable
+         import TechDrawGui
+ 
+         views = [v for v in doc.Objects if v.isDerivedFrom("TechDraw::DrawViewPart")
+@@ -150,7 +166,10 @@ def _child():
+                 finish(error="Writing %s failed" % name)
+         finish(written=names, warnings=warnings)
+     except Exception as e:  # report and end: the GUI must not be torn down
+-        finish(error="%s: %s" % (type(e).__name__, e))
++        import traceback
++
++        where = traceback.extract_tb(e.__traceback__)[-1]
++        finish(error="%s: %s (line %d)" % (type(e).__name__, e, where.lineno))
+ 
+ 
+ def _has_lines(view):
+diff --git a/src/Mod/Unified/Init.py b/src/Mod/Unified/Init.py
+index b478d9b9f..a6083ca17 100644
+--- a/src/Mod/Unified/Init.py
++++ b/src/Mod/Unified/Init.py
+@@ -14,10 +14,17 @@ def _setup_bundled_dwg_converter():
+     try:
+         grp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
+         current = grp.GetString("TeighaFileConverter", "")
+-        if current and os.path.isfile(current):
+-            return  # 利用者が設定済み。触らない
+         exe = "dwg2dxf.exe" if os.name == "nt" else "dwg2dxf"
+         bundled = os.path.join(FreeCAD.getHomePath(), "bin", exe)
++        if current and os.path.isfile(current):
++            # 別の版の FreeCAD に同梱の変換器（隣に freecad がある）は、この版のものに置き換える。
++            # 古い版が自動で入れたパスが残り、版を上げても古い dxf2dwg が使われた（会社の試験 0.7.6）
++            folder = os.path.dirname(current)
++            other_bundle = any(os.path.isfile(os.path.join(folder, n))
++                               for n in ("freecadcmd", "FreeCADCmd", "freecadcmd.exe", "FreeCADCmd.exe"))
++            if not (other_bundle and os.path.isfile(bundled)
++                    and os.path.normcase(os.path.abspath(current)) != os.path.normcase(os.path.abspath(bundled))):
++                return  # 利用者が自分で設定した変換器。触らない
+         if os.path.isfile(bundled):
+             grp.SetString("TeighaFileConverter", bundled)
+             grp.SetInt("DWGConversion", 1)  # 1 = LibreDWG
+@@ -28,6 +35,20 @@ def _setup_bundled_dwg_converter():
+ _setup_bundled_dwg_converter()
+ 
+ 
++def _dwg_text_default():
++    # DWG・DXF の文字と寸法も読み込む（本家の既定は読まない。会社の図面の文字が消えた。会社の試験 0.7.6）。
++    # 利用者が設定で選んだ値はそのまま
++    grp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft")
++    if grp.GetBool("dxftext", True) != grp.GetBool("dxftext", False):
++        grp.SetBool("dxftext", True)
++
++
++try:
++    _dwg_text_default()
++except Exception:
++    pass
++
++
+ # ネットワークの設定（プロキシと会社の証明書。編集 → 設定 → 標準 → ネットワーク）を環境変数に反映する。
+ # 既定はシステムのプロキシ。画面なしの FreeCADCmd でも同じ
+ try:
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index 81985b3b9..9ede71a38 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -60,6 +60,16 @@ class ExportTest(unittest.TestCase):
+             with open(w, "rb") as f:
+                 self.assertEqual(f.read(5), b"%PDF-")
+ 
++    def test_a_page_without_sheet_is_left_out(self):
++        # one page without a template stopped all, or gave a blank PDF (company test 0.7.6)
++        doc = App.openDocument(self.path)
++        bare = doc.addObject("TechDraw::DrawPage", "Bare")
++        bare.Label = "NoSheet"
++        doc.save()
++        App.closeDocument(doc.Name)
++        written = DrawingPdf.export(self.path, os.path.join(self.tmp, "out.pdf"))
++        self.assertEqual(sorted(os.path.basename(w) for w in written), ["out_Second.pdf", "out_部品図.pdf"])
++
+     def test_one_page_and_a_missing_one(self):
+         out = os.path.join(self.tmp, "one.pdf")
+         self.assertEqual(DrawingPdf.export(self.path, out, pages=["Second"]), [out])
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index cf4b820c3..26b55810f 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -119,5 +119,41 @@ class TestLinkPathAfterSaveAs(unittest.TestCase):
+             shutil.rmtree(tmp)
+ 
+ 
++
++class TestDwgText(unittest.TestCase):
++    """A DWG written from a drawing keeps its texts, in R2018, and they are read back (company
++    test 0.7.6: R14, every text lost, none read)"""
++
++    def test_round_trip(self):
++        import os
++        import shutil
++        import tempfile
++
++        import Draft
++        import importDWG
++
++        if importDWG.get_libredwg_converter("dxf2dwg") is None:
++            self.skipTest("no LibreDWG converter here (the release builds bring one)")
++        tmp = tempfile.mkdtemp()
++        doc = App.newDocument("dwgtext")
++        back = None
++        try:
++            Draft.make_text(["日本語テスト φ60", "ASCII"], App.Placement(App.Vector(10, 10, 0), App.Rotation()))
++            Draft.make_line(App.Vector(0, 0, 0), App.Vector(100, 0, 0))
++            doc.recompute()
++            path = os.path.join(tmp, "t.dwg")
++            importDWG.export(doc.Objects, path)
++            with open(path, "rb") as f:
++                self.assertEqual(f.read(6), b"AC1032")
++            back = App.newDocument("dwgback")
++            importDWG.insert(path, back.Name)
++            texts = sorted(t for o in back.Objects for t in (getattr(o, "Text", None) or []))
++            self.assertEqual(texts, ["ASCII", "日本語テスト φ60"])
++        finally:
++            App.closeDocument(doc.Name)
++            if back is not None:
++                App.closeDocument(back.Name)
++            shutil.rmtree(tmp)
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+
