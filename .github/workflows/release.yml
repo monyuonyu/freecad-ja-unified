@@ -247,6 +247,22 @@ jobs:
           Write-Output $out
           if ($code -ne 0 -or $out -notmatch '(?m)^OK') { throw "TestDrawingPdf failed (exit code $code)" }
 
+      # Windows: 組立の動きを動画に（同梱の ffmpeg で MP4）
+      - name: "Windows: motion video"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $cmd = (Get-ChildItem FreeCAD\package\bundle\windows\FreeCAD_*-Windows-x86_64\bin\freecadcmd.exe).FullName
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'fc-mv-appdata'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'fc-mv-localappdata'
+          $env:PYTHONIOENCODING = 'utf-8'
+          $env:FREECAD_EXPECT_FFMPEG = '1'
+          $out = & $cmd -t TestMotionVideo 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Output $out
+          if ($code -ne 0 -or $out -notmatch '(?m)^OK') { throw "TestMotionVideo failed (exit code $code)" }
+
       - name: "Windows: upload"
         if: runner.os == 'Windows'
         shell: bash
