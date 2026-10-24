@@ -336,6 +336,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.8
+
+From the GUI-only test of the whole engine (0.7.7; 15 parts and 17 joints were made with the screen, moving them stopped): "Turn to an angle" takes any angle (720 is a four-stroke cycle) and videos turn through it; a solve that does not hold says which joints on the status bar; a fixed joint reversed half a turn holds; sliders can be moved to a distance (a valve's lift as a formula); joints with formulas follow while a panel is open; Motion to Video has its own section choice; a tree click does not replace an edited joint's references.
+
 ## Changes in 0.7.7
 
 From the GUI-only test of the valve train and the whole engine (0.7.6) and the company's test:

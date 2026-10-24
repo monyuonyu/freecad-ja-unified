@@ -1,0 +1,145 @@
+From 8baeb6e6d251f05304db5a9de9d86311ca1d73f1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 02:04:19 +0900
+Subject: [PATCH 342/346] Unified: Motion to Video cuts the assembly itself,
+ and takes the assembly's own view
+
+The clipping tool's section goes away when its panel closes, so before the
+video's panel opens: the frames showed no section (engine field test
+0.7.7). The panel has "Section" (front to back, left to right, top to
+bottom, through the middle of the parts), kept for the time of the video.
+The pictures are taken from the assembly document's 3D view (a part file
+opened for its links could be the active one: another camera).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../Gui/Resources/translations/Unified_ja.ts  | 23 ++++++++++
+ src/Mod/Unified/MotionVideoGui.py             | 42 ++++++++++++++++---
+ 2 files changed, 60 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 6ddaf36ed..172b1560c 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1246,4 +1246,27 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>ジョイントで決まっておらず、自由に動ける部品: {}。動画では止まって見えるか、飛んで見えます。ジョイントでつなぐか、「動かない」にしてください。</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_MotionVideo</name>
++    <message>
++        <source>None</source>
++        <translation>なし</translation>
++    </message>
++    <message>
++        <source>Cut front to back (front half away)</source>
++        <translation>前後で切る（手前の半分を取る）</translation>
++    </message>
++    <message>
++        <source>Cut left to right (left half away)</source>
++        <translation>左右で切る（左の半分を取る）</translation>
++    </message>
++    <message>
++        <source>Cut top to bottom (top half away)</source>
++        <translation>上下で切る（上の半分を取る）</translation>
++    </message>
++    <message>
++        <source>Section</source>
++        <translation>断面</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/MotionVideoGui.py b/src/Mod/Unified/MotionVideoGui.py
+index d0f3dc200..5b7242797 100644
+--- a/src/Mod/Unified/MotionVideoGui.py
++++ b/src/Mod/Unified/MotionVideoGui.py
+@@ -52,6 +52,15 @@ class MotionPanel:
+         lay.addRow(translate("Unified_MotionVideo", "To"), self.end)
+         lay.addRow(translate("Unified_MotionVideo", "Pictures"), self.frames)
+         lay.addRow(translate("Unified_MotionVideo", "Pictures a second"), self.fps)
++        # a section kept for the time of the video (the clipping tool's own section goes away
++        # when its panel closes, and so before this one opens; engine field test 0.7.7)
++        self.section = QtWidgets.QComboBox()
++        for text, key in ((translate("Unified_MotionVideo", "None"), ""),
++                          (translate("Unified_MotionVideo", "Cut front to back (front half away)"), "y"),
++                          (translate("Unified_MotionVideo", "Cut left to right (left half away)"), "x"),
++                          (translate("Unified_MotionVideo", "Cut top to bottom (top half away)"), "z")):  # fmt: skip
++            self.section.addItem(text, key)
++        lay.addRow(translate("Unified_MotionVideo", "Section"), self.section)
+         row = QtWidgets.QHBoxLayout()
+         doc = joint.Document
+         folder = os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~")
+@@ -72,7 +81,7 @@ class MotionPanel:
+     def accept(self):
+         # the panel goes first: open, it narrows the 3D view (the video was framed differently)
+         settings = (self.joint, self.path.text(), self.start.value(), self.end.value(), int(self.frames.value()),
+-                    int(self.fps.value()))  # fmt: skip
++                    int(self.fps.value()), self.section.currentData())  # fmt: skip
+         Gui.Control.closeDialog()
+         QtCore.QTimer.singleShot(200, lambda: record(*settings))
+         return True
+@@ -82,10 +91,21 @@ class MotionPanel:
+         return True
+ 
+ 
+-def grab(path):
++def view_of(doc):
++    """The 3D view of the document (another file's view could be the active one: a part file
++    opened for its links)"""
++    gdoc = Gui.getDocument(doc.Name)
++    view = gdoc.ActiveView if gdoc is not None else None
++    if view is None or not hasattr(view, "graphicsView"):
++        for v in gdoc.mdiViewsOfType("Gui::View3DInventor") if gdoc is not None else []:
++            return v
++    return view
++
++
++def grab(path, view=None):
+     """The 3D view's picture as it is on the screen (its section, transparency and zoom; a
+     picture drawn again lost the view's clipping)"""
+-    view = Gui.ActiveDocument.ActiveView
++    view = view or Gui.ActiveDocument.ActiveView
+     view.redraw()
+     QtWidgets.QApplication.processEvents()
+     gl = view.graphicsView().viewport() if hasattr(view, "graphicsView") else None
+@@ -99,8 +119,18 @@ def grab(path):
+         view.saveImage(path, int(size[0]) // 2 * 2, int(size[1]) // 2 * 2, "Current")
+ 
+ 
+-def record(joint, path, start, end, frames, fps):
++def record(joint, path, start, end, frames, fps, section=""):
+     doc = joint.Document
++    view = view_of(doc)
++    clipped = False
++    if section and view is not None and hasattr(view, "toggleClippingPlane"):
++        box = MotionVideo._visible_box(doc)
++        centre = box.Center if box.isValid() else App.Vector()
++        # the plane's z points to the half taken away: front (-y), left (-x), top (+z)
++        turn = {"y": App.Rotation(App.Vector(1, 0, 0), 90), "x": App.Rotation(App.Vector(0, 1, 0), -90),
++                "z": App.Rotation()}[section]  # fmt: skip
++        view.toggleClippingPlane(1, False, True, App.Placement(centre, turn))
++        clipped = True
+     bar = Gui.getMainWindow().statusBar()
+     # the joints' markers and the pick's highlight are not part of the picture
+     picked = Gui.Selection.getSelectionEx()
+@@ -115,7 +145,7 @@ def record(joint, path, start, end, frames, fps):
+     done = [0]
+ 
+     def draw(p):
+-        grab(p)
++        grab(p, view)
+         done[0] += 1
+         bar.showMessage(translate("Unified_MotionVideo", "Video: picture {} of {}").format(done[0], frames))
+ 
+@@ -146,6 +176,8 @@ def record(joint, path, start, end, frames, fps):
+             o.ViewObject.Visibility = True
+         for s in picked:
+             Gui.Selection.addSelection(s.Object)
++        if clipped:
++            view.toggleClippingPlane(0)
+         bar.clearMessage()
+     QtWidgets.QApplication.restoreOverrideCursor()
+     text = translate("Unified_MotionVideo", "Written: {}").format(written)
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From ccabd575f983cb44887823c14961ba9b86cbc36a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 12:37:16 +0900
-Subject: [PATCH 327/341] Sketcher: a number typed while a dimension is placed
+Subject: [PATCH 327/346] Sketcher: a number typed while a dimension is placed
  is its value
 
 After picking an edge for a dimension, digits typed before clicking an

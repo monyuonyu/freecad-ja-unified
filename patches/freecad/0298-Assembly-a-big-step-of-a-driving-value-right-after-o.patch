@@ -1,7 +1,7 @@
 From 9aa04eeec7f77226da9fd30122661a3873691f06 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:07:38 +0900
-Subject: [PATCH 298/341] Assembly: a big step of a driving value right after
+Subject: [PATCH 298/346] Assembly: a big step of a driving value right after
  opening the file walks there too
 
 The walk to a big step of a driving value started from the joints'

@@ -1,0 +1,117 @@
+From 0a5d2b9911314ab922ac09ce668b64d6bc3853df Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 02:08:26 +0900
+Subject: [PATCH 344/346] Assembly: a fixed joint turned half a turn about one
+ of its axes holds
+
+The solver's fixed joint holds the frames' axes square to each other, so a
+half turn about one of them is an answer too, and "Reverse" picks it. The
+check that the joints hold wanted the frames the same way: a valve put
+upright with Reverse was taken as not holding and the whole engine stood
+still (engine field test 0.7.7). Such half turns are held, except for a
+fixed joint whose placement is a formula (it drives) and a revolute
+joint turned to an angle.
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 33 +++++++++++++++++++++----
+ src/Mod/Unified/TestAssemblySolve.py    | 30 ++++++++++++++++++++++
+ 2 files changed, 58 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 060ebb7f7..f44acb452 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -33,6 +33,7 @@
+ 
+ 
+ #include <App/Application.h>
++#include <App/ObjectIdentifier.h>
+ #include <App/Datums.h>
+ #include <App/Document.h>
+ #include <App/DocumentObjectGroup.h>
+@@ -574,11 +575,33 @@ AssemblyObject::brokenJoints(const std::vector<App::DocumentObject*>& joints) co
+         }
+         double angle = 0.0;
+         if (kind == "Fixed" || isAngleDriven(joint)) {
+-            Base::Vector3d ax;
+-            (a.getRotation().inverse() * b.getRotation()).getValue(ax, angle);
+-            angle = std::fabs(angle);
+-            if (angle > M_PI) {
+-                angle = 2 * M_PI - angle;
++            const Base::Rotation d = a.getRotation().inverse() * b.getRotation();
++            auto off = [](const Base::Rotation& r) {
++                Base::Vector3d ax;
++                double t = 0.0;
++                r.getValue(ax, t);
++                t = std::fabs(t);
++                return t > M_PI ? 2 * M_PI - t : t;
++            };
++            angle = off(d);
++            // a fixed joint whose placement is a formula drives (a crank turned by it): exact
++            bool driving = isAngleDriven(joint);
++            for (const auto& [path, expr] : joint->ExpressionEngine.getExpressions()) {
++                const std::string name = path.toString();
++                if (name.rfind("Placement1", 0) == 0 || name.rfind("Placement2", 0) == 0
++                    || name.rfind(".Placement1", 0) == 0 || name.rfind(".Placement2", 0) == 0) {
++                    driving = true;
++                }
++            }
++            if (!driving) {
++                // A fixed joint holds its frames' axes square to each other: turned half a turn
++                // about one of its axes is held too, and "Reverse" picks that (a valve put
++                // upright with it was taken as not holding and the engine stood still; engine
++                // field test 0.7.7). A driven joint's angle stays exact.
++                for (const Base::Vector3d& axis :
++                     {Base::Vector3d(1, 0, 0), Base::Vector3d(0, 1, 0), Base::Vector3d(0, 0, 1)}) {
++                    angle = std::min(angle, off(d * Base::Rotation(axis, M_PI)));
++                }
+             }
+         }
+         else if (kind != "Ball") {
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 6f5f53887..44d80e5c2 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -208,6 +208,36 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_reversed_fixed_joint_holds(self):
++        # "Reverse" on a fixed joint turns the part half a turn: still held (it was taken as not
++        # holding and the whole assembly stood still; engine field test 0.7.7)
++        import JointObject
++
++        doc = App.newDocument("reverse")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            head = asm.newObject("Part::Box", "Head")
++            valve = asm.newObject("Part::Cylinder", "Valve")
++            valve.Radius = 2
++            valve.Height = 30
++            valve.Placement.Base = App.Vector(50, 0, 0)
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), head)
++            j = jg.newObject("App::FeaturePython", "Fix")
++            JointObject.Joint(j, JointObject.JointTypes.index("Fixed"))
++            j.Reference1 = (head, ["Face6", "Face6"])
++            j.Reference2 = (valve, ["Face1", "Face1"])
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            j.Proxy.flipOnePart(j)
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertEqual(asm.getBrokenJoints(), [])
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_free_parts(self):
+         # a part with no joint is free; the parts of a driven crank are not
+         import AssemblyCopies
+-- 
+2.43.0
+

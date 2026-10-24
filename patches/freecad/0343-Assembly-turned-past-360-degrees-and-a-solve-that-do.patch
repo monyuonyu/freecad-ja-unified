@@ -1,0 +1,155 @@
+From d52d1dc2c69dec69c044ebe6506bad0a1673835a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 02:06:00 +0900
+Subject: [PATCH 343/346] Assembly: turned past 360 degrees, and a solve that
+ does not hold says so
+
+- "Turn to an angle" takes any angle (720 is two turns of a four-stroke
+  cycle); it stopped at 360. A video turns the joint with its angle as a
+  formula, so the formulas that use it (a valve's lift over 720 degrees)
+  see the whole angle.
+- A joint change whose solve does not hold says on the status bar which
+  joints do not hold and how far: an engine stood still without a word
+  because of one spring's joint (engine field test 0.7.7).
+
+Test: FreeCADCmd -t TestMotionVideo, -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py               | 29 ++++++++++++++++++-
+ .../translations/UnifiedWording_ja.ts         | 11 +++++++
+ src/Mod/Unified/MotionVideo.py                | 10 +++----
+ src/Mod/Unified/TestMotionVideo.py            | 22 ++++++++++++++
+ 4 files changed, 66 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index a98bf2082..af9537aa2 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -147,7 +147,31 @@ def solveIfAllowed(assembly, storePrev=False):
+     if assembly.Type == "Assembly" and Preferences.preferences().GetBool(
+         "SolveInJointCreation", True
+     ):
+-        assembly.solve(storePrev)
++        rc = assembly.solve(storePrev)
++        if rc != 0:
++            tellNotHeld(assembly)
++
++
++def tellNotHeld(assembly):
++    """Say on the status bar which joints do not hold: the parts stay where they were, and a
++    whole engine stood still without a word because of one spring's joint (engine field test
++    0.7.7)"""
++    if not App.GuiUp:
++        return
++    try:
++        broken = assembly.getBrokenJoints()
++    except Exception:
++        broken = []
++    if broken:
++        parts = ["{} ({:.2f} mm, {:.1f}°)".format(j.Label, gap, angle) for j, gap, angle in broken[:4]]
++        text = translate("Assembly", "The assembly did not move: these joints do not hold: {}").format(", ".join(parts))
++    else:
++        text = translate("Assembly", "The assembly did not move: its joints could not be solved")
++    try:
++        Gui.getMainWindow().statusBar().showMessage(text, 15000)
++    except Exception:
++        pass
++    App.Console.PrintWarning(text + "\n")
+ 
+ 
+ def getContext(obj):
+@@ -2050,6 +2074,9 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         self.driveAngleSpinbox = Gui.UiLoader().createWidget("Gui::QuantitySpinBox")
+         self.driveAngleSpinbox.setObjectName("driveAngleSpinbox")
+         self.driveAngleSpinbox.setProperty("unit", "deg")
++        # any angle: 720 is two turns (it stopped at 360; a four-stroke cycle is 720)
++        self.driveAngleSpinbox.setProperty("minimum", -1.0e6)
++        self.driveAngleSpinbox.setProperty("maximum", 1.0e6)
+         self.driveAngleSpinbox.setSizePolicy(
+             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+         )
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index b42290000..ba41bcc57 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -12800,4 +12800,15 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>断面 &lt;REF&gt;-&lt;REF&gt;</translation>
+     </message>
+ </context>
++<context>
++    <name>Assembly</name>
++    <message>
++        <source>The assembly did not move: these joints do not hold: {}</source>
++        <translation>組立は動きませんでした。成り立たないジョイント: {}</translation>
++    </message>
++    <message>
++        <source>The assembly did not move: its joints could not be solved</source>
++        <translation>組立は動きませんでした。ジョイントが解けません</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/MotionVideo.py b/src/Mod/Unified/MotionVideo.py
+index 23dd25f85..53aaea101 100644
+--- a/src/Mod/Unified/MotionVideo.py
++++ b/src/Mod/Unified/MotionVideo.py
+@@ -48,11 +48,10 @@ def formula(obj, prop):
+ 
+ def pose(joint, angle):
+     """Turn the joint to the angle and solve its assembly. False if it does not hold there."""
+-    if formula(joint, "Angle"):
+-        joint.setExpression("Angle", None)
+-    # the angle property stops at +-360 degrees; a turned joint is the same a whole turn on
+-    # (a 0 to 720 degree video stood still past 360; gears keep their timing over whole turns)
+-    joint.Angle = math.fmod(angle, 360.0)
++    # As a formula: a value set from Python stops at +-360 degrees, a formula's does not, and the
++    # formulas that use this angle (a valve's lift over 720 degrees) see the whole angle (a 0 to
++    # 720 degree video stood still past 360; engine field test 0.7.7)
++    joint.setExpression("Angle", "%.12g deg" % angle)
+     asm = assembly_of(joint)
+     doc = joint.Document
+     doc.recompute()
+@@ -166,6 +165,7 @@ def export(joint, out, start=0.0, end=360.0, frames=72, fps=24, view="iso", size
+         if was_formula:
+             joint.setExpression("Angle", was_formula)
+         else:
++            joint.setExpression("Angle", None)
+             joint.Angle = was
+         doc.recompute()
+         asm = assembly_of(joint)
+diff --git a/src/Mod/Unified/TestMotionVideo.py b/src/Mod/Unified/TestMotionVideo.py
+index eb0890dd6..2283a38ff 100644
+--- a/src/Mod/Unified/TestMotionVideo.py
++++ b/src/Mod/Unified/TestMotionVideo.py
+@@ -17,6 +17,28 @@ class MotionVideoTest(unittest.TestCase):
+         self.assertEqual(MotionVideo.angles(0, 360, 4), [0, 90, 180, 270])  # a whole turn: 360 left out
+         self.assertEqual(MotionVideo.angles(0, 90, 4), [0, 30, 60, 90])
+ 
++    def test_past_a_whole_turn(self):
++        # 0 to 720 degrees: the angles past 360 are given as they are (it stood still past 360)
++        import TestAssemblySolve
++
++        doc, sheet, asm, piston, r, L = TestAssemblySolve.build(revolute_drive=True)
++        try:
++            asm.Type = "Assembly"
++            drive = doc.getObject("Drive")
++            seen = []
++
++            def draw(path):
++                from PIL import Image
++
++                seen.append(round(drive.Angle.Value, 6))
++                Image.new("RGB", (4, 4)).save(path)
++
++            MotionVideo.export(drive, os.path.join(tempfile.gettempdir(), "turns.gif"), 0, 720, 8, draw=draw)
++            self.assertEqual(seen, [0, 90, 180, 270, 360, 450, 540, 630])
++            self.assertIn("Params.theta", MotionVideo.formula(drive, "Angle"))
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_crank(self):
+         import TestAssemblySolve
+ 
+-- 
+2.43.0
+

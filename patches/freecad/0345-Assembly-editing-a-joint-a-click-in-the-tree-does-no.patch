@@ -1,0 +1,35 @@
+From 21e447bcadf43502887d91be6d6efb8f17e8bb30 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 02:08:41 +0900
+Subject: [PATCH 345/346] Assembly: editing a joint, a click in the tree does
+ not replace its references
+
+A whole object picked in the tree while a joint's panel was open became
+its reference (the connecting rod in place of both), and Cancel did not
+bring them back (engine field test 0.7.7). Only faces, edges and points
+picked are references when a joint is edited.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index af9537aa2..b527ea0af 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -2585,6 +2585,11 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         return best
+ 
+     def addSelection(self, doc_name, obj_name, sub_name, mousePos):
++        # Editing a joint, a click in the tree (a whole object, no face or edge) is not a new
++        # reference: it put the connecting rod in place of both and Cancel did not bring them
++        # back (engine field test 0.7.7)
++        if not self.creating and (not sub_name or sub_name.endswith(".")):
++            return
+         # A hole next to the click wins over the flat face around it
+         if not getattr(self, "_swapping_pick", False):
+             near = self._hole_near(doc_name, obj_name, sub_name, mousePos)
+-- 
+2.43.0
+
