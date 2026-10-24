@@ -13,22 +13,16 @@ The application's UI is in Japanese. In this page, Japanese labels you need to f
 
 ## An engine made with it
 
-A 125 cc air-cooled single-cylinder engine was made with this build to test how usable the screen is.
+A 125 cc air-cooled single-cylinder engine was made with this build to test it. **The whole engine can be made by script and with the screen only.**
 
 <p>
-<img src="docs/images/engine_section.png" width="360" alt="Engine section">
-<img src="docs/images/engine_cycle.gif" width="300" alt="One cycle">
+<img src="docs/images/engine_section.png" width="330" alt="The engine made by script (73 parts), sectioned">
+<img src="docs/images/engine_gui_cycle.gif" width="240" alt="The engine made with the screen only, moving (sectioned)">
 </p>
 
-The whole engine (73 parts) was made by a script; the section with `--render --section`, the motion the same way as "Motion to Video".
-The main parts, the assembly and the drawing were then made **with the screen only** (mouse and keyboard), the same 6 tasks for each version:
+Left: the whole engine made by a script (73 parts). Right: the engine made **with mouse and keyboard only** (15 parts, 17 joints), turned 0-720 degrees with "Motion to Video", sectioned; rockers and valves move by formulas of the crank angle, intake and exhaust open once each.
 
-- 0.6.9: 2 of 6 (a crash lost the work)
-- 0.7.3: 4
-- **0.7.5: all 6** (no crash)
-
-What stopped it was fixed in each version (an assembly breaking silently, the parts of a saved assembly lost, sketches hidden by the solid, ...).
-The aim is the whole engine both by script and with the screen; the valve train (valves, springs, rockers, cam) and the whole assembly are being tested with the screen only.
+Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced, a head sometimes put turned half a turn, ...
 
 ![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
 
@@ -335,6 +329,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.7.9
+
+The second GUI-only whole-engine test (0.7.8) **made the whole engine with the screen only** (15 parts, 17 joints, rockers and valves as formulas of the crank angle, intake and exhaust opening once each over 0-720 degrees, a sectioned video, reopened). Fixed what was left: big jumps of the crank are walked through by value (a chain's cam was half a turn off), the angle field solves when the number is done, joint angles have no limit, a reversed slider holds, assembly parts are selectable again when a file opens.
 
 ## Changes in 0.7.8
 

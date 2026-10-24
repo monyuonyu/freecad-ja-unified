@@ -1,7 +1,7 @@
 From 7290c52bae62e238ddc3a015b1984535b30fdac7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 12 Oct 2026 07:39:04 +0900
-Subject: [PATCH 208/346] Unified: bundle LibreDWG (dwg2dxf, dxf2dwg) for DWG
+Subject: [PATCH 208/348] Unified: bundle LibreDWG (dwg2dxf, dxf2dwg) for DWG
  import and export
 
 Init.py sets the bundled dwg2dxf as the DWG converter of Draft/importDWG

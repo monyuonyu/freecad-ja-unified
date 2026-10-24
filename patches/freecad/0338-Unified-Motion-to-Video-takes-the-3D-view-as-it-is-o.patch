@@ -1,7 +1,7 @@
 From 884890f02af55dbcbbaac405f4accc482f11448a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 21:50:18 +0900
-Subject: [PATCH 338/346] Unified: Motion to Video takes the 3D view as it is
+Subject: [PATCH 338/348] Unified: Motion to Video takes the 3D view as it is
  on the screen
 
 The pictures were drawn again (saveImage): the view's section (clipping)

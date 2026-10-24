@@ -1,7 +1,7 @@
 From ce340a35eeeb342c36434ac1d71542eb475ece20 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 19:03:23 +0900
-Subject: [PATCH 270/346] Make Drawing: a picked face is the front; holes are
+Subject: [PATCH 270/348] Make Drawing: a picked face is the front; holes are
  dimensioned where they are circles
 
 A face picked before "Make Drawing" is the one the front view looks at

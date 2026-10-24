@@ -1,7 +1,7 @@
 From 2af665baf40a3e35da1bb173a57e461ac5eeaeb5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 21:28:37 +0900
-Subject: [PATCH 219/346] Part: Shape.check(True) no longer crashes on edges
+Subject: [PATCH 219/348] Part: Shape.check(True) no longer crashes on edges
  without end vertices
 
 BOPAlgo_ArgumentAnalyzer::TestSmallEdge calls BRep_Tool::Parameter on the end

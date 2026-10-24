@@ -1,7 +1,7 @@
 From abbc405f7a492a86ec22c2dad91f89a579522eb8 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:10:48 +0900
-Subject: [PATCH 278/346] Unified: the parts shelf panel, "Insert screw" for a
+Subject: [PATCH 278/348] Unified: the parts shelf panel, "Insert screw" for a
  picked hole, profiles by two clicks
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

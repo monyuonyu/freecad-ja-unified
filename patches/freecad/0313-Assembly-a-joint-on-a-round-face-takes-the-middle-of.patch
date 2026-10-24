@@ -1,7 +1,7 @@
 From 59b89bf031e04c6fba48783b18aa0e496a4d4256 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:27:24 +0900
-Subject: [PATCH 313/346] Assembly: a joint on a round face takes the middle of
+Subject: [PATCH 313/348] Assembly: a joint on a round face takes the middle of
  the whole hole or shaft
 
 A hole through two walls (a piston's pin hole) or two journals of a crank

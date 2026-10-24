@@ -1,7 +1,7 @@
 From 20c977cc08a9bd5deb63b6b436233af4099dcf62 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:53:30 +0900
-Subject: [PATCH 296/346] Unified: digits are numbers while a sketch is drawn,
+Subject: [PATCH 296/348] Unified: digits are numbers while a sketch is drawn,
  never the standard views
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

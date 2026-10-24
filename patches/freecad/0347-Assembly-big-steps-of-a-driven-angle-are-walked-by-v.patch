@@ -1,0 +1,301 @@
+From 01c5fe1448e3380c6d73b10377b2c748522813be Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 03:41:20 +0900
+Subject: [PATCH 347/348] Assembly: big steps of a driven angle are walked by
+ value; any angle; reverse kept
+
+From the second whole-engine GUI test (0.7.8):
+- A big step of a driven angle (a crank from 0 to 390, or 200 to 600
+  degrees) is walked through by the angle's value in steps of 15
+  degrees: by the placement, 0 to 390 was a turn of 30 and a 28/14
+  chain's cam took the other half turn, kept even back at 0.
+- A joint's Angle has no limit (it stopped at 360 though the panel took
+  more): 720 degrees is a four-stroke cycle.
+- The panel's angle and distance are solved when the number is done
+  (Enter or leaving the field), not at each digit: 300 typed after 270
+  solved 3 first and stayed there.
+- "Reverse" is counted (FlipCount): an axis turned over by it is not
+  taken as the solver's wrong answer, and a slider moved to a distance
+  may be turned half a turn (a valve put upright was taken as broken).
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestAssemblyWorkbench
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 93 ++++++++++++++++++++++---
+ src/Mod/Assembly/App/AssemblyObject.h   |  4 +-
+ src/Mod/Assembly/JointObject.py         | 10 +++
+ src/Mod/Unified/TestAssemblySolve.py    | 23 ++++++
+ 4 files changed, 118 insertions(+), 12 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index d3481e896..618cb1b49 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -34,6 +34,7 @@
+ 
+ #include <App/Application.h>
+ #include <App/ObjectIdentifier.h>
++#include <App/PropertyUnits.h>
+ #include <App/Datums.h>
+ #include <App/Document.h>
+ #include <App/DocumentObjectGroup.h>
+@@ -152,6 +153,25 @@ Base::Placement jointPlacementFromProp(App::DocumentObject* joint, const char* p
+     return plc;
+ }
+ 
++// The value a driven joint is driven to: a revolute's angle (degrees) or a slider's distance
++// (mm); NaN for a joint that is not driven
++double driveValue(const App::DocumentObject* joint)
++{
++    const char* name = isAngleDriven(joint) ? "Angle" : isDistanceDriven(joint) ? "SlideDistance" : nullptr;
++    auto* prop = name ? joint->getPropertyByName<App::PropertyFloat>(name) : nullptr;
++    return prop ? prop->getValue() : std::numeric_limits<double>::quiet_NaN();
++}
++
++// A driven joint's first placement at a given drive value (as jointPlacementFromProp at its own)
++Base::Placement drivenPlacement1(App::DocumentObject* joint, double value)
++{
++    Base::Placement plc = App::GeoFeature::getPlacementFromProp(joint, "Placement1");
++    if (isAngleDriven(joint)) {
++        return plc * Base::Placement(Base::Vector3d(), Base::Rotation(Base::Vector3d(0, 0, 1), Base::toRadians(value)));
++    }
++    return plc * Base::Placement(Base::Vector3d(0, 0, value), Base::Rotation());
++}
++
+ Base::Placement getJointSideGlobalPlacement(
+     App::DocumentObject* joint,
+     const char* refName,
+@@ -378,14 +398,32 @@ int AssemblyObject::solve(bool enableRedo)
+         }
+     };
+ 
++    // A big step of a driven value (a crank from 0 to 390 degrees) is walked through from the
++    // start: its placement is the same as at 30, and a chain's cam took the half turn of the
++    // other answer (engine field test 0.7.8)
++    double driveStep = 0.0;
++    for (auto* joint : getJoints()) {
++        auto it = heldDriveValue.find(joint->getNameInDocument());
++        const double now = driveValue(joint);
++        if (it != heldDriveValue.end() && !std::isnan(now) && isAngleDriven(joint)) {
++            driveStep = std::max(driveStep, std::fabs(now - it->second));
++        }
++    }
++
+     std::vector<App::DocumentObject*> joints;
+-    int rc = solveOnce(enableRedo, joints);
+-    if (rc != 0 || jointsHold(joints)) {
+-        if (rc == 0) {
+-            rememberHeldJoints(joints);
+-            storeGearPhases();
++    int rc = 0;
++    if (driveStep <= 20.0) {
++        rc = solveOnce(enableRedo, joints);
++        if (rc != 0 || jointsHold(joints)) {
++            if (rc == 0) {
++                rememberHeldJoints(joints);
++                storeGearPhases();
++            }
++            return rc;
+         }
+-        return rc;
++    }
++    else {
++        joints = getJoints();
+     }
+ 
+     // Not held: walk from the joints' placements of the last solve that held to the asked
+@@ -396,6 +434,10 @@ int AssemblyObject::solve(bool enableRedo)
+     double angle = 0.0;
+     double distance = 0.0;
+     for (auto* joint : joints) {
++        // a driven joint walks by its value (below), not by its placement's turn
++        if (heldDriveValue.count(joint->getNameInDocument()) && !std::isnan(driveValue(joint))) {
++            continue;
++        }
+         const Base::Placement now1 = jointPlacementFromProp(joint, "Placement1");
+         const Base::Placement now2 = jointPlacementFromProp(joint, "Placement2");
+         auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
+@@ -421,15 +463,24 @@ int AssemblyObject::solve(bool enableRedo)
+         }
+     }
+     const int steps = std::clamp(
+-        static_cast<int>(std::ceil(angle / (M_PI / 12.0))),
++        static_cast<int>(std::ceil(std::max(angle / (M_PI / 12.0), driveStep / 15.0))),
+         2,
+-        48
++        240
+     );
+     for (int k = 1; k <= steps; ++k) {
+         const double t = static_cast<double>(k) / steps;
+         jointPlacementOverride.clear();
+         if (k < steps) {
+             for (auto* joint : joints) {
++                auto held = heldDriveValue.find(joint->getNameInDocument());
++                const double now = driveValue(joint);
++                if (held != heldDriveValue.end() && !std::isnan(now)) {
++                    jointPlacementOverride[joint] = {
++                        drivenPlacement1(joint, held->second + (now - held->second) * t),
++                        App::GeoFeature::getPlacementFromProp(joint, "Placement2"),
++                    };
++                    continue;
++                }
+                 const auto& was = start[joint];
+                 auto blend = [t](const Base::Placement& a, const Base::Placement& b) {
+                     return Base::Placement::slerp(a, b, t);
+@@ -607,7 +658,8 @@ AssemblyObject::brokenJoints(const std::vector<App::DocumentObject*>& joints) co
+             };
+             angle = off(d);
+             // a fixed joint whose placement is a formula drives (a crank turned by it): exact
+-            bool driving = isDriven(joint);
++            // the turn of a joint moved to a distance is not driven: its half turns hold too
++            bool driving = isAngleDriven(joint);
+             for (const auto& [path, expr] : joint->ExpressionEngine.getExpressions()) {
+                 const std::string name = path.toString();
+                 if (name.rfind("Placement1", 0) == 0 || name.rfind("Placement2", 0) == 0
+@@ -632,7 +684,10 @@ AssemblyObject::brokenJoints(const std::vector<App::DocumentObject*>& joints) co
+             // turn over since the last solve that held: that is another, wrong, answer of the
+             // solver (a cam flipped upside down, still on its axis; engine field test 0.7.6)
+             auto it = heldAxisSign.find(joint->getNameInDocument());
+-            if (it != heldAxisSign.end() && (za.Dot(zb) < 0 ? -1 : 1) != it->second) {
++            auto* flips = joint->getPropertyByName<App::PropertyInteger>("FlipCount");
++            const long flipCount = flips ? flips->getValue() : 0;
++            if (it != heldAxisSign.end() && (za.Dot(zb) < 0 ? -1 : 1) != it->second.first
++                && flipCount == it->second.second) {
+                 angle = M_PI;
+             }
+         }
+@@ -648,7 +703,12 @@ void AssemblyObject::rememberHeldJoints(const std::vector<App::DocumentObject*>&
+ {
+     lastHeldJointPlacements.clear();
+     heldAxisSign.clear();
++    heldDriveValue.clear();
+     for (auto* joint : joints) {
++        const double value = driveValue(joint);
++        if (!std::isnan(value)) {
++            heldDriveValue[joint->getNameInDocument()] = value;
++        }
+         auto* type = joint->getPropertyByName<App::PropertyEnumeration>("JointType");
+         const std::string kind = type && type->getValueAsString() ? type->getValueAsString() : "";
+         if ((kind == "Revolute" || kind == "Cylindrical" || kind == "Slider")
+@@ -657,7 +717,8 @@ void AssemblyObject::rememberHeldJoints(const std::vector<App::DocumentObject*>&
+             const Base::Placement b = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
+             const double d = a.getRotation().multVec(Base::Vector3d(0, 0, 1))
+                                  .Dot(b.getRotation().multVec(Base::Vector3d(0, 0, 1)));
+-            heldAxisSign[joint->getNameInDocument()] = d < 0 ? -1 : 1;
++            auto* flips = joint->getPropertyByName<App::PropertyInteger>("FlipCount");
++            heldAxisSign[joint->getNameInDocument()] = {d < 0 ? -1 : 1, flips ? flips->getValue() : 0};
+         }
+         lastHeldJointPlacements[joint->getNameInDocument()] = {
+             jointPlacementFromProp(joint, "Placement1"),
+@@ -1588,6 +1649,16 @@ std::vector<App::DocumentObject*> AssemblyObject::getJoints(bool delBadJoints, b
+             continue;
+         }
+ 
++        // A joint's angle has no limit: turned to 720 degrees (a four-stroke cycle) it stopped
++        // at 360, the property's standard range (engine field test 0.7.8)
++        if (auto* angle = dynamic_cast<App::PropertyAngle*>(joint->getPropertyByName("Angle"))) {
++            static const App::PropertyQuantityConstraint::Constraints anyAngle {
++                -1.0e9, 1.0e9, 1.0};
++            if (angle->getConstraints() != &anyAngle) {
++                angle->setConstraints(&anyAngle);
++            }
++        }
++
+         auto* prop = dynamic_cast<App::PropertyBool*>(joint->getPropertyByName("Suppressed"));
+         if (joint->isError() || !prop || prop->getValue()) {
+             // Filter grounded joints and deactivated joints.
+diff --git a/src/Mod/Assembly/App/AssemblyObject.h b/src/Mod/Assembly/App/AssemblyObject.h
+index b0dfbe25b..8ca2d8fad 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.h
++++ b/src/Mod/Assembly/App/AssemblyObject.h
+@@ -292,7 +292,9 @@ private:
+     // joints' placements of the last solve that held, to walk there in small steps.
+     std::map<std::string, std::pair<Base::Placement, Base::Placement>> lastHeldJointPlacements;
+     // revolute, cylindrical, slider: did their axes face the same way (1) or not (-1) then
+-    std::map<std::string, int> heldAxisSign;
++    std::map<std::string, std::pair<int, long>> heldAxisSign;  // and the joint's FlipCount
++    // the driven joints' values (angle, distance) then: a big step is walked through by value
++    std::map<std::string, double> heldDriveValue;
+     // While walking: the placements the joints use instead of their own
+     std::map<const App::DocumentObject*, std::pair<Base::Placement, Base::Placement>> jointPlacementOverride;
+     Base::Placement jointPlacement(App::DocumentObject* joint, const char* plcName) const;
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index a46f0133a..82a0c3ad3 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -987,6 +987,12 @@ class Joint:
+         return plc
+ 
+     def flipOnePart(self, joint):
++        # counted: the solver takes an axis turned over since the last solve as a wrong answer,
++        # except after "Reverse" (AssemblyObject.cpp, heldAxisSign)
++        if "FlipCount" not in joint.PropertiesList:
++            joint.addProperty("App::PropertyInteger", "FlipCount", "Joint", "", locked=True)
++            joint.setPropertyStatus("FlipCount", "Hidden")
++        joint.FlipCount = joint.FlipCount + 1
+         self.matchJCS(joint, False, True)
+ 
+     def preSolve(self, joint, savePlc=True):
+@@ -2102,6 +2108,9 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         # any angle: 720 is two turns (it stopped at 360; a four-stroke cycle is 720)
+         self.driveAngleSpinbox.setProperty("minimum", -1.0e6)
+         self.driveAngleSpinbox.setProperty("maximum", 1.0e6)
++        # solved when the number is done (Enter, or leaving the field), not at each digit: 300
++        # typed after 270 solved 3 first and stayed there (engine field test 0.7.8)
++        self.driveAngleSpinbox.setKeyboardTracking(False)
+         self.driveAngleSpinbox.setSizePolicy(
+             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+         )
+@@ -2131,6 +2140,7 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         self.slideDistanceSpinbox.setProperty("unit", "mm")
+         self.slideDistanceSpinbox.setProperty("minimum", -1.0e9)
+         self.slideDistanceSpinbox.setProperty("maximum", 1.0e9)
++        self.slideDistanceSpinbox.setKeyboardTracking(False)
+         self.slideDistanceSpinbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+         if hasattr(self.joint, "SlideDistance"):
+             self.slideDistanceSpinbox.setProperty("rawValue", self.joint.SlideDistance.Value)
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 0d27afbeb..fc7bb6201 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -201,6 +201,17 @@ class AssemblySolveTest(unittest.TestCase):
+                 doc.recompute()
+                 self.assertEqual(asm.solve(), 0)
+                 self.assertAlmostEqual(turned(w2), t / 2.0, places=4, msg="crank {}".format(t))
++            # big jumps and past a whole turn: walked through by the angle's value (0 to 390 has
++            # the placement of 30; the cam took the other half turn; engine field test 0.7.8)
++            for t, want in ((390, 195), (200, 100), (600, 300), (0, 0), (720, 0)):
++                drive.Angle = t
++                doc.recompute()
++                self.assertEqual(asm.solve(), 0)
++                self.assertAlmostEqual(drive.Angle.Value, t, places=6)
++                self.assertAlmostEqual(turned(w2), want, places=4, msg="crank {}".format(t))
++            drive.Angle = 330
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
+             w2.Placement = P(w2.Placement.Base, App.Rotation(V(0, 0, 1), 20).multiply(w2.Placement.Rotation))
+             self.assertEqual(asm.solve(), 0)
+             self.assertAlmostEqual(turned(w2), 330 / 2.0, places=4)
+@@ -260,6 +271,18 @@ class AssemblySolveTest(unittest.TestCase):
+                 self.assertEqual(asm.solve(), 0)
+                 self.assertAlmostEqual(abs(valve.Placement.Base.z - z0), abs(d), places=6)
+             self.assertEqual(asm.getBrokenJoints(), [])
++            # "Reverse" (a valve put upright) holds, driven or not (it was taken as broken)
++            slide.Proxy.flipOnePart(slide)
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertEqual(asm.getBrokenJoints(), [])
++            slide.SlideDriven = False
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            slide.Proxy.flipOnePart(slide)
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertEqual(asm.getBrokenJoints(), [])
+         finally:
+             App.closeDocument(doc.Name)
+ 
+-- 
+2.43.0
+

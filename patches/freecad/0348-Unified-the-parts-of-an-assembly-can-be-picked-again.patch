@@ -1,0 +1,78 @@
+From 02dcb5e0259ad2cc11f3af5b68072d7b185b09fd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 03:44:21 +0900
+Subject: [PATCH 348/348] Unified: the parts of an assembly can be picked again
+ when its file opens
+
+The joint panel's isolation makes the other parts unselectable for a
+while; saved meanwhile (the recovery data every two minutes, a crash)
+they stayed unselectable in the file, 13 parts no click could pick
+(engine field test 0.7.8). When a file has opened, the parts of its
+assemblies are selectable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopiesGui.py | 41 +++++++++++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index 702a2f1e7..5f26b6b3c 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -211,13 +211,52 @@ class KeyAndTreeFilter(QtCore.QObject):
+ _filter = None
+ 
+ 
++def make_parts_selectable(doc):
++    """The parts of the file's assemblies can be picked again. The joint panel's isolation makes
++    the other parts unselectable for a while; saved meanwhile (the recovery data every two
++    minutes, a crash) they stayed unselectable in the file, 13 parts that no click could pick
++    (engine field test 0.7.8)."""
++    for asm in doc.Objects:
++        if not asm.isDerivedFrom("Assembly::AssemblyObject"):
++            continue
++        for part in asm.OutListRecursive:
++            vo = getattr(part, "ViewObject", None)
++            if vo is not None and hasattr(vo, "Selectable") and not vo.Selectable:
++                vo.Selectable = True
++
++
++class _OpenObserver:
++    # (no "restored" slot for Python observers: from the document's creation, wait for the end)
++    def slotCreatedDocument(self, doc):
++        QtCore.QTimer.singleShot(100, lambda: _fix_after_open(doc.Name, 100))
++
++
++def _fix_after_open(name, tries):
++    # the view's properties are read after the document's: wait until the opening is over
++    if (App.isRestoring() or Gui.getDocument(name) is None) and tries > 0:
++        QtCore.QTimer.singleShot(100, lambda: _fix_after_open(name, tries - 1))
++        return
++    doc = App.listDocuments().get(name)
++    if doc is not None:
++        try:
++            make_parts_selectable(doc)
++        except Exception as e:
++            App.Console.PrintLog("Unified: selectable parts: {}\n".format(e))
++
++
++_observer = None
++
++
+ def install():
+-    global _filter
++    global _filter, _observer
+     if _filter is None:
+         import UnifiedChrome
+ 
+         _filter = KeyAndTreeFilter()
+         UnifiedChrome.EXTRA_FILTERS.append(_filter)
++    if _observer is None:
++        _observer = _OpenObserver()
++        App.addDocumentObserver(_observer)
+ 
+ 
+ class HingeToGroundCommand:
+-- 
+2.43.0
+
