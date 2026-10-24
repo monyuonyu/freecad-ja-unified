@@ -1,0 +1,140 @@
+From ccabd575f983cb44887823c14961ba9b86cbc36a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:37:16 +0900
+Subject: [PATCH 327/333] Sketcher: a number typed while a dimension is placed
+ is its value
+
+After picking an edge for a dimension, digits typed before clicking an
+empty place were dropped without a word (engine field tests 0.7.3, 0.7.4).
+A digit (or .) typed then places the dimension where it is and opens its
+value box with the digit typed in; the rest of the number follows (fast
+typing included).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/Gui/CommandConstraints.cpp | 32 +++++++++++++++++++++
+ src/Mod/Sketcher/Gui/EditDatumDialog.cpp    | 19 ++++++++++++
+ src/Mod/Sketcher/Gui/EditDatumDialog.h      |  6 ++++
+ 3 files changed, 57 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/CommandConstraints.cpp b/src/Mod/Sketcher/Gui/CommandConstraints.cpp
+index 186e94865..f3ef48a57 100644
+--- a/src/Mod/Sketcher/Gui/CommandConstraints.cpp
++++ b/src/Mod/Sketcher/Gui/CommandConstraints.cpp
+@@ -2357,6 +2357,35 @@ public:
+ 
+     void registerPressedKey(bool pressed, int key) override
+     {
++        // A number typed while a dimension is being placed: it is put here and its value
++        // dialog opens with that number (the digits were dropped until a click on empty space;
++        // engine field test 0.7.3)
++        QString digit;
++        if (key >= SoKeyboardEvent::NUMBER_0 && key <= SoKeyboardEvent::NUMBER_9) {
++            digit = QString::number(key - SoKeyboardEvent::NUMBER_0);
++        }
++        else {
++            // the keypad's codes are not in order
++            static const int pad[] = {SoKeyboardEvent::PAD_0, SoKeyboardEvent::PAD_1, SoKeyboardEvent::PAD_2,
++                                      SoKeyboardEvent::PAD_3, SoKeyboardEvent::PAD_4, SoKeyboardEvent::PAD_5,
++                                      SoKeyboardEvent::PAD_6, SoKeyboardEvent::PAD_7, SoKeyboardEvent::PAD_8,
++                                      SoKeyboardEvent::PAD_9};
++            for (int i = 0; i < 10; ++i) {
++                if (key == pad[i]) {
++                    digit = QString::number(i);
++                }
++            }
++        }
++        if (key == SoKeyboardEvent::PERIOD) {
++            digit = QStringLiteral(".");
++        }
++        if (!digit.isEmpty() && !cstrIndexes.empty()) {
++            if (pressed) {
++                typedDigits = digit;
++                finalizeCommand();
++            }
++            return;
++        }
+         if (key == SoKeyboardEvent::M && pressed) {
+             availableConstraint = nextConstraint(availableConstraint);
+             makeAppropriateConstraint(previousOnSketchPos);
+@@ -2619,6 +2648,7 @@ protected:
+     std::vector<ExternalReference> externalReferences;
+ 
+     std::vector<int> cstrIndexes;
++    QString typedDigits;
+     bool singleCircleReverseOrder;
+     bool skipReleaseAfterExternalSelection = false;
+ 
+@@ -2920,6 +2950,8 @@ protected:
+             if (show && ConStr[index]->isDimensional() && ConStr[index]->isDriving) {
+                 commandHandledInEditDatum = true;
+                 EditDatumDialog editDatumDialog(currentTransactionID, sketchgui, index);
++                editDatumDialog.setTyped(typedDigits);
++                typedDigits.clear();
+                 editDatumDialog.exec();
+                 if (!editDatumDialog.isSuccess()) {
+                     break;
+diff --git a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+index 105bcd46c..ebf4b399f 100644
+--- a/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
++++ b/src/Mod/Sketcher/Gui/EditDatumDialog.cpp
+@@ -30,6 +30,9 @@
+ #include <QVBoxLayout>
+ #include <QApplication>
+ #include <QDialog>
++#include <QKeyEvent>
++#include <QPointer>
++#include <QCoreApplication>
+ 
+ 
+ #include <Base/Tools.h>
+@@ -259,6 +262,22 @@ int EditDatumDialog::exec(bool atCursor)
+                 edit->selectNumber();
+             });
+         }
++        // digits typed while the dimension was placed: they replace the selected number, after
++        // the pop-up has taken the focus and selected the number (a timer above)
++        if (!typed.isEmpty()) {
++            QPointer<Gui::QuantitySpinBox> edit = ui_ins_datum->labelEdit;
++            const QString text = typed;
++            QTimer::singleShot(0, edit, [edit, text]() {
++                if (!edit) {
++                    return;
++                }
++                edit->selectNumber();
++                for (QChar c : text) {
++                    QKeyEvent press(QEvent::KeyPress, 0, Qt::NoModifier, QString(c));
++                    QCoreApplication::sendEvent(edit, &press);
++                }
++            });
++        }
+         if (atCursor) {
+             dlg.show();  // Need to show the dialog so geometry is computed
+             QRect pg = dlg.parentWidget()->geometry();
+diff --git a/src/Mod/Sketcher/Gui/EditDatumDialog.h b/src/Mod/Sketcher/Gui/EditDatumDialog.h
+index a3867ffa2..4ae2bbf99 100644
+--- a/src/Mod/Sketcher/Gui/EditDatumDialog.h
++++ b/src/Mod/Sketcher/Gui/EditDatumDialog.h
+@@ -52,6 +52,11 @@ public:
+ 
+     int exec(bool atCursor = true);
+     bool isSuccess();
++    /// What was typed before the dialog came (it replaces the value as if typed into it)
++    void setTyped(const QString& text)
++    {
++        typed = text;
++    }
+ 
+ private:
+     Sketcher::SketchObject* sketch;
+@@ -60,6 +65,7 @@ private:
+     bool success;
+     std::unique_ptr<Ui_InsertDatum> ui_ins_datum;
+     int transactionID;
++    QString typed;
+ 
+ private Q_SLOTS:
+     void accepted();
+-- 
+2.43.0
+

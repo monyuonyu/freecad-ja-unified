@@ -1,0 +1,65 @@
+From 3bffb4a66edb17926c54fc1da1ca5662b8d888bd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 15:16:05 +0900
+Subject: [PATCH 329/333] Unified: the bar after closing a sketch looks again
+ until the sketch's dialog has gone
+
+A sketch closed with "Done" sometimes got no bar (engine field test
+0.7.3: twice of six): when its dialog was still going away the bar waited
+for a "dialog closed" that had already come. It looks again every 0.1 s,
+up to 2 s.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 13 +++++++++++++
+ src/Mod/Unified/Gui/ContextBar.h   |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 1712e7bc8..c81a36f86 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -159,6 +159,7 @@ ContextBar::ContextBar()
+         // Look the object up again after the edit mode has been left completely: cancelling a
+         // new sketch deletes it
+         App::DocumentObjectT ref(vp.getObject());
++        closedSketchTries = 0;
+         QTimer::singleShot(0, this, [this, ref]() { onEditClosed(ref.getObject()); });
+     });
+     // A sketch closed while its dialog was still going away: look again once it is gone
+@@ -197,8 +198,20 @@ void ContextBar::onEditClosed(const App::DocumentObject* obj)
+     // The sketch's task dialog may still be closing: look again when it is gone
+     if (Gui::Control().activeDialog() || Gui::Application::Instance->editDocument()) {
+         closedSketch = App::DocumentObjectT(obj);
++        // and again in a moment: when the dialog had already gone, no "closed" comes any more
++        // (a sketch closed with "Done" sometimes got no bar; engine field test 0.7.3)
++        if (closedSketchTries++ < 20) {
++            App::DocumentObjectT ref(obj);
++            QTimer::singleShot(100, this, [this, ref]() {
++                if (closedSketch.getObjectName() == ref.getObjectName()) {
++                    closedSketch = App::DocumentObjectT();
++                    onEditClosed(ref.getObject());
++                }
++            });
++        }
+         return;
+     }
++    closedSketchTries = 0;
+     anchoredObject = obj->getFullName();
+     Gui::Selection().clearSelection();
+     Gui::Selection().addSelection(obj->getDocument()->getName(), obj->getNameInDocument());
+diff --git a/src/Mod/Unified/Gui/ContextBar.h b/src/Mod/Unified/Gui/ContextBar.h
+index 80c077d63..4892f7093 100644
+--- a/src/Mod/Unified/Gui/ContextBar.h
++++ b/src/Mod/Unified/Gui/ContextBar.h
+@@ -77,6 +77,7 @@ private:
+     /// A sketch that was closed while its dialog was still going away: looked at again
+     /// when the dialog is gone
+     App::DocumentObjectT closedSketch;
++    int closedSketchTries = 0;
+     /// Watch the 3D view for double-clicks and for working with the view
+     void watchView(QWidget* gl);
+     /// The view the bar belongs to: the active 3D view, or a technical drawing's page
+-- 
+2.43.0
+

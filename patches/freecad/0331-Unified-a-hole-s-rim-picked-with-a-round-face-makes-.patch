@@ -1,0 +1,131 @@
+From ff0098b286419b26d9f89e35484f47a8b3ddf0e0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 15:38:15 +0900
+Subject: [PATCH 331/333] Unified: a hole's rim picked with a round face makes
+ the joint on the hole's wall
+
+At the usual zoom a small hole's rim is easier to hit than its wall: a
+pin picked with the rim of the small end was put at the rim, 7.5 mm off
+(engine field test 0.7.5). For a joint from the bar with a round face and
+a circle edge, the edge stands for the round face it is the rim of (the
+picks stay in their order). Two rims stay rims.
+
+Test: FreeCADCmd -t TestContextRules
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/ContextRules.py     | 67 +++++++++++++++++++++++++++++
+ src/Mod/Unified/TestContextRules.py | 17 ++++++++
+ 2 files changed, 84 insertions(+)
+
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 284f1e271..09e2c8535 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -382,9 +382,76 @@ def available(command):
+     return e is not None and bool(e.get("wb"))
+ 
+ 
++def bore_face_of_rim(shape, edge_name):
++    """The round face a circle edge is the rim of (same radius), as "FaceN", or None"""
++    import Part
++
++    try:
++        edge = shape.getElement(edge_name)
++    except Exception:
++        return None
++    if type(edge.Curve).__name__ != "Circle":
++        return None
++    for face in shape.ancestorsOfType(edge, Part.Face):
++        s = face.Surface
++        if type(s).__name__ == "Cylinder" and abs(s.Radius - edge.Curve.Radius) < 1e-6:
++            for i, f in enumerate(shape.Faces):
++                if f.isSame(face):
++                    return "Face%d" % (i + 1)
++    return None
++
++
++def _joint_on_bore_not_rim():
++    """Two picks for a joint, a round face and a hole's rim (a small hole's rim is easier to hit
++    than its wall): the rim stands for its hole, else the pin sat at the rim, half the hole
++    off (engine field test 0.7.5: 7.5 mm). Two rims stay rims (seating a head on a face)."""
++    import FreeCADGui as Gui
++    import Part
++
++    picks = []
++    for sel in Gui.Selection.getSelectionEx("", 0):
++        for sub in sel.SubElementNames:
++            picks.append((sel, sub))
++    if len(picks) != 2:
++        return
++    kinds = []
++    for sel, sub in picks:
++        prefix, _, element = sub.rpartition(".")
++        try:
++            shape = Part.getShape(sel.Object, prefix + "." if prefix else "", needSubElement=False)
++        except Exception:
++            return
++        kinds.append((sel, prefix, element, shape))
++    def round_face(k):
++        try:
++            return k[2].startswith("Face") and type(k[3].getElement(k[2]).Surface).__name__ == "Cylinder"
++        except Exception:
++            return False
++    for a, b in ((0, 1), (1, 0)):
++        sel, prefix, element, shape = kinds[a]
++        if element.startswith("Edge") and round_face(kinds[b]):
++            face = bore_face_of_rim(shape, element)
++            if face:
++                # picked again in the same order (the first pick is the part that moves)
++                order = []
++                for i, (sel_i, sub_i) in enumerate(picks):
++                    if i == a:
++                        sub_i = (prefix + "." if prefix else "") + face
++                    order.append((sel_i.Object.Document.Name, sel_i.Object.Name, sub_i))
++                Gui.Selection.clearSelection()
++                for doc, name, sub_i in order:
++                    Gui.Selection.addSelection(doc, name, sub_i)
++            return
++
++
+ def run(command):
+     import FreeCADGui as Gui
+ 
++    if command.startswith("Assembly_CreateJoint"):
++        try:
++            _joint_on_bore_not_rim()
++        except Exception as e:
++            App.Console.PrintLog("Context bar: rim to bore: {}\n".format(e))
+     if command in Gui.listCommands():
+         Gui.runCommand(command)
+         return
+diff --git a/src/Mod/Unified/TestContextRules.py b/src/Mod/Unified/TestContextRules.py
+index 708181ad2..95f890cbc 100644
+--- a/src/Mod/Unified/TestContextRules.py
++++ b/src/Mod/Unified/TestContextRules.py
+@@ -131,5 +131,22 @@ class TestContextRules(unittest.TestCase):
+         self.assertIsNone(rules.field_of("Std_Measure"))
+ 
+ 
++
++class RimTest(unittest.TestCase):
++    def test_bore_face_of_rim(self):
++        # a hole's rim stands for its wall (a joint with a pin is made on the wall)
++        import Part
++
++        import ContextRules
++
++        shape = Part.makeBox(30, 30, 15).cut(Part.makeCylinder(7, 15, App.Vector(15, 15, 0)))
++        rims = ["Edge%d" % (i + 1) for i, e in enumerate(shape.Edges) if type(e.Curve).__name__ == "Circle"]
++        self.assertTrue(rims)
++        for rim in rims:
++            face = ContextRules.bore_face_of_rim(shape, rim)
++            self.assertEqual(type(shape.getElement(face).Surface).__name__, "Cylinder")
++        straight = [i + 1 for i, e in enumerate(shape.Edges) if type(e.Curve).__name__ == "Line"][0]
++        self.assertIsNone(ContextRules.bore_face_of_rim(shape, "Edge%d" % straight))
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

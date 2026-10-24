@@ -1,7 +1,7 @@
 From 10262ce4efdec5438a1b658e07f5ee857ef88bb5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 12:04:14 +0900
-Subject: [PATCH 322/326] Unified: the automatic dimensions of a drawing do not
+Subject: [PATCH 322/333] Unified: the automatic dimensions of a drawing do not
  repeat or say nothing
 
 On a connecting rod (engine field test 0.7.3) the centre distance came

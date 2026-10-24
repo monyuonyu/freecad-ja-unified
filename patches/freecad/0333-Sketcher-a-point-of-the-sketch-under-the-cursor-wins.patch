@@ -1,0 +1,75 @@
+From 7bf5d13d74c65cb62f3aa207b9a70e3c157b02f7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 15:48:15 +0900
+Subject: [PATCH 333/333] Sketcher: a point of the sketch under the cursor wins
+ over the line or axis it lies on
+
+A polyline started on the vertical axis and closed on its start point got
+"point on the axis" for the last click instead of meeting the start
+point: the outline stayed open, and "coincident" was then refused as
+redundant (engine field test 0.7.5). When a curve is under the cursor
+and a point of the sketch (an end, a centre, a point) is within the
+auto-constraint reach, the new point meets that point.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Sketcher/Gui/DrawSketchHandler.cpp | 43 ++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/src/Mod/Sketcher/Gui/DrawSketchHandler.cpp b/src/Mod/Sketcher/Gui/DrawSketchHandler.cpp
+index 77966cfdc..3fee5d5d4 100644
+--- a/src/Mod/Sketcher/Gui/DrawSketchHandler.cpp
++++ b/src/Mod/Sketcher/Gui/DrawSketchHandler.cpp
+@@ -610,6 +610,49 @@ void DrawSketchHandler::seekPreselectionAutoConstraint(
+         constr.GeoId = preSel.geoId;
+         constr.PosId = preSel.posId;
+         if (type == AutoConstraint::VERTEX || type == AutoConstraint::VERTEX_NO_TANGENCY) {
++            // A point of the sketch right there wins over the line or axis it lies on: a
++            // polyline closed on its start point on the vertical axis got "on the axis" and
++            // stayed open (engine field test 0.7.5)
++            if (preSel.posId == PointPos::none) {
++                auto* obj = sketchgui->getSketchObject();
++                const double reach = getAutoConstraintSearchDistance();
++                double best = reach * reach;
++                for (int geoId = 0; geoId <= getHighestCurveIndex(); ++geoId) {
++                    const Part::Geometry* geo = obj->getGeometry(geoId);
++                    if (!geo) {
++                        continue;
++                    }
++                    // the points a geometry has: a circle its centre, an arc its ends and
++                    // centre, a point itself, others their ends
++                    std::vector<PointPos> places;
++                    if (geo->is<Part::GeomPoint>()) {
++                        places = {PointPos::start};
++                    }
++                    else if (geo->isDerivedFrom<Part::GeomArcOfConic>()) {
++                        places = {PointPos::start, PointPos::end, PointPos::mid};
++                    }
++                    else if (geo->isDerivedFrom<Part::GeomConic>()) {
++                        places = {PointPos::mid};
++                    }
++                    else {
++                        places = {PointPos::start, PointPos::end};
++                    }
++                    for (PointPos pos : places) {
++                        Base::Vector3d p = obj->getPoint(geoId, pos);
++                        double d = (Base::Vector2d(p.x, p.y) - Pos).Sqr();
++                        if (d < best) {
++                            best = d;
++                            constr.GeoId = geoId;
++                            constr.PosId = pos;
++                        }
++                    }
++                }
++                if (constr.PosId != PointPos::none) {
++                    constr.Type = Sketcher::Coincident;
++                    suggestedConstraints.push_back(constr);
++                    return;
++                }
++            }
+             if (preSel.posId == PointPos::none) {
+                 bool lineCenter = isLineCenterAutoConstraint(preSel.geoId, Pos);
+                 constr.Type = lineCenter ? Sketcher::Symmetric : Sketcher::PointOnObject;
+-- 
+2.43.0
+

@@ -298,6 +298,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.6
+
+The GUI-only engine test ran through all 6 tasks on 0.7.5: **all 6 done** (2 on 0.6.9, 4 on 0.7.3), no P0/P1. Fixed from its P2s: a number typed while a sketch dimension is placed becomes its value; a polyline closed on a start point lying on an axis meets the start point; every number tool on the bar uses the number typed there; a hole's rim picked with a round face makes the joint on the hole's wall; a new section view goes where no view is; a click into a number field selects it; the bar after closing a sketch looks again until the sketch has closed.
+
 ## Changes in 0.7.5
 
 From the GUI test of 0.7.4 (assembly, section view, sketches: all done; the piston follows the crank at 0/90/180 degrees): "Turns in place" removes the part's fixing; "Slides in place" (a slider to the ground), both on the bar of a linked part; "Put Part" puts parts beside the others instead of at the origin; the drawing's automatic dimensions no longer repeat, measure nothing or cross the part; a drawing with a captioned section view no longer crashes the PDF export without the screen (an upstream regression); "Make Drawing" works in a part file that has a drawing; the section caption is translatable; internal names of parts put into an assembly are ASCII and the GUI reads names as UTF-8 (no more "é¨å003").

@@ -1,0 +1,50 @@
+From 7a14310ab79063d64254848dcc622a26d934e6a4 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 15:37:00 +0900
+Subject: [PATCH 330/333] Unified: every tool on the bar that takes a number
+ uses the one typed there
+
+The bar has one number field, next to the first tool that takes a number
+(Extrude). 4 typed there and "Cut in" pressed: the panel opened with 5
+(engine field test 0.7.5). Each such tool's button uses a number typed in
+the field.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index c81a36f86..b8795a0c0 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -376,6 +376,7 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+     auto& manager = Gui::Application::Instance->commandManager();
+     int shown = 0;
+     bool fieldShown = false;
++    QPointer<QLineEdit> numberField;  // the bar's one number field
+     for (const auto& action : actions) {
+         Gui::Command* cmd = manager.getCommandByName(action.command.c_str());
+         if (cmd) {
+@@ -406,7 +407,9 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+         // Which tool the button runs: its preview on hover (ToolPreviewGui.py)
+         button->setProperty("unifiedCommand", QString::fromStdString(name));
+         layout->addWidget(button);
+-        QPointer<QLineEdit> typed;
++        // A tool that takes a number uses the one typed in the bar's field ("Cut in" next to
++        // "Extrude": 4 typed, the panel opened with 5; engine field test 0.7.5)
++        QPointer<QLineEdit> typed = action.unit.isEmpty() ? QPointer<QLineEdit>() : numberField;
+         // The number of the first tool that takes one, right next to it: type it and Enter.
+         // The tool's full panel is a click on its button.
+         if (!action.unit.isEmpty() && !fieldShown) {
+@@ -424,6 +427,7 @@ void ContextBar::showActions(const std::vector<Action>& actions, QWidget* view)
+             });
+             layout->addWidget(field);
+             typed = field;
++            numberField = field;
+         }
+         // A number typed in the field and then the button: the number is used as with Enter
+         // (it was dropped and the panel opened with the old one; engine field test 0.7.3)
+-- 
+2.43.0
+

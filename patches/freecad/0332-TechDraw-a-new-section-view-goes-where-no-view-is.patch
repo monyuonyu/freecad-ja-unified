@@ -1,0 +1,126 @@
+From 73fa7fa0a2e3a22be67ffa7555ea14bd97838051 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 15:45:39 +0900
+Subject: [PATCH 332/333] TechDraw: a new section view goes where no view is
+
+A new section view was put in the middle of the page, on the right view
+(engine field tests 0.7.4, 0.7.5). It goes right of the page's views,
+else left, above or below them, clear of the title block (its size taken
+as its base view's: same scale, the cut is not computed yet). The views
+of a projection group count (the anchor is in its group's list twice).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/TaskSectionView.cpp | 78 ++++++++++++++++++++++++
+ src/Mod/TechDraw/Gui/TaskSectionView.h   |  1 +
+ 2 files changed, 79 insertions(+)
+
+diff --git a/src/Mod/TechDraw/Gui/TaskSectionView.cpp b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+index 9a52f9d77..9c452af5f 100644
+--- a/src/Mod/TechDraw/Gui/TaskSectionView.cpp
++++ b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+@@ -586,11 +586,89 @@ TechDraw::DrawViewSection* TaskSectionView::createSectionView(void)
+         double rotation = requiredRotation(viewDirectionAngle);
+         Command::doCommand(Command::Doc, "App.ActiveDocument.%s.Rotation = %.6f",
+                            m_sectionName.c_str(), rotation);
++        placeClearOfOtherViews();
+     }
+     Gui::Command::commitCommand(tid);
+     return m_section;
+ }
+ 
++// A new section goes where no view is: right of the views, else left, above or below (it was put
++// in the middle of the page, on the right view; engine field tests 0.7.4, 0.7.5). Its size is
++// taken as its base view's (same scale, the cut is not computed yet).
++void TaskSectionView::placeClearOfOtherViews()
++{
++    TechDraw::DrawPage* page = m_base ? m_base->findParentPage() : nullptr;
++    if (!page || !m_section) {
++        return;
++    }
++    auto centre = [](TechDraw::DrawView* view) {
++        double x = view->X.getValue();
++        double y = view->Y.getValue();
++        for (auto* parent : view->getInList()) {
++            if (auto* group = dynamic_cast<TechDraw::DrawView*>(parent);
++                group && parent->isDerivedFrom(Base::Type::fromName("TechDraw::DrawProjGroup"))) {
++                x += group->X.getValue();
++                y += group->Y.getValue();
++                break;  // the anchor is in the group's list twice (Anchor and Views)
++            }
++        }
++        return QPointF(x, y);
++    };
++    double left = 1e9, right = -1e9, bottom = 1e9, top = -1e9;
++    std::vector<QRectF> taken;
++    // the views of the page, those of a projection group (the three views) too
++    std::vector<App::DocumentObject*> all;
++    for (auto* obj : page->getViews()) {
++        all.push_back(obj);
++        if (auto* views = dynamic_cast<App::PropertyLinkList*>(obj->getPropertyByName("Views"))) {
++            for (auto* inner : views->getValues()) {
++                all.push_back(inner);
++            }
++        }
++    }
++    for (auto* obj : all) {
++        auto* view = dynamic_cast<TechDraw::DrawViewPart*>(obj);
++        if (!view || view == m_section) {
++            continue;
++        }
++        QRectF r = view->getRect();
++        QPointF c = centre(view);
++        QRectF box(c.x() - r.width() / 2, c.y() - r.height() / 2, r.width(), r.height());
++        taken.push_back(box);
++        left = std::min(left, box.left());
++        right = std::max(right, box.right());
++        bottom = std::min(bottom, box.top());
++        top = std::max(top, box.bottom());
++    }
++    if (taken.empty()) {
++        return;
++    }
++    QRectF own = m_base->getRect();
++    const double w = own.width(), h = own.height(), gap = 15.0;
++    const double pw = page->getPageWidth(), ph = page->getPageHeight();
++    // the title block at the bottom right (A4/A3 templates: about 180 x 55 mm)
++    taken.emplace_back(pw - 190.0, 0.0, 190.0, 58.0);
++    const QPointF base = centre(m_base);
++    const QPointF tries[] = {
++        {right + gap + w / 2, base.y()},
++        {left - gap - w / 2, base.y()},
++        {base.x(), top + gap + h / 2},
++        {base.x(), bottom - gap - h / 2},
++    };
++    for (const QPointF& p : tries) {
++        QRectF box(p.x() - w / 2, p.y() - h / 2, w, h);
++        if (box.left() < 10 || box.right() > pw - 10 || box.top() < 10 || box.bottom() > ph - 10) {
++            continue;
++        }
++        if (std::any_of(taken.begin(), taken.end(), [&box](const QRectF& t) { return t.intersects(box); })) {
++            continue;
++        }
++        m_section->X.setValue(p.x());
++        m_section->Y.setValue(p.y());
++        return;
++    }
++}
++
+ void TaskSectionView::updateSectionView()
+ {
+     if (!isSectionValid()) {
+diff --git a/src/Mod/TechDraw/Gui/TaskSectionView.h b/src/Mod/TechDraw/Gui/TaskSectionView.h
+index 72ee0eea3..5a55accab 100644
+--- a/src/Mod/TechDraw/Gui/TaskSectionView.h
++++ b/src/Mod/TechDraw/Gui/TaskSectionView.h
+@@ -64,6 +64,7 @@ protected:
+     void applyAligned();
+ 
+     TechDraw::DrawViewSection* createSectionView();
++    void placeClearOfOtherViews();
+     void updateSectionView();
+ 
+     void setUiPrimary();
+-- 
+2.43.0
+

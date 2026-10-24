@@ -1,7 +1,7 @@
 From e1d8040692ec1f0fab666651939c120e83249820 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 18 Oct 2026 15:36:24 +0900
-Subject: [PATCH 231/326] Sketcher: solver result no longer depends on where
+Subject: [PATCH 231/333] Sketcher: solver result no longer depends on where
  the heap put the parameters
 
 SubSystem::initialize took the unknowns through a std::set<double*> and the SQP
