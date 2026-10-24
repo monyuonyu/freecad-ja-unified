@@ -11,6 +11,43 @@
 
 本软件的界面是日语。本页中需要在屏幕上找到的日语标签，会用引号保留原文并附上中文含义。
 
+## 用它做了一台发动机
+
+用本版本制作了一台 125cc 风冷单缸发动机，以测试界面的易用性。
+
+<p>
+<img src="docs/images/engine_section.png" width="360" alt="发动机剖视">
+<img src="docs/images/engine_cycle.gif" width="300" alt="一个循环">
+</p>
+
+整台发动机（73 个零件）由脚本制作；剖视用 `--render --section`，动画与「动作转视频」同一机制。
+随后每个版本用相同的 6 项任务，测试**只用界面**（鼠标和键盘）能否做出主要零件、装配和图纸：
+
+- 0.6.9：6 项中 2 项（中途崩溃丢失了工作）
+- 0.7.3：4 项
+- **0.7.5：全部 6 项**（零崩溃）
+
+每个版本都修复了遇到的障碍（装配静默损坏、已保存装配的零件丢失、草图被实体遮挡等）。
+
+![只用界面制作的零件：活塞、连杆、曲轴、带散热片的气缸](docs/images/engine_gui_parts.png)
+
+![只用界面制作的装配（曲轴 90°、180°）和连杆图纸](docs/images/engine_gui_assembly.png)
+
+## 主要功能
+
+界面
+- 无需切换工作台的统一界面；在所选对象旁给出下一步操作（输入数字后回车）
+- 磁吸贴合、类似 Excel 的对齐、用箭头推拉面、选两个对象自动测量
+- 装配：在孔和轴的中点对齐、「原地转动」「原地滑动」「按角度转动」、按齿数设定传动比、动作转视频（MP4，0.7.7 起）
+- 零件架（JIS 紧固件、铝型材、公司零件）、图纸自动尺寸与日文标题栏
+- 设计检查（干涉、损坏的形状、不成立的关节等）以及可操作模型的 AI 聊天
+
+命令行（无界面）
+- `freecadcmd model.FCStd --render out.png --view iso`（剖视用 `--section z=10 --section-color part`）
+- `--export-svg` / `--export-pptx`（消隐 2D）、`--export-drawings out.pdf`（图纸 PDF）
+- `--interference`（300 个零件约 1 秒）
+- 读写 DWG（AutoCAD，最高 R2018），打开 Jw_cad 图纸（JWW）
+
 ![点击一个面，旁边就会出现下一步操作](docs/images/08_face_actions.png)
 
 - 基于的版本：FreeCAD main `b48098efa`（2026-09-26，版本号 26.3.0dev）

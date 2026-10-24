@@ -12,6 +12,43 @@ actions offered next to what you picked, plain Japanese throughout, a design che
 and fixes mistakes, an AI chat that works on the model, and fixes for using FreeCAD from the
 command line and from scripts. Kept as patches on top of FreeCAD; not submitted upstream.
 
+## エンジンを作ってみた
+
+この改良版で 125cc の空冷単気筒エンジンを作り、画面の使いやすさを試した。
+
+<p>
+<img src="docs/images/engine_section.png" width="360" alt="エンジンの断面">
+<img src="docs/images/engine_cycle.gif" width="300" alt="1 サイクルの動き">
+</p>
+
+エンジン全体（部品 73 個）はスクリプトで作った。断面は `--render --section`、動きは「動きを動画に」と同じ仕組みで描いた。
+そのうえで、主な部品・組立・図面を**画面の操作だけ**（マウスとキーボード）で作れるかを、版ごとに同じ 6 課題で試した。
+
+- 0.6.9: 6 課題中 2 つ（途中で落ちて作業が消えた）
+- 0.7.3: 4 つ
+- **0.7.5: 6 つすべて**（異常終了 0 回）
+
+見つかった壁は各版で直した（組立が黙って壊れる、保存した組立の部品が消える、スケッチがソリッドに隠れる、など）。
+
+![画面だけで作った部品: ピストン・コンロッド・クランク・フィン付きシリンダー](docs/images/engine_gui_parts.png)
+
+![画面だけで作った組立（クランク 90°・180°）とコンロッドの図面](docs/images/engine_gui_assembly.png)
+
+## 主な機能
+
+画面
+- 作業場の切り替えなしの一つの画面。選んだ物の横に、次にできる操作が出る（数字を打って Enter で確定）
+- 磁石のようにくっつける・Excel のように揃える・面を矢印で押し引き・2 つ選ぶと自動で測る
+- 組立: 穴や軸の中心で合わせる、「その場で回す」「その場ですべらせる」「角度で回す」、歯数で比を決める、動きを動画（MP4）に（0.7.7 から）
+- 部品の棚（JIS のねじ・アルミフレーム・会社の部品）、図面の自動の寸法と日本語の表題欄
+- 設計の検査（干渉・壊れた形・成り立たないジョイントなど）と、モデルを見て直す AI チャット
+
+コマンドライン（画面なし）
+- `freecadcmd model.FCStd --render out.png --view iso`（`--section z=10 --section-color part` で断面）
+- `--export-svg` / `--export-pptx`（隠れ線を消した 2D）、`--export-drawings out.pdf`（図面の PDF）
+- `--interference`（干渉検査。300 部品で約 1 秒）
+- DWG（AutoCAD）を R2018 まで読み書き、Jw_cad の図面（JWW）を開く
+
 ![面をクリックすると、その横に次の操作が出る](docs/images/08_face_actions.png)
 
 - 元にした版: FreeCAD main `b48098efa`（2026-09-26、バージョン表記 26.3.0dev）

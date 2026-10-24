@@ -11,6 +11,43 @@ Bugs that show up when using FreeCAD from the command line or from scripts are f
 
 The application's UI is in Japanese. In this page, Japanese labels you need to find on screen are given in quotes next to their English meaning.
 
+## An engine made with it
+
+A 125 cc air-cooled single-cylinder engine was made with this build to test how usable the screen is.
+
+<p>
+<img src="docs/images/engine_section.png" width="360" alt="Engine section">
+<img src="docs/images/engine_cycle.gif" width="300" alt="One cycle">
+</p>
+
+The whole engine (73 parts) was made by a script; the section with `--render --section`, the motion the same way as "Motion to Video".
+The main parts, the assembly and the drawing were then made **with the screen only** (mouse and keyboard), the same 6 tasks for each version:
+
+- 0.6.9: 2 of 6 (a crash lost the work)
+- 0.7.3: 4
+- **0.7.5: all 6** (no crash)
+
+What stopped it was fixed in each version (an assembly breaking silently, the parts of a saved assembly lost, sketches hidden by the solid, ...).
+
+![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
+
+![Assembly made with the screen only (crank at 90 and 180 degrees) and the rod's drawing](docs/images/engine_gui_assembly.png)
+
+## Main features
+
+Screen
+- One working screen without workbenches; the next actions next to what is picked (type a number, Enter)
+- Magnet snapping, Excel-like aligning, push/pull faces with an arrow, automatic measuring of two picks
+- Assembly: joints on the middle of holes and shafts, "Turns in place", "Slides in place", "Turn to an angle", gear ratios by tooth counts, motion to video (MP4, from 0.7.7)
+- Parts shelf (JIS fasteners, aluminium frames, company parts), automatic drawing dimensions and a Japanese title block
+- Design check (overlaps, broken shapes, joints that do not hold, ...) and an AI chat that works on the model
+
+Command line (no screen)
+- `freecadcmd model.FCStd --render out.png --view iso` (`--section z=10 --section-color part` for a section)
+- `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF)
+- `--interference` (about 1 s for 300 parts)
+- DWG (AutoCAD) read and write up to R2018, Jw_cad drawings (JWW)
+
 ![Click a face and the next actions appear next to it](docs/images/08_face_actions.png)
 
 - Based on: FreeCAD main `b48098efa` (2026-09-26, version string 26.3.0dev)
