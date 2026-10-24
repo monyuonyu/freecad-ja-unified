@@ -1,7 +1,7 @@
 From e6ebb653cd3076aa752482df832e6cc3b30bed5e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:43:58 +0900
-Subject: [PATCH 266/297] Unified: the model beside the task panel, not under
+Subject: [PATCH 266/298] Unified: the model beside the task panel, not under
  it
 
 The task panel lies over the right of the view. When a tool's panel opens

@@ -1,0 +1,131 @@
+From 9aa04eeec7f77226da9fd30122661a3873691f06 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 10:07:38 +0900
+Subject: [PATCH 298/298] Assembly: a big step of a driving value right after
+ opening the file walks there too
+
+The walk to a big step of a driving value started from the joints'
+placements of the last solve that held, kept only in memory. In a file just
+opened there is none, so solve() returned -7 and the crank stayed (0.7.2,
+engine model: theta 0 -> 90). Such a joint now starts from where the parts
+are: its first placement turned so that its two sides meet.
+
+Test: FreeCADCmd -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 43 +++++++++++++------------
+ src/Mod/Unified/TestAssemblySolve.py    | 21 ++++++++++++
+ 2 files changed, 44 insertions(+), 20 deletions(-)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index d683b8a31..8a25b35f0 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -326,31 +326,37 @@ int AssemblyObject::solve(bool enableRedo)
+     }
+ 
+     // Not held: walk from the joints' placements of the last solve that held to the asked
+-    // ones in steps of at most 15 degrees, each solve starting from the last one's result
++    // ones in steps of at most 15 degrees, each solve starting from the last one's result.
++    // A joint with no such solve (the file was just opened) starts from where the parts
++    // are now: its first placement turned so that its two sides meet.
++    std::map<const App::DocumentObject*, std::pair<Base::Placement, Base::Placement>> start;
+     double angle = 0.0;
+     double distance = 0.0;
+-    bool known = false;
+     for (auto* joint : joints) {
+-        auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
+-        if (it == lastHeldJointPlacements.end()) {
+-            continue;
+-        }
+-        known = true;
+         const Base::Placement now1 = App::GeoFeature::getPlacementFromProp(joint, "Placement1");
+         const Base::Placement now2 = App::GeoFeature::getPlacementFromProp(joint, "Placement2");
+-        for (const auto& [was, now] : {std::pair {it->second.first, now1}, std::pair {it->second.second, now2}}) {
+-            Base::Rotation delta = was.getRotation().inverse() * now.getRotation();
++        auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
++        if (it != lastHeldJointPlacements.end()) {
++            start[joint] = it->second;
++        }
++        else if (!jointsHold({joint})) {
++            const Base::Placement a = getJointSideGlobalPlacement(joint, "Reference1", "Placement1");
++            const Base::Placement b = getJointSideGlobalPlacement(joint, "Reference2", "Placement2");
++            start[joint] = {now1 * a.inverse() * b, now2};
++        }
++        else {
++            start[joint] = {now1, now2};
++        }
++        const auto& was = start[joint];
++        for (const auto& [w, now] : {std::pair {was.first, now1}, std::pair {was.second, now2}}) {
++            Base::Rotation delta = w.getRotation().inverse() * now.getRotation();
+             Base::Vector3d axis;
+             double a = 0.0;
+             delta.getValue(axis, a);
+             angle = std::max(angle, std::fabs(a));
+-            distance = std::max(distance, (now.getPosition() - was.getPosition()).Length());
++            distance = std::max(distance, (now.getPosition() - w.getPosition()).Length());
+         }
+     }
+-    if (!known) {
+-        FC_WARN("Assembly " << getFullName() << ": the joints do not hold after solving");
+-        return -7;
+-    }
+     const int steps = std::clamp(
+         static_cast<int>(std::ceil(angle / (M_PI / 12.0))),
+         2,
+@@ -361,16 +367,13 @@ int AssemblyObject::solve(bool enableRedo)
+         jointPlacementOverride.clear();
+         if (k < steps) {
+             for (auto* joint : joints) {
+-                auto it = lastHeldJointPlacements.find(joint->getNameInDocument());
+-                if (it == lastHeldJointPlacements.end()) {
+-                    continue;
+-                }
++                const auto& was = start[joint];
+                 auto blend = [t](const Base::Placement& a, const Base::Placement& b) {
+                     return Base::Placement::slerp(a, b, t);
+                 };
+                 jointPlacementOverride[joint] = {
+-                    blend(it->second.first, App::GeoFeature::getPlacementFromProp(joint, "Placement1")),
+-                    blend(it->second.second, App::GeoFeature::getPlacementFromProp(joint, "Placement2")),
++                    blend(was.first, App::GeoFeature::getPlacementFromProp(joint, "Placement1")),
++                    blend(was.second, App::GeoFeature::getPlacementFromProp(joint, "Placement2")),
+                 };
+             }
+         }
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 6a7982caf..6a479884f 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -61,6 +61,27 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_big_step_right_after_opening(self):
++        # no solve that held is remembered in a file just opened: the walk starts where the parts are
++        import os
++        import tempfile
++
++        doc, sheet, asm, piston, r, L = build()
++        path = os.path.join(tempfile.mkdtemp(), "bigstep.FCStd")
++        self.assertEqual(asm.solve(), 0)
++        doc.saveAs(path)
++        App.closeDocument(doc.Name)
++        doc = App.openDocument(path)
++        try:
++            sheet, asm, piston = doc.getObject("Params"), doc.getObject("Assembly"), doc.getObject("Piston")
++            sheet.set("theta", "90")
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertAlmostEqual(piston.Placement.Base.z, -r + L, places=3)
++        finally:
++            App.closeDocument(doc.Name)
++            os.remove(path)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

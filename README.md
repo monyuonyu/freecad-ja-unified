@@ -298,6 +298,11 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.3
+
+- **A big step of an assembly's driving value did not move right after opening the file** (left over from 0.7.2): the walk from the last solve that held kept that pose only in memory, so in a file just opened a crank from 0 to 90 degrees stopped with -7. Without such a pose the walk now starts from where the parts are. `-t TestAssemblySolve` (a test after reopening was added)
+- 0.7.2 was stopped before its Windows build; on Windows this is the first version with the fixes of 0.7.2
+
 ## Changes in 0.7.2
 
 Fixes from the engine field test of 0.6.9, each reproduced on 0.7.0 first (the tests fail there and pass here); GUI acceptance in [docs/ui-redesign/accept/U072](docs/ui-redesign/accept/U072).

@@ -1,7 +1,7 @@
 From 9d12c0fecf5a65994553f3d87911a5446adb8466 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:53:42 +0900
-Subject: [PATCH 225/297] Import: R14 DXF header says the drawing is metric
+Subject: [PATCH 225/298] Import: R14 DXF header says the drawing is metric
  ($MEASUREMENT 1)
 
 The header had $INSUNITS 4 (mm), which R14 does not define. LibreDWG's dxf2dwg
