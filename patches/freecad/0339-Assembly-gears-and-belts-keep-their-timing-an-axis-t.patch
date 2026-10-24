@@ -23,13 +23,6 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  src/Mod/Assembly/JointObject.py         |  6 +++
  4 files changed, 65 insertions(+), 1 deletion(-)
 
-diff --git a/src/3rdParty/OndselSolver b/src/3rdParty/OndselSolver
-index 9a032e1c1..3fbf84f53 160000
---- a/src/3rdParty/OndselSolver
-+++ b/src/3rdParty/OndselSolver
-@@ -1 +1 @@
--Subproject commit 9a032e1c151cb3799cfa064d2af026f742b10a52
-+Subproject commit 3fbf84f53aaec375ddbcfafa1f471c067eb42dde
 diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
 index 565f05761..060ebb7f7 100644
 --- a/src/Mod/Assembly/App/AssemblyObject.cpp
