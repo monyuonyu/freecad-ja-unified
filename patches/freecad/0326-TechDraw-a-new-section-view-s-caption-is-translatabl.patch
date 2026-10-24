@@ -1,0 +1,52 @@
+From 3486ceb775d5c4ce7620a4e9754e90f1a0e9031e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:27:34 +0900
+Subject: [PATCH 326/326] =?UTF-8?q?TechDraw:=20a=20new=20section=20view's?=
+ =?UTF-8?q?=20caption=20is=20translatable=20(=E6=96=AD=E9=9D=A2=20A-A=20in?=
+ =?UTF-8?q?=20Japanese)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The caption "SECTION A - A" stayed in English (engine field test 0.7.4).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/TaskSectionView.cpp                   | 4 +++-
+ .../Gui/Resources/translations/UnifiedWording_ja.ts        | 7 +++++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/TechDraw/Gui/TaskSectionView.cpp b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+index c1731f057..9a52f9d77 100644
+--- a/src/Mod/TechDraw/Gui/TaskSectionView.cpp
++++ b/src/Mod/TechDraw/Gui/TaskSectionView.cpp
+@@ -528,7 +528,9 @@ TechDraw::DrawViewSection* TaskSectionView::createSectionView(void)
+         QString qTemp = ui->leSymbol->text();
+         std::string temp = Base::Tools::escapeEncodeString(qTemp.toStdString());
+         std::string sectionLabel = Base::Tools::escapeEncodeString(makeSectionLabel());
+-        std::string sectionCaption = Base::Tools::escapeEncodeString("SECTION <REF> - <REF>");
++        // translatable: JIS writes "断面 A-A"
++        std::string sectionCaption =
++            Base::Tools::escapeEncodeString(tr("SECTION <REF> - <REF>").toStdString());
+         Command::doCommand(Command::Doc, "App.ActiveDocument.%s.SectionSymbol = '%s'",
+                            m_sectionName.c_str(), temp.c_str());
+ 
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index 1d3bbee76..b42290000 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -12793,4 +12793,11 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+         <translation>この道具では「%1」は選べません</translation>
+     </message>
+ </context>
++<context>
++    <name>TechDrawGui::TaskSectionView</name>
++    <message>
++        <source>SECTION &lt;REF&gt; - &lt;REF&gt;</source>
++        <translation>断面 &lt;REF&gt;-&lt;REF&gt;</translation>
++    </message>
++</context>
+ </TS>
+-- 
+2.43.0
+

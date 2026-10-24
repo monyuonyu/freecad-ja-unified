@@ -1,7 +1,7 @@
 From e803dfaf4c36983572934b601c1bf8d4d265a49f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:20:31 +0900
-Subject: [PATCH 242/320] Assembly: put parts in without being stopped to save
+Subject: [PATCH 242/326] Assembly: put parts in without being stopped to save
  or to ground
 
 An unsaved assembly is saved to a provisional place (user data/Unsaved)

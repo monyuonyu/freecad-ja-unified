@@ -1,0 +1,257 @@
+From 10262ce4efdec5438a1b658e07f5ee857ef88bb5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:04:14 +0900
+Subject: [PATCH 322/326] Unified: the automatic dimensions of a drawing do not
+ repeat or say nothing
+
+On a connecting rod (engine field test 0.7.3) the centre distance came
+twice (the overall size between the points, which the round ends pass),
+a width of 23.64 was measured from the web's side to the hole, the hole
+sizes' leaders ran across the part, and the thickness sat on the title
+block. An overall size is given only when its points are the view's
+extremes; hole positions are from a straight edge only when it is the
+outermost, else from hole to hole; each hole size is beside its own hole;
+a size that would fall on the title block goes above the view. Arcs that
+go all round count as a hole's circle (a wall with seams).
+
+Test: FreeCADCmd -t TestDrawingAuto
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DrawingAuto.py     | 113 ++++++++++++++++++++++-------
+ src/Mod/Unified/TestDrawingAuto.py |  39 ++++++++++
+ 2 files changed, 125 insertions(+), 27 deletions(-)
+
+diff --git a/src/Mod/Unified/DrawingAuto.py b/src/Mod/Unified/DrawingAuto.py
+index 6e022db11..df954186c 100644
+--- a/src/Mod/Unified/DrawingAuto.py
++++ b/src/Mod/Unified/DrawingAuto.py
+@@ -106,11 +106,25 @@ def hole_radii(view):
+ def hole_groups(view):
+     """Circles of the view that are holes, by diameter: {diameter: [(index, edge)]}. Only whole
+     circles, and only of the holes of the parts (not a rounded corner seen end on)."""
++    import math
++
+     radii = hole_radii(view)
+     groups = {}
++    # Whole circles, and arcs that together go all round (a hole's wall with seams is drawn as
++    # two or three arcs): the first arc stands for the circle
++    whole, arcs = [], {}
+     for i, e in edges_of(view):
+-        if curve_name(e) != "Circle" or not e.isClosed():
++        if curve_name(e) != "Circle":
+             continue
++        if e.isClosed():
++            whole.append((i, e))
++        else:
++            a, b = e.ParameterRange
++            arcs.setdefault(_key_of(e), []).append((i, e, abs(b - a)))
++    for parts in arcs.values():
++        if abs(sum(t[2] for t in parts) - 2 * math.pi) < 1e-3:
++            whole.append(parts[0][:2])
++    for i, e in sorted(whole, key=lambda t: t[0]):
+         r = e.Curve.Radius
+         if radii is not None and not any(abs(r - h) < 1e-3 for h in radii):
+             continue
+@@ -211,23 +225,52 @@ def outer_sizes(page, view, horizontal=True, vertical=True):
+     box = extent(view)
+     scale = view.getScale() if hasattr(view, "getScale") else 1.0
+     made = []
++
++    def overall(a, b, lo, hi):
++        # The points span the whole view; with round ends past them (a connecting rod) they
++        # are not its size (a centre distance came twice, a width of 23.64 in the middle)
++        return abs(a - lo) < 1e-3 * max(1.0, hi - lo) and abs(b - hi) < 1e-3 * max(1.0, hi - lo)
++
+     if horizontal:
+         left = min(verts, key=lambda t: (t[1].x, t[1].y))
+         right = min(verts, key=lambda t: (-t[1].x, t[1].y))
+-        if abs(right[1].x - left[1].x) > 1e-6:
++        if abs(right[1].x - left[1].x) > 1e-6 and overall(left[1].x, right[1].x, box[0], box[2]):
+             d = add_dimension(page, view, "DistanceX", ["Vertex%d" % left[0], "Vertex%d" % right[0]])
+             d.X, d.Y = 0, box[1] * scale - 8
++            if _on_title_block(page, view, d.Y):
++                d.Y = box[3] * scale + 8  # above the view instead
+             made.append(d)
+     if vertical:
+         low = min(verts, key=lambda t: (t[1].y, t[1].x))
+         high = min(verts, key=lambda t: (-t[1].y, t[1].x))
+-        if abs(high[1].y - low[1].y) > 1e-6:
++        if abs(high[1].y - low[1].y) > 1e-6 and overall(low[1].y, high[1].y, box[1], box[3]):
+             d = add_dimension(page, view, "DistanceY", ["Vertex%d" % low[0], "Vertex%d" % high[0]])
+             d.X, d.Y = box[0] * scale - 8, 0
+             made.append(d)
+     return made
+ 
+ 
++def _page_xy(view):
++    """Where the view's centre is on the page (a view of a projection group is placed relative
++    to the group)"""
++    def mm(q):
++        return float(getattr(q, "Value", q))
++
++    x, y = mm(view.X), mm(view.Y)
++    for parent in view.InList:
++        if parent.isDerivedFrom("TechDraw::DrawProjGroup"):
++            x += mm(parent.X)
++            y += mm(parent.Y)
++    return x, y
++
++
++def _on_title_block(page, view, y):
++    """A text at height y (relative to the view) would be on the title block (bottom right of
++    an A4 or A3 sheet: up to 58 mm, right of 100 mm from the left)"""
++    vx, vy = _page_xy(view)
++    return vy + float(getattr(y, "Value", y)) < 58 and vx > 100
++
++
+ def hole_positions(page, view, groups=None):
+     """Where the holes are: from the left edge to each column of holes and from the bottom edge
+     to each row (usability test 0.6.9: a click on a hole's circle picked its center lines, so
+@@ -238,14 +281,15 @@ def hole_positions(page, view, groups=None):
+         return []
+     verts = vertices_of(view)
+     lines = [(i, e) for i, e in edges_of(view) if curve_name(e) in ("Line", "LineSegment")]
+-    upright = [(i, e) for i, e in lines if e.BoundBox.XLength < 1e-6]
+-    level = [(i, e) for i, e in lines if e.BoundBox.YLength < 1e-6]
+-    if not upright or not level:
+-        return []
+-    left = min(upright, key=lambda t: t[1].BoundBox.XMin)
+-    bottom = min(level, key=lambda t: t[1].BoundBox.YMin)
+     box = extent(view)
++    if box is None:
++        return []
+     scale = view.getScale() if hasattr(view, "getScale") else 1.0
++    tol = 1e-3 * max(1.0, box[2] - box[0], box[3] - box[1])
++    # From the part's edge only when a straight edge is the outermost: a connecting rod's web
++    # is not its left side (5 mm to the hole's centre said nothing; engine field test 0.7.3)
++    upright = [(i, e) for i, e in lines if e.BoundBox.XLength < 1e-6 and abs(e.BoundBox.XMin - box[0]) < tol]
++    level = [(i, e) for i, e in lines if e.BoundBox.YLength < 1e-6 and abs(e.BoundBox.YMin - box[1]) < tol]
+ 
+     def center_vertex(e):
+         c = e.Curve.Location
+@@ -260,20 +304,33 @@ def hole_positions(page, view, groups=None):
+         c = e.Curve.Location
+         xs.setdefault(round(c.x, 3), e)
+         ys.setdefault(round(c.y, 3), e)
+-    for k, (x, e) in enumerate(sorted(xs.items())):
+-        v = center_vertex(e)
+-        if v is None or abs(x - left[1].BoundBox.XMin) < 1e-6:
+-            continue
+-        d = add_dimension(page, view, "DistanceX", ["Edge%d" % left[0], "Vertex%d" % v])
+-        d.X, d.Y = ((left[1].BoundBox.XMin + x) / 2) * scale, box[1] * scale - 16 - 7 * k
+-        made.append(d)
+-    for k, (y, e) in enumerate(sorted(ys.items())):
+-        v = center_vertex(e)
+-        if v is None or abs(y - bottom[1].BoundBox.YMin) < 1e-6:
+-            continue
+-        d = add_dimension(page, view, "DistanceY", ["Edge%d" % bottom[0], "Vertex%d" % v])
+-        d.X, d.Y = box[0] * scale - 16 - 7 * k, ((bottom[1].BoundBox.YMin + y) / 2) * scale
+-        made.append(d)
++    columns = [(x, e, center_vertex(e)) for x, e in sorted(xs.items())]
++    rows = [(y, e, center_vertex(e)) for y, e in sorted(ys.items())]
++    columns = [t for t in columns if t[2] is not None]
++    rows = [t for t in rows if t[2] is not None]
++    if upright:
++        left = upright[0]
++        for k, (x, e, v) in enumerate(t for t in columns if abs(t[0] - left[1].BoundBox.XMin) > 1e-6):
++            d = add_dimension(page, view, "DistanceX", ["Edge%d" % left[0], "Vertex%d" % v])
++            d.X, d.Y = ((left[1].BoundBox.XMin + x) / 2) * scale, box[1] * scale - 16 - 7 * k
++            made.append(d)
++    else:
++        # no straight left side: from the first column of holes to the others
++        for k, (x, e, v) in enumerate(columns[1:]):
++            d = add_dimension(page, view, "DistanceX", ["Vertex%d" % columns[0][2], "Vertex%d" % v])
++            d.X, d.Y = ((columns[0][0] + x) / 2) * scale, box[1] * scale - 16 - 7 * k
++            made.append(d)
++    if level:
++        bottom = level[0]
++        for k, (y, e, v) in enumerate(t for t in rows if abs(t[0] - bottom[1].BoundBox.YMin) > 1e-6):
++            d = add_dimension(page, view, "DistanceY", ["Edge%d" % bottom[0], "Vertex%d" % v])
++            d.X, d.Y = box[0] * scale - 16 - 7 * k, ((bottom[1].BoundBox.YMin + y) / 2) * scale
++            made.append(d)
++    else:
++        for k, (y, e, v) in enumerate(rows[1:]):
++            d = add_dimension(page, view, "DistanceY", ["Vertex%d" % rows[0][2], "Vertex%d" % v])
++            d.X, d.Y = box[0] * scale - 16 - 7 * k, ((rows[0][0] + y) / 2) * scale
++            made.append(d)
+     return made
+ 
+ 
+@@ -342,7 +399,7 @@ def complete(page, group, name=None):
+             g = hole_groups(v)
+             if sum(len(c) for c in g.values()) > sum(len(c) for c in groups.values()):
+                 holes_view, groups = v, g
+-    for row, (diameter, circles) in enumerate(sorted(groups.items())):
++    for diameter, circles in sorted(groups.items()):
+         added["center_lines"] += center_lines(holes_view, circles)
+         n = len(circles)
+         spec = ("{}×⌀%.0f".format(n) if n > 1 else "⌀%.0f") + (translate("DrawingAuto", " drill") if n > 1 else "")
+@@ -352,9 +409,11 @@ def complete(page, group, name=None):
+         box = extent(holes_view)
+         sc = holes_view.getScale() if hasattr(holes_view, "getScale") else 1.0
+         if box:
+-            # Each size of hole on a line of its own, above the part's top right corner
+-            d.X = box[2] * sc + 6
+-            d.Y = box[3] * sc + 8 + 9 * row
++            # Beside its own hole, up and to the right (above the part's corner, the leaders of
++            # two sizes of hole crossed the part; engine field test 0.7.3)
++            c, r = edge.Curve.Location, edge.Curve.Radius
++            d.X = (c.x + r) * sc + 6
++            d.Y = (c.y + r) * sc + 4
+         added["dimensions"] += 1
+     if groups:
+         added["dimensions"] += len(hole_positions(page, holes_view, groups))
+diff --git a/src/Mod/Unified/TestDrawingAuto.py b/src/Mod/Unified/TestDrawingAuto.py
+index 225eaa2bd..2e9ec40d5 100644
+--- a/src/Mod/Unified/TestDrawingAuto.py
++++ b/src/Mod/Unified/TestDrawingAuto.py
+@@ -46,6 +46,45 @@ class TestDrawingAuto(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_connecting_rod(self):
++        # Engine field test 0.7.3: round ends past the corners gave the centre distance twice and
++        # a width in the middle of the rod (23.64); the hole sizes' leaders crossed the part
++        import Part
++
++        doc = App.newDocument("DrawingAutoRod")
++        try:
++            V = App.Vector
++            rod = Part.makeCylinder(14, 15).fuse(Part.makeCylinder(8, 15, V(0, 100, 0)))
++            rod = rod.fuse(Part.makeBox(10, 100, 15, V(-5, 0, 0)))
++            rod = rod.cut(Part.makeCylinder(7, 15, V(0, 0, 0))).cut(Part.makeCylinder(4, 15, V(0, 100, 0)))
++            obj = doc.addObject("Part::Feature", "Rod")
++            obj.Shape = rod.removeSplitter()
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            tpl = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            tpl.Template = App.getResourceDir() + "Mod/TechDraw/Templates/ISO/A4_Landscape_ISO5457_minimal.svg"
++            page.Template = tpl
++            g = doc.addObject("TechDraw::DrawProjGroup", "ProjGroup")
++            page.addView(g)
++            g.Source = [obj]
++            g.addProjection("Front")
++            g.Anchor.Direction = V(0, 0, 1)
++            g.Anchor.XDirection = V(1, 0, 0)
++            g.addProjection("Right")
++            g.ScaleType = "Custom"
++            g.Scale = 1
++            doc.recompute()
++            DrawingAuto.complete(page, g)
++            dims = [d for d in doc.Objects if d.isDerivedFrom("TechDraw::DrawViewDimension")]
++            values = sorted((d.Type, round(d.getRawValue(), 2)) for d in dims)
++            self.assertEqual(values.count(("DistanceY", 100.0)), 1, values)
++            self.assertFalse([v for v in values if v[0] == "DistanceX" and v[1] not in (15.0,)], values)
++            # each hole's size beside its own hole: the small eye's 100 mm above the big eye's
++            # (view coordinates; the label at the circle's top right)
++            y = {round(d.getRawValue()): d.Y.Value for d in dims if d.Type == "Diameter"}
++            self.assertAlmostEqual(y[8] - y[14], (100 + 4) - 7, places=3)
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_rounded_corners_are_not_holes(self):
+         # Usability test 0.6.9: the R5 corners were called "4×⌀10 drill" over the real holes
+         doc = FirstSteps.sample_plate("DrawingAutoRounded")
+-- 
+2.43.0
+

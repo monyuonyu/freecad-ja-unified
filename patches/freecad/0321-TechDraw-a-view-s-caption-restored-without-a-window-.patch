@@ -1,0 +1,107 @@
+From 3f7244be7763258fcab2371e7117e6a1206d73e9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:04:13 +0900
+Subject: [PATCH 321/326] TechDraw: a view's caption restored without a window
+ does not crash
+
+QGICaption::snapToView took scene()->views().first() even when the scene
+had no view: a drawing with a captioned section view crashed when opened
+in a document without its window (the PDF export without the screen).
+DrawingPdf also closes any message box offscreen (nobody can answer it)
+and passes its text on as a warning.
+
+Test: FreeCADCmd -t TestDrawingPdf
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/QGICaption.cpp |  6 +++++-
+ src/Mod/Unified/DrawingPdf.py       | 21 +++++++++++++++++++--
+ src/Mod/Unified/TestDrawingPdf.py   |  9 +++++++++
+ 3 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/TechDraw/Gui/QGICaption.cpp b/src/Mod/TechDraw/Gui/QGICaption.cpp
+index a791f2105..450fcd40b 100644
+--- a/src/Mod/TechDraw/Gui/QGICaption.cpp
++++ b/src/Mod/TechDraw/Gui/QGICaption.cpp
+@@ -112,7 +112,11 @@ QPointF QGICaption::snapToView(QPointF pos) {
+ 
+     constexpr double snapDistanceScreenPixels{15.0};
+     double zoomFactor = 1.0;
+-    zoomFactor = scene()->views().first()->transform().m11();
++    // No view on the scene (a drawing restored in a document opened without its window, as
++    // for a PDF without the screen): this crashed
++    if (scene() && !scene()->views().isEmpty()) {
++        zoomFactor = scene()->views().first()->transform().m11();
++    }
+ 
+     double snapDistance = snapDistanceScreenPixels / zoomFactor;
+ 
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index e709f8f17..0ad7d4f9c 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -78,6 +78,8 @@ def export(path, out, pages=None, seconds=120):
+             raise RuntimeError("The drawing export stopped: " + " / ".join(tail))
+     if done.get("error"):
+         raise RuntimeError(done["error"])
++    for text in done.get("warnings", []):
++        App.Console.PrintWarning("Drawing PDF: %s\n" % text)
+     return done["written"]
+ 
+ 
+@@ -95,7 +97,22 @@ def _child():
+         import FreeCADGui as Gui
+ 
+         Gui.showMainWindow()
+-        from PySide import QtWidgets
++        from PySide import QtCore, QtWidgets
++
++        # Nobody can answer a question offscreen: a message box (a view that failed) waited
++        # forever. Each one is closed and its text kept as a warning
++        warnings = []
++
++        def close_dialogs():
++            w = QtWidgets.QApplication.activeModalWidget()
++            if w is not None:
++                texts = [w.windowTitle()] + [lb.text() for lb in w.findChildren(QtWidgets.QLabel) if lb.text()]
++                warnings.append(" ".join(t for t in texts if t))
++                w.close()
++
++        closer = QtCore.QTimer()
++        closer.timeout.connect(close_dialogs)
++        closer.start(200)
+ 
+         doc = App.openDocument(job["path"], hidden=True)  # no 3D view: offscreen has no OpenGL
+         doc.recompute()
+@@ -131,7 +148,7 @@ def _child():
+             TechDrawGui.exportPageAsPdf(page, name)
+             if not os.path.isfile(name) or os.path.getsize(name) == 0:
+                 finish(error="Writing %s failed" % name)
+-        finish(written=names)
++        finish(written=names, warnings=warnings)
+     except Exception as e:  # report and end: the GUI must not be torn down
+         finish(error="%s: %s" % (type(e).__name__, e))
+ 
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index 69e4a4dfb..81985b3b9 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -36,6 +36,15 @@ class ExportTest(unittest.TestCase):
+             view = doc.addObject("TechDraw::DrawViewPart", "View")
+             page.addView(view)
+             view.Source = [box]
++        # a section view: its caption crashed when restored in a document opened without a window
++        section = doc.addObject("TechDraw::DrawViewSection", "Section")
++        page.addView(section)
++        section.BaseView = view
++        section.Source = [box]
++        section.SectionSymbol = "A"
++        section.SectionOrigin = App.Vector(5, 5, 5)
++        section.SectionDirection = "Right"
++        section.Caption = "SECTION <REF> - <REF>"
+         doc.recompute()
+         self.path = os.path.join(self.tmp, "m.FCStd")
+         doc.saveAs(self.path)
+-- 
+2.43.0
+

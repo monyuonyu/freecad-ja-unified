@@ -1,0 +1,114 @@
+From e3c9b2945ec1bd5fa0bf8666f026194682ff8dbe Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:16:22 +0900
+Subject: [PATCH 324/326] Assembly: a part put in goes beside the others, not
+ on top of them
+
+"Put Part" put every part at the origin (each time the panel opened, the
+first one without an offset; the next ones 15% of their size along the
+diagonal): an engine's parts sat one inside another and each face had to
+be dug out to be picked (engine field test 0.7.4). A part goes to the
+right of the parts already in the assembly, with a gap.
+
+Test: FreeCADCmd -t TestAssemblySolve
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/CommandInsertLink.py |  7 +++++++
+ src/Mod/Assembly/UtilsAssembly.py     | 30 +++++++++++++++++++++++++++
+ src/Mod/Unified/TestAssemblySolve.py  | 20 ++++++++++++++++++
+ 3 files changed, 57 insertions(+)
+
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index 6b043f9a8..de239511b 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -483,6 +483,13 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+ 
+         self.prevScreenCenter = screenCenter
+ 
++        # Beside the parts already there (to the right, with a gap), not on top of them: all the
++        # parts of an engine sat at the origin, one inside another, and each face had to be dug
++        # out to be picked (engine field test 0.7.4)
++        beside = UtilsAssembly.besidePlacement(self.assembly, addedObject)
++        if beside is not None:
++            addedObject.Placement.Base = beside
++
+         # We turn it flexible after changing the position so that it uses the logic in
+         # AssemblyLink::onChanged to handle positioning correctly.
+         if selectedPart.isDerivedFrom("Assembly::AssemblyObject") and not copyInstead:
+diff --git a/src/Mod/Assembly/UtilsAssembly.py b/src/Mod/Assembly/UtilsAssembly.py
+index ca70482b8..c33405dd9 100644
+--- a/src/Mod/Assembly/UtilsAssembly.py
++++ b/src/Mod/Assembly/UtilsAssembly.py
+@@ -1235,6 +1235,36 @@ def findPlacement(ref, ignoreVertex=False):
+     return plc
+ 
+ 
++def besidePlacement(assembly, added):
++    """Where `added` goes to the right of the other parts of the assembly, or None if it is the
++    first or the sizes cannot be read"""
++    others = App.BoundBox()
++    for obj in assembly.Group:  # its parts (and sub-assemblies), not what they link to
++        if obj.Name == added.Name or not hasattr(obj, "Shape"):
++            continue
++        if not (obj.isDerivedFrom("App::Link") or obj.isDerivedFrom("Part::Feature")
++                or obj.isDerivedFrom("App::Part") or obj.isDerivedFrom("PartDesign::Body")):
++            continue
++        try:
++            bb = obj.Shape.BoundBox
++        except Exception:
++            continue
++        if bb.isValid():
++            others.add(bb)
++    if not others.isValid():
++        return None
++    try:
++        own = added.Shape.BoundBox
++    except Exception:
++        return None
++    if not own.isValid():
++        return None
++    gap = max(10.0, 0.2 * max(own.XLength, own.YLength, own.ZLength))
++    base = App.Vector(added.Placement.Base)
++    # the shape's box is where it is now: move it by the difference
++    return base + App.Vector(others.XMax + gap - own.XMin, others.Center.y - own.Center.y, others.ZMin - own.ZMin)
++
++
+ def boreMiddle(shape, surface):
+     """The middle of a hole or shaft made of several faces on one axis with one radius (a pin
+     hole through both walls of a piston, the two journals of a crank): a joint on one of them
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index a225066b7..c0eadb1a1 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -161,6 +161,26 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_parts_put_beside_each_other(self):
++        # each part put in goes to the right of the others, not on top of them
++        import UtilsAssembly
++
++        doc = App.newDocument("beside")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            a = asm.newObject("Part::Box", "A")
++            a.Length = 40
++            doc.recompute()
++            self.assertIsNone(UtilsAssembly.besidePlacement(asm, a))
++            b = asm.newObject("Part::Box", "B")
++            doc.recompute()
++            b.Placement.Base = UtilsAssembly.besidePlacement(asm, b)
++            doc.recompute()
++            self.assertAlmostEqual(b.Shape.BoundBox.XMin, 40 + 10, places=6)
++            self.assertFalse(a.Shape.BoundBox.intersect(b.Shape.BoundBox))
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_slide_on_ground(self):
+         import AssemblyCopies
+ 
+-- 
+2.43.0
+

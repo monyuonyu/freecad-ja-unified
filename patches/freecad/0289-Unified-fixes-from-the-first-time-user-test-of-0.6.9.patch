@@ -1,7 +1,7 @@
 From d98dbe9a4f75ca9a41b8dda8f2fd6c304fbf907f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:01:47 +0900
-Subject: [PATCH 289/320] Unified: fixes from the first-time-user test of 0.6.9
+Subject: [PATCH 289/326] Unified: fixes from the first-time-user test of 0.6.9
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

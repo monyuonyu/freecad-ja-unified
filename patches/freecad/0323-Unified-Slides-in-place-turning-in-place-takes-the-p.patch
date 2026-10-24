@@ -1,0 +1,275 @@
+From df72967886d4f95822f5be5e0ef81a61d80c1b41 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:15:16 +0900
+Subject: [PATCH 323/326] Unified: "Slides in place", turning in place takes
+ the part's fixing away, and both on the bar of a linked part
+
+- "Turns in place" removes the fixing of the part (the first part put in
+  is fixed): the angle did not turn the crank and the check only said the
+  joint was 90 degrees off (engine field test 0.7.4).
+- "Slides in place": a slider joint to the ground along a round face's
+  axis (a piston without its cylinder part); a slider needed two parts.
+- A round face of a part linked from another file offers both on the bar
+  (the bar of a linked part had neither).
+- A part shown by a drawing in its own file is still a top of the file:
+  "Make Drawing" in a part file with a drawing said there was no part.
+
+Test: FreeCADCmd -t TestAssemblySolve, -t TestUnifiedFiles, -t TestContextRules
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopies.py             | 21 ++++++++++++--
+ src/Mod/Unified/AssemblyCopiesGui.py          | 27 +++++++++++++++--
+ src/Mod/Unified/ContextRules.py               | 12 +++++++-
+ .../Gui/Resources/translations/Unified_ja.ts  | 29 +++++++++++++++++++
+ src/Mod/Unified/TestAssemblySolve.py          | 24 +++++++++++++++
+ src/Mod/Unified/TestUnifiedFiles.py           |  5 ++++
+ src/Mod/Unified/UnifiedFiles.py               | 11 +++++--
+ 7 files changed, 120 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/Unified/AssemblyCopies.py b/src/Mod/Unified/AssemblyCopies.py
+index b15f61c39..239f6ce0e 100644
+--- a/src/Mod/Unified/AssemblyCopies.py
++++ b/src/Mod/Unified/AssemblyCopies.py
+@@ -103,13 +103,28 @@ def hinge_to_ground(assembly, part, sub):
+     """A revolute joint between the round face or circle `sub` of `part` (a part of the assembly)
+     and the ground (the assembly's origin), where the part is now: a crank turns in place
+     without a case part to hold it. Returns the joint."""
++    return joint_to_ground(assembly, part, sub, "Revolute", App.Qt.translate("Unified", "Turns in place"))
++
++
++def slide_on_ground(assembly, part, sub):
++    """A slider joint between the round face (its axis) or a flat face of `part` and the ground,
++    where the part is now: a piston slides along its axis. Returns the joint."""
++    return joint_to_ground(assembly, part, sub, "Slider", App.Qt.translate("Unified", "Slides in place"))
++
++
++def joint_to_ground(assembly, part, sub, kind, label):
+     import JointObject
+     import UtilsAssembly
+ 
+     group = UtilsAssembly.getJointGroup(assembly)
+-    joint = group.newObject("App::FeaturePython", "Revolute")
+-    JointObject.Joint(joint, JointObject.JointTypes.index("Revolute"))
+-    joint.Label = App.Qt.translate("Unified", "Turns in place")
++    # The part held by the ground now moves by this joint: its fixing (the first part put in
++    # is fixed) goes, else the joint could not turn it (engine field test 0.7.4)
++    for o in list(group.Group):
++        if getattr(o, "ObjectToGround", None) == part:
++            assembly.Document.removeObject(o.Name)
++    joint = group.newObject("App::FeaturePython", kind)
++    JointObject.Joint(joint, JointObject.JointTypes.index(kind))
++    joint.Label = label
+     joint.Reference2 = (part, [sub, sub])
+     # the ground's side: the same place, fixed to the origin
+     where = part.Placement.multiply(joint.Placement2)
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index 710c81f31..702a2f1e7 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -261,21 +261,44 @@ class HingeToGroundCommand:
+     def IsActive(self):
+         return not Gui.Control.activeDialog() and self.picked() is not None
+ 
++    def make(self, assembly, part, sub):
++        return AC.hinge_to_ground(assembly, part, sub)
++
+     def Activated(self):
+         found = self.picked()
+         if found is None:
+             return
+         assembly, part, sub = found
+         doc = assembly.Document
+-        doc.openTransaction(translate("Unified", "Turns in place"))
++        doc.openTransaction(translate("Unified", "Joint to the ground"))
+         try:
+-            joint = AC.hinge_to_ground(assembly, part, sub)
++            joint = self.make(assembly, part, sub)
+         finally:
+             doc.commitTransaction()
+         Gui.Selection.clearSelection()
+         Gui.Selection.addSelection(joint)
+ 
+ 
++class SlideOnGroundCommand(HingeToGroundCommand):
++    """One round face (its axis) or flat face of a part of an assembly: the part slides along
++    it, in place (a piston in its cylinder, without the cylinder part)"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "Assembly_CreateJointSlider",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_SlideOnGround", "Slides in Place"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_SlideOnGround",
++                "The part slides along the picked round face's axis, where it is now (held by the "
++                "ground: no other part is needed).",
++            ),
++        }
++
++    def make(self, assembly, part, sub):
++        return AC.slide_on_ground(assembly, part, sub)
++
++
+ Gui.addCommand("Unified_GridCopies", GridCopiesCommand())
+ Gui.addCommand("Unified_AnotherPart", DuplicateCommand())
+ Gui.addCommand("Unified_HingeToGround", HingeToGroundCommand())
++Gui.addCommand("Unified_SlideOnGround", SlideOnGroundCommand())
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index 7fe9aeb48..284f1e271 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -60,6 +60,7 @@ RULES = {
+         A("Unified_InsertScrew", T("Insert screw")),
+         # a round face of a part of an assembly: a crank, a wheel turns there, held by the ground
+         A("Unified_HingeToGround", T("Turns in place")),
++        A("Unified_SlideOnGround", T("Slides in place")),
+         # a hole across a round outside face (a piston's pin hole), along the face's normal
+         A("Unified_Hole", T("Hole")),
+         A("Unified_FaceDiameter", T("Diameter"), DIAMETER),
+@@ -108,6 +109,15 @@ RULES = {
+         A("Unified_GridCopies", T("Grid")),
+         A("Std_ToggleVisibility", T("Hide")),
+     ],
++    # A round face of a part of another file in this file's assembly: how it moves on the ground
++    "linked round face": [
++        A("Unified_HingeToGround", T("Turns in place")),
++        A("Unified_SlideOnGround", T("Slides in place")),
++        A("Unified_SnapFaces", T("Snap")),
++        A("Unified_AnotherPart", T("One more")),
++        A("Std_Measure", T("Measure")),
++        A("Std_ToggleVisibility", T("Hide")),
++    ],
+     # A part of another file in this file's assembly (picked anywhere on it)
+     "linked part": [
+         A("Unified_SnapFaces", T("Snap")),
+@@ -343,7 +353,7 @@ def actions_for_selection():
+     picks = selection_picks()
+     kind = classify(picks)
+     if kind not in ("two picks", "two parts", "parts") and _linked_from_elsewhere():
+-        kind = "linked part"
++        kind = "linked round face" if kind == "round face" else "linked part"
+     out = []
+     for a in actions_for(kind):
+         label = translate("ContextRules", a["label"])
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 776fa2968..dc65ae484 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1145,4 +1145,33 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>その場で回す</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_SlideOnGround</name>
++    <message>
++        <source>Slides in Place</source>
++        <translation>その場ですべらせる</translation>
++    </message>
++    <message>
++        <source>The part slides along the picked round face's axis, where it is now (held by the ground: no other part is needed).</source>
++        <translation>選んだ丸い面の軸に沿って、今の場所で部品がすべるようにします（地面が支えるので、ほかの部品は要りません）。</translation>
++    </message>
++</context>
++<context>
++    <name>ContextRules</name>
++    <message>
++        <source>Slides in place</source>
++        <translation>その場ですべらせる</translation>
++    </message>
++</context>
++<context>
++    <name>Unified</name>
++    <message>
++        <source>Slides in place</source>
++        <translation>その場ですべらせる</translation>
++    </message>
++    <message>
++        <source>Joint to the ground</source>
++        <translation>地面とのジョイント</translation>
++    </message>
++</context>
+ </TS>
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 51354d6f1..a225066b7 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -141,7 +141,12 @@ class AssemblySolveTest(unittest.TestCase):
+             at = App.Placement(App.Vector(30, 20, 5), App.Rotation(App.Vector(1, 0, 0), 90))
+             crank.Placement = at
+             doc.recompute()
++            # the first part put in is fixed to the ground: turning in place takes that away
++            import JointObject
++
++            JointObject.GroundedJoint(doc.getObject("Joints").newObject("App::FeaturePython", "Fixed"), crank)
+             joint = AssemblyCopies.hinge_to_ground(asm, crank, "Face1")
++            self.assertFalse([o for o in doc.Objects if getattr(o, "ObjectToGround", None) == crank])
+             self.assertEqual(asm.solve(), 0)
+             self.assertTrue(crank.Placement.isSame(at, 1e-9))
+             joint.AngleDriven = True
+@@ -156,6 +161,25 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_slide_on_ground(self):
++        import AssemblyCopies
++
++        doc = App.newDocument("slide")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            asm.newObject("Assembly::JointGroup", "Joints")
++            piston = asm.newObject("Part::Cylinder", "Piston")
++            piston.Placement.Base = App.Vector(0, 0, 50)
++            doc.recompute()
++            joint = AssemblyCopies.slide_on_ground(asm, piston, "Face1")
++            self.assertEqual(joint.JointType, "Slider")
++            self.assertEqual(asm.solve(), 0)
++            self.assertTrue(piston.Placement.Base.isEqual(App.Vector(0, 0, 50), 1e-9))
++            self.assertEqual(asm.getBrokenJoints(), [])
++        finally:
++            App.closeDocument(doc.Name)
++
+     def test_big_step_right_after_opening(self):
+         # no solve that held is remembered in a file just opened: the walk starts where the parts are
+         import os
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index a3ad55810..cf4b820c3 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -72,6 +72,11 @@ class TestRootObjects(unittest.TestCase):
+             asm.saveAs(os.path.join(tmp, "a.FCStd"))
+             asm.addObject("App::Link", "L").LinkedObject = body
+             self.assertEqual(F.root_objects(part), [body])
++            # a drawing of it in its own file does not hide it either
++            page = part.addObject("TechDraw::DrawPage", "Page")
++            view = part.addObject("TechDraw::DrawViewPart", "View")
++            view.Source = [body]
++            self.assertIn(body, F.root_objects(part))
+         finally:
+             App.closeDocument(asm.Name)
+             App.closeDocument(part.Name)
+diff --git a/src/Mod/Unified/UnifiedFiles.py b/src/Mod/Unified/UnifiedFiles.py
+index 23d6966a0..853b99609 100644
+--- a/src/Mod/Unified/UnifiedFiles.py
++++ b/src/Mod/Unified/UnifiedFiles.py
+@@ -17,9 +17,14 @@ translate = App.Qt.translate
+ 
+ 
+ def root_objects(doc):
+-    """The tops of the document: used by nothing in it. doc.RootObjects also leaves out a part
+-    that an assembly in another document links to (the part could not be drawn, dragged, ...)"""
+-    return [o for o in doc.Objects if not any(p.Document == doc for p in o.InList)]
++    """The tops of the document: used by nothing in it but its drawings. doc.RootObjects also
++    leaves out a part that an assembly in another document links to, or that a drawing shows
++    (the part could not be drawn, dragged, ...)"""
++    def uses(p):
++        # a drawing's views show the part, they do not hold it
++        return p.Document == doc and not p.TypeId.startswith("TechDraw::")
++
++    return [o for o in doc.Objects if not any(uses(p) for p in o.InList)]
+ 
+ def QT_TRANSLATE_NOOP(context, text):
+     return text
+-- 
+2.43.0
+

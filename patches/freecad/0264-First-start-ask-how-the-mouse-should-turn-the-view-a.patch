@@ -1,7 +1,7 @@
 From faefbbb6783d0939280b0700bc8bde809f4c933f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:39:52 +0900
-Subject: [PATCH 264/320] First start: ask how the mouse should turn the view,
+Subject: [PATCH 264/326] First start: ask how the mouse should turn the view,
  also in the integrated environment
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

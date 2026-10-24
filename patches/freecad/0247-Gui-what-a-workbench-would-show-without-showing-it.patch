@@ -1,7 +1,7 @@
 From 871cc73660b5eec0f69873169cd933b9f18aaf8f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:26:51 +0900
-Subject: [PATCH 247/320] Gui: what a workbench would show, without showing it
+Subject: [PATCH 247/326] Gui: what a workbench would show, without showing it
 
 Workbench.getMenuItems() returns the menus a workbench sets up, with their
 commands and submenus. Command.getInfo() also gives the class name, the

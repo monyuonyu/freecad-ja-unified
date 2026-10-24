@@ -1,7 +1,7 @@
 From c5605668c863c56cac439a0ab1bd3366b85ee27f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 17:29:49 +0900
-Subject: [PATCH 207/320] Unified: stop the AI's code after 120 s (it runs
+Subject: [PATCH 207/326] Unified: stop the AI's code after 120 s (it runs
  inside FreeCAD); a failing repr of the last value keeps the run
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

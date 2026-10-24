@@ -1,0 +1,641 @@
+From a7b5bb5c2ebd753ac62b0e8ac32172410f8300bc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 24 Oct 2026 12:26:38 +0900
+Subject: [PATCH 325/326] Names: a part put into an assembly keeps an ASCII
+ name; names are read as UTF-8
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Assembly's "Put Part" named the link after the part's label, so a part
+labelled 部品 got the internal name 部品003, and the GUI reads internal
+names as Latin-1 in many places: the status bar said "é¨å003" (engine
+field tests 0.7.3, 0.7.4), and a lookup by such a name would miss. The
+link is named after the part's name (the label stays the part's label),
+and the GUI's QString::fromLatin1(getNameInDocument()) and
+getObject(...toLatin1()) use UTF-8 (the same for ASCII names).
+
+Tests: TestAssemblySolve, TestAssemblyWorkbench, TestPartDesignApp,
+TestSketcherApp, TestSpreadsheet, Document
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/ExpressionCompleter.cpp                      |  4 ++--
+ src/Gui/Placement.cpp                                |  4 ++--
+ src/Gui/QuantitySpinBox.cpp                          |  2 +-
+ src/Gui/Tree.cpp                                     |  2 +-
+ src/Mod/Assembly/CommandInsertLink.py                |  8 ++++++--
+ src/Mod/Fem/Gui/TaskObjectName.cpp                   |  2 +-
+ src/Mod/Fem/Gui/TaskPostBoxes.cpp                    |  4 ++--
+ src/Mod/Inspection/Gui/VisualInspection.cpp          |  4 ++--
+ src/Mod/Mesh/Gui/DlgEvaluateMeshImp.cpp              | 10 +++++-----
+ src/Mod/Part/Gui/Command.cpp                         |  6 +++---
+ src/Mod/Part/Gui/CommandParametric.cpp               |  2 +-
+ src/Mod/Part/Gui/DlgBooleanOperation.cpp             |  4 ++--
+ src/Mod/Part/Gui/DlgExtrusion.cpp                    |  6 +++---
+ src/Mod/Part/Gui/DlgFilletEdges.cpp                  |  4 ++--
+ src/Mod/Part/Gui/DlgRevolution.cpp                   |  4 ++--
+ src/Mod/Part/Gui/DlgScale.cpp                        |  6 +++---
+ src/Mod/Part/Gui/Mirroring.cpp                       |  2 +-
+ src/Mod/Part/Gui/TaskAttacher.cpp                    |  6 +++---
+ src/Mod/Part/Gui/TaskLoft.cpp                        |  2 +-
+ src/Mod/Part/Gui/TaskSweep.cpp                       |  2 +-
+ src/Mod/PartDesign/Gui/ReferenceSelection.cpp        |  6 +++---
+ src/Mod/PartDesign/Gui/TaskBooleanParameters.cpp     |  4 ++--
+ src/Mod/PartDesign/Gui/TaskFeaturePick.cpp           |  4 ++--
+ src/Mod/PartDesign/Gui/TaskSketchBasedParameters.cpp |  2 +-
+ src/Mod/PartDesign/Gui/TaskTransformedParameters.cpp |  4 ++--
+ src/Mod/PartDesign/Gui/ViewProviderDressUp.cpp       |  2 +-
+ src/Mod/Sketcher/App/SketchObjectConstraints.cpp     |  2 +-
+ src/Mod/Spreadsheet/Gui/DlgBindSheet.cpp             |  2 +-
+ 28 files changed, 57 insertions(+), 53 deletions(-)
+
+diff --git a/src/Gui/ExpressionCompleter.cpp b/src/Gui/ExpressionCompleter.cpp
+index e6477d5f4..20e53bbf9 100644
+--- a/src/Gui/ExpressionCompleter.cpp
++++ b/src/Gui/ExpressionCompleter.cpp
+@@ -442,7 +442,7 @@ public:
+                         res = QString::fromUtf8(quote(obj->Label.getStrValue()).c_str());
+                     }
+                     else {
+-                        res = QString::fromLatin1(obj->getNameInDocument());
++                        res = QString::fromUtf8(obj->getNameInDocument());
+                     }
+                     if (sep && !noProperty) {
+                         res += QLatin1Char('.');
+@@ -491,7 +491,7 @@ public:
+                         res = QString::fromUtf8(quote(obj->Label.getStrValue()).c_str());
+                     }
+                     else {
+-                        res = QString::fromLatin1(obj->getNameInDocument());
++                        res = QString::fromUtf8(obj->getNameInDocument());
+                     }
+                     if (sep && !noProperty) {
+                         res += QLatin1Char('.');
+diff --git a/src/Gui/Placement.cpp b/src/Gui/Placement.cpp
+index 65f9e916e..4dc832b3f 100644
+--- a/src/Gui/Placement.cpp
++++ b/src/Gui/Placement.cpp
+@@ -361,7 +361,7 @@ QString PlacementHandler::getIncrementalPlacement(const App::DocumentObject* obj
+     return QStringLiteral(R"(App.getDocument("%1").%2.%3=%4.multiply(App.getDocument("%1").%2.%3))")
+         .arg(
+             QString::fromLatin1(obj->getDocument()->getName()),
+-            QString::fromLatin1(obj->getNameInDocument()),
++            QString::fromUtf8(obj->getNameInDocument()),
+             QString::fromLatin1(this->propertyName.c_str()),
+             data
+         );
+@@ -372,7 +372,7 @@ QString PlacementHandler::getSimplePlacement(const App::DocumentObject* obj, con
+     return QStringLiteral("App.getDocument(\"%1\").%2.%3=%4")
+         .arg(
+             QString::fromLatin1(obj->getDocument()->getName()),
+-            QString::fromLatin1(obj->getNameInDocument()),
++            QString::fromUtf8(obj->getNameInDocument()),
+             QString::fromLatin1(this->propertyName.c_str()),
+             data
+         );
+diff --git a/src/Gui/QuantitySpinBox.cpp b/src/Gui/QuantitySpinBox.cpp
+index b6609a042..75ace44ec 100644
+--- a/src/Gui/QuantitySpinBox.cpp
++++ b/src/Gui/QuantitySpinBox.cpp
+@@ -203,7 +203,7 @@ void QuantitySpinBox::setBoundToByName(const QString& name)
+         list = list.front().split(QLatin1Char('.'));
+ 
+         // get object
+-        App::DocumentObject* obj = doc->getObject(list.front().toLatin1());
++        App::DocumentObject* obj = doc->getObject(list.front().toUtf8());
+         if (!obj) {
+             qDebug() << "No object " << list.front() << " in document";
+             return;
+diff --git a/src/Gui/Tree.cpp b/src/Gui/Tree.cpp
+index 1f86451e3..c6d2fd4c4 100644
+--- a/src/Gui/Tree.cpp
++++ b/src/Gui/Tree.cpp
+@@ -6652,7 +6652,7 @@ void DocumentObjectItem::displayStatusInfo()
+     }
+ 
+     QString status = TreeWidget::tr("%1, Internal name: %2")
+-                         .arg(info, QString::fromLatin1(Obj->getNameInDocument()));
++                         .arg(info, QString::fromUtf8(Obj->getNameInDocument()));
+ 
+     if (!Obj->isError()) {
+         getMainWindow()->showMessage(status);
+diff --git a/src/Mod/Assembly/CommandInsertLink.py b/src/Mod/Assembly/CommandInsertLink.py
+index de239511b..a2b75ffe9 100644
+--- a/src/Mod/Assembly/CommandInsertLink.py
++++ b/src/Mod/Assembly/CommandInsertLink.py
+@@ -440,7 +440,10 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+             else:
+                 objType = "App::Link"
+ 
+-            addedObject = self.assembly.newObject(objType, selectedPart.Label)
++            # The internal name from the part's (ASCII) name; its label below is the part's label.
++            # A Japanese label as the name went through parts of the GUI that read names as
++            # Latin-1 ("é¨å003" in the status bar; engine field test 0.7.3)
++            addedObject = self.assembly.newObject(objType, selectedPart.Name)
+ 
+         # set placement of the added object to the center of the screen.
+         view = Gui.activeView()
+@@ -611,8 +614,9 @@ class TaskAssemblyInsertLink(QtCore.QObject):
+                 if addedObject.TypeId == "App::Link":
+                     selectedPart = addedObject.LinkedObject
+ 
+-                addedObject = self.assembly.newObject("App::Link", selectedPart.Label)
++                addedObject = self.assembly.newObject("App::Link", selectedPart.Name)
+                 addedObject.LinkedObject = selectedPart
++                addedObject.Label = selectedPart.Label
+                 addedObject.Placement.Base = currentPos
+ 
+                 insertionDict = {}
+diff --git a/src/Mod/Fem/Gui/TaskObjectName.cpp b/src/Mod/Fem/Gui/TaskObjectName.cpp
+index 374478ec7..73e2ac03a 100644
+--- a/src/Mod/Fem/Gui/TaskObjectName.cpp
++++ b/src/Mod/Fem/Gui/TaskObjectName.cpp
+@@ -55,7 +55,7 @@ TaskObjectName::TaskObjectName(App::DocumentObject* pcObject, QWidget* parent)
+         ui->lineEdit_ObjectName->setText(QString::fromUtf8(pcObject->Label.getValue()));
+     }
+     else {
+-        ui->lineEdit_ObjectName->setText(QString::fromLatin1(pcObject->getNameInDocument()));
++        ui->lineEdit_ObjectName->setText(QString::fromUtf8(pcObject->getNameInDocument()));
+     }
+ }
+ 
+diff --git a/src/Mod/Fem/Gui/TaskPostBoxes.cpp b/src/Mod/Fem/Gui/TaskPostBoxes.cpp
+index ccb12ae40..05220ebb4 100644
+--- a/src/Mod/Fem/Gui/TaskPostBoxes.cpp
++++ b/src/Mod/Fem/Gui/TaskPostBoxes.cpp
+@@ -1560,7 +1560,7 @@ void TaskPostClip::collectImplicitFunctions()
+                 = getObject<Fem::FemPostClipFilter>()->Function.getValue();
+             const std::vector<App::DocumentObject*>& funcs = provider->Group.getValues();
+             for (std::size_t i = 0; i < funcs.size(); ++i) {
+-                items.push_back(QString::fromLatin1(funcs[i]->getNameInDocument()));
++                items.push_back(QString::fromUtf8(funcs[i]->getNameInDocument()));
+                 if (currentFunction == funcs[i]) {
+                     currentItem = i;
+                 }
+@@ -1869,7 +1869,7 @@ void TaskPostCut::collectImplicitFunctions()
+                 = getObject<Fem::FemPostCutFilter>()->Function.getValue();
+             const std::vector<App::DocumentObject*>& funcs = provider->Group.getValues();
+             for (std::size_t i = 0; i < funcs.size(); ++i) {
+-                items.push_back(QString::fromLatin1(funcs[i]->getNameInDocument()));
++                items.push_back(QString::fromUtf8(funcs[i]->getNameInDocument()));
+                 if (currentFunction == funcs[i]) {
+                     currentItem = i;
+                 }
+diff --git a/src/Mod/Inspection/Gui/VisualInspection.cpp b/src/Mod/Inspection/Gui/VisualInspection.cpp
+index 1a1ff0114..5fca0765d 100644
+--- a/src/Mod/Inspection/Gui/VisualInspection.cpp
++++ b/src/Mod/Inspection/Gui/VisualInspection.cpp
+@@ -113,13 +113,13 @@ VisualInspection::VisualInspection(QWidget* parent)
+             QIcon px = view->getIcon();
+             SingleSelectionItem* item1 = new SingleSelectionItem(ui->treeWidgetActual);
+             item1->setText(0, QString::fromUtf8(it->Label.getValue()));
+-            item1->setData(0, Qt::UserRole, QString::fromLatin1(it->getNameInDocument()));
++            item1->setData(0, Qt::UserRole, QString::fromUtf8(it->getNameInDocument()));
+             item1->setCheckState(0, Qt::Unchecked);
+             item1->setIcon(0, px);
+ 
+             SingleSelectionItem* item2 = new SingleSelectionItem(ui->treeWidgetNominal);
+             item2->setText(0, QString::fromUtf8(it->Label.getValue()));
+-            item2->setData(0, Qt::UserRole, QString::fromLatin1(it->getNameInDocument()));
++            item2->setData(0, Qt::UserRole, QString::fromUtf8(it->getNameInDocument()));
+             item2->setCheckState(0, Qt::Unchecked);
+             item2->setIcon(0, px);
+ 
+diff --git a/src/Mod/Mesh/Gui/DlgEvaluateMeshImp.cpp b/src/Mod/Mesh/Gui/DlgEvaluateMeshImp.cpp
+index 02a7a9836..149452516 100644
+--- a/src/Mod/Mesh/Gui/DlgEvaluateMeshImp.cpp
++++ b/src/Mod/Mesh/Gui/DlgEvaluateMeshImp.cpp
+@@ -262,7 +262,7 @@ void DlgEvaluateMeshImp::slotCreatedObject(const App::DocumentObject& Obj)
+     // add new mesh object to the list
+     if (Obj.isDerivedFrom<Mesh::Feature>()) {
+         QString label = QString::fromUtf8(Obj.Label.getValue());
+-        QString name = QString::fromLatin1(Obj.getNameInDocument());
++        QString name = QString::fromUtf8(Obj.getNameInDocument());
+         d->ui.meshNameButton->addItem(label, name);
+     }
+ }
+@@ -271,7 +271,7 @@ void DlgEvaluateMeshImp::slotDeletedObject(const App::DocumentObject& Obj)
+ {
+     // remove mesh objects from the list
+     if (Obj.isDerivedFrom<Mesh::Feature>()) {
+-        int index = d->ui.meshNameButton->findData(QString::fromLatin1(Obj.getNameInDocument()));
++        int index = d->ui.meshNameButton->findData(QString::fromUtf8(Obj.getNameInDocument()));
+         if (index > 0) {
+             d->ui.meshNameButton->removeItem(index);
+             d->ui.meshNameButton->setDisabled(d->ui.meshNameButton->count() < 2);
+@@ -301,7 +301,7 @@ void DlgEvaluateMeshImp::slotChangedObject(const App::DocumentObject& Obj, const
+         // if the label has changed update the entry in the list
+         if (Prop.is<App::PropertyString>() && strcmp(Prop.getName(), "Label") == 0) {
+             QString label = QString::fromUtf8(Obj.Label.getValue());
+-            QString name = QString::fromLatin1(Obj.getNameInDocument());
++            QString name = QString::fromUtf8(Obj.getNameInDocument());
+             int index = d->ui.meshNameButton->findData(name);
+             d->ui.meshNameButton->setItemText(index, label);
+         }
+@@ -335,7 +335,7 @@ void DlgEvaluateMeshImp::setMesh(Mesh::Feature* m)
+     refreshList();
+ 
+     int ct = d->ui.meshNameButton->count();
+-    QString objName = QString::fromLatin1(m->getNameInDocument());
++    QString objName = QString::fromUtf8(m->getNameInDocument());
+     for (int i = 1; i < ct; i++) {
+         if (d->ui.meshNameButton->itemData(i).toString() == objName) {
+             d->ui.meshNameButton->setCurrentIndex(i);
+@@ -415,7 +415,7 @@ void DlgEvaluateMeshImp::refreshList()
+         for (auto obj : objs) {
+             items.push_back(qMakePair(
+                 QString::fromUtf8(obj->Label.getValue()),
+-                QString::fromLatin1(obj->getNameInDocument())
++                QString::fromUtf8(obj->getNameInDocument())
+             ));
+         }
+     }
+diff --git a/src/Mod/Part/Gui/Command.cpp b/src/Mod/Part/Gui/Command.cpp
+index 1348d75a7..4cc6b2404 100644
+--- a/src/Mod/Part/Gui/Command.cpp
++++ b/src/Mod/Part/Gui/Command.cpp
+@@ -1268,7 +1268,7 @@ void CmdPartMakeSolid::activated(int iMsg)
+         if (!shape.IsNull()) {
+             TopAbs_ShapeEnum type = shape.ShapeType();
+             QString str;
+-            QString name = QString::fromLatin1(it->getNameInDocument());
++            QString name = QString::fromUtf8(it->getNameInDocument());
+             std::string label = it->Label.getValue();
+             label = Base::Tools::escapeEncodeString(label);
+             if (type == TopAbs_SOLID) {
+@@ -1370,7 +1370,7 @@ void CmdPartReverseShape::activated(int iMsg)
+             )
+                               .arg(
+                                   QString::fromLatin1(name.c_str()),
+-                                  QString::fromLatin1(it->getNameInDocument()),
++                                  QString::fromUtf8(it->getNameInDocument()),
+                                   QString::fromUtf8(label.c_str())
+                               );
+ 
+@@ -2512,7 +2512,7 @@ QString getAutoGroupCommandStr()
+     }
+ 
+     if (activeObj) {
+-        QString activeName = QString::fromLatin1(activeObj->getNameInDocument());
++        QString activeName = QString::fromUtf8(activeObj->getNameInDocument());
+         return QStringLiteral("App.ActiveDocument.getObject('%1\').addObject(obj)\n").arg(activeName);
+     }
+ 
+diff --git a/src/Mod/Part/Gui/CommandParametric.cpp b/src/Mod/Part/Gui/CommandParametric.cpp
+index 4f2eb808d..96bc0852b 100644
+--- a/src/Mod/Part/Gui/CommandParametric.cpp
++++ b/src/Mod/Part/Gui/CommandParametric.cpp
+@@ -49,7 +49,7 @@ QString getAutoGroupCommandStr()
+         "part"
+     );
+     if (activePart) {
+-        QString activePartName = QString::fromLatin1(activePart->getNameInDocument());
++        QString activePartName = QString::fromUtf8(activePart->getNameInDocument());
+         return QStringLiteral(
+                    "App.ActiveDocument.getObject('%1\')."
+                    "addObject(App.ActiveDocument.ActiveObject)\n"
+diff --git a/src/Mod/Part/Gui/DlgBooleanOperation.cpp b/src/Mod/Part/Gui/DlgBooleanOperation.cpp
+index c4823ff4f..0a4433ee8 100644
+--- a/src/Mod/Part/Gui/DlgBooleanOperation.cpp
++++ b/src/Mod/Part/Gui/DlgBooleanOperation.cpp
+@@ -152,7 +152,7 @@ void DlgBooleanOperation::slotChangedObject(const App::DocumentObject& obj, cons
+         if (!shape.IsNull()) {
+             Gui::Document* activeGui = Gui::Application::Instance->getDocument(obj.getDocument());
+             QString label = QString::fromUtf8(obj.Label.getValue());
+-            QString name = QString::fromLatin1(obj.getNameInDocument());
++            QString name = QString::fromUtf8(obj.getNameInDocument());
+ 
+             QTreeWidgetItem* child = new BooleanOperationItem();
+             child->setCheckState(0, Qt::Unchecked);
+@@ -244,7 +244,7 @@ void DlgBooleanOperation::findShapes()
+         const TopoDS_Shape& shape = static_cast<Part::Feature*>(obj)->Shape.getValue();
+         if (!shape.IsNull()) {
+             QString label = QString::fromUtf8(obj->Label.getValue());
+-            QString name = QString::fromLatin1(obj->getNameInDocument());
++            QString name = QString::fromUtf8(obj->getNameInDocument());
+ 
+             QTreeWidgetItem* child = new BooleanOperationItem();
+             child->setCheckState(0, Qt::Unchecked);
+diff --git a/src/Mod/Part/Gui/DlgExtrusion.cpp b/src/Mod/Part/Gui/DlgExtrusion.cpp
+index a350910be..97bc5df7a 100644
+--- a/src/Mod/Part/Gui/DlgExtrusion.cpp
++++ b/src/Mod/Part/Gui/DlgExtrusion.cpp
+@@ -243,7 +243,7 @@ void DlgExtrusion::onSelectEdgeClicked()
+                     continue;
+                 }
+                 features_to_hide.append(QStringLiteral("App.ActiveDocument."));
+-                features_to_hide.append(QString::fromLatin1(obj->getNameInDocument()));
++                features_to_hide.append(QString::fromUtf8(obj->getNameInDocument()));
+                 features_to_hide.append(QStringLiteral(", \n"));
+             }
+             QByteArray code_2 = code.arg(features_to_hide).toLatin1();
+@@ -440,7 +440,7 @@ void DlgExtrusion::findShapes()
+         if (canExtrude(shape)) {
+             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+             item->setText(0, QString::fromUtf8(obj->Label.getValue()));
+-            item->setData(0, Qt::UserRole, QString::fromLatin1(obj->getNameInDocument()));
++            item->setData(0, Qt::UserRole, QString::fromUtf8(obj->getNameInDocument()));
+             Gui::ViewProvider* vp = activeGui->getViewProvider(obj);
+             if (vp) {
+                 item->setIcon(0, vp->getIcon());
+@@ -696,7 +696,7 @@ std::vector<App::DocumentObject*> DlgExtrusion::getShapesToExtrude() const
+ 
+     std::vector<App::DocumentObject*> objects;
+     for (auto item : items) {
+-        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toLatin1());
++        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toUtf8());
+         if (!obj) {
+             throw Base::RuntimeError("Object not found");
+         }
+diff --git a/src/Mod/Part/Gui/DlgFilletEdges.cpp b/src/Mod/Part/Gui/DlgFilletEdges.cpp
+index 9268a6564..81ee728ff 100644
+--- a/src/Mod/Part/Gui/DlgFilletEdges.cpp
++++ b/src/Mod/Part/Gui/DlgFilletEdges.cpp
+@@ -528,7 +528,7 @@ void DlgFilletEdges::onDeleteObject(const App::DocumentObject& obj)
+         onShapeObjectActivated(0);
+     }
+     else {
+-        QString shape = QString::fromLatin1(obj.getNameInDocument());
++        QString shape = QString::fromUtf8(obj.getNameInDocument());
+         // start from the second item
+         for (int i = 1; i < ui->shapeObject->count(); i++) {
+             if (ui->shapeObject->itemData(i).toString() == shape) {
+@@ -1054,7 +1054,7 @@ bool DlgFilletEdges::accept()
+     type = QStringLiteral("Part::%1").arg(QString::fromLatin1(fillet.c_str()));
+ 
+     if (d->fillet) {
+-        name = QString::fromLatin1(d->fillet->getNameInDocument());
++        name = QString::fromUtf8(d->fillet->getNameInDocument());
+     }
+     else {
+         name = QString::fromLatin1(activeDoc->getUniqueObjectName(fillet.c_str()).c_str());
+diff --git a/src/Mod/Part/Gui/DlgRevolution.cpp b/src/Mod/Part/Gui/DlgRevolution.cpp
+index 31eb2f399..198250aea 100644
+--- a/src/Mod/Part/Gui/DlgRevolution.cpp
++++ b/src/Mod/Part/Gui/DlgRevolution.cpp
+@@ -269,7 +269,7 @@ std::vector<App::DocumentObject*> DlgRevolution::getShapesToRevolve() const
+ 
+     std::vector<App::DocumentObject*> objects;
+     for (auto item : items) {
+-        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toLatin1());
++        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toUtf8());
+         if (!obj) {
+             throw Base::RuntimeError("Object not found");
+         }
+@@ -408,7 +408,7 @@ void DlgRevolution::findShapes()
+         // So allowed are: vertex, edge, wire, face, shell and compound
+         QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+         item->setText(0, QString::fromUtf8(obj->Label.getValue()));
+-        item->setData(0, Qt::UserRole, QString::fromLatin1(obj->getNameInDocument()));
++        item->setData(0, Qt::UserRole, QString::fromUtf8(obj->getNameInDocument()));
+         Gui::ViewProvider* vp = activeGui->getViewProvider(obj);
+         if (vp) {
+             item->setIcon(0, vp->getIcon());
+diff --git a/src/Mod/Part/Gui/DlgScale.cpp b/src/Mod/Part/Gui/DlgScale.cpp
+index b695177d6..b9bf97a69 100644
+--- a/src/Mod/Part/Gui/DlgScale.cpp
++++ b/src/Mod/Part/Gui/DlgScale.cpp
+@@ -139,7 +139,7 @@ void DlgScale::findShapes()
+         if (canScale(shape)) {
+             QTreeWidgetItem* item = new QTreeWidgetItem(ui->treeWidget);
+             item->setText(0, QString::fromUtf8(obj->Label.getValue()));
+-            item->setData(0, Qt::UserRole, QString::fromLatin1(obj->getNameInDocument()));
++            item->setData(0, Qt::UserRole, QString::fromUtf8(obj->getNameInDocument()));
+             Gui::ViewProvider* vp = activeGui->getViewProvider(obj);
+             if (vp) {
+                 item->setIcon(0, vp->getIcon());
+@@ -304,7 +304,7 @@ std::vector<App::DocumentObject*> DlgScale::getShapesToScale() const
+ 
+     std::vector<App::DocumentObject*> objects;
+     for (auto item : items) {
+-        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toLatin1());
++        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toUtf8());
+         if (!obj) {
+             throw Base::RuntimeError("Object not found");
+         }
+@@ -325,7 +325,7 @@ bool DlgScale::validate()
+ 
+     std::vector<App::DocumentObject*> objects;
+     for (auto item : items) {
+-        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toLatin1());
++        App::DocumentObject* obj = doc->getObject(item->data(0, Qt::UserRole).toString().toUtf8());
+         if (!obj) {
+             throw Base::RuntimeError("Object not found");
+         }
+diff --git a/src/Mod/Part/Gui/Mirroring.cpp b/src/Mod/Part/Gui/Mirroring.cpp
+index fc4cfeae4..3e31dc373 100644
+--- a/src/Mod/Part/Gui/Mirroring.cpp
++++ b/src/Mod/Part/Gui/Mirroring.cpp
+@@ -285,7 +285,7 @@ void Mirroring::findShapes()
+         );
+         if (!shape.isNull()) {
+             QString label = QString::fromUtf8(obj->Label.getValue());
+-            QString name = QString::fromLatin1(obj->getNameInDocument());
++            QString name = QString::fromUtf8(obj->getNameInDocument());
+ 
+             QTreeWidgetItem* child = new QTreeWidgetItem();
+             child->setText(0, label);
+diff --git a/src/Mod/Part/Gui/TaskAttacher.cpp b/src/Mod/Part/Gui/TaskAttacher.cpp
+index e9d7cae1a..dba9cd205 100644
+--- a/src/Mod/Part/Gui/TaskAttacher.cpp
++++ b/src/Mod/Part/Gui/TaskAttacher.cpp
+@@ -84,7 +84,7 @@ const QString makeRefString(const App::DocumentObject* obj, const std::string& s
+     }
+ 
+     if (obj->isDerivedFrom<App::DatumElement>() || obj->isDerivedFrom<Part::Datum>()) {
+-        return QString::fromLatin1(obj->getNameInDocument());
++        return QString::fromUtf8(obj->getNameInDocument());
+     }
+ 
+     // Hide the TNP string from the user. ie show "Body.Pad.Face6"  and not :
+@@ -92,7 +92,7 @@ const QString makeRefString(const App::DocumentObject* obj, const std::string& s
+     App::ElementNamePair el;
+     App::GeoFeature::resolveElement(obj, sub.c_str(), el, true);
+ 
+-    return QString::fromLatin1(obj->getNameInDocument())
++    return QString::fromUtf8(obj->getNameInDocument())
+         + (sub.length() > 0 ? QStringLiteral(":") : QString())
+         + QString::fromLatin1(el.oldName.c_str());
+ }
+@@ -896,7 +896,7 @@ void TaskAttacher::onRefName(const QString& text, unsigned idx)
+         parts.push_back(QStringLiteral(""));
+     }
+     // Check whether this is the name of an App::Plane or Part::Datum feature
+-    App::DocumentObject* obj = ViewProvider->getObject()->getDocument()->getObject(parts[0].toLatin1());
++    App::DocumentObject* obj = ViewProvider->getObject()->getDocument()->getObject(parts[0].toUtf8());
+     if (!obj) {
+         return;
+     }
+diff --git a/src/Mod/Part/Gui/TaskLoft.cpp b/src/Mod/Part/Gui/TaskLoft.cpp
+index 690166514..78c109c0f 100644
+--- a/src/Mod/Part/Gui/TaskLoft.cpp
++++ b/src/Mod/Part/Gui/TaskLoft.cpp
+@@ -141,7 +141,7 @@ void LoftWidget::findShapes()
+ 
+         if (viable) {
+             QString label = QString::fromUtf8(obj->Label.getValue());
+-            QString name = QString::fromLatin1(obj->getNameInDocument());
++            QString name = QString::fromUtf8(obj->getNameInDocument());
+             QTreeWidgetItem* child = new QTreeWidgetItem();
+             child->setText(0, label);
+             child->setToolTip(0, label);
+diff --git a/src/Mod/Part/Gui/TaskSweep.cpp b/src/Mod/Part/Gui/TaskSweep.cpp
+index 94e6301f8..aa43e607e 100644
+--- a/src/Mod/Part/Gui/TaskSweep.cpp
++++ b/src/Mod/Part/Gui/TaskSweep.cpp
+@@ -220,7 +220,7 @@ void SweepWidget::findShapes()
+             && (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_WIRE
+                 || shape.ShapeType() == TopAbs_EDGE || shape.ShapeType() == TopAbs_VERTEX)) {
+             QString label = QString::fromUtf8(obj->Label.getValue());
+-            QString name = QString::fromLatin1(obj->getNameInDocument());
++            QString name = QString::fromUtf8(obj->getNameInDocument());
+ 
+             QTreeWidgetItem* child = new QTreeWidgetItem();
+             child->setText(0, label);
+diff --git a/src/Mod/PartDesign/Gui/ReferenceSelection.cpp b/src/Mod/PartDesign/Gui/ReferenceSelection.cpp
+index b431b8d67..d6250dff6 100644
+--- a/src/Mod/PartDesign/Gui/ReferenceSelection.cpp
++++ b/src/Mod/PartDesign/Gui/ReferenceSelection.cpp
+@@ -376,17 +376,17 @@ QString getRefStr(const App::DocumentObject* obj, const std::vector<std::string>
+     }
+ 
+     if (PartDesign::Feature::isDatum(obj)) {
+-        return QString::fromLatin1(obj->getNameInDocument());
++        return QString::fromUtf8(obj->getNameInDocument());
+     }
+ 
+     if (!sub.empty() && !sub.front().empty()) {
+-        return QString::fromLatin1(obj->getNameInDocument()) + QStringLiteral(":")
++        return QString::fromUtf8(obj->getNameInDocument()) + QStringLiteral(":")
+             + QString::fromLatin1(sub.front().c_str());
+     }
+ 
+     if (obj->isDerivedFrom<Part::Part2DObject>()) {
+         // only return bare name for sketches when no subelement is specified
+-        return QString::fromLatin1(obj->getNameInDocument());
++        return QString::fromUtf8(obj->getNameInDocument());
+     }
+ 
+     return {};
+diff --git a/src/Mod/PartDesign/Gui/TaskBooleanParameters.cpp b/src/Mod/PartDesign/Gui/TaskBooleanParameters.cpp
+index d0b7fd68b..2f508d7c3 100644
+--- a/src/Mod/PartDesign/Gui/TaskBooleanParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskBooleanParameters.cpp
+@@ -121,7 +121,7 @@ TaskBooleanParameters::TaskBooleanParameters(ViewProviderBoolean* BooleanView, Q
+     for (auto body : bodies) {
+         QListWidgetItem* item = new QListWidgetItem(ui->listWidgetBodies);
+         item->setText(QString::fromUtf8(body->Label.getValue()));
+-        item->setData(Qt::UserRole, QString::fromLatin1(body->getNameInDocument()));
++        item->setData(Qt::UserRole, QString::fromUtf8(body->getNameInDocument()));
+     }
+ 
+     // Create context menu
+@@ -178,7 +178,7 @@ void TaskBooleanParameters::onSelectionChanged(const Gui::SelectionChanges& msg)
+ 
+                 QListWidgetItem* item = new QListWidgetItem(ui->listWidgetBodies);
+                 item->setText(QString::fromUtf8(pcBody->Label.getValue()));
+-                item->setData(Qt::UserRole, QString::fromLatin1(pcBody->getNameInDocument()));
++                item->setData(Qt::UserRole, QString::fromUtf8(pcBody->getNameInDocument()));
+ 
+                 pcBoolean->getDocument()->recomputeFeature(pcBoolean);
+                 ui->buttonBodyAdd->setChecked(false);
+diff --git a/src/Mod/PartDesign/Gui/TaskFeaturePick.cpp b/src/Mod/PartDesign/Gui/TaskFeaturePick.cpp
+index 04b393d74..2c88664d0 100644
+--- a/src/Mod/PartDesign/Gui/TaskFeaturePick.cpp
++++ b/src/Mod/PartDesign/Gui/TaskFeaturePick.cpp
+@@ -260,7 +260,7 @@ std::vector<App::DocumentObject*> TaskFeaturePick::getFeatures()
+ 
+     for (const auto& feature : features) {
+         result.push_back(
+-            App::GetApplication().getDocument(documentName.c_str())->getObject(feature.toLatin1().data())
++            App::GetApplication().getDocument(documentName.c_str())->getObject(feature.toUtf8().data())
+         );
+     }
+ 
+@@ -286,7 +286,7 @@ std::vector<App::DocumentObject*> TaskFeaturePick::buildFeatures()
+                 QString t = item->data(Qt::UserRole).toString();
+                 auto obj = App::GetApplication()
+                                .getDocument(documentName.c_str())
+-                               ->getObject(t.toLatin1().data());
++                               ->getObject(t.toUtf8().data());
+ 
+                 // build the dependent copy or reference if wanted by the user
+                 if (status == otherBody || status == otherPart || status == notInBody) {
+diff --git a/src/Mod/PartDesign/Gui/TaskSketchBasedParameters.cpp b/src/Mod/PartDesign/Gui/TaskSketchBasedParameters.cpp
+index c0e02f64f..73b833c13 100644
+--- a/src/Mod/PartDesign/Gui/TaskSketchBasedParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskSketchBasedParameters.cpp
+@@ -220,7 +220,7 @@ QVariant TaskSketchBasedParameters::setUpToFace(const QString& text)
+         return {};
+     }
+ 
+-    App::DocumentObject* obj = doc->getObject(parts[0].toLatin1());
++    App::DocumentObject* obj = doc->getObject(parts[0].toUtf8());
+     if (!obj) {
+         return {};
+     }
+diff --git a/src/Mod/PartDesign/Gui/TaskTransformedParameters.cpp b/src/Mod/PartDesign/Gui/TaskTransformedParameters.cpp
+index 768629815..826e354a4 100644
+--- a/src/Mod/PartDesign/Gui/TaskTransformedParameters.cpp
++++ b/src/Mod/PartDesign/Gui/TaskTransformedParameters.cpp
+@@ -146,7 +146,7 @@ void TaskTransformedParameters::setupUI()
+         if (obj) {
+             auto item = new QListWidgetItem();
+             item->setText(QString::fromUtf8(obj->Label.getValue()));
+-            item->setData(Qt::UserRole, QString::fromLatin1(obj->getNameInDocument()));
++            item->setData(Qt::UserRole, QString::fromUtf8(obj->getNameInDocument()));
+             ui->listWidgetFeatures->addItem(item);
+         }
+     }
+@@ -197,7 +197,7 @@ int TaskTransformedParameters::getUpdateViewTimeout() const
+ void TaskTransformedParameters::addObject(App::DocumentObject* obj)
+ {
+     QString label = QString::fromUtf8(obj->Label.getValue());
+-    QString objectName = QString::fromLatin1(obj->getNameInDocument());
++    QString objectName = QString::fromUtf8(obj->getNameInDocument());
+ 
+     auto item = new QListWidgetItem();
+     item->setText(label);
+diff --git a/src/Mod/PartDesign/Gui/ViewProviderDressUp.cpp b/src/Mod/PartDesign/Gui/ViewProviderDressUp.cpp
+index d69a18148..70fae9bb2 100644
+--- a/src/Mod/PartDesign/Gui/ViewProviderDressUp.cpp
++++ b/src/Mod/PartDesign/Gui/ViewProviderDressUp.cpp
+@@ -98,7 +98,7 @@ bool ViewProviderDressUp::setEdit(int ModNum)
+                     "%1 misses a base feature.\n"
+                     "This feature is broken and cannot be edited."
+                 )
+-                    .arg(QString::fromLatin1(dressUp->getNameInDocument()))
++                    .arg(QString::fromUtf8(dressUp->getNameInDocument()))
+             );
+             return false;
+         }
+diff --git a/src/Mod/Sketcher/App/SketchObjectConstraints.cpp b/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
+index a5572484e..4a2f20280 100644
+--- a/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
++++ b/src/Mod/Sketcher/App/SketchObjectConstraints.cpp
+@@ -147,7 +147,7 @@ SketchSolveStatus SketchObject::solve(bool updateGeoAfterSolving /*=true*/)
+     }
+ 
+     if (lastHasPartialRedundancies) {
+-        QString uniqueName = QString::fromLatin1(this->getNameInDocument());
++        QString uniqueName = QString::fromUtf8(this->getNameInDocument());
+         QString userLabel = QString::fromUtf8(Label.getValue());
+ 
+         QString ref;
+diff --git a/src/Mod/Spreadsheet/Gui/DlgBindSheet.cpp b/src/Mod/Spreadsheet/Gui/DlgBindSheet.cpp
+index f045a7a97..615f80b6a 100644
+--- a/src/Mod/Spreadsheet/Gui/DlgBindSheet.cpp
++++ b/src/Mod/Spreadsheet/Gui/DlgBindSheet.cpp
+@@ -113,7 +113,7 @@ DlgBindSheet::DlgBindSheet(Sheet* sheet, const std::vector<Range>& ranges, QWidg
+         QString label;
+         if (obj->Label.getStrValue() != obj->getNameInDocument()) {
+             label = QStringLiteral("%1 (%2)").arg(
+-                QString::fromLatin1(obj->getNameInDocument()),
++                QString::fromUtf8(obj->getNameInDocument()),
+                 QString::fromUtf8(obj->Label.getValue())
+             );
+         }
+-- 
+2.43.0
+

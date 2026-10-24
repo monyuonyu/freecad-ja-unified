@@ -298,6 +298,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.7.5
+
+From the GUI test of 0.7.4 (assembly, section view, sketches: all done; the piston follows the crank at 0/90/180 degrees): "Turns in place" removes the part's fixing; "Slides in place" (a slider to the ground), both on the bar of a linked part; "Put Part" puts parts beside the others instead of at the origin; the drawing's automatic dimensions no longer repeat, measure nothing or cross the part; a drawing with a captioned section view no longer crashes the PDF export without the screen (an upstream regression); "Make Drawing" works in a part file that has a drawing; the section caption is translatable; internal names of parts put into an assembly are ASCII and the GUI reads names as UTF-8 (no more "é¨å003").
+
 ## Changes in 0.7.4
 
 The GUI-only engine test was run again on 0.7.3 (4 of 6 tasks done; 2 on 0.6.9); what it found and the rest of the CLI items are fixed.
