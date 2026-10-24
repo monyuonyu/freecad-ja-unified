@@ -28,6 +28,7 @@ The main parts, the assembly and the drawing were then made **with the screen on
 - **0.7.5: all 6** (no crash)
 
 What stopped it was fixed in each version (an assembly breaking silently, the parts of a saved assembly lost, sketches hidden by the solid, ...).
+The aim is the whole engine both by script and with the screen; the valve train (valves, springs, rockers, cam) and the whole assembly are being tested with the screen only.
 
 ![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
 
