@@ -1,617 +1,823 @@
-**English** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
-
-> Translated from [README.ja.md](README.ja.md) (the Japanese version is the original) at commit `513d863`.
+**日本語** | [English](README.en.md) | [简体中文](README.zh-CN.md)
 
 # freecad-ja-unified
 
-FreeCAD turned into a single screen where you don't get lost, and made usable in Japanese.
-Workbench switching is gone, the next actions appear right where you picked something,
-and the UI wording is plain Japanese throughout. It also adds a "design check" that finds mistakes and an AI chat that looks at the model and fixes it.
-Bugs that show up when using FreeCAD from the command line or from scripts are fixed as well. Everything is kept as patches on top of upstream FreeCAD (not submitted upstream).
+FreeCAD を「迷わない一つの画面」にまとめ、日本語で使えるようにしたもの。
+作業場（ワークベンチ）の切り替えを無くし、選んだものに応じてその場で次の操作を出し、
+画面の言葉を平易な日本語にそろえた。間違いを見つける「設計の検査」と、モデルを見て直す AI チャットも入れた。
+コマンドラインやスクリプトから使うときの不具合も直している。FreeCAD 本家へのパッチの形で置いている（上流には送っていない）。
 
-The application's UI is in Japanese. In this page, Japanese labels you need to find on screen are given in quotes next to their English meaning.
+FreeCAD with one integrated, Japanese-first working environment: no workbench switching,
+actions offered next to what you picked, plain Japanese throughout, a design check that finds
+and fixes mistakes, an AI chat that works on the model, and fixes for using FreeCAD from the
+command line and from scripts. Kept as patches on top of FreeCAD; not submitted upstream.
 
-## An engine made with it
+## エンジンを作ってみた
 
-A 125 cc air-cooled single-cylinder engine was made with this build to test it. **The whole engine can be made by script and with the screen only.**
+この改良版で 125cc の空冷単気筒エンジンを作り、使いやすさを試した。**スクリプトでも、画面の操作だけでも、エンジン全体を作れる。**
 
 <p>
-<img src="docs/images/engine_section.png" width="330" alt="The engine made by script (73 parts), sectioned">
-<img src="docs/images/engine_gui_cycle.gif" width="240" alt="The engine made with the screen only, moving (sectioned)">
+<img src="docs/images/engine_section.png" width="330" alt="スクリプトで作ったエンジン（73 部品）の断面">
+<img src="docs/images/engine_gui_cycle.gif" width="240" alt="画面だけで作ったエンジンの動き（断面）">
 </p>
 
-Left: the whole engine made by a script (73 parts). Right: the engine made **with mouse and keyboard only** (15 parts, 17 joints), turned 0-720 degrees with "Motion to Video", sectioned; rockers and valves move by formulas of the crank angle, intake and exhaust open once each.
+左: スクリプトで作ったエンジン全体（73 部品）。右: **マウスとキーボードだけで作った**エンジン（15 部品・17 ジョイント）を「動きを動画に」で断面のまま 0→720° 回したもの。ロッカーとバルブはクランク角の式で動き、吸気・排気が順に 1 回ずつ開く。
 
-Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced, a head sometimes put turned half a turn, ...
+画面だけで作れるかは、版ごとに同じ課題で試してきた。
 
-![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
+- 0.6.9: 6 課題中 2 つ（途中で落ちて作業が消えた）
+- 0.7.3: 4 つ
+- 0.7.5: 6 つすべて（部品・組立・図面）
+- **0.7.8: エンジン全体**（動弁系・カムのチェーン・式で動く弁・断面の動画・開き直し）
 
-![Assembly made with the screen only (crank at 90 and 180 degrees) and the rod's drawing](docs/images/engine_gui_assembly.png)
+見つかった壁は各版で直した。まだ残っているもの: まれな異常終了（再現できていない）、ヘッドが 180° 回って置かれることがある、など。
 
-## Main features
+![画面だけで作った部品: ピストン・コンロッド・クランク・フィン付きシリンダー](docs/images/engine_gui_parts.png)
 
-Screen
-- One working screen without workbenches; the next actions next to what is picked (type a number, Enter)
-- Magnet snapping, Excel-like aligning, push/pull faces with an arrow, automatic measuring of two picks
-- Assembly: joints on the middle of holes and shafts, "Turns in place", "Slides in place", "Turn to an angle", gear ratios by tooth counts, motion to video (MP4)
-- Parts shelf (JIS fasteners, aluminium frames, company parts), automatic drawing dimensions and a Japanese title block
-- Design check (overlaps, broken shapes, joints that do not hold, ...) and an AI chat that works on the model
+![画面だけで作った組立（クランク 90°・180°）とコンロッドの図面](docs/images/engine_gui_assembly.png)
 
-Command line (no screen)
-- `freecadcmd model.FCStd --render out.png --view iso` (`--section z=10 --section-color part` for a section)
-- `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF)
-- `--interference` (about 1 s for 300 parts)
-- DWG (AutoCAD) read and write up to R2018, Jw_cad drawings (JWW)
+## 主な機能
 
-![Click a face and the next actions appear next to it](docs/images/08_face_actions.png)
+画面
+- 作業場の切り替えなしの一つの画面。選んだ物の横に、次にできる操作が出る（数字を打って Enter で確定）
+- 磁石のようにくっつける・Excel のように揃える・面を矢印で押し引き・2 つ選ぶと自動で測る
+- 組立: 穴や軸の中心で合わせる、「その場で回す」「その場ですべらせる」「角度で回す」、歯数で比を決める、動きを動画（MP4）に
+- 部品の棚（JIS のねじ・アルミフレーム・会社の部品）、図面の自動の寸法と日本語の表題欄
+- 設計の検査（干渉・壊れた形・成り立たないジョイントなど）と、モデルを見て直す AI チャット
 
-- Based on: FreeCAD main `b48098efa` (2026-09-26, version string 26.3.0dev)
-- Bundled OndselSolver: `4be80eef`
+コマンドライン（画面なし）
+- `freecadcmd model.FCStd --render out.png --view iso`（`--section z=10 --section-color part` で断面）
+- `--export-svg` / `--export-pptx`（隠れ線を消した 2D）、`--export-drawings out.pdf`（図面の PDF）
+- `--interference`（干渉検査。300 部品で約 1 秒）
+- DWG（AutoCAD）を R2018 まで読み書き、Jw_cad の図面（JWW）を開く
 
-## Download
+![面をクリックすると、その横に次の操作が出る](docs/images/08_face_actions.png)
 
-Prebuilt packages are on [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases).
+- 元にした版: FreeCAD main `b48098efa`（2026-09-26、バージョン表記 26.3.0dev）
+- 同梱の OndselSolver: `4be80eef`
 
-- Linux: `FreeCAD_<version>-Linux-x86_64.AppImage` (make it executable and run it)
-- Windows: `FreeCAD_<version>-Windows-x86_64-installer.exe` (installer) or `.7z` (extract and run `bin/FreeCAD.exe`)
+## ダウンロード
 
-The builds are not signed, so Windows shows a SmartScreen warning ("More info" → "Run anyway").
+[Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) にビルド済みのものを置いている。
 
-Settings, macros and window layout are stored in a separate place from upstream FreeCAD (`FreeCAD-ja-unified`). The Windows installer also
-installs to a separate location (`FreeCAD-ja-unified 26.3`). Up to 0.3.1 they were shared with upstream (running both side by side mixed up the settings).
+- Linux: `FreeCAD_<版>-Linux-x86_64.AppImage`（実行権限を付けてそのまま起動）
+- Windows: `FreeCAD_<版>-Windows-x86_64-installer.exe`（インストーラー）または `.7z`（展開して `bin/FreeCAD.exe`）
 
-Uninstalling removes the program, shortcuts, file associations and registry entries (verified on Windows).
-Your own settings are kept by default, as with upstream (so they carry over if you reinstall). To remove them, choose
-"ユーザー設定も削除" (also delete user settings) in the uninstaller. Only this build's settings are removed; upstream FreeCAD's settings are not touched.
+署名はしていないので、Windows では SmartScreen の警告が出る（「詳細情報」→「実行」）。
 
-## A tour in screenshots
+設定・マクロ・ウィンドウの配置は本家の FreeCAD と別の場所（`FreeCAD-ja-unified`）に置く。Windows のインストーラーも
+本家と別の場所（`FreeCAD-ja-unified 26.3`）に入る。0.3.1 までは本家と共通だった（本家と並べて使うと設定が混ざる）。
 
-### First start
+アンインストールすると、プログラム・ショートカット・ファイルの関連付け・登録はすべて消える（Windows で確かめた）。
+自分の設定は、本家と同じく既定では残る（入れ直したときに引き継ぐため）。消すときはアンインストーラーの画面で
+「ユーザー設定も削除」を選ぶ。消えるのはこの版の設定だけで、本家の FreeCAD の設定には触れない。
 
-Just pick the language, units and look (light/dark). You can change them later under "編集 → 設定" (Edit → Preferences).
+## 画面で見る
 
-![The first-start screen](docs/images/01_first_start.png)
+### 最初の起動
 
-### New part → click where to draw
+言語・単位・見た目（ライト／ダーク）を選ぶだけ。あとから「編集 → 設定」で変えられる。
 
-The start screen only has "新しい部品" (New part) and "ファイルを開く" (Open file). Pressing New part immediately asks where to draw.
-Unlike upstream, there is no dialog where you select a face and press OK: you click a plane in the 3D view, or a flat face of a part, once.
+![最初の起動の画面](docs/images/01_first_start.png)
 
-![The start screen](docs/images/02_start.png)
+### 新しい部品 → 描く場所をクリック
 
-![Click where to draw in the 3D view](docs/images/03_pick_plane.png)
+スタート画面は「新しい部品」「ファイルを開く」だけ。新しい部品を押すと、そのまま描く場所を聞いてくる。
+本家のように面を選んでダイアログで OK を押す必要はなく、3D 画面の平面か部品の平らな面を 1 回クリックする。
 
-### Only sketch tools while sketching
+![スタート画面](docs/images/02_start.png)
 
-While you are drawing a sketch, the toolbar switches to the sketch tools and switches back when you finish.
-Points snap to the grid, so even freehand mouse drawing gives round dimensions. The number of degrees of freedom left is shown in Japanese.
+![描く場所を 3D 画面でクリック](docs/images/03_pick_plane.png)
 
-![Editing a sketch](docs/images/04_sketch.png)
+### スケッチ中はスケッチの道具だけ
 
-### After drawing, the next step appears alongside
+スケッチを描いている間は、ツールバーがスケッチの道具に切り替わり、終われば元に戻る。
+グリッドの点に吸い付くので、マウスで描いても切りのいい寸法になる。決まっていない所の数は日本語で出る。
 
-When you close a sketch, "押し出す・回転・編集・AI に頼む" (Extrude, Revolve, Edit, Ask AI) appear next to it. No need to hunt through the toolbar.
-The main toolbar tools also have names under their icons (押し出し "Pad", 切り抜き "Pocket", 丸め "Fillet", …).
+![スケッチの編集](docs/images/04_sketch.png)
 
-![Suggestions after closing a sketch](docs/images/05_after_sketch.png)
+### 描いたら、次の一手が横に出る
 
-The task panel only appears while a tool is in use and disappears when you are done (the view is also adjusted so the model fits on screen).
+スケッチを閉じると、その横に「押し出す・回転・編集・AI に頼む」が出る。ツールバーから探さなくてよい。
+ツールバーも主な道具はアイコンの下に名前（押し出し・切り抜き・丸め…）が付いている。
 
-![Pad settings](docs/images/06_pad_panel.png)
+![スケッチを閉じた後の候補](docs/images/05_after_sketch.png)
 
-### Click a face to see what you can do with it
+作業パネルは道具を使っている間だけ出て、終わったら消える（モデルが画面に収まるように視点も合わせる）。
 
-For a face you get Sketch, Pad, Pocket, Hole and Thickness; for an edge, Fillet and Chamfer (top image).
-"穴" (Hole) is made right at the point you clicked (upstream requires drawing a point in a sketch first).
-The object under the cursor is shown by name and location instead of `Preselected: Unnamed.Body.Pad.Face6`.
-Double-clicking a face opens the editor of the feature that created it (Pad, Fillet, …).
+![押し出しの設定](docs/images/06_pad_panel.png)
 
-![What is shown under the cursor](docs/images/08b_hover.png)
+### 面をクリックすると、その面でできること
 
-### Snap parts together, move point to point
+面ならスケッチ・押し出し・切り抜き・穴・厚み、辺なら丸め・面取りが出る（一番上の画像）。
+「穴」は、クリックした位置にそのまま開く（本家は先にスケッチに点を描く必要がある）。
+カーソルの下の物は `Preselected: Unnamed.Body.Pad.Face6` ではなく、名前と場所で出る。
+面をダブルクリックすると、その面を作った手順（押し出し・丸め…）の編集が開く。
 
-Putting parts flush against each other no longer needs the Placement dialog, attachment or
-assembly joints. Click a face of the part to move, Ctrl+click a face of the other part, and
-"くっつける" (Snap together) appears next to it: the faces end up touching, facing each other.
-**The first pick moves** (the panel says which moves where; "入れ替え" swaps them).
+![カーソルの下の表示](docs/images/08b_hover.png)
 
-![Two faces picked: "Snap together" appears](docs/images/15_snap_pick.png)
+### 部品をくっつける・点から点へ動かす
 
-The part moves as soon as you press it. Flip (same direction instead of facing), gap, turn
-(90° steps or any angle) and what lines up (the clicked points, the centers, or keep the
-position along the face) apply right away. OK keeps it (one undo step), Cancel or Esc puts it back.
+部品どうしをぴったり合わせるのに、配置のダイアログや取り付け（アタッチメント）、アセンブリのジョイントは要らない。
+動かしたい部品の面をクリックし、Ctrl を押しながら相手の面をクリックすると、横に「くっつける」が出る。押せば面と面が向かい合ってくっつく。
+**先に選んだほうが動く**（パネルに「動かす: 部品 → 合わせ先: 部品001」と出る。「入れ替え」で逆にできる）。
 
-![The panel after snapping](docs/images/16_snap_panel.png)
+![2 つの面を選ぶと「くっつける」が出る](docs/images/15_snap_pick.png)
 
-Two round faces offer "軸をそろえる" (line up the axes, e.g. a shaft into a hole), a point and a
-face "点を面に合わせる" (point onto a face), two points "点から点へ" (point to point).
+押した時点で部品が動いて見える。パネルで「向きを反転」（向かい合わせでなく同じ向きに。上の面どうしをそろえるなど）・「すき間」・
+「回転」（面のまわりに 90° ずつ、または好きな角度）・「合わせる位置」（クリックした点どうし／面の中心どうし／今の位置のまま）を変えると、すぐ反映される。
+OK で確定（「元に戻す」1 回で戻る）、キャンセルか Esc で元の位置に戻る。
 
-![A shaft lined up with a hole](docs/images/18_shaft_in_hole.png)
+![くっつけた後のパネル](docs/images/16_snap_panel.png)
 
-"点から点へ動かす" (Move point to point) moves without turning: click the base point, then the
-destination. The cursor snaps to vertices, middles of edges, centers of circles and faces, with
-a marker and its name; a see-through copy follows the cursor; Ctrl makes a copy.
+丸い面どうし（軸と穴）を選ぶと「軸をそろえる」、点と面なら「点を面に合わせる」、点（角・辺）どうしなら「点から点へ」が出る。
 
-![Move point to point](docs/images/17_point_to_point.png)
+![軸を穴に通した](docs/images/18_shaft_in_hole.png)
 
-The tools also start from the Model menu, the toolbar, `J` (snap) and `Shift+M` (point to point).
-What moves is the part the picked element belongs to (a Body, a shape, an imported STEP, a link),
-or a container around it chosen in the panel; nested and rotated containers are handled in global
-coordinates. An attached part keeps its attachment with a new offset, or is detached, as you choose.
+「点から点へ動かす」は、向きを変えずに動かす。動かす元の点と行き先をクリックする。カーソルは角・辺の真ん中・円の中心・面の中心に吸い付き、
+印と名前（「角（頂点）」など）が出る。動く先には透けた写しが付いてくる。Ctrl を押しながら行き先をクリックするとコピー。
 
-### Design check and "直す" (Fix)
+![点から点へ動かす](docs/images/17_point_to_point.png)
 
-Like DRC in PCB CAD, it lists the mistakes in the whole model: failed features, interference between parts, conflicting sketch constraints,
-floating parts, drawing dimensions that have lost their geometry, and so on. Selecting a row zooms to the part and puts a red marker at the spot.
-The status bar always shows the result ("検査: エラー 2・警告 2", i.e. "Check: 2 errors, 2 warnings").
+道具から始めてもよい（形 → くっつける・動かす、ツールバー、`J` で「くっつける」、`Shift+M` で「点から点へ動かす」）。そのときはパネルが次に何をクリックするかを言う。
+動くのは選んだ面を持つ部品（部品・読み込んだ形・リンク）。入れ物（App::Part など）ごと動かしたいときはパネルの「動かすもの」で選ぶ。
+入れ物の中・回した入れ物の中の部品でも、画面で見たとおりに合う。別の物に取り付けられた部品は、取り付けを保ってずれ（オフセット）を変えるか、取り付けを外すかを選べる。
 
-![Design check](docs/images/09_design_check.png)
+### 設計の検査と「直す」
 
-Issues with an obvious fix (redundant or conflicting constraints, floating parts, overlapping parts, empty projection views) are fixed with "直す" (Fix).
-Below is the result after pressing "直せるものを全部直す" (Fix everything that can be fixed). A single Undo reverts all of it.
+基板 CAD の DRC のように、モデル全体の間違いを一覧にする。失敗した手順・部品どうしの干渉・スケッチの拘束の矛盾・
+浮いた部品・形を見失った図面の寸法など。行を選ぶと部品に寄って、場所に赤い印が出る。
+ステータスバーには常に結果（「検査: エラー 2・警告 2」）が出る。
 
-![After fixing](docs/images/10_design_fixed.png)
+![設計の検査](docs/images/09_design_check.png)
 
-### Ask AI
+直し方がはっきりしているもの（重複・矛盾した拘束、浮いた部品、重なった部品、空の投影図）は「直す」で直る。
+下は「直せるものを全部直す」を押した後。「元に戻す」1 回で全部戻る。
 
-Ask in the "AI" panel on the right, and the AI (Claude) looks at the model, makes the change, verifies it with the design check and the view, and reports back.
-If you select faces or edges and press "AI に頼む" (Ask AI), the selection is passed along too. The code the AI wants to run is shown every time,
-and it only runs when you press "実行する" (Run). Each run becomes one Undo step.
+![直した後](docs/images/10_design_fixed.png)
 
-![Approving the AI's code](docs/images/11_ai_approve.png)
+### AI に頼む
 
-![The AI added a fillet and checked it](docs/images/12_ai_done.png)
+右の「AI」パネルで頼むと、AI（Claude）がモデルを見て、直して、設計の検査と画面で確かめて報告する。
+面や辺を選んで「AI に頼む」を押せば、選んだ物も一緒に伝わる。AI が実行するコードは毎回表示され、
+「実行する」を押したときだけ動く。1 回ごとに「元に戻す」の 1 段になる。
 
-### Error messages in Japanese too
+![AI のコードを承認する](docs/images/11_ai_approve.png)
 
-Failure messages that stay in English upstream (such as `BRep_API: command not done`) are shown in Japanese, explaining what went wrong and what to do.
-Messages containing constraint numbers or edge numbers are translated as well.
+![AI が丸めを付けて確かめた](docs/images/12_ai_done.png)
 
-![An error message](docs/images/13_error_ja.png)
+### 失敗の知らせも日本語で
 
-### NaviCube
+本家では英語のままの失敗の文（`BRep_API: command not done` など）も、何が悪いか・どうすればよいかを日本語で出す。
+拘束の番号や辺の番号が入る文も訳す。
 
-The orientation cube at the top right normally shows just the cube. Hovering the mouse over it reveals the arrows and other controls,
-and clicking near an edge or corner of a face turns the view to that edge or corner (easier to hit). Tooltips tell you what will happen.
+![失敗の知らせ](docs/images/13_error_ja.png)
 
-![NaviCube before and after](docs/images/14_navicube.png)
+### ナビキューブ
 
-## Differences from upstream (summary)
+右上の向きを変える立方体は、ふだんは立方体だけ。マウスを乗せると矢印などが現れ、
+面の縁や隅に近い所を押せばその辺・角の向きになる（押しやすい）。何が起きるかはツールチップで出る。
 
-| | Upstream FreeCAD | This patch set |
+![ナビキューブの前後](docs/images/14_navicube.png)
+
+## 本家との違い（一覧）
+
+| | 本家 FreeCAD | このパッチ |
 |---|---|---|
-| Workbenches | Switch between Part / PartDesign / Sketcher / Draft / TechDraw / Assembly … | No switching. Sketch, solids, drawings and assemblies on one screen |
-| 2D drafting | Two systems: Sketcher and Draft | Sketcher only (sketch tools shown only while sketching) |
-| Drawings and assemblies | Each in its own workbench | Under the "図面" (Drawing) and "アセンブリ" (Assembly) menus, with descriptions |
-| First step | Many choices on the start screen | Only "New part" and "Open". New part goes straight to choosing the sketch plane |
-| Choosing the sketch plane | Select a face in a dialog and press OK | Click a face or datum plane in the 3D view once |
-| Actions after selecting | Hunt for them in the toolbar | Suggestions next to the selection (face → Sketch/Pad/Pocket/Thickness, edge → Fillet/Chamfer, sketch → Pad/Revolve/Edit, part → Move/Hide) |
-| Toolbar | Icons only. Even at 1600 px wide some are hidden behind "»" | Main tools have names under their icons (Pad, Pocket, Fillet, …). The sketch tools fit in one row too |
-| Sketch snapping | Off by default | Snaps near grid points (round dimensions even when drawing with the mouse) |
-| What is shown under the cursor | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6` ("Face 6 of Pad") |
-| Double-click a face | Nothing happens | Opens the editor of the feature that created it (Pad, Fillet, …) |
-| Put parts face to face, move point to point | Type numbers into the Placement dialog, set up attachment, make assembly joints, or use Draft Move (needs a workbench switch) | Pick two faces → "Snap together" (facing / same direction, gap, 90° turns, centers). Round faces → "Line up the axes", point + face → "Point onto a face", two points → "Point to point" (snaps to vertices, edge middles, circle and face centers; Ctrl copies). Live preview, OK keeps, Esc reverts |
-| Select a face and press "Hole" | Fails with "no axis found" (you must draw a point in a sketch first) | A hole at the point you clicked |
-| Drawing projection views | Appear at the bottom-left of the page until the file is reopened (an upstream bug). First-angle projection by default | Appear at the center of the page. Third-angle projection (JIS) by default |
-| Modifying an imported solid (STEP etc.) | A dialog saying an active body is required | Sketch, fillet and pad work directly (it is turned into a part automatically) |
-| Export with nothing selected | Stops with "Please select an object" | Exports the visible parts |
-| Finding mistakes | "Check geometry" only checks whether the one selected shape is broken | "設計の検査" (Design check, similar to DRC in PCB CAD): lists failed features, split parts, interference between parts, conflicting sketch constraints, extremely short edges, floating parts and drawing dimensions that lost their geometry. Selecting a row selects and zooms to the part, with a red marker at the spot. Things done "on purpose" are recorded in the document as ignored. Fixable issues (redundant or conflicting constraints, floating parts, overlapping parts, empty projection views) are fixed with the "Fix" button (one Undo reverts it). The status bar always shows the result (number of errors and warnings). Also from the command line: `FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')"` |
-| Ask AI | None | In the "AI" panel on the right, the AI (Claude) looks at the model, changes it, and verifies with the check and the view. "Ask AI" is offered among the suggestions when you select a face or edge, and in the design check list. By default the code the AI runs is shown every time and runs only after you approve it (each run is one Undo step; there is also a switch to skip confirmation). Requires your own Anthropic API key (see below) |
-| Menus | "Macro" and developer tools sit in the top menus | One fewer top-level menu; advanced items of View and Tools moved to submenus |
-| Initial spacing of a linear pattern | Always 100 mm (with small parts the copies end up off-screen) | Twice the size of the shape being patterned |
-| Mouse navigation | Choose from 7 styles | One style by default (right-drag to rotate, middle-drag to pan, wheel to zoom). No screen to choose a style |
-| Task panel | Always takes up space | Only shown while a tool is in use. When done, the view is adjusted so the model is visible |
-| Context menu | Many items | Only what modeling needs (the rest stays in the top menus) |
-| Preferences | Includes pages you don't use, such as BIM and Addons | Only the pages you use |
-| Addon manager | Present | Removed (it is a mechanism for adding workbenches) |
+| 作業場（ワークベンチ） | Part / PartDesign / Sketcher / Draft / TechDraw / Assembly … を切り替える | 切り替え無し。一つの画面にスケッチ・立体・図面・アセンブリ |
+| 2D の作図 | Sketcher と Draft の二本立て | Sketcher に一本化（スケッチ中だけスケッチの道具を出す） |
+| 図面・アセンブリ | それぞれの作業場 | 「図面」「アセンブリ」メニューに説明付きで収納 |
+| 最初の一歩 | スタート画面の選択肢が多い | 「新しい部品」「開く」だけ。新しい部品はすぐスケッチ面の選択へ |
+| スケッチ面の選択 | ダイアログで面を選んで OK | 3D 画面の面や基準面を1回クリック |
+| 選んだあとの操作 | ツールバーから探す | 選んだものの横に候補を出す（面→スケッチ/押し出し/切り抜き/薄肉化、辺→角丸め/面取り、スケッチ→押し出し/回転/編集、部品→移動/隠す） |
+| ツールバー | アイコンだけ。1600 幅でも一部が「»」の奥に隠れる | 主な道具はアイコンの下に名前（押し出し・切り抜き・丸め…）。スケッチの道具も一列に収まる |
+| スケッチの吸着 | 既定では切 | グリッドの点の近くで吸着（マウスで描いても切りのいい寸法になる） |
+| カーソルの下の表示 | `Preselected: Unnamed.Body.Pad.Face6` | `押し出し の 面 6` |
+| 面をダブルクリック | 何も起きない | その面を作った手順（押し出し・丸め…）の編集が開く |
+| 部品を面と面でくっつける・点から点へ動かす | 配置のダイアログで数値を入れる、取り付け（アタッチメント）を設定する、アセンブリのジョイントを作る、または Draft の移動（作業場の切り替えが要る） | 面を 2 つ選んで「くっつける」（向かい合わせ・同じ向き・すき間・90° 回転・中心合わせ）。丸い面どうしは「軸をそろえる」、点と面は「点を面に合わせる」、点どうしは「点から点へ」（角・辺の中点・円や面の中心に吸い付く、Ctrl でコピー）。押した時点で動いて見え、OK で確定・Esc で戻る |
+| 面を選んで「穴」 | 「軸が見つかりません」で失敗（先にスケッチに点を描く必要がある） | クリックした位置に穴 |
+| 図面の投影図 | 開き直すまでページの左下に出る（本家の不具合）。第一角法が既定 | ページの中央に出る。第三角法（JIS）が既定 |
+| 読み込んだ立体（STEP など）に手を加える | 「アクティブな部品が必要です」のダイアログ | そのままスケッチ・丸め・押し出しができる（自動で部品にする） |
+| 何も選ばずにエクスポート | 「オブジェクトを選択してください」で止まる | 見えている部品を書き出す |
+| 間違い探し | 「形状を確認」は選んだ 1 つの形が壊れていないかだけ | 「設計の検査」（基板 CAD の DRC に近い）: 失敗した手順・分かれた部品・部品どうしの干渉・スケッチの拘束の矛盾・極端に短い辺・浮いた部品・形を見失った図面の寸法を一覧に。行を選ぶと部品を選んで寄せ、場所に赤い印。「わざと」は無視として文書に記録。直せるもの（重複・矛盾した拘束、浮いた部品、重なった部品、空の投影図）は「直す」ボタンで直す（元に戻す 1 回で戻る）。ステータスバーに常に結果（エラー・警告の数）。コマンドラインでも `FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')"` |
+| AI に頼む | 無し | 右の「AI」パネルで、AI（Claude）がモデルを見て・直して・検査と画面で確かめる。面や辺を選んだときの候補と、設計の検査の一覧に「AI に頼む」。AI が実行するコードは既定では毎回見せて、承認してから実行（1 回ごとに元に戻す 1 段。確認を省く切り替えもある）。使うには自分の Anthropic API キーが要る（下記） |
+| メニュー | 「マクロ」や開発者向けの道具が上に並ぶ | 上のメニューを 1 つ減らし、表示・ツールの上級者向けはサブメニューへ |
+| 直線配列の最初の間隔 | 常に 100 mm（小さい部品だと複製が画面の外） | 並べる形の大きさの 2 倍 |
+| マウス操作 | 7 種類から選ぶ | 既定は 1 種類（右ドラッグで回転、中ドラッグで移動、ホイールで拡大縮小）。選ぶ画面は出さない |
+| 作業パネル | 常に場所をとる | 道具を使っている間だけ出る。終わったらモデルが見えるように視点を合わせる |
+| 右クリックメニュー | 項目が多い | モデリングに要るものだけ（ほかは上のメニューに残る） |
+| 設定画面 | BIM・アドオンなど使わない頁もある | 使う頁だけ |
+| アドオン管理 | あり | 無し（作業場を足す仕組みのため） |
 
-No features have been removed. Things you rarely use are in the menus, with descriptions.
+機能は消していない。普段使わないものはメニューの中に説明付きで入れてある。
 
-## Using the AI chat
+## AI チャットを使うには
 
-1. Release packages (from 0.3.5) already include what the AI chat needs (claude-agent-sdk, keyring, Claude Code). No setup required.
-   If you built it yourself, press "AI の準備をする" (Set up AI) in the "AI" panel on the right (installs into a Python virtual environment; needs network access)
-2. Create an API key at [console.anthropic.com](https://console.anthropic.com/) and enter it with "API キーを入れる…" (Enter the API key…), shown when you first send a message.
-   To change or remove it later: 編集 → 設定 → 標準 → AI チャット (Edit → Preferences → General → AI chat; from 0.5.7).
-   The key is stored in the OS keystore (Windows Credential Manager, macOS Keychain, Linux Secret Service).
-   On systems without a keystore, it goes into a file readable only by you (`ai/ai-api-key` in FreeCAD's user data)
-3. Usage is billed to the account that owns the API key. This patch set contains no keys or logins
-4. On a company network, set the proxy (system settings by default) and, if the network inspects TLS, the company certificate (PEM) in Edit → Preferences → General → Network (from 0.5.7)
+1. 配布物（0.3.5 から）には、AI チャットに要る部品（claude-agent-sdk・keyring・Claude Code）が最初から入っている。準備は要らない。
+   自分でビルドした場合は、右の「AI」パネルの「AI の準備をする」を押す（Python の仮想環境に入れる。ネットワークが要る）
+2. [console.anthropic.com](https://console.anthropic.com/) で API キーを作り、初めて送ったときに出る「API キーを入れる…」で入れる。
+   あとで変える・消すときは 編集 → 設定 → 標準 → AI チャット（0.5.7 から）。
+   キーは OS の鍵保管庫（Windows の資格情報マネージャー・macOS のキーチェーン・Linux の Secret Service）にしまう。
+   鍵保管庫の無い環境では、本人だけが読めるファイル（FreeCAD のユーザーデータの `ai/ai-api-key`）
+3. 使った分は API キーの持ち主のアカウントに請求される。このパッチにキーやログインは含まれない
+4. 会社のネットワークでは、編集 → 設定 → 標準 → ネットワーク でプロキシ（既定はシステムの設定）と、通信を検査している場合は会社の証明書（PEM）を選ぶ（0.5.7 から）
 
-The AI sends the document contents, images of the view and the design check results to the model (Opus by default).
-By default the code the AI wants to run is shown every time and only runs when you press "実行する" (Run) (it can do things outside FreeCAD too, so read it first).
-Turning on "たずねずに実行する" (Run without asking) at the bottom of the panel skips confirmation (until FreeCAD is closed; executed code is kept in the chat and in ai/ai-runs.log).
+AI はモデル（既定は Opus）に、文書の中身・画面の画像・設計の検査の結果を送る。
+AI が実行しようとするコードは、既定では毎回表示され、「実行する」を押したときだけ動く（FreeCAD の外のことも書けるので、読んでから）。
+パネルの下の「たずねずに実行する」を入れると確認を省ける（FreeCAD を閉じるまで。実行したコードはチャットと ai/ai-runs.log に残る）。
 
-## Japanese
+## 日本語
 
-- Filled in untranslated text in menus, toolbars, task panels, notifications and preferences, and made the terms plain
-  (e.g. Pad → 押し出し, Pocket → 切り抜き, Body → 部品, Constraint → 拘束)
-- The property editor on the left (property names, groups, descriptions and enum values) is in Japanese
-- Newly created objects get Japanese names (部品, スケッチ, 押し出し …)
-- The Origin inside a part is hidden from the tree
+- メニュー・ツールバー・作業パネル・通知・設定画面の未訳を埋め、用語を平易な言葉にそろえた
+  （例: Pad → 押し出し、Pocket → 切り抜き、Body → 部品、Constraint → 拘束）
+- 左のプロパティ欄（項目名・分類・説明・選択肢の値）を日本語に
+- 新しく作ったものの名前も日本語（部品、スケッチ、押し出し …）
+- 部品の中の原点（Origin）は木の表示から隠す
 
-In languages other than Japanese, the UI looks the same as upstream.
+日本語以外の言語では本家と同じ表示になる。
 
-## Command line and scripts
+## コマンドライン・スクリプト
 
-| | Plain FreeCAD | With the patches |
+| | 素の FreeCAD | パッチ後 |
 |---|---|---|
-| Script dies with an exception | Exit code **0**, the script **runs twice**, and the error is a single line | Runs once, exit code 1, full traceback |
-| `if __name__ == "__main__":` | Not executed (the script is imported as a module) | Executed |
-| `sys.argv` | FreeCAD's own arguments as-is | `FreeCADCmd a.py -- x y` → `['a.py', 'x', 'y']` |
-| `sys.exit()` / `sys.exit("msg")` | 1 / message not printed | 0 / message printed to stderr |
-| `print` right before an exception or `sys.exit()` | Can get lost | Printed |
-| Nonexistent file | Exit code 0 | `No such file`, exit code 1 |
-| `FreeCADCmd < a.py` | Processed line by line in interactive mode (`>>>` mixed into output, 0 even on errors) | Runs as a single script |
-| Banner when running a script | Printed | Not printed (still printed in interactive mode) |
-| STEP export | OCC statistics printed twice to stdout | Not printed (sent to the log) |
-| Opening an assembly | Constraint solver messages printed to stdout | Not printed |
-| `Part.export([shape], "a.step")` | **Silently writes an empty STEP** | Accepts Shapes / `ValueError` if there is nothing to write |
-| Conversion failure with `--output` | Exit code 0 | Exit code 1 |
-| `--help` | Name is always "FreeCAD", no usage explanation | Executable name, examples, exit codes. Shows `--output` (`-o`) and `--hidden` |
-| Settings file | Rewritten on every run, even one that does nothing. Running in parallel can wipe settings | Written only when a value changes |
-| `FreeCAD --hidden a.py` fails | Exit code 0 | Exit code 1 |
-| Changing the view and saving with `--hidden` | Saves a frame from the middle of the animation | No animation |
-| `--hidden` with settings from an older version | The settings migration dialog opens on an invisible screen and **hangs forever** | The dialog is not shown |
-| Running with `--hidden` | Rewrites recent files and window layout | Leaves them alone |
-| Python `saveImage()` | The navigation cube appears in the image | Not included (same as the "Save image" menu) |
-| Rendering images | Needs a display (xvfb) and the GUI | `FreeCADCmd a.FCStd --render a.png --view iso` (no display or OpenGL needed. `--render-style shaded\|hidden-lines\|lines`, `--size 1600x1200`, `Part.renderImage` from Python) |
-| Interference check | Tests every pair of parts (106 s for 300 parts) | `FreeCADCmd a.FCStd --interference` / `Part.findInterferences` (bounding-box prefilter and parallel, 1.2 s) |
-| 2D views with hidden lines removed | Needs a TechDraw page | `--export-svg`, `--export-polygons` (polygon JSON per face), `--export-pptx` (PowerPoint with editable shapes) / `Part.projectVisible` |
-| `Mesh.addFacets(shape.tessellate(d))` | **Silently drops** faces where boxes touch each other (624 → 12 faces with 52 boxes) | Adds everything (drops only with `check=True`, with a warning giving the count) |
-
-## Fixes taken from upstream (PR list)
-
-Pull requests submitted to upstream FreeCAD but not yet merged there, which were reviewed and taken in (author names are kept in the commits as-is).
-From the 541 open PRs, we narrowed down to crashes, bugs and regressions in the parts this UI uses, read the changes, and confirmed that they apply on top of the patches and pass the tests.
-
-**Crashes**
-
-- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) Crash when entering sketch edit mode or when moving the mouse (@alfrix)
-- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) Crash from an out-of-range read during sketch preselection (@alexdremov)
-- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) Crash when mirroring a sketch (@alfrix)
-- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) Crash from use-after-free when closing the task panel (@alexdremov)
-- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) Crashes such as clicking the 3D view while editing in the property editor (6 kinds; one spot in the task panel overlaps with #32970 and was left out) (@oursland)
-- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) Crash when opening an externally linked file (@chennes)
-- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) Crash on SpaceMouse input right after startup (@Maik-0000FF)
-
-**Shapes and sketches**
-
-- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) Filleting a polyline loses its last point (@alfrix)
-- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) Explain why a fillet cannot be made at a point between curves (@VishalRamKN)
-- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) When a fillet or chamfer fails, show the cause (radius too large, face would twist, …) and how to fix it (@paragforwork)
-
-**Drawings**
-
-- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) Views with a locked position jump to the origin on load (@WandererFan)
-- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) Repairing dimension references fails on broken references (@WandererFan)
-
-**Assembly**
-
-- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) Error when adding a fixed joint to a part (@ryneeverett)
-- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) Orphaned joint groups cannot be deleted (@PaddleStroke)
-- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) Rack and pinion misbehaves (@PaddleStroke)
-
-**Display and UI**
-
-- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) Colors of fused shapes break with the light/dark themes (@chennes)
-- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) Regression in the depth of the selection highlight (@Connor9220)
-- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) Garbled Japanese and other non-ASCII text in property editor choices (@maxwxyz)
-- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) Update the status bar when selecting in the tree with the keyboard (@007stevendigar-lgtm)
-
-**Files**
-
-- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII STL files (long names, no trailing newline) cannot be read (@maxwxyz)
-
-**Added in 0.3.3**
-
-- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) Moving a sketch point only slightly snaps it back (@Reqrefusion)
-- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) Crash when closing a document while Measure is open (@Amine0x0). Applied as-is, it overwrote another observer in this build and caused a later crash, so that was fixed too
-- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) Thickness stays silent when the result is an invalid shape (@007stevendigar-lgtm). Added a notice for when the thickness is so large that the shape doesn't change
-
-### Upstream-reported bugs, not yet fixed upstream, that we fixed
-
-Ones with reproduction steps, which we reproduced locally or traced to the cause.
-
-- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) Entering a sketch dimension in the expression editor loses the dimension when leaving the tool (a regression this month)
-- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) "Save to variable set" fails on mismatched units (crashes on macOS)
-- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) Opening a hidden document steals the active document (crashes on macOS)
-- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) A thickness larger than the part silently does nothing
-- Deleting an intermediate feature (such as a pocket) leaves a later pattern still carrying the deleted hole while shown as "OK"
-- Japanese and other non-ASCII names get garbled in STEP (export now uses the encoding the standard specifies, and import defaults to UTF-8; STEP files from other CAD tools still read)
-- A zero-length view movement freezes the screen
-
-Found by running the upstream tests under a memory-error detecting build (AddressSanitizer) (0.3.4):
-
-- Deleting a part during a recompute makes later processing read the deleted part's memory (happens with CAM tools)
-- The macro editor asks "reload?" about a deleted file and gets stuck
-- Draft's selection box display reads more points than it was given
-
-Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
-(type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
-
-## Changes in 0.7.9
-
-The second GUI-only whole-engine test (0.7.8) **made the whole engine with the screen only** (15 parts, 17 joints, rockers and valves as formulas of the crank angle, intake and exhaust opening once each over 0-720 degrees, a sectioned video, reopened). Fixed what was left: big jumps of the crank are walked through by value (a chain's cam was half a turn off), the angle field solves when the number is done, joint angles have no limit, a reversed slider holds, assembly parts are selectable again when a file opens.
-
-The drawing PDF without the screen crashed on Windows and stood still on Linux (a warning of Qt while the notifications were shown waited for the notification area's own lock): fixed.
-
-## Changes in 0.7.8
-
-From the GUI-only test of the whole engine (0.7.7; 15 parts and 17 joints were made with the screen, moving them stopped): "Turn to an angle" takes any angle (720 is a four-stroke cycle) and videos turn through it; a solve that does not hold says which joints on the status bar; a fixed joint reversed half a turn holds; sliders can be moved to a distance (a valve's lift as a formula); joints with formulas follow while a panel is open; Motion to Video has its own section choice; a tree click does not replace an edited joint's references.
-
-## Changes in 0.7.7
-
-From the GUI-only test of the valve train and the whole engine (0.7.6) and the company's test:
-
-- "Motion to Video": a revolute joint picked offers "Video"; the joint is turned over a range and the 3D view is taken as seen (direction, section, colours) into an MP4 (bundled ffmpeg; else GIF), 720 degrees too; free parts are said
-- Gears and belts keep their timing (a cam on a 14/28 chain was half a turn off past 180 degrees: the relation was taken anew at each solve); an axis turned over counts as not holding
-- A joint's angle formula can be kept; "Put Part" and grounding work on a reopened assembly; parts put in are named by their file; the bar for a joint picked in the tree; the bar's number field is typed over
-- DWG export keeps the texts and writes R2018 (was R14, texts lost); this version's converter is used after an update; DWG/DXF texts are read by default; `--export-drawings` leaves out pages without a sheet with a warning
-
-## Changes in 0.7.6
-
-The GUI-only engine test ran through all 6 tasks on 0.7.5: **all 6 done** (2 on 0.6.9, 4 on 0.7.3), no P0/P1. Fixed from its P2s: a number typed while a sketch dimension is placed becomes its value; a polyline closed on a start point lying on an axis meets the start point; every number tool on the bar uses the number typed there; a hole's rim picked with a round face makes the joint on the hole's wall; a new section view goes where no view is; a click into a number field selects it; the bar after closing a sketch looks again until the sketch has closed.
-
-## Changes in 0.7.5
-
-From the GUI test of 0.7.4 (assembly, section view, sketches: all done; the piston follows the crank at 0/90/180 degrees): "Turns in place" removes the part's fixing; "Slides in place" (a slider to the ground), both on the bar of a linked part; "Put Part" puts parts beside the others instead of at the origin; the drawing's automatic dimensions no longer repeat, measure nothing or cross the part; a drawing with a captioned section view no longer crashes the PDF export without the screen (an upstream regression); "Make Drawing" works in a part file that has a drawing; the section caption is translatable; internal names of parts put into an assembly are ASCII and the GUI reads names as UTF-8 (no more "é¨å003").
-
-## Changes in 0.7.4
-
-The GUI-only engine test was run again on 0.7.3 (4 of 6 tasks done; 2 on 0.6.9); what it found and the rest of the CLI items are fixed.
-
-- Assembly: a solve whose joints do not hold puts the parts back and the design check names the joint and how far off it is (`assembly.getBrokenJoints()`); an assembly kept in the provisional folder and then "Save as" elsewhere wrote its links relative to the old folder and lost every part when opened alone (also upstream) - fixed; "Turn to an angle" on revolute joints (an expression such as `Params.theta` drives a crank); "Turns in place" for one round face (a revolute joint to the ground); joints on a hole through two walls or two journals take the middle of the whole bore; tooth counts for gears and belts; copying a part keeps the shared table; "Make Drawing" works on a part file used by an assembly
-- Parts and drawings: sketches open orthographic with a section view; a number typed on the bar is used when its button is pressed; a picked sketch stands for its steps in a pattern; holes snap to a round end's centre and go radially into cylindrical faces; a round face no longer opens the raw attachment panel for a new sketch; section views use the shown direction and the next free letter; the model panel cannot be closed
-- CLI: `--export-drawings out.pdf` (TechDraw pages as PDF without the screen), `findInterferences(moving=...)` (32 s to 3 s per pose), `--section-color part`, one Midplane warning per session
-
-## Changes in 0.7.3
-
-- **A big step of an assembly's driving value did not move right after opening the file** (left over from 0.7.2): the walk from the last solve that held kept that pose only in memory, so in a file just opened a crank from 0 to 90 degrees stopped with -7. Without such a pose the walk now starts from where the parts are. `-t TestAssemblySolve` (a test after reopening was added)
-- 0.7.2 was stopped before its Windows build; on Windows this is the first version with the fixes of 0.7.2
-
-## Changes in 0.7.2
-
-Fixes from the engine field test of 0.6.9, each reproduced on 0.7.0 first (the tests fail there and pass here); GUI acceptance in [docs/ui-redesign/accept/U072](docs/ui-redesign/accept/U072).
-
-- Spreadsheet cells with an alias now drive the expressions that use them (the fine-grained recompute compared property names; "A1" and its alias "k" are one property) — `FreeCADCmd -t TestRecompute`
-- Assemblies driven by a big step (a crank 0→90°) walk there in steps of at most 15° instead of silently dropping the driving joint; solve() returns -7 if the joints still do not hold — `-t TestAssemblySolve`
-- Crossing closed outlines in one sketch are joined (inner ones cut out) instead of a silently partial pad — `-t TestPartDesignFixes`
-- Mirror/pattern features made by scripts become the body's tip
-- No crash on a stale row of the sketch constraint list; recovery data every 2 minutes; the first-start choice is saved at once
-- Joints work on the document's only assembly without activating it; small holes win the pick over the face around them
-- Digits never turn the view while sketching; refused picks are explained in words
-- Parts shelf: bolts longer than the standard table are made at the needed length and flagged
-
-## Changes in 0.7.1
-
-Fixes from the first-time-user test of 0.6.9 ([docs/ui-redesign/usability-0.6.9/report.md](docs/ui-redesign/usability-0.6.9/report.md)); acceptance in [docs/ui-redesign/accept/U071](docs/ui-redesign/accept/U071) (`tests/ui/u071_check.py`, 42 checks with real input; the same steps fail 12 checks on 0.7.0).
-
-- Assembly: the file's own part goes into the assembly and is held; parts put in are free; a held part never moves or turns over when snapping or swapping
-- More of a part: Ctrl+C / Ctrl+V, "One more", "Copies in a Grid" (four corners: 2 × 2); a double-click in the tree no longer jumps to the part's file
-- Hole: each further click on the face adds a hole; positions typed as distances from the left and bottom edges
-- "Type 3 and Enter": the bar stays after "same direction", digits go to its field and never turn the view; hole seams are not picked
-- Drawing: rounded corners are not holes; hole positions dimensioned; Japanese title block; PDF starts with the file's name
-- DXF: the frame and title boxes are no outline; open lines are reported and nothing is made
-- Screws, washers, nuts and the drawing's center lines follow their hole
-- Closing the last 3D tab asks to save and closes the file; files open on their 3D view
-- No camera animation when a panel opens (the first plane click hits); the model is kept in view
-- A screw thinner than the hole goes through with a nut (M5×25 for a 15 mm plate)
-- Missing icons are logged, not notified; catalog icon paths are mapped to this installation; "Processing..." translated; same-name search hits say where they work
-
-## Changes in 0.7.0
-
-The last four items of the UI rebuild ([docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)); with them every stage (P0–P10) is done.
-Acceptance screenshots and results: [docs/ui-redesign/accept/P11](docs/ui-redesign/accept/P11) (`tests/ui/p11_check.py`, 71 checks with real mouse and key events).
-
-- **The "in effect up to here" line in the history**: a blue line under the last step of a part. Drag it up to an earlier step: the steps below stop having an effect
-  (grey italics, "not in effect") and new steps go in at the line. Drag it back to the bottom (or double-click it) and all steps are in effect again. One undo step each time.
-  Right-click: "Insert Here" (also on a sketch) and "Bring All Steps Back". It is the body's Tip, but the word is never shown
-- **Short tool panels**: a pad shows its length and "reverse" (how it ends only when it is not a length); pocket, revolve, hole, fillet, chamfer, shell, mirror and patterns
-  show at most three fields. The rest is under "Details ▸", remembered per tool. The sketch's size box keeps its name and "reference" under "Details ▸" too
-- **Picks in words**: not "Pad.Face6" but "the top face of Pad", "the inner face of Hole ⌀6", "vertical edges of Pad ×4" — from the step that made the element, its role
-  and its geometry; shown in the status bar, as the title of the bar next to the picks and in the fillet/chamfer lists
-- **Tool names follow the terminology table**: 115 stock Japanese names in the tool strip, the sketch band, the bar and the tool search, with one-sentence tooltips; old names still find them
-- "Also the edges in the same direction" no longer picks the seam of a hole's wall
-- Tests: `FreeCADCmd -t TestHistoryLine`, `-t TestSelectionWords`, `-t TestTaskPanels`, `-t TestWording`
-
-## Changes in 0.6.9
-
-- **Clicking a face under the push/pull arrow picks it again** (bug in 0.6.7): the arrow in the middle of a hovered face took every left press, so the face could not be picked (for measuring, snapping, the context bar).
-  Now the face moves only when the arrow is dragged more than 5 px; a click without moving picks what is under it. The foot of the arrow is no longer part of the handle and the arrow is smaller (56 → 36 px).
-  The acceptance run ([docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull), 41 checks) now checks "a click in the middle of a face picks it and moves nothing" and "dragging the arrow moves the face"
-
-## Changes in 0.6.8
-
-Measuring without pressing "Measure", and seeing a tool's result before pressing it — on the bar next to a pick and on the tool strip.
-Screens: [docs/ui-redesign/accept/measure-preview](docs/ui-redesign/accept/measure-preview).
-Versions released in parallel: the code is in the 0.6.6 builds already (the Japanese names of kept dimensions from 0.6.5 and 0.6.7). 0.6.8 adds its description, the acceptance run and the screens; its patches are the same as 0.6.7's.
-
-- **Two picks are measured right away** (Ctrl, same or different parts): point–point distance with ΔX/ΔY/ΔZ, point–face/edge distance,
-  the **gap** of parallel edges or faces, otherwise their **angle**, the **center distance** and ⌀ of two circles or holes. The numbers are on the
-  left of the bar, the tools (snap, point to point, …) stay on the right. Nested and rotated parts are measured in global coordinates
-- **One pick, small**: the length of an edge, the area of a face, ⌀ and R of a circle or hole
-- **Click a number to copy it**; **「寸法を残す」 (keep the dimension)** makes a persistent Measure object (in a "Measurements" group), one undo step
-- **Tool preview on hover**: resting the mouse on a tool of the strip or the bar for 0.3 s draws its result on the current pick as a see-through ghost
-  (green added, red removed, blue copies): fillet/chamfer of the picked edges (or a face's edges; the bar's number or the last one), extrude 10 mm / pocket of a sketch or flat face,
-  a ⌀6 hole at the clicked point, mirror / linear / polar pattern of the picked feature, Part mirror. Worked out on copies in a thread, cancelled when the mouse leaves,
-  dropped when it takes over 1 s; **the document is never changed**
-- Tool tooltips are one plain sentence of what happens
-- Tests: `FreeCADCmd -t TestMeasureMath` (planes, cylinders, rotated and nested parts), `-t TestToolPreview` (size and place, no document change, cancel, slow),
-  GUI acceptance `tests/ui/measure_preview_check.py` (real clicks and mouse moves with xdotool)
-
-## Changes in 0.6.7
-
-**Push/pull faces and dimensions on the model** — change the shape by grabbing it, without picking a tool first. Screens: [docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull).
-
-- **Drag the arrow on a face**: hovering a flat face of a solid (or a full round face) shows a small arrow; dragging it moves the face along its normal — outward adds material, inward removes it.
-  The model follows live, a label at the cursor tells the distance and what changes; the distance snaps to round numbers and to the levels of other flat faces (flush), Shift drags freely.
-  Releasing keeps it (one undo step); Esc while dragging puts everything back
-- **What changes follows how the face was made**: the end face of a Pad/Pocket → its length, a hole floor → its depth, a side face of a sketch-based Pad/Pocket → the sketch dimension that moves only that line
-  (otherwise a new Pad/Pocket from the face), holes and round bosses → their diameter, boxes and cylinders → their sizes. Imported solids (STEP …) get a "push/pull" step that keeps the base solid, the face and the distance, editable later
-- **Or type it**: picking a face puts "Move face" with a distance field (negative: inward) first in the context bar; a round face gets a "Diameter" field
-- **Dimensions on the model**: picking a part or a step shows the numbers that drive it (Pad length and its sketch dimensions, hole diameter and depth, fillet radius, pattern count and spacing, box/cylinder sizes, push/pull distance)
-  as labels where they act; click one, type, Enter recomputes. Units (10 mm, 1/2 in), arithmetic and `=` expressions work. Nothing picked: no labels
-- Tests: `FreeCADCmd -t TestPushPull` (26), `FreeCADCmd -t TestDimensionLabels` (11), and `tests/ui/pushpull_check.py` with real xdotool drags on a virtual screen (37 checks)
-
-## Changes in 0.6.6
-
-**Parts shelf** ("Parts Shelf" on the tool strip; Ctrl+K: ねじ, ボルト, ナット, 座金, ワッシャ, 六角穴付き, M6, screw, nut, washer). Details: [docs/parts-shelf.md](docs/parts-shelf.md);
-screens: [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-shelf).
-
-- **Screws, nuts and washers by their JIS names**, M3–M12: hexagon socket head cap screws (JIS B 1176), hex bolts (B 1180, fully/partly threaded), hex nuts (B 1181),
-  plain washers (B 1256), spring washers (B 1251), set screws (B 1177, flat/cup point), countersunk screws (B 1194). Labels like "六角穴付きボルト M6×20"
-- **Click a hole and the screw that fits goes in** ("Insert screw" on the bar next to a picked hole): the size from the diameter (tap drill, thread, clearance hole classes 1–3,
-  counterbore, countersink), the length from the plates it clamps and the thread it goes into (other parts on the same axis count; never bottoming out in a blind hole),
-  coaxial with the hole (the same math as "snap together"). Washers, nut and an extra plate can be chosen; a change redoes the screw
-- **In the parts list**: one hidden original per kind and size (name, standard, size, part number properties), links where used: the Assembly BOM counts them.
-  The design check accepts the thread overlap of a shelf screw in its tapped hole
-- **Aluminium profiles**: generic 20/30/40 series sections, slot 6/8 (from public generic dimensions; no maker's data), placed by two clicks with a ghost, or a typed length
-- **Company parts**: folders of FCStd/STEP files (optional `shelf.csv`, also Excel's Shift_JIS CSV); company-wide via `FREECAD_PARTS_SHELF`
-- **The Fasteners workbench is bundled** ([shaise/FreeCAD_FastenersWB](https://github.com/shaise/FreeCAD_FastenersWB) `fddd07af`, **GPL-2.0-or-later**, unchanged, in `src/Mod/Fasteners`).
-  The shelf makes its screws with it; its 223 tools are in Ctrl+K and "Other tools". The release builds check it is bundled and `FreeCADCmd -t TestPartsShelf` passes
-
-## Changes in 0.6.5
-
-**Drag parts with a magnet** and **line parts up**. Screens: [docs/ui-redesign/accept/magnet-0.6.5](docs/ui-redesign/accept/magnet-0.6.5)
-(`tests/ui/magnet_check.py`, real drags with xdotool). 0.6.5 does not contain the parts shelf of 0.6.6.
-
-- **Press on a part and drag**: it follows the cursor, no tool to start. A click without moving still only selects; a drag on the empty background still selects with a box.
-  Seen from above it slides on the horizontal plane of the grabbed point, which stays under the cursor; over the top of another part (a table, a plate) it climbs onto it,
-  and goes back to its own level off it (never below where it started). Seen from the side it moves in the vertical plane facing the camera
-- **The magnet**: a face that comes within about 12 pixels of a face of another part snaps flush onto it, facing it (turning the part by up to 10 degrees). Round faces snap onto one axis
-  (a pin near a hole goes in as far as it fits: to the bottom of a blind hole, until the head of a bolt sits, flush with the far side of a through hole). Corners snap onto corners,
-  faces line up with other parts' faces, shown by dashed guide lines; the face it snaps to is outlined in orange. Keep dragging to break free. **Alt**: no magnet
-- **Ctrl+drag places a copy**: an independent copy of a Body or a parametric shape; a link to an imported STEP shape, an App::Part assembly or a link (shared shape, counted in the BOM)
-- Releasing keeps it (one undo step); **Esc** while dragging puts it back. What moves is what "Snap together" moves (a Body, a shape, a link; a selected container as a whole).
-  Attached objects keep their attachment (the offset changes); parts placed by a formula, locked or grounded in an assembly do not move, and a tip says why
-- Next to 200 parts a move takes 4.5 ms (median), 9 ms (95 %); the faces of the other parts are read between the moves, nearest first
-- **Line up** (on the context bar for two or more Ctrl-picked parts, and in Ctrl+K as "align"): left/center/right, front/center/back, bottom/middle/top (screen words when looking along an axis),
-  **equal gaps** (the outer two stay), **a given gap**, **side by side** in pick order; to the first picked part (outlined) or the extent of all.
-  Pointing at a button previews, clicking keeps (one undo step), Esc cancels. Tight boxes for turned parts; parts inside nested App::Parts
-- Tests: `FreeCADCmd -t TestMagnetDrag` (24), `FreeCADCmd -t TestArrange` (11)
-- 0.6.6, released before, contains an early version of this. It can crash after a document is closed and another view is activated (a closed 3D view was used from Python); fixed in 0.6.5 and 0.6.7
-
-## Changes in 0.6.4
-
-The 3D view follows what you look at (the default mouse style and the touchpad style offered on the first start; other styles are unchanged). Screens: [docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4).
-
-- **The wheel moves forward/backward** towards the point under the cursor (else the focal depth). Steps are proportional to the remaining distance: it slows down near a surface and never passes through it. No fixed zoom limits; an orthographic camera zooms about the same point
-- **Rotation is about the point under the cursor** where the drag starts, which stays put on the screen. From the empty background: about the point last looked at (if in view), else the middle of the visible geometry — never a far away fixed center. A small marker shows the pivot while rotating
-- **Panning** keeps the grabbed point under the cursor; the focal point follows wheel/pan/rotate, so the view cube turns about what you look at. Fit all looks at the model center
-- **Perspective view by default** (unless a choice is stored): moving the eye only shows as motion in perspective. Orthographic stays available in the view menu
-
-## Changes in 0.6.3
-
-- "Make Drawing": a picked face becomes the front view; hole center lines and callouts go on the view that shows the holes as circles
-- The put-part panel of assemblies lists the FreeCAD/STEP/IGES files of the assembly's folder; a click opens one
-- All UI acceptance walkthroughs (P0–P10) passed on the published 0.6.2 Linux AppImage
-
-## Changes in 0.6.2
-
-UI rebuild phases P5, P6 (part), P9, P10 ([status in chapter 13 of the design](docs/ui-redesign/00-design.md)).
-**0.6.1 has no Windows build; on Windows use 0.6.2.**
-
-- Preferences by purpose (basic, mouse and keys incl. touchpad, drawings, files, network and accounts, AI), effective at once, with search;
-  "run AI code without asking" moved from the AI panel into the preferences; the first start asks for the mouse style
-- Assemblies: STEP/IGES parts from the put-part panel; two round faces offer "Insert", "Hinge", "Join rigidly"; joints named by how parts move;
-  a pin in a clearance hole is no longer reported as floating
-- Export by purpose: for 3D printing (3MF/STL with a mesh check and "Fix, then export"), to other CAD (STEP), 2D (DXF/PDF of a drawing), image
-- After opening a DXF/DWG/JWW or a mesh, a band offers what can be done with it (extrude to a solid, make a sketch, check and fix, make a solid)
-- Only the active file in the tree, detailed properties folded away, the model placed beside the task panel
-- Sketch sizes are typed in a small frameless box at the cursor
-- STEP parts without product names were still named "Open CASCADE STEP translator" by one import path
-- FreeCADCmd: print() of Japanese no longer raises on Windows legacy code pages or a C locale (UTF-8 on Windows; unprintable characters replaced);
-  a Windows CI check prints Japanese under cp1252
-
-## Changes in 0.6.1
-
-**0.6.1 has no Windows build (use 0.6.2).**
-
-UI rebuild phases P1–P4, P7 and P8 ([design](docs/ui-redesign/00-design.md)): one window without modes.
-Acceptance screenshots in [docs/ui-redesign/accept](docs/ui-redesign/accept).
-
-- Tool search (Ctrl+K, the field at the top right): every command of every module (1158, also of modules not loaded yet),
-  by Japanese/English name, aliases and description; loads the module when picked; "Ask AI" when nothing fits.
-  The catalog is made at build time by the built FreeCAD without a screen
-- FreeCAD's menu bar and toolbars are replaced by one "☰" menu and one tool strip that never changes (also while
-  sketching, on drawing pages, in assemblies); one-key shortcuts that never fire while typing or composing Japanese;
-  Preferences › General › Screen brings the stock chrome back
-- "Other tools": every tool by kind, specialist toolboxes (BIM, CAM, FEM, …) loaded on first use
-- A step (sketch, tool panel) is a band in the same window with ✓ Done / ✕ Cancel (Cancel undoes the step)
-- The bar next to a pick follows a rules table, with a number field (pick a face, type 12, Enter: extruded 12 mm)
-- Start page: four ways to start, the search, and four guided first steps with samples
-- "Make Drawing": three views on an A4 JIS sheet with center lines, hole callout ("4×⌀6 キリ"), sizes and title block
-- Fixes: Start crashed without a top-level Help menu; applying network proxy settings froze the GUI; AI chat key handling
-
-## Changes in 0.6.0
-
-First stage (P0, "no dead ends") of the UI rebuild designed in [docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)
-(no modes; the stock FreeCAD chrome is to be replaced, not layered on). Everyday tasks that stopped at an English dialog
-or at an upstream concept now go on without asking. Acceptance screenshots: [docs/ui-redesign/accept/P0](docs/ui-redesign/accept/P0).
-
-- Saving as `plate.stl` picked the FEM exporter ("No FEM mesh for export selected"); a typed extension now picks the format's own filter
-- Putting parts into an assembly no longer stops at "must be saved" / "ground the first part?": an unsaved assembly is saved
-  provisionally (Save still asks for a place), parts of unsaved STEP documents are copied in, the first part is grounded
-- DXF files open without the import-mode dialog; extruding a picked line of an opened drawing makes its closed outline the
-  sketch of a new part instead of "an active body is required"; an unreadable DXF says so
-- Three-view drawings face the largest flat face, include top and right views and use a standard scale that fits the page
-  (they used to take the isometric 3D direction and overflow the page)
-- Drawing selections in the status bar show user names ("Front view, edge 3"); STEP files without product names are named after the file
-- Terms unified with the glossary (176 translations)
-
-## Changes in 0.5.0
-
-- DWG: **can now write R2004, R2010, R2013 and R2018 DWG** (previously up to R2000).
-  The 149 test drawings were written in each version and read back with ACadSharp: 0 unreadable drawings, 0 lost entities, 0 entities that changed type (same via DXF).
-  Also compared entity by entity with files AutoCAD saved in the same version
-  - 3D solids (ACIS): reads and writes the R2013+ storage (AcDs), so shapes are not lost when writing old drawings or DXF to R2013 or later
-  - Fixed DXF → DWG (dxf2dwg) losing nearly 20% of entities when writing R2010 or later
-  - FreeCAD's own DWG export stays at R2000 (opens in any AutoCAD). For newer versions use the bundled `dxf2dwg --as r2018`
-- Command line: images in one line (`--render`, no display or OpenGL needed), a fast interference check (`--interference`),
-  and export of 2D views with hidden lines removed (SVG, per-face polygons, PowerPoint). See the "Command line and scripts" table
-- Mesh: fixed `addFacets` silently dropping faces where parts touch, which left holes in STL files
-
-## Changes in 0.4.1
-
-- DWG: compared against the same drawings saved by AutoCAD itself in different versions, and made conversion when writing R2000 match AutoCAD.
-  For example_2004 to 2018, every entity written to R2000 matches AutoCAD's R2000 save (same via DXF)
-  - Colors: ByBlock entities had become ByLayer; color indices used in place of RGB colors now match AutoCAD; the color table uses current AutoCAD values
-  - R14 drawings: entity linetypes (CONTINUOUS etc.) had become ByLayer, lineweights had become 0.00mm; standard names now match AutoCAD
-  - Gradient hatches become a solid fill of the first color; MTEXT line breaks use \P (also in DXF)
-- DWG: tables (TABLE) can now be read and written (not lost via DXF). All R2010+ table styles are read
-- DWG: entities from proprietary applications whose contents can't be decoded (architecture add-ons etc.) are kept, with their original data, as proxy entities the same way AutoCAD does when writing to older versions or DXF
-- DWG: fixed table style, dimension style and hatch names changing via DXF, and newer entity types being dropped from R14 DXF
-
-## Changes in 0.4.0
-
-- Reading and writing DWG: bundles LibreDWG (`dwg2dxf` / `dxf2dwg`), so File → Open / Import / Export handle DWG.
-  Reads R13 to R2018 (including AC1032 from AutoCAD 2018 to 2025); writes in the version of the opened drawing (R2000 or earlier).
-  LibreDWG 0.14.8601 is patched with fixes for read/write bugs found by comparing against an independent implementation (ACadSharp) on 149 drawings
-  (`patches/libredwg`: tables, multi-line attributes, character encodings, writing to R2000, etc.). If you have configured your own converter, that one is used
-- AI chat: when it stops at the limit on the number of turns (80), it now says so instead of going quiet, and tells you that "続けて" (continue) carries on
-- AI chat: code that doesn't finish within 120 seconds is stopped and that run's changes are undone (so FreeCAD doesn't freeze). Completed changes are not undone just because the value of the last expression can't be displayed
-
-## Changes in 0.3.6
-
-- Fixed the AI chat components (ai-runtime) missing when installed with the Windows installer (the 0.3.5 7z has them)
-- AI chat: a "たずねずに実行する" (Run without asking) switch (off by default; a warning appears when turning it on; not saved, so it goes back to asking every time once FreeCAD is closed.
-  Executed code stays in the chat). "実行して、以後はたずねない" (Run, and don't ask again) in the approval window
-- AI chat: fixed FreeCAD crashing and freezing on sys.exit in the AI's code (like other errors, that run's changes are undone and you are told)
-- AI chat: the code the AI ran and its results are logged to ai/ai-runs.log in the user data
-- Bugs in the AI's tools (found by the AI's own tests): on error, changes to other documents are also undone and the previously open document is restored.
-  Runs that changed nothing no longer create an Undo step. Added and removed objects are counted by events, not by name.
-  When a pattern created from Python is the last feature of a part, the Tip is advanced. The type field of get_document was being overwritten by feature properties (such as Length)
-- Design check: reports features not used by the shape (after the Tip), parts with no shape, and hidden parts that were not checked.
-  "Degrees of freedom left" is not shown while constraints are in conflict. States that constraint numbers count from 1
-- Japanese: the points inside an origin are now called "原点の点" (origin point) (previously both they and the container's origin were "原点" (origin))
-
-## Changes in 0.3.5
-
-- The components the AI chat needs are bundled in the release packages. The AI panel works right after installing, with no setup over the network (talking to the AI itself still needs network access)
-- Clearer explanations when the AI chat fails (invalid key etc.)
-
-## Applying the patches and building
+| スクリプトが例外で落ちる | 終了コード **0**、しかも**2回実行**される、エラーは1行だけ | 1回だけ実行、終了コード 1、トレースバックを表示 |
+| `if __name__ == "__main__":` | 実行されない（モジュールとして import される） | 実行される |
+| `sys.argv` | FreeCAD の引数そのまま | `FreeCADCmd a.py -- x y` → `['a.py', 'x', 'y']` |
+| `sys.exit()` / `sys.exit("msg")` | 1 / メッセージが出ない | 0 / メッセージを標準エラーに |
+| 例外や `sys.exit()` の直前の `print` | 消えることがある | 出る |
+| 存在しないファイル | 終了コード 0 | `No such file`、終了コード 1 |
+| `FreeCADCmd < a.py` | 対話モードで1行ずつ処理（`>>>` が混ざり、エラーでも 0） | 1本のスクリプトとして実行 |
+| スクリプト実行時のバナー | 出る | 出ない（対話モードでは出る） |
+| STEP の書き出し | OCC の統計が標準出力に2重に出る | 出ない（ログに回す） |
+| アセンブリを開く | 拘束ソルバーのメッセージが標準出力に出る | 出ない |
+| `Part.export([shape], "a.step")` | **空の STEP を黙って書く** | Shape を受け付ける／何も無ければ `ValueError` |
+| `--output` での変換失敗 | 終了コード 0 | 終了コード 1 |
+| `--help` | 名前が常に「FreeCAD」、使い方の説明なし | 実行ファイル名・例・終了コード。`--output`（`-o`）と `--hidden` を表示 |
+| 設定ファイル | 何もしない実行でも毎回書き直す。並列に走らせると設定が消える | 値が変わったときだけ書く |
+| `FreeCAD --hidden a.py` が失敗 | 終了コード 0 | 終了コード 1 |
+| `--hidden` で視点を変えて保存 | アニメーションの途中が保存される | アニメーションしない |
+| `--hidden` で旧版の設定がある | 設定移行のダイアログが見えない画面に出て**永久に止まる** | ダイアログを出さない |
+| `--hidden` の実行 | 最近使ったファイル・ウィンドウ配置を書き換える | 書き換えない |
+| Python の `saveImage()` | ナビゲーションキューブが写り込む | 写らない（「画像を保存」メニューと同じ） |
+| 画像を出す | 画面（xvfb）と GUI が要る | `FreeCADCmd a.FCStd --render a.png --view iso`（画面も OpenGL も不要。`--render-style shaded\|hidden-lines\|lines`、`--size 1600x1200`、Python は `Part.renderImage`） |
+| 干渉チェック | 部品の組を総当たり（300 部品で 106 秒） | `FreeCADCmd a.FCStd --interference`／`Part.findInterferences`（外形で絞って並列、1.2 秒） |
+| 隠れ線を消した 2D 図 | TechDraw のページが要る | `--export-svg`、`--export-polygons`（面ごとの多角形 JSON）、`--export-pptx`（編集できる図形の PowerPoint）／`Part.projectVisible` |
+| 視点・拡大・断面（0.5.4） | — | `--view` に名前（`iso-bottom` など下からの等角も）か向き `dx,dy,dz`、`--up x,y,z`（画面の上）、`--focus 名前,…` か `--region x0,y0,z0,x1,y1,z1`（その範囲に拡大）、`--section z=10`（z>10 を取り去る。`-x=5` は x<5、`px,py,pz,nx,ny,nz` は法線の側）で切り口を塗ってハッチング。値が `-` で始まるときは `--section=-x=5`。Python は `Part.renderImage`/`projectVisible`/`exportSvg`/`exportPptx` の `up=`・`focus=`・`region=`・`section=(点, 法線)` |
+| 大きな組立の隠れ線（0.5.4） | 1200 部品で 15 分以上終わらないことがあった | 深さバッファで隠す側の候補を絞り、全コアで並列。1200 部品 3.9 秒、STL 由来 1200 部品 5.4 秒（0.5.3 は 72 秒）。`--progress`（標準エラーに進み具合）、`--max-seconds 60`（時間切れなら手前から済んだ分を書いて警告）、`--deflection`（粗くして速く） |
+| 点の内外判定・光線（0.5.4） | `Shape.isInside` を 1 点ずつ（10 万点で約 52 秒） | `Part.pointsInside(shape, 点の列)`（10 万点 0.16 秒、結果は isInside と同じ）、`Part.rayCast(shapes, 原点, 向き, all=False)`（距離・何番目の形・面・点・法線） |
+| STL から作った立体（0.5.4） | `makeShapeFromMesh`＋`makeSolid` は三角形だらけで、閉じていない・裏返り・重複があるとブール演算が不安定 | `Part.solidFromMesh(mesh, 0.01, report=True)`（直して縫い、同じ平面の三角形を 1 つの面に。直したこと・残った問題を返す）。ブール演算は許容差つきで `a.common(b, 0.01)`。角の丸めは `Part.filletMeshSolid(mesh, 1.0)`（平らな面どうしの角だけ。曲面部分は丸めない） |
+| Jw_cad の図面（0.5.6） | 開けない | 「開く」「インポート」で `.jww`（Jw_cad の図面）と `.jws`（図形登録）を開く。同梱の [jww2dxf](https://github.com/monyuonyu/jww-tools) で DXF にしてから読む（データの版 220〜700、Jw_cad 2.x〜10.x）。Jw_cad 自身の DXF 出力と 307 図面で図形ごとに突き合わせて全部一致。単体でも `jww2dxf 図面.jww` で DXF を作れる |
+| DWG/DXF の 3D ソリッド（0.5.4） | 3DSOLID・REGION・BODY は読み捨て | Part の形として読み込む（平面・円柱・円錐・球・トーラス・B スプライン。試験図面 81 個中 80 個が閉じた立体）。ブロックの中のソリッドと、AutoCAD 2013 以降が書いた DXF（ACDSDATA に入っている）はまだ読めない |
+| スクリプトに引数を渡す | — | `FreeCADCmd a.py -- x y`（`--` の後ろが `sys.argv`）。`FreeCADCmd a.py x` で `x` がファイルでないときは「`script.py -- x` で渡す」と案内する |
+| `Mesh.addFacets(shape.tessellate(d))` | 接した箱どうしの面を**黙って捨てる**（52 個の箱で 624 → 12 面） | 全部入れる（`check=True` のときだけ捨て、数を警告） |
+
+## 本家から取り込んだ修正（PR 一覧）
+
+本家 FreeCAD に出されていて、まだ本家に入っていない PR のうち、精査して取り込んだもの（作者の名前はコミットにそのまま残している）。
+開いている 541 件から、この画面が使う部分の落ちる・不具合・退行を中心に絞り、中身を読み、パッチに当たることと試験を確かめた。
+
+**落ちる（クラッシュ）**
+
+- [#32804](https://github.com/FreeCAD/FreeCAD/pull/32804) スケッチの編集に入るとき・マウスを動かしたときに落ちる（@alfrix）
+- [#32975](https://github.com/FreeCAD/FreeCAD/pull/32975) スケッチの事前選択で範囲外を読んで落ちる（@alexdremov）
+- [#32989](https://github.com/FreeCAD/FreeCAD/pull/32989) スケッチの反転で落ちる（@alfrix）
+- [#32970](https://github.com/FreeCAD/FreeCAD/pull/32970) 作業パネルを閉じるときに、解放済みのメモリを触って落ちる（@alexdremov）
+- [#32007](https://github.com/FreeCAD/FreeCAD/pull/32007) プロパティ欄で編集中に 3D 画面をクリックするなどして落ちる（6 種類。作業パネルの 1 か所は #32970 と重なるので除いた）（@oursland）
+- [#32684](https://github.com/FreeCAD/FreeCAD/pull/32684) 外部参照のファイルを開くと落ちる（@chennes）
+- [#31263](https://github.com/FreeCAD/FreeCAD/pull/31263) 起動直後の SpaceMouse の操作で落ちる（@Maik-0000FF）
+
+**形・スケッチ**
+
+- [#32430](https://github.com/FreeCAD/FreeCAD/pull/32430) ポリラインを角丸めすると最後の点が消える（@alfrix）
+- [#32759](https://github.com/FreeCAD/FreeCAD/pull/32759) 曲線どうしの点で角丸めできないとき、その理由を出す（@VishalRamKN）
+- [#28238](https://github.com/FreeCAD/FreeCAD/pull/28238) 丸め・面取りが失敗したとき、原因（半径が大きすぎる・面がねじれる…）と直し方を出す（@paragforwork）
+
+**図面**
+
+- [#32552](https://github.com/FreeCAD/FreeCAD/pull/32552) 位置をロックしたビューが、読み込むと原点に飛ぶ（@WandererFan）
+- [#32151](https://github.com/FreeCAD/FreeCAD/pull/32151) 寸法の参照の修復が、壊れた参照で失敗する（@WandererFan）
+
+**組立**
+
+- [#31998](https://github.com/FreeCAD/FreeCAD/pull/31998) 部品に固定ジョイントを付けるとエラー（@ryneeverett）
+- [#32924](https://github.com/FreeCAD/FreeCAD/pull/32924) 親を失ったジョイントのグループを消せない（@PaddleStroke）
+- [#32922](https://github.com/FreeCAD/FreeCAD/pull/32922) ラックとピニオンの誤動作（@PaddleStroke）
+
+**表示・画面**
+
+- [#32658](https://github.com/FreeCAD/FreeCAD/pull/32658) ライト／ダークのテーマで、結合した形の色が崩れる（@chennes）
+- [#32813](https://github.com/FreeCAD/FreeCAD/pull/32813) 選択の表示の奥行きの退行（@Connor9220）
+- [#32841](https://github.com/FreeCAD/FreeCAD/pull/32841) プロパティ欄の選択肢で日本語などが化ける（@maxwxyz）
+- [#32996](https://github.com/FreeCAD/FreeCAD/pull/32996) キーボードでツリーを選んだときにステータスバーを更新する（@007stevendigar-lgtm）
+
+**ファイル**
+
+- [#32934](https://github.com/FreeCAD/FreeCAD/pull/32934) ASCII の STL（長い名前・末尾の改行なし）が読めない（@maxwxyz）
+
+**0.3.3 で追加**
+
+- [#32614](https://github.com/FreeCAD/FreeCAD/pull/32614) スケッチの点を少しだけ動かすと元に戻る（@Reqrefusion）
+- [#30997](https://github.com/FreeCAD/FreeCAD/pull/30997) 計測を開いたまま文書を閉じると落ちる（@Amine0x0）。そのまま当てると、この版では別の見張りを上書きして後で落ちるので、合わせて直した
+- [#32879](https://github.com/FreeCAD/FreeCAD/pull/32879) 厚みの結果が不正な形でも黙っている（@007stevendigar-lgtm）。厚みが大きすぎて形が変わらない場合も知らせるよう足した
+
+### 本家に報告されていて、まだ直っていない不具合を直したもの
+
+再現手順が付いていて、手元で再現または原因まで確かめたもの。
+
+- [#32968](https://github.com/FreeCAD/FreeCAD/issues/32968) スケッチの寸法を式エディタで入れると、ツールを抜けたときに寸法が消える（今月の退行）
+- [#32732](https://github.com/FreeCAD/FreeCAD/issues/32732) 「変数セットに保存」で単位が合わずに失敗する（macOS では落ちる）
+- [#32877](https://github.com/FreeCAD/FreeCAD/issues/32877) 見えない文書を開くと、作業中の文書が奪われる（macOS では落ちる）
+- [#25050](https://github.com/FreeCAD/FreeCAD/issues/25050) 部品より厚い厚みが、黙って何もしない
+- 途中の手順（切り抜きなど）を消すと、後の配列が消した穴を持ったまま「正常」と表示される
+- STEP で日本語などの名前が化ける（書き出しを規格どおりの書き方にし、読み込みの既定を UTF-8 にした。他の CAD の STEP も読める）
+- 長さ 0 の視点の動きで、画面が固まる
+
+メモリの誤った使い方を見張るビルド（AddressSanitizer）で本家の試験を走らせて見つけたもの（0.3.4）:
+
+- 再計算の最中に部品を消すと、後の処理が消えた部品のメモリを読む（CAM の工具で起きる）
+- マクロの編集画面が、消えたファイルについて「読み直しますか」と聞いて止まる
+- Draft の選択枠の表示が、渡した点より多くの点を読む
+
+あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
+（型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.7.9 の変更
+
+エンジン全体を画面だけで作る通し試験の 2 回目（0.7.8）で、**画面だけでエンジン全体を作り切れた**（組立 15 部品・17 ジョイント、ロッカーとバルブはクランク角の式、0→720° で吸気・排気が順に 1 回ずつ開く、断面の動画、開き直し）。残った穴を直した。
+
+- 大きく飛ばす（0→390° など）とベルトのカムが半回転ずれたまま残った: 駆動の値で 15° ずつ刻んで追う
+- 「角度で回す」の欄に打つと 1 文字ごとに解かれた（300 と打つと 3° で止まる）: 打ち終えて解く
+- ジョイントの角度が 360° で丸められた: 上限を外した
+- 「反転」で正立にしたスライダー（バルブ）が壊れ扱い: 反転は数えて正しい操作として扱う
+- 自動保存や異常終了のあと、組立の部品が選べなくなった: 開いたときに戻す
+- 画面なしの図面 PDF が Windows で落ち、Linux では止まった（お知らせを出すときの Qt の警告が、お知らせ欄の鍵を自分で待った）: 出している間の警告は載せない
+
+## 0.7.8 の変更
+
+エンジン全体を画面だけで作る通し試験（0.7.7）から。組立は 15 部品・17 ジョイントまで画面で作れたが、動かす所で止まっていた。
+
+- **「角度で回す」が 360° で止まった**: 720°（4 ストロークの 1 サイクル）など何度でも入る。動画も 720° まで実際の角度で回すので、クランク角の式で動くバルブが吸気・排気の順に開く
+- **組立が 1 本の壊れたジョイントで黙って止まった**: 成り立たないジョイントと、ずれを状態表示に出す
+- **「反転」で正立にした固定が壊れた扱いになった**（その 1 本で組立全体が止まった）: 半回転の反転は成り立つものとして扱う
+- **スライダーに「距離で動かす」**: バルブの持ち上がりをクランク角の式で（「固定＋オフセットの式」の回り道が要った）
+- 式でつながったロッカー・バルブが、パネルで回している間も追従する（「終わる」まで動かなかった）
+- **「動きを動画に」に断面の選び方**（前後・左右・上下で切る）。クリッピングの道具の断面は、そのパネルを閉じると消えるので写らなかった。組立の文書の 3D 画面から撮る
+- ジョイントの編集中に木をクリックすると参照が置き換わった
+
+## 0.7.7 の変更
+
+動弁系（バルブ・ばね・ロッカー・カム）とエンジン全体を画面だけで作る試験（0.7.6）と、会社の PC での試験から。
+
+組立と動画
+- **「動きを動画に」**: 回転ジョイントを選ぶと帯に「動画」。角度の範囲を回しながら、3D 画面の見えているとおり（向き・断面・色）に撮って MP4 に（同梱の ffmpeg。無ければ GIF）。720° も可。自由に動く部品があれば知らせる
+- **ベルト・歯車のタイミングを保つ**: 14/28 のチェーンでつないだカムが、クランク 180° を越えると半回転ずれた（解くたびに歯車の関係を今の向きから取り直していた）。最初の関係をジョイントに保存し、1 回転単位のずれだけを許す。押してずれたカムも戻る
+- 軸が裏返った答え（カムが逆さで同じ軸の上）を「成り立たない」として追い直す
+- ジョイントの角度の式（ƒx）を確定できなかった（式の窓の OK まで隠していた）
+- 開き直した組立で「部品を置く」「動かない／動かせる」が何もしなかった
+- 組立に置いた部品の名前が「部品004〜014」だった。部品のファイル名にする
+- 木でジョイントを選んでも帯が出る
+
+帯・その他
+- 帯の数値欄をクリックすると数字が全部選ばれる（「10 m60m」で 70 m の押し出しになった）。帯が出ている間に打った数字はボタンでも使う
+
+DWG・図面の PDF（会社の PC での試験）
+- **DWG の書き出しで文字が消えた**: 図面の文字を TEXT として書く。版は R2018（R14 になっていた）
+- 版を上げても古い版の dxf2dwg が使われた。この版に同梱の変換器を使う
+- DWG・DXF の文字と寸法を既定で読み込む
+- `--export-drawings`: テンプレートの無いページが 1 枚あると全部止まった／白紙になった。そのページだけ飛ばして知らせる。テンプレートの無いページを含むファイルが開けなかった
+
+## 0.7.6 の変更
+
+0.7.5 で「画面だけでエンジンを作る」6 課題を通しで試し、**6 課題すべて成功**した（0.6.9 は 2、0.7.3 は 4）。P0・P1 はなし。残った P2 を直した。
+
+- **スケッチの寸法: 置く前に打った数字がその寸法の値になる**（黙って捨てられていた。空いた所をクリックしなくてよい）
+- **折れ線を始点で閉じると、軸の上の始点でも始点に合う**（「軸の上」になって輪郭が開いていた）
+- **候補の帯: 数値欄に打った値を「切り抜く」なども使う**（「押し出す」以外では使われなかった）
+- **組立: 小さな穴の縁を拾っても、ピンなどの丸い面となら穴の中央で合わせる**（縁の位置で 7.5 mm ずれた）
+- **断面図は空いている所に置く**（ページの中央で右面図に重なっていた）
+- 数値の欄はクリックで全部選ばれる（並べる個数の打ち直しに 3 回のクリックが要った）
+- スケッチを閉じた後の候補の帯を、閉じ終わるまで確かめ直す（ときどき出なかった）
+
+## 0.7.5 の変更
+
+0.7.4 で組立・断面図・スケッチの見え方を画面だけで試した（3 課題とも成功。クランクを 0/90/180° に回すとピストンの位置が理論値どおり）。そこで見つかったことを直した。
+
+- **「その場で回す」を付けると、その部品の自動の固定（最初に置いた部品）を外す**（残っていて角度で回らなかった）
+- **「その場ですべらせる」**: 丸い面の軸に沿って地面に対してすべる（シリンダーの部品なしでピストンを動かせる）。別のファイルの部品でも、丸い面を選ぶと候補の帯に 2 つとも出る
+- **「部品を置く」は、すでにある部品の右に並べて置く**（全部が原点に重なり、面を選ぶのに掘り出す必要があった）
+- **図面の自動寸法**: 同じ中心間が 2 本・意味のない幅（23.64）・穴の注記が部品を横切る・表題欄に重なる、を直した。穴の大きさは各穴の横に、穴の位置は外形の辺からか穴から穴へ
+- **断面図のある図面を画面なしで PDF にすると落ちた**（本家の新しい不具合。窓の無い図面の題の位置合わせ）。PDF の書き出しで出た質問の窓は自動で閉じて警告にする
+- 図面のある部品のファイルで、何も選ばずに「図面を描く」が止まった
+- 断面図の題を日本語に（断面 A-A）
+- 状態表示で部品の内部名が化けた（「é¨å003」）。組立に置いた部品の内部名を英数字にし、画面が内部名を読む所を UTF-8 に
+
+## 0.7.4 の変更
+
+0.7.3 で「画面だけでエンジンを作る」試験をやり直した（6 課題中 4 つ成功。0.6.9 は 2 つ）。そこで見つかったことと、CLI の残りを直した。
+
+組立（いちばんの壁だった所）
+- **黙って壊れた位置で止まっていた**: ジョイントが成り立たないとき、部品を解く前の位置に戻し、設計の検査に「ジョイントが成り立たない: 36.25 mm 離れています」と出す（Python は `assembly.getBrokenJoints()`）
+- **保存した組立を単独で開くと部品が全部消えた**: 仮の場所に自動保存された組立を「名前を付けて保存」すると、部品へのリンクが仮の場所からの相対パスのまま書かれていた。保存のたびに今の場所から作る（本家にもある不具合）
+- **回転ジョイントに「角度で回す」**: 角度の欄に `Params.theta` などの式も入る。クランクを画面で回せる
+- **丸い面 1 つで「その場で回す」**: 地面に対して回るジョイント。クランクを支えるためだけのケース部品が要らない
+- **穴・軸の中心で合わせる**: 両側の壁を貫く穴（ピストンのピン穴）や 2 つのジャーナルは、全体の中央で合わせる（片側の面の中心で 23.3 mm・36.25 mm ずれていた）
+- 歯車・ベルトに**歯数**（14 歯と 28 歯で 90° → ちょうど 45°。半径では 0.4° ずれた）
+- 部品のコピー（Ctrl ドラッグ）が共有の表を複製して、コピーだけ表に追従しなくなっていた。表は共有のまま
+- 組立に使われた部品のファイルで「図面を描く」が「まだ図面にする部品がありません」で止まった
+- 参照を 1 つの名前で書くと原点に置かれた（スクリプト）
+
+部品・スケッチ・図面
+- スケッチは**真上から（平行投影）・手前を切り取って**始まる（ソリッドに隠れて毎回回り道が要った）
+- 候補の帯の数値欄に打ってからボタンを押しても、その値を使う（Enter のときだけ使われていた）
+- スケッチを選んで「まっすぐ並べる」が黙って形全体を並べた。スケッチから作った手順を並べる
+- 穴: 丸い端・目の真ん中あたりをクリックすると円の中心に。円筒の外側の面（ピストンのスカート）に半径方向の穴
+- 丸い面を選んだまま「新しいスケッチ」で取り付けの生の画面が出た。平面を選ぶ画面に
+- 断面図: 向きのボタンを押さずに「終わる」でも、表示中の向きで作る。記号は A から自動
+- モデルの木のパネルは閉じられない（✕ に当たって消えると戻すのに 4 段かかった）
+- Ctrl+K を閉じたとき、開いたときの文書の窓に戻す（試験では別の文書に切り替わった。手元では再現せず、予防として）
+
+CLI・Python
+- `--export-drawings out.pdf`: 図面の PDF を画面なしで（1 枚 約 10 秒。ページが複数なら out_<ページ名>.pdf）。`DrawingPdf.export(path, out)`
+- `Part.findInterferences(shapes, moving=[...])`: 動く部品の組だけ調べる（エンジン 73 部品で 1 姿勢 32 秒 → 3 秒）
+- `--section-color part`（`sectionColor="part"`）: 断面を部品ごとの色で
+- Midplane の非推奨の警告は 1 回だけ
+
+## 0.7.3 の変更
+
+- **組立の大きな駆動が、ファイルを開いた直後だけ動かなかった**（0.7.2 で直したつもりの残り）: 0.7.2 の「前に成り立った位置から刻んで近づける」は、その位置を開いている間だけ覚えていた。開いた直後にクランク角を 0→90° にすると、近づける元が無く -7 で止まっていた。覚えが無いときは、いまの部品の位置から近づける。`-t TestAssemblySolve`（開き直してからの試験を足した）
+- 0.7.2 は Windows 版を作る前に止めたため、Windows ではこの版が 0.7.2 の修正を含む最初の版
+
+## 0.7.2 の変更
+
+125cc エンジンを作った実地試験（0.6.9）で見つかった不具合を直した。どれも 0.7.0 で同じ手順を走らせて再現してから直した（試験が 0.7.0 では落ち、0.7.2 では通る）。
+画面の受け入れは [docs/ui-redesign/accept/U072](docs/ui-redesign/accept/U072)（`tests/ui/u072_check.py`）。
+
+- **表（スプレッドシート）を変えても式が追従しなかった**（パラメトリック設計の土台）: セル「A1」に別名「k」を付けて `Params.k` と使うと、A1 を変えて再計算しても何も変わらなかった。本家の新しい「細かい再計算」が、変わったプロパティを名前だけで比べていたため（A1 と k は同じもの）。名前をプロパティに引き直して比べる。`FreeCADCmd -t TestRecompute`
+- **組立で駆動の値を大きく動かすと、黙って動かなかった**（クランク角 0→90° など）: ソルバーが収束せず駆動のジョイントを「冗長」として捨て、`solve()` は 0 を返していた。解いた後に固定・回転・玉のジョイントが成り立っているかを確かめ、成り立たなければ前に成り立った位置から 15° 以下の刻みで近づける。それでも駄目なら -7 と警告。`-t TestAssemblySolve`
+- **重なった輪郭の押し出しが黙って一部だけになった**（コンロッド: 2 つの目と腕）: 交わる閉じた輪郭は和を取り、内側の輪郭は穴にする（多くの CAD と同じ）。入れ子だけの輪郭は今まで通り。`-t TestPartDesignFixes`
+- **スクリプトで作った鏡像・パターンが部品の最後にならなかった**（次の特徴が配列の前の形の上にでき、部品が 2 つに割れた）
+- **スケッチの拘束一覧で落ちた**: 消えた拘束を指す行をダブルクリックしても落ちず、一覧を作り直す。復旧用の自動保存を 2 分ごとに（15 分では落ちたときに何も残らないことがある）。最初の設定の選択はすぐ保存する（落ちると最初の質問がまた出た）
+- **組立のジョイント**: 組立をダブルクリックで有効にしなくても、文書にある 1 つの組立で始まる。小さな穴（ピン穴）の近くをクリックすると、周りの平らな面より穴（円筒面・円の辺）を選ぶ
+- **スケッチ中の数字は数**: 1・3 などで視点が変わらない。選べない物をクリックしたときの「許可されていません: Unnamed.Body.Sketch001.Constraint7」を「拘束の記号はここでは選べません。線・円・点を選んでください」に
+- **部品の棚**: 必要な長さが規格の表の最長を超えると、黙って最長（M8×80）を返していた。必要な長さ（5 mm 単位に切り上げ）で作り、規格外であることと寸切りボルトなどの代案を表示する
+
+確かめたが再現しなかったもの: ホバーなしのクリック（0.7.2 では 1 回目で選ばれる。受け入れに入れた）。
+残り（次の版）: 小さなスケッチへの寸法の付けやすさ（記号の重なり・値の欄がすぐ出ない・Esc で黙って消える）、ジョイントを式で動かす正式な手段・参照の書式・干渉検査の速さ・Belt の歯数・ヘッドレスの PDF（CLI）、断面の部品ごとの色。
+
+## 0.7.1 の変更
+
+はじめて CAD を使う人の使い勝手の試験（0.6.9、[docs/ui-redesign/usability-0.6.9/report.md](docs/ui-redesign/usability-0.6.9/report.md)）で見つかったことを直した。
+受け入れは [docs/ui-redesign/accept/U071](docs/ui-redesign/accept/U071)（`tests/ui/u071_check.py`、xdotool の本物の操作で 42 項目。同じ手順を 0.7.0 で走らせた結果 `before-0.7.0.json` では 12 項目が落ちる）。
+
+- **組立**: 「部品を置く」で、今の文書の部品（板）を組立に入れて固定し、置いた部品は固定しない（「動かせません」が出ない）。固定された部品を先に選んでも、もう一方が動く。「入れ替え」で固定された部品を動かさない（板が裏返らない）
+- **同じ部品をもう 1 つ**: 組立の部品で Ctrl+C・Ctrl+V、候補の「もう 1 つ」、「格子に並べる（複製）」（横×奥の数と間隔。四隅なら 2 × 2）。木の部品をダブルクリックしても別のファイルに飛ばない。別ファイルの部品の面を選ぶと、組立の道具だけを出す
+- **穴**: 1 つ目の後も面をクリックするたびに穴が増える。パネルに穴ごとの「左の辺から・下の辺から」の欄（数字で位置を決める）
+- **「3 と打って Enter」**: 「同じ向きの辺も」の後も候補が残り、数字はどこにフォーカスがあっても数値欄へ（視点が「下」に変わらない）。穴の壁の継ぎ目の辺は選ばない
+- **図面**: 丸めた角を穴と数えない（「4×⌀10 キリ」が消えた）。穴の大きさごとに 1 行。穴の位置の寸法（左と下の辺から）を自動で入れ、候補・検索の「穴の位置の寸法」でも入れられる。表題欄を日本語に（表題・作成・承認・尺度…）。PDF の書き出しはファイル名から始まる
+- **DXF**: 図面の枠・表題欄の四角を外形にしない。閉じていない線があれば、その数と範囲を伝えて何も作らない（枠が板になって部品の線が黙って捨てられていた）
+- **ねじは穴についていく**: 部品の棚で入れたねじ・座金・ナットは、穴を動かすと一緒に動く。図面の穴の中心線も
+- **3D のタブ**: 文書の最後の 3D のタブを閉じると、保存を聞いて文書を閉じる。開いた文書は 3D を表に
+- **見え方**: 道具のパネルを開いたときの視点の移動をアニメーションさせない（平面の 1 回目のクリックが外れない）。数値欄で長さを変えた後、はみ出したら全体が見えるように引く
+- **部品の棚**: 穴より細いねじ（⌀6 の穴に M5）は通しボルトとナットにして、長さは板厚から（M5×8 → M5×25）
+- **英語と小さなこと**: アイコンが見つからない警告を通知に出さない（記録だけ）。検索の目録のアイコンの場所をこの機械の場所に読み替える（ビルド機の /home/runner/… を探していた）。「Processing...」を日本語に。検索で同じ名前の道具に「— スケッチ」「— 図面」と添え、まとめのボタンの重複を出さない。STL の確認の文（「すき間なく閉じている」）、STL の名前は文書名から
+- 試験: `FreeCADCmd -t TestAssemblyCopies`・`-t TestLooseOutline`・`-t TestDrawingAuto`（丸めた角・穴の位置）・`-t TestPartsShelf`（細いねじ）・`-t TestCommandSearch`（同じ名前）
+
+残り: 再び開いた直後に図面の計算で「変更あり」の印が付くこと、ガイドの ✓ のちらつき、開始ページのカードの並び、STL 書き出し後の Ctrl+O。
+
+## 0.7.0 の変更
+
+画面の作り直し（[docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)）の残りの 4 つを入れて、全段階（P0〜P10）が済んだ版。
+受け入れの画面と結果は [docs/ui-redesign/accept/P11](docs/ui-redesign/accept/P11)（`tests/ui/p11_check.py`、xdotool の本物のマウスとキーで 71 項目）。
+
+- **作った順の木の「ここまで有効」線**: 部品の最後の手順の下に青い線。線を上の手順へドラッグすると、それより下の手順は形に効かなくなり（灰色の斜体・「未反映」）、
+  次に作る手順は線の所に入る。一番下へ戻す（またはダブルクリック）と全部が効く。動かすたびに元に戻す 1 段（Ctrl+Z）。右クリックに「ここに差し込む」（スケッチでも）と
+  「全部の手順を有効に戻す」。中身は本家の Tip（先端）だが、「先端」という言葉は出さない
+- **道具のパネルは大事な項目だけ**: 押し出しなら長さと逆方向（終わり方は「寸法」以外のときだけ）、切り抜き・回す・穴・丸め・面取り・厚み・鏡に映す・並べる（直線・円）も
+  3 つまで。残りは「詳しく ▸」の中（開いたことは道具ごとに覚える）。「変更時に再計算」とプレビューの切り替えも「詳しく」へ。スケッチの寸法の小さな欄も、名前と参照は「詳しく ▸」
+- **選んだ物を場所の言葉で**: 「Pad.Face6」ではなく「押し出しの上面」「穴 ⌀6 の内側の面」「押し出しの縦の辺 ×4」。その面・辺を作った手順、そこでの役目（上・下・横、内・外、押し出しの向き）、
+  形の種類から決め、同じ言葉はまとめて数える。カーソルの下と選んだ物はステータスバー、選んだ物の横の候補の題、丸め・面取りのパネルの一覧に出る
+- **道具の名前を用語表に**: 道具の列・スケッチの帯・候補・Ctrl+K に残っていた本家の訳を直した（押し出す・切り抜く・回す・鏡に映す・まっすぐ並べる・円に並べる・動かす・測る、
+  円（中心から）・長方形・線をつなげて描く・平行・直角・点をつなぐ・はみ出しを切る、書き出す・読み込む ほか 115 個）。説明は「何が起きるか」の 1 文。古い名前でも検索で見つかる
+- 「同じ向きの辺も選ぶ」が穴の壁の継ぎ目の辺まで選んでいた
+- 試験: `FreeCADCmd -t TestHistoryLine`（7）・`-t TestSelectionWords`（11）・`-t TestTaskPanels`（7）・`-t TestWording`（5、本家の言葉の残りを止める）
+
+## 0.6.9 の変更
+
+- **面の矢印をクリックしても面が選べる**（0.6.7 の不具合）: 面の真ん中に立つ矢印が左クリックを全部受け取り、面を選べなかった（測る・くっつける・横の候補が使えなかった）。
+  矢印を押してから 5 ピクセル以上動かしたときだけ面を動かし、動かさずに放したら下の面を選ぶ。矢印の根元（面の上）はつかむ所にせず、矢印も小さくした（56→36 ピクセル）。
+  受け入れ（[docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull)、41 項目）に「面の真ん中のクリックで面が選ばれ、面は動かない」「矢印のドラッグで面が動く」を足した
+
+## 0.6.8 の変更
+
+「測定」を押さなくても測れる・押す前に結果が見える。選んだ物の横の候補（コンテキストバー）と、いつも同じ道具の列に足した。
+受け入れの画面は [docs/ui-redesign/accept/measure-preview](docs/ui-redesign/accept/measure-preview)。
+並行して出した版との関係: 本体のコードは 0.6.6 の配布物から入っている（残した寸法の名前を日本語にしたのは 0.6.5・0.6.7 から）。0.6.8 はその説明・受け入れの手順・画面を足した版で、パッチは 0.6.7 と同じ。
+
+- **2 つ選ぶと、すぐ測る**（Ctrl で 2 つ。同じ部品でも別の部品でも）: 点と点は距離と ΔX・ΔY・ΔZ、点と面・辺は距離、
+  平行な辺どうし・面どうしは**すき間**、平行でなければ**角度**、円・穴どうしは**中心間**と ⌀。値は候補の左に出て、
+  右にはいままでの道具（「くっつける」「点から点へ」など）がそのまま並ぶ。入れ子の部品・回した部品でも全体の座標で測る
+- **1 つ選んだときも小さく**: 辺の長さ、面の面積、円・穴の ⌀ と R
+- **値はクリックでコピー**（数字だけ）。**「寸法を残す」**で消えない寸法（本家の測定のオブジェクト。「寸法」のグループにまとまる）を作る。元に戻す 1 段
+- **道具の下見**: 道具の列か候補のボタンにマウスを 0.3 秒置くと、いま選んでいる物にその道具を使った結果を半透明で重ねる
+  （足す所は緑・削る所は赤・写しは青）。丸め・面取り（選んだ辺、面なら周りの辺。数値は候補の数値欄か前回の値）、押し出し 10 mm・切り抜き（スケッチか平らな面）、
+  穴（面のクリックした所に ⌀6）、鏡に映す・並べる・円く並べる（選んだ手順）、部品の鏡像。計算は形の写しで別のスレッドで行い、
+  マウスが離れたら止める。1 秒で終わらないものは出さない。**文書は変えない**（物も元に戻すの段も増えない）
+- 道具の説明（ツールチップ）を「何が起きるか」の 1 文に（例「選んだ辺の角を丸めます。」）
+- 試験: `FreeCADCmd -t TestMeasureMath`（平面・円柱・回した部品・入れ子の部品、14 項目）、`-t TestToolPreview`（大きさと位置・文書を変えないこと・取り消し・遅いとき、13 項目）、
+  画面の受け入れ `tests/ui/measure_preview_check.py`（xdotool の本物のクリックとマウスの移動）
+
+## 0.6.7 の変更
+
+**面を動かす（プッシュプル）と形の上の寸法**。道具を選ばずに、形そのものをつかんで直す。受け入れの画面は [docs/ui-redesign/accept/pushpull](docs/ui-redesign/accept/pushpull)。
+
+- **面の矢印をドラッグ**: 立体の平らな面（と、ぐるりと一周する丸い面）にカーソルを載せると小さな矢印が出る。矢印をドラッグすると面がまっすぐ動き、外へは足し、内へは削る。
+  動かしている間もモデルがその場で変わり、カーソルの横に距離と何が変わるか（「押し出し の長さ 5 → 10 mm」）が出る。距離は丸い数と、ほかの平らな面の高さ（「面とそろう」）に吸い付く。
+  Shift で吸い付かない。放すと確定（元に戻す 1 段）、ドラッグ中の Esc で全部元どおり
+- **何が変わるかは作り方から**: 押し出し・切り抜きの端の面はその長さ、穴の底は深さ、スケッチから押し出した側面はその線だけを動かすスケッチの寸法（無ければその面から新しい押し出し・切り抜き）、
+  穴・丸い出っ張りの面は直径、箱・円柱はその大きさ。読み込んだ立体（STEP など）は「面を動かす」の手順になり、元の立体と面と距離を持つので後から距離を変えられる
+- **数を打っても**: 面を選ぶと横の候補の先頭が「面を動かす」と距離の欄（内へはマイナス）。丸い面は「直径」の欄に新しい直径
+- **形の上の寸法**: 部品や手順を選ぶと、それを決めている数（押し出しの長さとスケッチの寸法、穴の径と深さ、丸めの半径、並べる数と間隔、箱・円柱の大きさ、面を動かした距離）が、
+  形の上のそれが決める所に札で出る。札をクリックして打ち直し Enter で作り直す。単位付き（10 mm、1/2 in）・計算（10+5）・`=` で始まる式も使える。何も選ばなければ札は出ない
+- 試験: `FreeCADCmd -t TestPushPull`（26 件）、`FreeCADCmd -t TestDimensionLabels`（11 件）、仮想画面で xdotool のドラッグを送る `tests/ui/pushpull_check.py`（37 項目）
+
+## 0.6.6 の変更
+
+**部品の棚**（道具の列の「部品の棚」、Ctrl+K の「ねじ」「ボルト」「ナット」「座金」「ワッシャ」「六角穴付き」「M6」）。詳しくは [docs/parts-shelf.md](docs/parts-shelf.md)、
+受け入れの画面は [docs/ui-redesign/accept/parts-shelf](docs/ui-redesign/accept/parts-shelf)。
+
+- **ねじ・ナット・座金を JIS の名前で**: 六角穴付きボルト（JIS B 1176）・六角ボルト（B 1180、全ねじ・半ねじ）・六角ナット（B 1181）・平座金（B 1256）・
+  ばね座金（B 1251）・止めねじ（B 1177、平先・くぼみ先）・六角穴付き皿ボルト（B 1194）、M3〜M12。名前は「六角穴付きボルト M6×20」
+- **穴をクリックすると合うねじが入る**: 穴を選ぶと横の帯に「ねじを入れる」。太さは穴の径から（下穴・ねじ穴・キリ穴 1〜3 級・座ぐり・皿もみ）、
+  長さは締める板と入るねじ穴から（同じ軸のほかの部品も見る。止まり穴の底に当たらない規格の長さ）、穴の軸の上に置く（「くっつける」と同じ計算）。
+  座金・ナット・描いていない板の厚さも選べ、変えるとその場で入れ直す
+- **部品表に自然に載る**: 種類と大きさごとに見えない元の形 1 つ（名前・規格・呼び・品番のプロパティ付き）と、使う所にはリンク。組立の部品表ではリンクの数が数量になる。
+  設計の検査は、ねじ穴に入ったねじ山の重なりを干渉にしない
+- **アルミフレーム**: 20・30・40 シリーズ、溝 6・8 の汎用の断面（公開されている一般的な寸法から。メーカーのデータは入れていない）。2 点のクリックで置き、
+  1 点目の後は影がついてくる。長さを打ち込んでもよい
+- **会社の部品**: FCStd・STEP のフォルダー（一覧 `shelf.csv` は無くてもよい。Excel の Shift_JIS の CSV も読める）を棚に足せる。会社全体なら環境変数 `FREECAD_PARTS_SHELF`
+- **Fasteners ワークベンチを同梱**（[shaise/FreeCAD_FastenersWB](https://github.com/shaise/FreeCAD_FastenersWB) `fddd07af`、**GPL-2.0-or-later**、手を加えずに `src/Mod/Fasteners`）。
+  棚のねじの形はこれで作る。Fasteners の道具 223 個も Ctrl+K と「その他の道具」から使える。リリースのビルドは、同梱されていて棚の試験（`FreeCADCmd -t TestPartsShelf`）が通ることを確かめてから載せる
+
+## 0.6.5 の変更
+
+**部品をつかんで動かす（磁石）**と**そろえる**。受け入れの画面は [docs/ui-redesign/accept/magnet-0.6.5](docs/ui-redesign/accept/magnet-0.6.5)
+（`tests/ui/magnet_check.py`、xdotool の本物のドラッグで）。0.6.5 には 0.6.6 の部品の棚は入っていない。
+
+- **部品をつかんで動かす**: 部品の上で左ボタンを押してドラッグすると、道具を選ばずにそのまま動く。動かさずに離せば今までどおり選ぶだけ、
+  何も無い所からのドラッグは今までどおり範囲選択。上から見ているときは、つかんだ高さの水平な面の上をすべり、つかんだ点はカーソルの下にある。
+  ほかの部品の上面（台・板）の上に来るとその上に載り、外れると元の高さに戻る（元の高さより下には落ちない）。真横から見ているときは画面に向いた縦の面の上を動く
+- **磁石**: 面がほかの部品の面に約 12 ピクセルまで近づくと、向かい合わせにぴったりくっつく（10° までの傾きは回してそろえる）。丸い面は同じ軸に
+  （ピンを穴の近くに持っていくと入る所まで入る: 止まり穴は底まで、頭のあるねじは頭が当たるまで、通し穴は反対側の面とそろうまで）。角は角に、
+  面の高さ・並びはほかの部品とそろい、そろった線を点線で示す。くっついた相手の面はオレンジの枠。そのままドラッグを続けると離れる。**Alt** を押している間は磁石なし
+- **Ctrl を押しながらドラッグでコピー**を置く: Body やパラメトリックな形は独立したコピー（別々に直せる）、読み込んだ STEP の形・App::Part の組・リンクはリンク
+  （形を共有し、部品表では数として数えられる）
+- 離すと確定（元に戻す 1 回で戻る）。ドラッグ中の **Esc** で元の位置へ。動くのは「くっつける」と同じ物（Body・形・リンク。Body の中の手順ではない。
+  まとまり（App::Part）を選んでいればまとまりごと）。取り付けのある物は取り付けを保ってずらしの量を変える。位置が式で決まっている物・固定された物・
+  組立で固定（ground）された物は動かさず、理由をカーソルの横に出す
+- 200 個の部品のそばでも 1 回の動きは中央値 4.5 ms・95% で 9 ms（仮想画面）。ほかの部品の面は近いものから、動きの合間に読む
+- **そろえる**（部品を 2 つ以上 Ctrl で選ぶと横の候補に出る。Ctrl+K の「そろえる」「整列」「揃え」「等間隔」でも）: 左・中央・右／手前・中央・奥／下・中央・上
+  （軸に沿って見ているときは画面の上下左右の言葉）、**等間隔に並べる**（両端の 2 つは動かさない）、**間隔を指定**（mm）、**ぴったり並べる**（選んだ順に）。
+  基準は最初に選んだ物（動かない。3D 画面に枠）か、選んだ物全体の範囲。ボタンに重ねると結果が見え、クリックで確定（元に戻す 1 回）、Esc でやめる。
+  大きさは回した部品でもぴったりの箱（optimalBoundingBox）、入れ子の App::Part の中の部品もそのまま
+- 本家のコマンド「Align To…」（選んだ面に視点を向ける）の訳が「整列」だったのを「選んだ面に視点を向ける」に
+- 試験: `FreeCADCmd -t TestMagnetDrag`（24 項目）、`FreeCADCmd -t TestArrange`（11 項目）
+- 先に出た 0.6.6 には、この機能の途中の版が入っている。0.6.6 では文書を閉じた後に別の画面へ切り替えると落ちることがある（閉じた 3D 画面を Python から触っていた）。
+  0.6.5 と 0.6.7 で直した
+
+## 0.6.4 の変更
+
+3D 画面のマウス操作を「見ている所についていく」ように（標準の方式と、初回起動で選べるタッチパッドの方式。ほかの方式はそのまま）。
+受け入れの画面は [docs/ui-redesign/accept/nav-0.6.4](docs/ui-redesign/accept/nav-0.6.4)。
+
+- **ホイールは前後に進む**: カーソルの下の点（何も無ければ今の焦点の深さ）に向かって目が進む。進み方は残りの距離に比例するので、面に近づくほどゆっくりになり、
+  面を突き抜けない（ごく近くで止まる。回し続けても少しずつ近づくだけ）。決まった拡大の限度は無く、戻すときも限りなく戻れる。正投影でも同じ点を中心に同じだけ寄る
+- **回転はカーソルの下の点のまわり**: 右ドラッグを始めた所の形の点が中心になり、その点は画面の同じ所にとどまる。何も無い背景から回すと、最後に見ていた点（画面の中にあれば）、
+  なければ見えている形の真ん中。遠くの決まった点のまわりを回って形が飛んでいくことは無い。回している間だけ中心に小さな印
+- **移動（中ドラッグ）はつかんだ点がカーソルについてくる**。ホイール・移動・回転のあとは焦点がその深さに移るので、ビューキューブもいま見ている所のまわりで回る。
+  「全体を表示」は形の中心を見る
+- **既定で遠近法の表示に**（設定を保存していなければ）。目が近づく動きは遠近法でしか見えない（正投影では拡大になるだけ）ため。正投影は表示のメニューで今までどおり選べる
+
+## 0.6.3 の変更
+
+- **図面を描く**: 面を選んでから押すと、その面が正面図になる。穴の中心線と寸法は、穴が円に見える図に付ける（板を横から見た正面図なら、平面図の穴に）
+- **組立に部品を置くパネル**: 開いている文書の下に、組立のフォルダー（保存前は最後に使ったフォルダー）の FCStd・STEP・IGES を並べる。クリックで開いて中の部品を一覧に出す
+- 0.6.2 の Linux の AppImage（公開したもの）で、画面の作り直しの受け入れの手順 P0〜P10 を全部通した
+
+## 0.6.2 の変更
+
+画面の作り直しの P5・P6（一部）・P9・P10 と、残りの直し（[設計の 13 章に状況](docs/ui-redesign/00-design.md)）。受け入れの画面は [docs/ui-redesign/accept](docs/ui-redesign/accept)。
+**0.6.1 には Windows 版がありません。Windows では 0.6.2 を使ってください。**
+
+- **設定を「したいこと」で**（☰ → 設定・右上の歯車）: 基本（単位・桁・スタート画面・本家のメニュー）、操作（マウスの方式。タッチパッドも）、図面（投影法・桁）、
+  ファイル（DXF の質問・前の版を残す・復旧用の保存）、ネットワークとアカウント（0.5.7 のネットワークと AI キーのページをそのまま）、AI。変えるとすぐ効く。
+  「詳しい設定（すべて）」で本家の全ページ。探す欄で「プロキシ」「JIS」「タッチパッド」がその分類に着く。AI パネルの「たずねずに実行」は常には出さず、設定 → AI に
+  （今までどおり FreeCAD を閉じるまで）。初回起動でマウスの方式も聞く
+- **組立**: 部品を置くパネルの「ファイルを開く」で STEP・IGES も置ける。組立の中で 2 つの丸い面を選ぶと、横に「差し込む（回ってすべる）」「回るだけ」「固定でつなぐ」。
+  ジョイントの名前を動き方で（回るだけ（回転）など）。設計の検査はすき間ばめのピンを「浮き」にしない
+- **目的別の書き出し**（☰ → 読み込み・書き出し・印刷）: 3D プリント用（3MF・STL、細かさ、穴・裏返り・3 枚以上の面の辺・離れた塊を調べた結果、「直してから書き出す」を 1 つの画面で）、
+  ほかの CAD へ（STEP）、2D（図面の DXF・PDF。無ければ先に図面を作る）、画像、すべての形式
+- **開いた後の案内**: DXF・DWG・JWW を開くと「この図形でできること」（押し出して立体にする・スケッチにして直す・ほかの形式で保存）、STL などのメッシュを開くと
+  「このメッシュでできること」（調べて直す・立体にする・3D プリント用に書き出す）の帯
+- **左側**: 作った順の木には今の文書だけ。詳しいプロパティは畳み、右クリックの「詳しいプロパティ」で出す。道具のパネルを開くと、モデルをパネルに重ならない所に見せる
+- **スケッチの寸法をその場で打つ**: 寸法をダブルクリックすると、カーソルの横に枠の無い小さな欄（数字が選ばれた状態。Enter で決定、Esc でそのまま）
+- 製品名の無い STEP の部品が、読み込み方によっては「Open CASCADE STEP translator 8.0 1」のままだったのを直した（0.6.0 の直しの漏れ。0.6.0 の AppImage で受け入れの手順を通して見つけた）
+- **FreeCADCmd で日本語を print しても止まらない**: Windows の昔のコードページ（cp1252・cp932）の端末や、Linux の C ロケールで、出せない文字が
+  UnicodeEncodeError になっていた。出せない文字は置き換え、Windows では UTF-8 で書く（端末のときは端末を UTF-8 に切り替える）。Windows の試験に cp1252 で日本語を出す確認を足した
+  （0.6.1 の Windows 版は、この不具合でネットワークの試験の説明文が出せずに止まった）
+
+## 0.6.1 の変更
+
+**0.6.1 には Windows 版がありません（Windows では 0.6.2 を）。**
+
+画面の作り直し（[設計](docs/ui-redesign/00-design.md)）の P1〜P4・P7・P8。**モードを無くした一つの画面**になった。
+受け入れの画面は [docs/ui-redesign/accept](docs/ui-redesign/accept)（P1〜P4・P7・P8。`tests/ui/p*_walkthrough.py` を仮想画面で動かして撮る）。
+
+- **道具の検索（Ctrl+K・右上の欄・☰ → 道具を探す）**: 全モジュールの全コマンド（1158 個。読み込んでいない BIM・FEM・CAM・メッシュなども）を、
+  日本語名・英語名・別名（Pad・押出・キリ・STL 直す…）・説明で探す。今の選択で使える物・普段のモジュールの物を先に、行ごとに「どこにあるか」。
+  読み込んでいないモジュールの道具は選んだときに読み込む（画面は変わらない）。合う物が無いときは最後の行で AI に聞く。
+  目録（CommandCatalog.json）はビルドのときに画面なしの FreeCAD で全作業場を読み込んで作る（`FreeCADCmd -t TestCommandSearch`）
+- **本家のメニューバーとツールバーを外した**: メニューは「☰」1 つ（新しい部品・組立・図面、開く・保存、読み込み・書き出し、検索、その他の道具、
+  本家の編集・表示・ツール・マクロ・ウィンドウ・ヘルプは中に）。その右に元に戻す・やり直し・検索・AI・設定。
+  **いつも同じ道具の列**（スケッチ・押し出し・切り抜き・回転・穴・丸め・面取り・厚み・鏡像・配列・動かす・くっつける・測定・図面を描く・部品を置く・
+  その他の道具）は、スケッチ中も図面のページでも組立でも変わらない。1 文字の近道（S・E・C・H・F・M・D）は文字の欄・日本語入力の変換中・
+  スケッチ中には効かない。設定 → 標準 → 画面 で本家のメニューとツールバーに戻せる
+- **その他の道具**: 全モジュールの道具を種類ごと（部品づくり・形の加工・メッシュ・2D の作図・図面…、専門の道具箱: 建築・加工・解析・ロボット…）に、
+  本家のメニューの並びで。はじめて使うときに読み込む。統合版で届かなくなっていた操作（missing-operations の付録 639 個）は全部、検索かここで届く
+- **右クリック**: 手順を選ぶと「元のスケッチを編集」「ここに差し込む（ここまで有効に）」「手順を移動」
+- **その場の手順**: スケッチを描く間・道具のパネルの間は、道具の列の下に帯（何をしているか・その手順の道具に名前・✓ 終わる・✕ やめる）。
+  本家のスケッチャーのツールバーとパネルの OK/キャンセルは出さない。✕ はスケッチで描いた物も含めて始める前に戻す。
+  手順の途中で道具の列を押すと、手順を終えてからその道具に進む
+- **選んだ物の横の候補を表に**（ContextRules.py、`FreeCADCmd -t TestContextRules`）: 面・円柱の面・直線の辺・円の辺・点・部品・別の部品の 2 面・
+  2 つの部品・メッシュ（調べて直す・立体にする）・DXF の線（輪郭を押し出す・スケッチにする）・図面の円（直径・半径）・図面の線・図・ページ（PDF）。
+  先頭の数値の要る道具に**数値欄**: 面を選んで 12 と打って Enter で、パネルを開かずに 12 mm 押し出す（ボタンで詳しいパネル）。
+  「同じ向きの辺も選ぶ」「同じ大きさの円も選ぶ」。最後は「AI に頼む」と「…」（これに使える道具を全部）
+- **スタート画面**: 「何をつくりますか」（新しい部品・新しい組立・図面を描く・ファイルを開く）と検索欄。右に「はじめての人へ（5 分）」:
+  穴あきの板・寸法をあとから変える・STEP を組み立てる・JIS の図面、の 4 つ。見本をその場で作り、手順を右に出して、やったところに ✓ が付く
+- **図面を描く**: 1 回押すと、A4 の表題欄付きの用紙（JIS のときの既定）に三面図・穴の中心線・穴の寸法（同じ穴をまとめて「4×⌀6 キリ」）・
+  外形と厚みの寸法・表題欄（名前・尺度・日付・普通公差 JIS B 0405-m）まで（`FreeCADCmd -t TestDrawingAuto`）
+- スタートの画面が「ヘルプ」メニューが上の段に無いと落ちていたのを直した（本家の Start の不具合）
+- ネットワークの設定でプロキシを適用すると画面が固まるのを直した（自動検出をしない・確認は裏で 5 秒まで・結果を日本語で）
+- AI チャット: キーの前後の空白・改行・引用符を取り除く、ログイン用のトークン（sk-ant-oat…）を入れても使える、断られたときに何を確かめるかを日本語で出す
+
+## 0.6.0 の変更
+
+画面の作り直し（設計は [docs/ui-redesign/00-design.md](docs/ui-redesign/00-design.md)。「モードを設けない」「本家の画面は消すつもりで置き換える」）の最初の段階 P0
+「行き止まりを無くす」。いつもの仕事が英語のダイアログや本家の考え方で止まっていた所を、何も聞かずに正しく進むようにした。
+受け入れの画面は [docs/ui-redesign/accept/P0](docs/ui-redesign/accept/P0)（`tests/ui/p0_walkthrough.py` を仮想画面で動かして撮る）。
+
+- **STL の書き出し**: 名前を `plate.stl` にして保存すると「No FEM mesh for export selected」（英語）で何もできなかった。
+  拡張子を受け持つ形式が複数あるときは、その形式そのもの（STL Mesh）を選ぶ。FEM の書き出しが選ばれるのは FEM の形式を選んだときだけ
+- **組立に部品を置く**: 「The current document must be saved…」「ground しますか？」（英語）で止まらない。保存していない組立は
+  利用者のデータの `Unsaved` に黙って仮に保存し（未保存のまま。保存すると場所を聞く）、保存していない STEP の部品は組立の中に写して置く。
+  最初に置いた部品は自動で「動かない」に（設定で変えられる）
+- **DXF**: 開くたびの読み込み方のダイアログを出さない（個別のパート形状。設定 → Draft → DXF で変えられる）。
+  開いた図面の線を選んで「押し出し」を押すと、「アクティブな部品が必要です」で止まらず、選んだ線を含む閉じた輪郭（1 本ずつ別の物になった線でも）を
+  新しい部品のスケッチにして押し出す。中身の読めない DXF は「読める図形がありませんでした」と言う
+- **三面図**: 正面図が今の 3D の向き（等角）になってページからはみ出していた。部品の一番広い平らな面を正面にし（上は上のまま）、
+  平面図・右側面図も最初から付け、3 つが用紙に収まる標準の尺度（10:1〜1:1000）を選ぶ
+- 図面で線を選んだときのステータスバーを「前面 の 辺 3」のように（今までは「Unnamed.ProjItem.Edge3」）
+- 製品名の無い STEP（FreeCAD などが書いたもの）の部品と文書を、「Open CASCADE STEP translator 8.0 1」「名称未設定」でなくファイル名で
+- **言葉をそろえた**（用語表どおり、176 か所）: 加算ロフト → ロフトで足す、加算プリミティブ → 足す形（箱・円柱など）、マルチ変換 → 並べ方の組み合わせ、
+  データム → 基準、接地 → 動かない、アセンブリを求解 → つながりを計算し直す、投影グループ → 三面図、照合番号 → 部品番号、
+  並行拘束（誤字）→ 平行拘束、「AI に相談」→「AI に頼む」、アセンブリ → 組立
+
+## 0.5.8 の変更
+
+- **部品どうしをクリックだけでくっつける・動かす道具**（形 → くっつける・動かす、ツールバー、選んだものの横の候補）。
+  配置のダイアログ・取り付け（アタッチメント）・アセンブリのジョイントを使わずに、部品をぴったり合わせられる。
+  - 「くっつける」（`J`）: 動かす部品の面 → 相手の面。面どうしが向かい合ってくっつく。向きを反転・すき間・回転（90° ずつ／自由な角度）・合わせる位置（クリックした点／中心／今の位置のまま）
+  - 「軸をそろえる」: 丸い面や円どうしの軸を 1 本に（軸を穴に通す）
+  - 「点を面に合わせる」: 部品を回さずに、点が面に乗るまでまっすぐ動かす
+  - 「点から点へ動かす」（`Shift+M`）: 角・辺の真ん中・円の中心・面の中心に吸い付く（印と名前が出る）。透けた写しがカーソルに付いてくる。Ctrl でコピー
+  - Ctrl で 2 つ選ぶと、合う道具だけが横の候補に出る。先に選んだほうが動き、パネルに「動かす → 合わせ先」と「入れ替え」
+  - 押した時点で動いて見え、パネルで変えるとすぐ反映。OK で確定（元に戻す 1 回）、キャンセル・Esc で元どおり
+  - 部品（PartDesign の Body）・Part の形・読み込んだ STEP・App::Part・リンクのどれでも。入れ物の中や回した入れ物の中でも全体の座標で計算する。
+    入れ物ごと動かすこともできる。リンクの中身（リンク先）は動かさない
+  - 取り付けられた部品は、取り付けを保ってずれ（オフセット）を変えるか、取り付けを外すかを選ぶ（パラメトリックな取り付けを黙って壊さない）
+  - 位置の計算は画面と分けて `SnapMath.py` に置き、画面なしで試験する（`FreeCADCmd -t TestSnapMath`、19 項目: 箱・円柱・入れ子の App::Part・回した部品・リンク・STEP・取り付け）
+
+## 0.5.7 の変更
+
+- **Windows: `FreeCADCmd` に日本語のパスを渡すと止まっていたのを直した**。`freecadcmd.exe script.py -- 'C:\…\日本語のフォルダ\天板.jww'` が、スクリプトが走る前に
+  `Unknown exception while processing file` で止まっていた。コマンドラインを ANSI コードページ（日本語版は CP932）のまま UTF-8 として読んでいたため。
+  Windows ではコマンドラインを UTF-16 で受け取って UTF-8 に直すようにした（画面ありの `FreeCAD.exe` はもともとそうしていた）。
+  `--` の後ろの引数（`sys.argv`）、開くファイル・スクリプト自体のパス、`-c` のコードのどれに日本語があってもよい。Linux は変わらない
+- コマンドラインのファイルの処理で Python のエラーが起きたとき、「Unknown exception」でなくエラーの中身（とトレースバック）を出す
+- リリースの手順で、作った Windows 版に日本語のパスを PowerShell と cmd から渡す試験（`tests/windows_argv_smoke.ps1`）を通ってから載せるようにした。
+  公開済みの版にも当てられる（Actions の「Windows argv smoke test」）。`import ssl` も確かめる。0.5.6 では 6 項目すべて落ちる（ssl は RAND_pseudo_bytes のエラー）
+- **Windows: AI チャットが「Claude に接続できない: cannot import name 'RAND_pseudo_bytes' from '_ssl'」で使えなかったのを直した**。
+  Windows 版は、本家の手順のまま Python 3.11 用の `ssl.py`（Windows の証明書の不具合の回避策入り）を Python 3.13 に上書きしていて、
+  FreeCAD の Python で `import ssl` そのものが失敗していた。上書きをやめた（回避策は Python 3.10 から Python 自身に入っている）。
+  配布物を作るときに、AI チャットの部品（ssl・claude-agent-sdk・同梱の claude）が全部読めることを AI に接続せずに確かめ、だめなら載せない
+- **プロキシと会社の証明書の設定**（編集 → 設定 → 標準 → ネットワーク）。FreeCAD 全体で使う。既定はシステムの設定で、
+  Windows のプロキシ（インターネット オプション。例外も）を AI チャットの claude にも渡す。手動のプロキシ・プロキシを使わない、も選べる。
+  通信を検査している会社のネットワークでは、会社の証明書のファイル（PEM）を選ぶ。環境変数 `HTTPS_PROXY`・`NO_PROXY`・`SSL_CERT_FILE` なども引き継ぐ。
+  プロキシや証明書でつながらないときは、AI チャットに「プロキシ経由で接続できない: …」「証明書を確かめられないので接続できない: …」と、どこを確かめればよいかを出す。
+  つながらずにやり直している間は、そのことをパネルに出す（黙って待たない）。自動構成スクリプト（PAC）だけのプロキシは読めないので、手動で入れる
+- AI チャットの「API キー…」ボタンを常に出すのをやめた。キーが要るときだけ「API キーを入れる…」を出し、変える・消すのは 編集 → 設定 → 標準 → AI チャット に
+- 同梱の jww2dxf を jww-tools v0.1.2 に（`--check` の最後に全図面で比べやすい `check total` の行。変換の結果は同じ）
+
+## 0.5.6 の変更
+
+- **Jw_cad の図面（`.jww`・`.jws`）を開けるようにした**。「開く」「インポート」で選ぶだけ。新しく作った変換器 [jww-tools](https://github.com/monyuonyu/jww-tools) の `jww2dxf` を同梱し、DXF にしてから読み込む
+  - 線・円・円弧・楕円・点・文字・寸法・ソリッド・ブロック・画像、レイヤグループとレイヤ（名前付きの画層に）、線種・線色・線幅
+  - Jw_cad 10.03.7 自身の DXF 出力（`JWW2DXFConv.dll`）と 307 図面（データの版 220〜700）で図形ごとに突き合わせ、線 152,625・円弧 10,001・点 2,313・文字 22,116・ソリッド 1,085・画像 16 がすべて一致
+  - 座標は Jw_cad の DXF 出力と同じ（用紙の左下が原点、書込レイヤグループの縮尺で実寸）
+  - DOS 版の `.jwc` はまだ読めない
+
+## 0.5.5 の変更
+
+- DWG/DXF の 3D ソリッド: 1 枚の閉じた面だけでできた立体（ドーナツ形・球）が、立体でなく面として取り込まれていたのを直した。試験図面の 3D ソリッド 81 個がすべて閉じた立体になる
+
+## 0.5.4 の変更
+
+社外の実機の組立（機密のため合成データで再現）を 1 日 FreeCADCmd で使った同僚の要望から:
+- 隠れ線の 2D 書き出し（`--export-svg` など・`Part.projectVisible`）が大きな組立で終わらない: 面ごとに、外形が重なる全部の面と切り抜きをしていた。
+  深さバッファで「その面の上に見えている面」だけを相手にし、面・辺・三角形分割を全コアで並列に。結果は 0.5.3 と同じ（見える面積の差 0.001 % 以下）で、
+  合成の 1200 部品が 17.7 → 3.9 秒、STL から作った 1200 部品が 72 → 5.4 秒。三角形だけの形（STL 由来）はメッシュとして扱い、同じ平面の三角形は 1 つの面に、
+  三角形の間の線は描かない。`--progress`・`--max-seconds`（`maxSeconds=`、時間切れは手前の面から済んだ分と警告）・`--deflection`
+- 画像・2D 書き出しの視点: 向きをベクトルで、画面の上の向き（`up`）、下からの等角（`iso-bottom` ほか 7 つ）、範囲や部品に拡大（`region`・`focus`）、
+  断面（`section`。切り口を色で塗りハッチング。SVG はパターン、PowerPoint は柄の塗り）。重なった部品の同じ面が画像で黒く潰れていたのも直した
+- `Part.pointsInside`・`Part.rayCast`（たくさんの点の内外判定と光線の当たり。上の表）
+- `Part.solidFromMesh`・`Part.filletMeshSolid`（STL から作った立体をブール演算・断面・丸めに使える形に。上の表）
+- DWG/DXF の 3DSOLID・REGION・BODY を読み込む（ACIS の SAT を自前で読む `AcisSat`。上の表）
+- `FreeCADCmd a.py 値` で値がファイルでないときに `--` の使い方を案内する
+
+## 0.5.3 の変更
+
+- スケッチのソルバーが、同じスケッチでも解けたり解けなかったりする（未知数をメモリ上の番地の順に並べていた。
+  矛盾した拘束を持つスケッチで、解ける・失敗・「冗長」の結果が回ごとに変わり、文書を 2 回再計算すると形が変わった。CAM の試験ファイル Drilling_1 で見つけた）
+
+## 0.5.2 の変更
+
+FreeCAD 全体のバグ探し（372 個のファイルを、メモリ破壊の検査つきのビルドと、往復・2 回目・体積の恒等式などの「静かな間違い」の確かめに通した）で見つかった 14 件を直した:
+- 落ちる・固まる: `Shape.check(True)` が端点の無い辺で落ちる、OFF 形式のメッシュを読むと止まらない
+- 静かに変わる: FCStd に保存すると小さな数値が 0 になる、3MF で小さな座標が消える・座標が丸まる、メッシュの体積が単精度で誤差が大きい、
+  IGES の書き出しで面の境界の情報が抜けて面積が変わる、DXF の書き出しで App::Link が書かれない、交差した 4 隅の DXF SOLID が壊れた面になる、
+  R14 の DXF の単位、TechDraw の Draft・Arch のビューが選んでいない文書で別の文書の物を読み書きする
+- 0.5.0 で足した機能: 隠れ線の 2D 書き出しで重なった面が両方消える、画像・2D 書き出しが元の形のメッシュを書き換える
+
+## 0.5.1 の変更
+
+会社の実図面（R2018）と 2,113 部品のモデルで 0.5.0 を試してもらった結果を受けて:
+- 2D 書き出し: PowerPoint・SVG・JSON で部品の階層ごとにグループにする（組立の木、`Group` プロパティ、`"a/b/c"` の指定）。
+  `Part.exportPptx`／`Part.exportSvg` を追加（形・色・グループを渡せる）。辺は `--export-edges none|outline|all`（PowerPoint は既定で面の輪郭だけ）。
+  画面なしでも FCStd に保存された色を使う
+- DWG: AutoCAD が省いた全ゼロのページがあると 3D ソリッドの中身が空になっていた、64KB を超える 3D ソリッドを DXF 経由で R2000 に書くと消えていた、
+  日本語の配置名・図面情報・パスが DXF 経由で化けて警告が出ていた、R2018 から R2000 に書くとヘッダの文字列が 1 文字になっていたのを直した
+
+## 0.5.0 の変更
+
+- DWG: **R2004・R2010・R2013・R2018 の DWG を書けるようにした**（これまでは R2000 まで）。
+  試験用の 149 図面を各版に書いて ACadSharp で読み直し、読めない図面 0・消えた図形 0・種類が変わった図形 0（DXF 経由でも同じ）。
+  AutoCAD が同じ版で保存したものとも図形ごとに突き合わせた
+  - 3D ソリッド（ACIS）: R2013 以降の置き場所（AcDs）を読み書きし、古い図面や DXF から R2013 以降に書いても形が消えない
+  - DXF → DWG（dxf2dwg）で R2010 以降に書くと図形の 2 割近くが消えていたのを直した
+  - FreeCAD の DWG 書き出しは従来どおり R2000（どの AutoCAD でも開ける）。新しい版は同梱の `dxf2dwg --as r2018` で
+- コマンドライン: 画像を 1 行で出す（`--render`、画面も OpenGL も不要）、速い干渉チェック（`--interference`）、
+  隠れ線を消した 2D 図の書き出し（SVG・面ごとの多角形・PowerPoint）。「コマンドライン・スクリプト」の表を参照
+- Mesh: `addFacets` が接した部品の面を黙って捨て、STL に穴が開いていたのを直した
+
+## 0.4.1 の変更
+
+- DWG: 同じ図面を AutoCAD 自身が版を変えて保存したものと突き合わせ、R2000 に書くときの変換を AutoCAD に合わせた。
+  example_2004〜2018 は R2000 に書いた全図形が AutoCAD の R2000 保存と一致（DXF 経由でも同じ）
+  - 色: ByBlock の図形が ByLayer になっていた、RGB の色の代わりの色番号を AutoCAD と同じにした、色の表を今の AutoCAD の値に
+  - R14 の図面: 図形の線種（CONTINUOUS など）が ByLayer になっていた、線の太さが 0.00mm になっていた、標準の名前を AutoCAD と同じに
+  - グラデーションのハッチングは最初の色の塗りつぶしに、MTEXT の改行は \P で（DXF でも）
+- DWG: 表（TABLE）を読み書きできるようにした（DXF 経由でも消えない）。R2010 以降の表スタイルを全部読む
+- DWG: 中身を解読できない独自アプリの図形（建築アドオンなど）を、古い版や DXF に書くとき AutoCAD と同じプロキシ図形として元のデータごと残す
+- DWG: DXF 経由で表スタイル名・寸法スタイル名・ハッチングの名前が変わっていた、R14 の DXF で新しい種類の図形が落ちていたのを直した
+
+## 0.4.0 の変更
+
+- DWG の読み書き: LibreDWG（`dwg2dxf` / `dxf2dwg`）を同梱し、ファイル → 開く／取り込み／書き出しで DWG を扱えるようにした。
+  読みは R13〜R2018（AutoCAD 2018〜2025 の AC1032 を含む）、書きは開いた図面の版（R2000 以前）で書く。
+  LibreDWG 0.14.8601 に、独立した実装（ACadSharp）と 149 図面で突き合わせて見つけた読み書きの不具合の修正を当てている
+  （`patches/libredwg`。表・複数行属性・文字コード・R2000 への書き出しなど）。自分で変換器を設定している場合はそちらを使う
+- AI チャット: やり取りの回数の上限（80 回）で止まった時は、黙らずに「続けて」で続けられると知らせる
+- AI チャット: 120 秒で終わらないコードは止めて、その回の変更を取り消す（FreeCAD が固まらないように）。最後の式の値を表示できなくても、済んだ変更は取り消さない
+
+## 0.3.6 の変更
+
+- Windows のインストーラーで入れた時に、AI チャットの部品（ai-runtime）が入っていなかったのを直した（0.3.5 の 7z には入っている）
+- AI チャット: 「たずねずに実行する」の切り替え（既定は切。入れる時に注意が出る。保存しないので、FreeCAD を閉じると毎回たずねる形に戻る。
+  実行したコードはチャットに残る）。承認の窓に「実行して、以後はたずねない」
+- AI チャット: AI のコードの sys.exit で FreeCAD が落ちて固まったのを直した（ほかの誤りと同じく、その回の変更を取り消して知らせる）
+- AI チャット: AI が実行したコードと結果を、ユーザーデータの ai/ai-runs.log に残す
+- AI の道具の不具合（AI 自身の試験で見つかったもの）: エラーの時にほかの文書の変更も取り消し、開いていた文書に戻す。
+  何も変えなかった回は「元に戻す」の段を作らない。増えた物・消えた物を名前でなく出来事で数える。
+  Python で作ったパターンが部品の最後にある時は Tip を進める。get_document の種類の欄が手順の設定（Length など）で上書きされていた
+- 設計の検査: 形に使われていない手順（Tip より後）、形の無い部品、調べていない見えない部品を知らせる。
+  拘束がぶつかっている間は「決まっていない所」を出さない。拘束の番号が 1 から数えたものだと書く
+- 日本語: 原点の中の点を「原点の点」に（入れ物の原点と、どちらも「原点」だった）
+
+## 0.3.5 の変更
+
+- AI チャットに要る部品を配布物に同梱した。インストールしてすぐ、ネットワークからの準備なしで AI パネルが使える（AI との会話そのものにはネットワークが要る）
+- AI チャットで失敗したとき（キーが無効など）の説明を分かりやすくした
+
+## 当て方とビルド
 
 ```sh
 git clone https://github.com/FreeCAD/FreeCAD.git
@@ -626,43 +832,37 @@ pixi run cmake --build build/release -j4      # 2 コア 4 スレッドのノー
 pixi run cmake --install build/release        # .pixi/envs/default/bin に FreeCADCmd と FreeCAD
 ```
 
-(The comments in the commands: building on Linux with the official pixi procedure, with FEM/CAM/Robot turned off to save time; the build takes about 2 hours on a 2-core, 4-thread laptop; install puts FreeCADCmd and FreeCAD in .pixi/envs/default/bin.)
-
-## Tests
+## 試験
 
 ```sh
 XDG_CONFIG_HOME=$(mktemp -d) XDG_DATA_HOME=$(mktemp -d) \
   tests/run.sh <FreeCADCmd のパス> <FreeCAD のパス>
 ```
 
-(`<FreeCADCmd のパス>` and `<FreeCAD のパス>` are the paths to FreeCADCmd and FreeCAD.)
+設定フォルダは必ず一時フォルダに向けること（本物の設定を汚さないため）。GUI の項目には `xvfb-run` が要る。
+素の FreeCAD 1.1.3 では 4/17、パッチ後は全項目（31）合格。
+FreeCAD 自身の試験（`FreeCADCmd -t 0`、C++ の Base/App/Part/Gui の試験）もパッチ後にすべて通ることを確かめている。
 
-Always point the settings folders at temporary directories (so your real settings are not polluted). The GUI items need `xvfb-run`.
-Plain FreeCAD 1.1.3 passes 4/17; with the patches, all items (31) pass.
-FreeCAD's own tests (`FreeCADCmd -t 0`, and the C++ tests for Base/App/Part/Gui) were also confirmed to pass with the patches.
+## LibreDWG（DWG の変換器）
 
-## LibreDWG (the DWG converter)
+`tools/build_libredwg.sh <出力先> [linux|win64]` で、本家の LibreDWG 0.14.8601 に `patches/libredwg` を当てて
+`dwg2dxf` / `dxf2dwg` を作る（Windows 用は MinGW-w64 のクロスビルド、DLL 不要）。リリースの手順もこれを使う。
 
-`tools/build_libredwg.sh <output dir> [linux|win64]` applies `patches/libredwg` to upstream LibreDWG 0.14.8601 and
-builds `dwg2dxf` / `dxf2dwg` (the Windows build is a MinGW-w64 cross build, no DLLs needed). The release procedure uses this too.
+## jww-tools（Jw_cad の変換器）
 
-## jww-tools (the Jw_cad converter)
+`tools/build_jww2dxf.sh <出力先> [linux|win64]` で、[jww-tools](https://github.com/monyuonyu/jww-tools) の決まった版（タグとコミットを確かめる）から
+`jww2dxf` を作る（静的リンク。Windows 用は MinGW-w64 のクロスビルド、DLL 不要）。リリースの手順もこれを使い、LibreDWG と同じ所に置いて同梱する。
 
-Since 0.5.6, File → Open / Import also open Jw_cad drawings (`.jww`) and registered symbols (`.jws`), through the bundled
-`jww2dxf` from [jww-tools](https://github.com/monyuonyu/jww-tools) (checked figure by figure against Jw_cad's own DXF export
-on 307 drawings). `tools/build_jww2dxf.sh <output dir> [linux|win64]` builds it from a pinned jww-tools tag (statically
-linked; the Windows build is a MinGW-w64 cross build). The release procedure uses this too.
+## リリースの作り方
 
-## Making a release
-
-Patches are exported with `tools/export_patches.sh` (regenerates patches/ from unified-ui in a FreeCAD clone).
+パッチの書き出しは `tools/export_patches.sh`（FreeCAD の clone の unified-ui から patches/ を作り直す）。
 
 
-Run the "Build release" GitHub Actions workflow (`.github/workflows/release.yml`) manually, entering the tag name.
-It applies the patches to the base version, builds Linux and Windows with the same `package/bundle` procedure as upstream, and attaches them to the release (takes several hours).
+GitHub Actions の「Build release」（`.github/workflows/release.yml`）をタグ名を入れて手で実行する。
+元の版にパッチを当て、本家と同じ `package/bundle` の手順で Linux と Windows を作ってリリースに載せる（数時間かかる）。
 
 
-## License
+## ライセンス
 
-The patches are LGPL-2.1-or-later, the same as FreeCAD (`LICENSE`).
-The bundled Fasteners workbench (`src/Mod/Fasteners`, by Shai Seger and contributors) is GPL-2.0-or-later (`LICENSE` in that folder), shipped as a separate module.
+パッチは FreeCAD と同じ LGPL-2.1-or-later（`LICENSE`）。
+同梱の Fasteners ワークベンチ（`src/Mod/Fasteners`、Shai Seger 氏ほか）は GPL-2.0-or-later（同じフォルダーの `LICENSE`）。FreeCAD とは別のモジュールとして配っている。

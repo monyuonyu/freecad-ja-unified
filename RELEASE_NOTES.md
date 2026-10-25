@@ -10,7 +10,7 @@
 
 チェックサム: 各ファイルの `-SHA256.txt`。設定フォルダは本家とは別（`FreeCAD-ja-unified`）。アンインストールで「ユーザー設定も削除」を選ぶと設定も消える。
 
-**変更点**: [README の各版の変更](https://github.com/monyuonyu/freecad-ja-unified/blob/main/README.ja.md)。機能の一覧も README にある。
+**変更点**: [README の各版の変更](https://github.com/monyuonyu/freecad-ja-unified/blob/main/README.md)。機能の一覧も README にある。
 AI チャットは自分の Anthropic の API キーで使う（AI が実行するコードは毎回表示され、承認したときだけ動く）。
 
 ---

@@ -1,6 +1,6 @@
-[English](README.md) | [日本語](README.ja.md) | **简体中文**
+[日本語](README.md) | [English](README.en.md) | **简体中文**
 
-> 译自 [README.ja.md](README.ja.md)（日文版为原文），对应提交 `513d863`。
+> 译自 [README.md](README.md)（日文版为原文），对应提交 `513d863`。
 
 # freecad-ja-unified
 
