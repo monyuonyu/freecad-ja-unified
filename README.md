@@ -334,6 +334,8 @@ Also fixed a bug in the assembly solver (OndselSolver) where joint type names in
 
 The second GUI-only whole-engine test (0.7.8) **made the whole engine with the screen only** (15 parts, 17 joints, rockers and valves as formulas of the crank angle, intake and exhaust opening once each over 0-720 degrees, a sectioned video, reopened). Fixed what was left: big jumps of the crank are walked through by value (a chain's cam was half a turn off), the angle field solves when the number is done, joint angles have no limit, a reversed slider holds, assembly parts are selectable again when a file opens.
 
+The drawing PDF without the screen crashed on Windows and stood still on Linux (a warning of Qt while the notifications were shown waited for the notification area's own lock): fixed.
+
 ## Changes in 0.7.8
 
 From the GUI-only test of the whole engine (0.7.7; 15 parts and 17 joints were made with the screen, moving them stopped): "Turn to an angle" takes any angle (720 is a four-stroke cycle) and videos turn through it; a solve that does not hold says which joints on the status bar; a fixed joint reversed half a turn holds; sliders can be moved to a distance (a valve's lift as a formula); joints with formulas follow while a panel is open; Motion to Video has its own section choice; a tree click does not replace an edited joint's references.

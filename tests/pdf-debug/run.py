@@ -4,8 +4,9 @@ import json, os, subprocess, sys, tempfile
 import FreeCAD as App
 import DrawingPdf
 
-n = int(sys.argv[-2]) if len(sys.argv) > 2 else 5
-with_section = sys.argv[-1] != "nosection"
+args = [a for a in sys.argv if a.isdigit() or a in ("section", "nosection")]
+n = int(args[0]) if args else 5
+with_section = "nosection" not in args
 tmp = tempfile.mkdtemp()
 doc = App.newDocument("drawpdf")
 box = doc.addObject("Part::Box", "Box")
@@ -44,8 +45,9 @@ for i in range(n):
     proc = subprocess.run([DrawingPdf._freecadcmd(), "-c", "import DrawingPdf\nDrawingPdf._child()\n"],
                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
     ok = os.path.isfile(result)
-    print("run %d: exit %s, result %s" % (i, proc.returncode, ok), flush=True)
+    out = proc.stdout.decode("utf-8", "replace")
+    print("run %d: exit %s, result %s, emitted without the GIL %d" % (i, proc.returncode, ok, out.count("without the GIL")), flush=True)
     if not ok:
         bad += 1
-        print(proc.stdout.decode("utf-8", "replace"), flush=True)
+        print(out, flush=True)
 print("FAILED %d of %d (section=%s)" % (bad, n, with_section), flush=True)

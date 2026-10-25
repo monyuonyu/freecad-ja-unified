@@ -1,7 +1,7 @@
 From 1975b063ba47d6deff7411a59dddfbc5f1a802e4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 07:44:12 +0900
-Subject: [PATCH 233/348] Part: pointsInside and rayCast, fast batch queries on
+Subject: [PATCH 233/350] Part: pointsInside and rayCast, fast batch queries on
  shapes
 
 Part.pointsInside(shape, points, tolerance, method='auto') classifies many points at

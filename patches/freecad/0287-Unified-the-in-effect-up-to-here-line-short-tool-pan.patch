@@ -1,7 +1,7 @@
 From 89fafd933079afe651616691b09bfe0547e4dd2e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 21:17:18 +0900
-Subject: [PATCH 287/348] Unified: the "in effect up to here" line, short tool
+Subject: [PATCH 287/350] Unified: the "in effect up to here" line, short tool
  panels, picks in words
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

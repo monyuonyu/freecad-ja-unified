@@ -1,0 +1,35 @@
+From 6690ee2597b94874ad9f202aaef51fedccca19b5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 10:42:29 +0900
+Subject: [PATCH 350/350] App: a document signal from a thread without the GIL
+ does not release it
+
+PyEval_SaveThread without the GIL is undefined; a worker thread without
+Python that emitted a document signal did so.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/MainThreadSignal.h | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/App/MainThreadSignal.h b/src/App/MainThreadSignal.h
+index f5d591d06..c16dadd8c 100644
+--- a/src/App/MainThreadSignal.h
++++ b/src/App/MainThreadSignal.h
+@@ -234,7 +234,12 @@ private:
+             return self->sig_(std::forward<typename ::fastsignals::signal_arg_t<Arguments>>(args)...);
+         }
+ 
+-        Base::PyGILStateRelease release;
++        // Only a thread that holds the GIL can let it go (PyEval_SaveThread without it is
++        // undefined: a worker thread without Python, a drawing's hidden lines or faces)
++        std::optional<Base::PyGILStateRelease> release;
++        if (PyGILState_Check()) {
++            release.emplace();
++        }
+ 
+         auto caps = std::make_tuple(
+             detail::captureSignalArg<typename ::fastsignals::signal_arg_t<Arguments>>(args)...
+-- 
+2.43.0
+

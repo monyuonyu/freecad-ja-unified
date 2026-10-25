@@ -1,7 +1,7 @@
 From e93a3f3df954de7692d942515c5cba877f1a6fe1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 21:48:43 +0900
-Subject: [PATCH 337/348] Unified: a formula can be kept in a task panel; the
+Subject: [PATCH 337/350] Unified: a formula can be kept in a task panel; the
  bar's number is typed over; put part and grounding work on a reopened
  assembly
 

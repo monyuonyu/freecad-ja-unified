@@ -1,7 +1,7 @@
 From 28fc51f32aa53f4c372f200db0fb4471d32f7688 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 21:20:19 +0900
-Subject: [PATCH 217/348] Part: projectVisible/renderImage mesh a copy of the
+Subject: [PATCH 217/350] Part: projectVisible/renderImage mesh a copy of the
  shape
 
 A finer triangulation already on the input (exportStl meshes with 0.01 mm by

@@ -1,0 +1,80 @@
+From fa18a6b07640283de69e39b048056fcf9314941b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 10:42:29 +0900
+Subject: [PATCH 349/350] Gui: a message given while the notifications are
+ shown does not wait for itself
+
+Showing the notifications raises a widget; on the offscreen platform Qt
+says it cannot, that message came back to the notification area on the
+same thread and waited for the lock that thread held: the drawing PDF
+without the screen stood still on Linux and crashed on Windows (an
+exception through Python: PyGILState_Release, ja-unified 0.7.9 build).
+A drawing PDF that stops says the lines that tell why.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/NotificationArea.cpp  | 16 ++++++++++++++++
+ src/Mod/Unified/DrawingPdf.py |  7 +++++--
+ 2 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/NotificationArea.cpp b/src/Gui/NotificationArea.cpp
+index 3f49784c2..358c8ef00 100644
+--- a/src/Gui/NotificationArea.cpp
++++ b/src/Gui/NotificationArea.cpp
+@@ -1072,12 +1072,20 @@ bool NotificationArea::areDeveloperErrorsActive() const
+     return pImp->developerErrorSubscriptionEnabled;
+ }
+ 
++// Showing the notifications (a widget raised) can give a message of Qt on this very thread (the
++// offscreen platform: "does not support raise()"); taken to the area it waited for the lock this
++// thread holds, forever (the drawing PDF without the screen stood still)
++static thread_local bool showingNotifications = false;
++
+ void NotificationArea::pushNotification(
+     const QString& notifiername,
+     const QString& message,
+     Base::LogStyle level
+ )
+ {
++    if (showingNotifications) {
++        return;
++    }
+     auto confirmation = confirmationRequired(level);
+ 
+     if (confirmation) {
+@@ -1176,6 +1184,14 @@ void NotificationArea::showInNotificationArea()
+ {
+     // guard to avoid modifying the notification list and indices while creating the tooltip
+     lock_guard<std::mutex> g(pImp->mutexNotification);
++    showingNotifications = true;
++    struct Showing
++    {
++        ~Showing()
++        {
++            showingNotifications = false;
++        }
++    } showing;
+ 
+     // NOLINTNEXTLINE
+     NotificationsAction* na = static_cast<NotificationsAction*>(pImp->notificationaction);
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index b152dfb9a..1c13167c7 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -74,8 +74,11 @@ def export(path, out, pages=None, seconds=120):
+             with open(result, encoding="utf-8") as f:
+                 done = json.load(f)
+         except (OSError, ValueError):
+-            tail = proc.stdout.decode("utf-8", "replace").strip().splitlines()[-5:]
+-            raise RuntimeError("The drawing export stopped: " + " / ".join(tail))
++            lines = proc.stdout.decode("utf-8", "replace").strip().splitlines()
++            # the reason of a crash is not at the end (the output of the threads comes late)
++            said = [ln for ln in lines if re.search(r"Fatal|Exception|Error|Traceback|line \d+ in", ln)]
++            raise RuntimeError("The drawing export stopped (exit code %s): " % proc.returncode
++                               + " / ".join((said or lines)[-8:]))  # fmt: skip
+     if done.get("error"):
+         raise RuntimeError(done["error"])
+     for text in done.get("warnings", []):
+-- 
+2.43.0
+
