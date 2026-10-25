@@ -1,0 +1,111 @@
+From 863b92a17562f905a4447d3308fd69818696d0f0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:26:37 +0900
+Subject: [PATCH 352/377] Assembly: a part fixed on a round or flat face keeps
+ its turn about the axis
+
+A round face has no direction across its axis: a cylinder fixed on a
+piston, then the head on the cylinder, were put turned by 180 degrees
+(engine field test 0.7.7, 0.7.8). A fixed joint or a slider whose moving
+part stands along the axis already gives the turn to the moving side's
+offset: the parts are drawn the way they go together.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py      | 31 ++++++++++++++++++++++++++++
+ src/Mod/Unified/TestAssemblySolve.py | 30 +++++++++++++++++++++++++++
+ 2 files changed, 61 insertions(+)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index c1c121399..394aef3c8 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -937,6 +937,7 @@ class Joint:
+             joint.Reference2 = refs[1]
+ 
+             self.ensureUnconnectedIsSecondRef(joint)
++            self.keepTurnAboutAxis(joint)
+ 
+             if joint.JointType in JointUsingPreSolve:
+                 self.preSolve(joint)
+@@ -955,6 +956,36 @@ class Joint:
+                 assembly.undoSolve()
+             self.undoPreSolve(joint)
+ 
++    def keepTurnAboutAxis(self, joint):
++        """A fixed joint or a slider on a round or flat face: the part keeps its turn about the
++        joint's axis when it stands along it already. A round face has no direction of its own
++        across the axis; a cylinder fixed on a piston, then the head on the cylinder, were put
++        turned by 180 degrees (engine field test 0.7.7, 0.7.8). The parts are drawn the way
++        they go together, so the way they are is kept: the moving side's offset takes the turn."""
++        if joint.JointType not in ("Fixed", "Slider") or joint.Detach2:
++            return
++        assembly = self.getAssembly(joint)
++        part1 = UtilsAssembly.getMovingPart(joint.Reference1)
++        part2 = UtilsAssembly.getMovingPart(joint.Reference2)
++        if not part1 or not part2 or assembly is None or assembly.Type != "Assembly":
++            return
++        joint.Suppressed = True
++        part2Connected = assembly.isPartConnected(part2)
++        joint.Suppressed = False
++        if part2Connected:  # the second part does not move: nothing to keep
++            return
++        fixed = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, joint.Reference1, 0), joint.Reference1)
++        moving = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, joint.Reference2, 1), joint.Reference2)
++        flip = App.Rotation() if UtilsAssembly.arePlacementSameDir(fixed, moving) else App.Rotation(App.Vector(1, 0, 0), 180)
++        # the offset turn q that matches the moving side to the fixed one without turning the part
++        q = moving.Rotation.inverted() * fixed.Rotation * flip.inverted()
++        z = q.multVec(App.Vector(0, 0, 1))
++        if z.z < 1 - 1e-9 or abs(q.Angle) < 1e-9:  # the part does not stand along the axis, or no turn
++            return
++        turn = App.Rotation(App.Vector(0, 0, 1), math.degrees(math.atan2(q.multVec(App.Vector(1, 0, 0)).y,
++                                                                         q.multVec(App.Vector(1, 0, 0)).x)))  # fmt: skip
++        joint.Offset2 = App.Placement(joint.Offset2.Base, joint.Offset2.Rotation * turn)
++
+     def updateJCSPlacements(self, joint):
+         if not joint.Detach1:
+             joint.Placement1 = self.findPlacement(joint, joint.Reference1, 0)
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 24482f2fa..459faac3e 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -450,6 +450,36 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_fixed_part_keeps_its_turn_about_the_axis(self):
++        # a round or flat face has no direction across its axis: a cylinder fixed on a piston,
++        # then the head on it, were put turned by 180 degrees (field test 0.7.7, 0.7.8)
++        import JointObject
++
++        V, R, P = App.Vector, App.Rotation, App.Placement
++        doc = App.newDocument("keepturn")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            base = asm.newObject("Part::Cylinder", "Base")
++            head = asm.newObject("Part::Box", "Head")
++            head.Placement = P(V(50, 0, 0), R(V(0, 0, 1), 30))
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), base)
++            j = jg.newObject("App::FeaturePython", "Fix")
++            JointObject.Joint(j, JointObject.JointTypes.index("Fixed"))
++            j.Proxy.setJointConnectors(j, [[base, ["Face3", "Face3"]], [head, ["Face5", "Face5"]]])
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            self.assertEqual(asm.getBrokenJoints(), [])
++            # on top of the cylinder, still turned by 30 degrees and upright
++            self.assertAlmostEqual(head.Placement.Base.z, base.Height.Value, places=6)
++            x = head.Placement.Rotation.multVec(V(1, 0, 0))
++            self.assertAlmostEqual(math.degrees(math.atan2(x.y, x.x)), 30, places=6)
++            self.assertAlmostEqual(head.Placement.Rotation.multVec(V(0, 0, 1)).z, 1, places=9)
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+From ca3b8801a729a5f4db88c281b0f2410d08273c5c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:32:31 +0900
+Subject: [PATCH 354/377] Assembly: a part file closed while a joint's panel is
+ open keeps the joint's references
+
+Closing a file clears the whole selection; the panel took it for the
+user's and the joint lost both references (engine field test 0.7.8).
+Another file's clearing is not the panel's, and a clearing that comes
+with a file closing is left out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 394aef3c8..0015a0f1d 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -2805,5 +2805,18 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         self.presel_ref = [comp, [new_sub]]
+ 
+     def clearSelection(self, doc_name):
+-        self.refs.clear()
+-        self.updateJoint()
++        # A part file closed while the panel is open clears the whole selection; the joint lost
++        # both references (engine field test 0.7.8). Another file's clearing is not ours, and
++        # a clearing that comes with a file closing is left out (seen just after it)
++        if doc_name and doc_name != self.assembly.Document.Name:
++            return
++        files = set(App.listDocuments())
++
++        def clear():
++            global activeTask
++            if activeTask is not self or not files <= set(App.listDocuments()):
++                return
++            self.refs.clear()
++            self.updateJoint()
++
++        QtCore.QTimer.singleShot(0, clear)
+-- 
+2.43.0
+

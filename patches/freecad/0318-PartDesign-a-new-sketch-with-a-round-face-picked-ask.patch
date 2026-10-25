@@ -1,7 +1,7 @@
 From 4a623a2290b972ba7d85b21fd05590d5ac3a564f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:34:43 +0900
-Subject: [PATCH 318/350] PartDesign: a new sketch with a round face picked
+Subject: [PATCH 318/377] PartDesign: a new sketch with a round face picked
  asks for a plane
 
 A round face picked (a piston's skirt; Esc does not drop the pick) and

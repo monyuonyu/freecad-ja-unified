@@ -1,7 +1,7 @@
 From 2b4ea2e591ec2d001ec6f613e2fa3aa002667050 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:21:45 +0900
-Subject: [PATCH 302/350] Assembly: gears and belts can be given tooth counts
+Subject: [PATCH 302/377] Assembly: gears and belts can be given tooth counts
  (Teeth1, Teeth2)
 
 Gears and Belt joints took the ratio from two radii; the pitch radii of

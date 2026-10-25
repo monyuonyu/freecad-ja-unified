@@ -1,0 +1,112 @@
+From 083fecf7a887812c76e7a8f78334e2de4923458a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:45:21 +0900
+Subject: [PATCH 368/377] Part views: --focus takes labels as written, loosely
+ or in part, and says the nearest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"バックル EA628RA-50" had to be written as the internal name
+バックル_EA628RA_50 (company test 0.7.9). The exact name or label, else
+the same with width, case, spaces, -, _ and × not counted, else the only
+one containing it; not found, the nearest names are said.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/PartViews.py               | 39 +++++++++++++++++++++----
+ src/Mod/Part/parttests/TestPartViews.py | 23 +++++++++++++++
+ 2 files changed, 57 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index ad3659fe0..b4c7d51dc 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1200,16 +1200,45 @@ def parse_section(text):
+     return App.Vector(*v[:3]), App.Vector(*v[3:])
+ 
+ 
+-def _find_objects(doc, names):
++def _loose(text):
++    """A name as written loosely: width, case, spaces, -, _ and × (40×6, 40x6) do not count"""
++    import unicodedata
++
++    text = unicodedata.normalize("NFKC", text).lower().replace("×", "x")
++    return "".join(c for c in text if c not in " _-\u3000")
++
++
++def find_objects(doc, names, option="--focus"):
++    """The objects of a comma separated list of names or labels: the exact name or label, else
++    the same written loosely (バックル_EA628RA_50 for "バックル EA628RA-50"), else the only one
++    whose name or label contains it. Not found: the nearest names are said (company test 0.7.9:
++    labels had to be written as the internal names)"""
++    import difflib
++
+     found = []
++    objs = doc.Objects
+     for name in [n.strip() for n in names.split(",") if n.strip()]:
+-        objs = [doc.getObject(name)] if doc.getObject(name) else doc.getObjectsByLabel(name)
+-        if not objs:
+-            raise ValueError("--focus: no object named %r" % name)
+-        found.extend(objs)
++        hit = [doc.getObject(name)] if doc.getObject(name) else doc.getObjectsByLabel(name)
++        if not hit:
++            key = _loose(name)
++            hit = [o for o in objs if _loose(o.Label) == key or _loose(o.Name) == key]
++        if not hit:
++            key = _loose(name)
++            part = [o for o in objs if key and (key in _loose(o.Label) or key in _loose(o.Name))]
++            if len(part) == 1:
++                hit = part
++            elif len(part) > 1:
++                raise ValueError("%s: %r is in several names: %s" % (option, name, ", ".join(o.Label for o in part[:8])))
++        if not hit:
++            near = difflib.get_close_matches(name, [o.Label for o in objs] + [o.Name for o in objs], n=5, cutoff=0.4)
++            raise ValueError("%s: no object named %r%s" % (option, name, " (near: %s)" % ", ".join(near) if near else ""))
++        found.extend(hit)
+     return found
+ 
+ 
++_find_objects = find_objects
++
++
+ def cli_view_options(doc):
+     """View keywords from the command line options --up, --region, --focus, --section,
+     --max-seconds, --progress."""
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index dce633dc9..20568138a 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -603,6 +603,29 @@ class TestPartViewOptions(unittest.TestCase):
+         with self.assertRaises(ValueError):
+             Part.projectVisible(box, view="iso-sideways")
+ 
++    def testFocusByLabel(self):
++        # labels as written, loosely, in part; else the nearest names (company test 0.7.9)
++        import PartViews
++
++        doc = App.newDocument("focus")
++        try:
++            for label in ("バックル EA628RA-50", "滑り材 UHMW 40×6", "滑り材 UHMW 20×6"):
++                o = doc.addObject("Part::Feature", "x")
++                o.Label = label
++            def labels(text):
++                return [o.Label for o in PartViews.find_objects(doc, text)]
++            self.assertEqual(labels("バックル EA628RA-50"), ["バックル EA628RA-50"])
++            self.assertEqual(labels("バックル_EA628RA_50"), ["バックル EA628RA-50"])
++            self.assertEqual(labels("UHMW 40x6, バックル"), ["滑り材 UHMW 40×6", "バックル EA628RA-50"])
++            with self.assertRaises(ValueError) as ctx:
++                labels("滑り材")  # in two
++            self.assertIn("several", str(ctx.exception))
++            with self.assertRaises(ValueError) as ctx:
++                labels("バックルX")
++            self.assertIn("near", str(ctx.exception))
++        finally:
++            App.closeDocument(doc.Name)
++
+     def testSectionFillsCutFaces(self):
+         data = Part.projectVisible([self.holed, self.small], view="top",
+                                    section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
+-- 
+2.43.0
+

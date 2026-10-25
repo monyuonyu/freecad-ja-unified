@@ -1,0 +1,107 @@
+From 7dbab39c376b4235c5e8e1259657569ad84fecae Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:36:10 +0900
+Subject: [PATCH 372/377] Core: --gui-script does not wait for a script on
+ stdin; test of files opened and closed at once
+
+Without input files FreeCADCmd read its standard input as a script: run
+from another program, --gui-script waited for it. The children of
+--gui-script and the drawing PDF get no stdin. The test opens and closes
+files at once with the GUI up (the ReferenceError and NameError of 0.7.9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp          |  3 ++-
+ src/Mod/Unified/DrawingPdf.py    |  3 ++-
+ src/Mod/Unified/GuiScript.py     |  2 +-
+ src/Mod/Unified/TestGuiScript.py | 33 ++++++++++++++++++++++++++++++++
+ 4 files changed, 38 insertions(+), 3 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 2f3ffd2fc..24690cf9f 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -3396,7 +3396,8 @@ void Application::processCmdLineFiles()
+             failed.emplace_back("-c");
+         }
+     }
+-    else if (files.empty() && mConfig["RunMode"] == "Exit" && !stdinIsTerminal()) {
++    else if (files.empty() && mConfig["RunMode"] == "Exit" && !stdinIsTerminal()
++             && !mConfig.contains("GuiScript")) {  // --gui-script reads no script from stdin
+         // 'FreeCADCmd < script.py' or 'cat script.py | FreeCADCmd': run the input as one
+         // script like the Python executable does, instead of feeding it line by line to
+         // the interactive console (prompts in the output, blank lines required after
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index cb15a3725..9f7fc450b 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -72,7 +72,8 @@ def export(path, out, pages=None, seconds=120, line_width=None, check_layout=Fal
+         env["QT_QPA_PLATFORM"] = "offscreen"
+         code = "import DrawingPdf\nDrawingPdf._child()\n"
+         proc = subprocess.run([_freecadcmd(), "-c", code], env=env, stdout=subprocess.PIPE,
+-                              stderr=subprocess.STDOUT, timeout=seconds + 120)  # fmt: skip
++                              stderr=subprocess.STDOUT, timeout=seconds + 120,
++                              stdin=subprocess.DEVNULL)  # fmt: skip
+         try:
+             with open(result, encoding="utf-8") as f:
+                 done = json.load(f)
+diff --git a/src/Mod/Unified/GuiScript.py b/src/Mod/Unified/GuiScript.py
+index 63efc665b..38c32ecb2 100644
+--- a/src/Mod/Unified/GuiScript.py
++++ b/src/Mod/Unified/GuiScript.py
+@@ -43,7 +43,7 @@ def run(path, args=(), seconds=None):
+         sys.stderr.flush()
+         try:
+             proc = subprocess.run([DrawingPdf._freecadcmd(), "-c", "import GuiScript\nGuiScript._child()\n"],
+-                                  env=env, timeout=seconds)  # fmt: skip
++                                  env=env, timeout=seconds, stdin=subprocess.DEVNULL)  # fmt: skip
+         except subprocess.TimeoutExpired:
+             App.Console.PrintError("--gui-script: %s did not end in %s s\n" % (path, seconds))
+             return 1
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index 5234c1cc9..ef3a6709b 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -66,6 +66,39 @@ class GuiScriptTest(unittest.TestCase):
+         finally:
+             shutil.rmtree(tmp)
+ 
++    def test_files_opened_and_closed_at_once(self):
++        # the opening's check (parts selectable again) read a document gone by then:
++        # ReferenceError, NameError "Unknown document" (reported on 0.7.9)
++        tmp = tempfile.mkdtemp()
++        try:
++            doc = App.newDocument("desk")
++            doc.addObject("Part::Box", "Box")
++            doc.recompute()
++            path = os.path.join(tmp, "desk.FCStd")
++            doc.saveAs(path)
++            App.closeDocument(doc.Name)
++            code, out, err = gui_script(
++                "import time, FreeCAD as App\n"
++                "from PySide import QtWidgets\n"
++                "for i in range(5):\n"
++                "    d = App.openDocument(%r)\n"
++                "    App.closeDocument(d.Name)\n"
++                "    d = App.newDocument('t%%d' %% i)\n"
++                "    App.closeDocument(d.Name)\n"
++                "end = time.time() + 1.5\n"
++                "while time.time() < end:\n"
++                "    QtWidgets.QApplication.processEvents()\n"
++                "    time.sleep(0.05)\n"
++                "print('done')\n" % path
++            )
++            self.assertEqual(code, 0, err)
++            self.assertIn("done", out)
++            self.assertNotIn("ReferenceError", err)
++            self.assertNotIn("NameError", err)
++            self.assertNotIn("Traceback", err)
++        finally:
++            shutil.rmtree(tmp)
++
+ 
+ class LongCodeTest(unittest.TestCase):
+     def test_long_code_with_an_error(self):
+-- 
+2.43.0
+

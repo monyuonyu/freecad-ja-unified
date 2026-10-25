@@ -1,0 +1,75 @@
+From 6e1653da844a540b5d2473eb652201480aec97ac Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 14:13:03 +0900
+Subject: [PATCH 361/377] PartDesign: a sketch on a face is turned to the
+ body's axes
+
+A face's own directions are not the part's: a sketch on a piston's
+round top came turned by 180 degrees, upside down seen from above
+(engine field test 0.7.4). The sketch's X is turned about the face's
+normal to the body's X (or Y when the face is across X), by the
+attachment offset.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/PartDesign/Gui/SketchWorkflow.cpp | 33 +++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+index 8f40b338e..ea41a783e 100644
+--- a/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
++++ b/src/Mod/PartDesign/Gui/SketchWorkflow.cpp
+@@ -47,6 +47,8 @@
+ #include <Mod/Part/App/AttachExtension.h>
+ #include <Mod/Part/App/Attacher.h>
+ #include <Mod/Part/App/Part2DObject.h>
++#include <Base/Tools.h>
++#include <cmath>
+ #include <Mod/Part/App/TopoShape.h>
+ #include <Mod/Sketcher/Gui/ViewProviderSketch.h>
+ 
+@@ -293,10 +295,41 @@ public:
+             );
+         }
+         Gui::Command::updateActive();
++        alignWithBodyAxes(Feat);
+         PartDesignGui::setEdit(Feat, activeBody);
+     }
+ 
+ private:
++    // A face's own directions are not the part's: on a round face (a piston's top) the sketch
++    // came turned by 180 degrees, upside down from above (engine field test 0.7.4). The sketch's
++    // X is turned, about the face's normal, to the body's X (or Y when the face is across X).
++    static void alignWithBodyAxes(App::DocumentObject* feat)
++    {
++        auto* sketch = dynamic_cast<Part::Part2DObject*>(feat);
++        if (!sketch || std::string(sketch->MapMode.getValueAsString()) != "FlatFace") {
++            return;
++        }
++        const Base::Rotation rot = sketch->Placement.getValue().getRotation();
++        const Base::Vector3d normal = rot.multVec(Base::Vector3d(0, 0, 1));
++        const Base::Vector3d x = rot.multVec(Base::Vector3d(1, 0, 0));
++        Base::Vector3d want = std::fabs(normal.x) > 0.9 ? Base::Vector3d(0, 1, 0) : Base::Vector3d(1, 0, 0);
++        want = want - normal * want.Dot(normal);
++        if (want.Length() < 1e-6) {
++            return;
++        }
++        want.Normalize();
++        const double angle = std::atan2(x.Cross(want).Dot(normal), x.Dot(want));
++        if (std::fabs(angle) < 1e-6) {
++            return;
++        }
++        FCMD_OBJ_CMD(
++            feat,
++            "AttachmentOffset = App.Placement(App.Vector(0, 0, 0), App.Rotation(App.Vector(0, 0, 1), "
++                << Base::toDegrees(angle) << "))"
++        );
++        Gui::Command::updateActive();
++    }
++
+     void createBodyOrThrow()
+     {
+         if (!activeBody) {
+-- 
+2.43.0
+

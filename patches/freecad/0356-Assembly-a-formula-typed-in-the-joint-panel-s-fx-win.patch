@@ -1,0 +1,70 @@
+From 12c377d2b85eb7b66df6dd7684b6c73f44d60685 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:46:33 +0900
+Subject: [PATCH 356/377] Assembly: a formula typed in the joint panel's fx
+ window turns the joint at once
+
+The fx window put the formula in the joint, the field showed 30, and the
+joint stayed at 0 until "Done" (engine field test 0.7.8). When the window
+closes the document is recomputed and the assembly solved. The panel
+keeps its bindings (bind() gives nothing back).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py | 24 ++++++++++++++++++------
+ 1 file changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 0015a0f1d..68f2cef23 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -2152,10 +2152,13 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+         )
+         self.driveAngleSpinbox.setProperty("rawValue", self.joint.Angle.Value)
+-        self.driveAngleBinding = Gui.ExpressionBinding(self.driveAngleSpinbox).bind(
+-            self.joint, "Angle"
+-        )
++        # (bind() gives nothing back: the binding itself is kept)
++        self.driveAngleBinding = Gui.ExpressionBinding(self.driveAngleSpinbox)
++        self.driveAngleBinding.bind(self.joint, "Angle")
+         self.driveAngleSpinbox.valueChanged.connect(self.onDriveAngleChanged)
++        self.driveAngleSpinbox.showFormulaDialog.connect(
++            lambda shown: shown or self._applyFormula()
++        )
+         row.addWidget(self.angleDriveCheckbox)
+         row.addWidget(self.driveAngleSpinbox)
+ 
+@@ -2181,10 +2184,13 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         self.slideDistanceSpinbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+         if hasattr(self.joint, "SlideDistance"):
+             self.slideDistanceSpinbox.setProperty("rawValue", self.joint.SlideDistance.Value)
+-            self.slideDistanceBinding = Gui.ExpressionBinding(self.slideDistanceSpinbox).bind(
+-                self.joint, "SlideDistance"
+-            )
++            self.slideDistanceBinding = Gui.ExpressionBinding(self.slideDistanceSpinbox)
++            self.slideDistanceBinding.bind(self.joint, "SlideDistance")
+         self.slideDistanceSpinbox.valueChanged.connect(self.onSlideDistanceChanged)
++        if hasattr(self, "slideDistanceBinding"):
++            self.slideDistanceSpinbox.showFormulaDialog.connect(
++                lambda shown: shown or self._applyFormula()
++            )
+         if offsetRow is not None:
+             offsetRow.addWidget(self.slideDriveCheckbox)
+             offsetRow.addWidget(self.slideDistanceSpinbox)
+@@ -2225,6 +2231,12 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+         self.joint.SlideDistance = self.slideDistanceSpinbox.property("rawValue")
+         self._followFormulas()
+ 
++    def _applyFormula(self):
++        # a formula typed in the ƒx window (the binding puts it in the joint) turns the joint
++        # now, not at "Done" (it showed 30 and the joint stayed at 0; engine field test 0.7.8)
++        self.joint.Document.recompute()
++        solveIfAllowed(self.assembly)
++
+     def _followFormulas(self):
+         # the joints whose formulas use this one (rockers, valves) follow now, not at "Done"
+         # (engine field test 0.7.7)
+-- 
+2.43.0
+

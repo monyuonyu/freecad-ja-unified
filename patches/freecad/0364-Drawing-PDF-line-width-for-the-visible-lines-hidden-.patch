@@ -1,0 +1,185 @@
+From 5b77d85bcfc007a9da36eb13b9331ce51426220e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:35:49 +0900
+Subject: [PATCH 364/377] Drawing PDF: --line-width for the visible lines
+ (hidden lines and dimensions half)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp           | 24 +++++++++++++++++++++
+ src/Mod/Part/PartViews.py         |  3 ++-
+ src/Mod/Unified/DrawingPdf.py     | 36 ++++++++++++++++++++++++++-----
+ src/Mod/Unified/TestDrawingPdf.py | 18 ++++++++++++++++
+ 4 files changed, 75 insertions(+), 6 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 749213aac..08495e3ba 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2494,6 +2494,8 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+     ("progress", "Progress of --render/--export-* on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
++    ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
++    ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+@@ -2744,6 +2746,8 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-edges", "ExportEdges"},
+         {"interference-report", "InterferenceReport"},
+         {"export-drawings", "ExportDrawings"},
++        {"line-width", "DrawingLineWidth"},
++        {"gui-script", "GuiScript"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+         if (vm.contains(option)) {
+@@ -3439,6 +3443,26 @@ void Application::processCmdLineFiles()
+         }
+     }
+ 
++    if (cfg.contains("GuiScript")) {
++        mConfig["RunMode"] = "Exit";  // a script run, not the console
++        try {
++            Base::Interpreter().runString(
++                "import GuiScript, FreeCAD\n"
++                "_n = int(FreeCAD.ConfigGet('ScriptArgCount') or 0)\n"
++                "_code = GuiScript.run(FreeCAD.ConfigGet('GuiScript'),"
++                " [FreeCAD.ConfigGet('ScriptArg%d' % i) for i in range(_n)])\n"
++                "if _code:\n"
++                "    raise SystemExit(_code)\n");
++        }
++        catch (const Base::SystemExitException&) {
++            failed.emplace_back(cfg.at("GuiScript"));
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("GuiScript", e);
++            failed.emplace_back(cfg.at("GuiScript"));
++        }
++    }
++
+     static const char* viewKeys[] = {
+         "RenderFile",
+         "InterferenceReport",
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 8610ac746..7b8f6ce00 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1276,7 +1276,8 @@ def cli_main():
+     if drawings:
+         import DrawingPdf
+ 
+-        for name in DrawingPdf.export(doc, drawings):
++        width = _config("DrawingLineWidth")
++        for name in DrawingPdf.export(doc, drawings, line_width=float(width) if width else None):
+             print("Wrote %s" % name)
+     report = _config("InterferenceReport")
+     if report:
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index 1c13167c7..0c4470232 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -1,8 +1,8 @@
+ # SPDX-License-Identifier: LGPL-2.1-or-later
+ """PDF of the drawing pages without the screen:
+ 
+-    FreeCADCmd model.FCStd --export-drawings out.pdf
+-    DrawingPdf.export("model.FCStd", "out.pdf")     # -> [written files]
++    FreeCADCmd model.FCStd --export-drawings out.pdf [--line-width 0.25]
++    DrawingPdf.export("model.FCStd", "out.pdf", line_width=0.25)     # -> [written files]
+ 
+ TechDraw draws its pages with the scene of the GUI, so a child FreeCADCmd starts the GUI
+ offscreen (nothing is shown), waits for the views' lines, writes the PDFs and ends without
+@@ -53,9 +53,11 @@ def _freecadcmd():
+     raise RuntimeError("FreeCADCmd was not found next to " + home)
+ 
+ 
+-def export(path, out, pages=None, seconds=120):
++def export(path, out, pages=None, seconds=120, line_width=None):
+     """Write the drawing pages of the file `path` (all, or the names/labels in `pages`) as PDF.
+-    Returns the files written; raises RuntimeError with the reason otherwise."""
++    line_width: the visible lines in mm (hidden and thin lines half of it, dimensions too);
++    without it the views' own widths, or the line group of the preferences for a file saved
++    without the screen. Returns the files written; raises RuntimeError with the reason otherwise."""
+     if not isinstance(path, str):  # a document
+         if not path.FileName:
+             raise RuntimeError("Save the document first: the drawings are read from its file")
+@@ -63,7 +65,7 @@ def export(path, out, pages=None, seconds=120):
+     with tempfile.TemporaryDirectory() as tmp:
+         result = os.path.join(tmp, "result.json")
+         job = {"path": os.path.abspath(path), "out": os.path.abspath(out), "pages": pages,
+-               "seconds": seconds, "result": result}  # fmt: skip
++               "seconds": seconds, "result": result, "line_width": line_width}  # fmt: skip
+         env = dict(os.environ)
+         env[JOB_ENV] = json.dumps(job)
+         env["QT_QPA_PLATFORM"] = "offscreen"
+@@ -156,6 +158,7 @@ def _child():
+         if late:
+             finish(error="The lines of these views were not ready in %d s: %s"
+                    % (job["seconds"], ", ".join(late)))
++        set_line_widths(doc, pages, job.get("line_width"))
+         for _ in range(10):  # let the scene take the last results (dimensions, labels)
+             QtWidgets.QApplication.processEvents()
+             time.sleep(0.02)
+@@ -175,6 +178,29 @@ def _child():
+         finish(error="%s: %s (line %d)" % (type(e).__name__, e, where.lineno))
+ 
+ 
++def set_line_widths(doc, pages, width):
++    """The lines of the pages' views: `width` mm for the visible lines (hidden, smooth and the
++    dimensions' lines half of it). Without it the views keep theirs (a file saved without the
++    screen: the line group of the preferences)"""
++    if not width:
++        return
++    for obj in doc.Objects:
++        if not any(p in obj.InListRecursive for p in pages):
++            continue
++        vo = getattr(obj, "ViewObject", None)
++        if vo is None or not hasattr(vo, "LineWidth"):
++            continue
++        if obj.isDerivedFrom("TechDraw::DrawViewPart"):
++            vo.LineWidth = width
++            vo.HiddenWidth = width / 2
++            if hasattr(vo, "IsoWidth"):
++                vo.IsoWidth = width * 5 / 7
++            if hasattr(vo, "ExtraWidth"):
++                vo.ExtraWidth = width * 2
++        else:  # dimensions, balloons, leaders
++            vo.LineWidth = width / 2
++
++
+ def _has_lines(view):
+     try:
+         return bool(view.getVisibleEdges())
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index 9ede71a38..e4a5541d4 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -70,6 +70,24 @@ class ExportTest(unittest.TestCase):
+         written = DrawingPdf.export(self.path, os.path.join(self.tmp, "out.pdf"))
+         self.assertEqual(sorted(os.path.basename(w) for w in written), ["out_Second.pdf", "out_部品図.pdf"])
+ 
++    def test_line_width(self):
++        # the lines on paper as asked (company test 0.7.9: 1:12.5 rivets were black dots); the
++        # page's screen mode had drawn them up to four times thicker
++        import re
++        import zlib
++
++        out = os.path.join(self.tmp, "w.pdf")
++        DrawingPdf.export(self.path, out, pages=["Second"], line_width=0.33)
++        widths = set()
++        with open(out, "rb") as f:
++            data = f.read()
++        for m in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
++            try:
++                widths.update(float(w) for w in re.findall(rb"([\d.]+) w\b", zlib.decompress(m.group(1))))
++            except zlib.error:
++                pass
++        self.assertIn(3.3, widths)  # 0.33 mm in the scene's 0.1 mm
++
+     def test_one_page_and_a_missing_one(self):
+         out = os.path.join(self.tmp, "one.pdf")
+         self.assertEqual(DrawingPdf.export(self.path, out, pages=["Second"]), [out])
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From eba38b636aef657011ca7e6b13eeafcd43977ed6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:33:48 +0900
+Subject: [PATCH 355/377] Part: "hasher mismatch" of parts from other files
+ only in the log
+
+An assembly of linked part files puts together shapes of other files'
+string hashers; each put-together warned, hundreds of thousands of lines
+in a session (engine field test 0.7.8). Said when the log level is on.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/TopoShapeExpansion.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Part/App/TopoShapeExpansion.cpp b/src/Mod/Part/App/TopoShapeExpansion.cpp
+index 124df15d3..a3a4ccaf0 100644
+--- a/src/Mod/Part/App/TopoShapeExpansion.cpp
++++ b/src/Mod/Part/App/TopoShapeExpansion.cpp
+@@ -868,7 +868,9 @@ void TopoShape::mapSubElementTypeForShape(
+                     Hasher = sids[0].getHasher();
+                 }
+                 else if (!sids[0].isFromSameHasher(Hasher)) {
+-                    if (!warned) {
++                    // parts of other files (an assembly of linked part files): said only
++                    // in the log, it was hundreds of thousands of lines (field test 0.7.8)
++                    if (!warned && FC_LOG_INSTANCE.isEnabled(FC_LOGLEVEL_LOG)) {
+                         warned = true;
+                         FC_WARN("hasher mismatch");  // NOLINT
+                     }
+@@ -996,7 +998,7 @@ void TopoShape::mapSubElement(const TopoShape& other, const char* op, bool force
+                         Hasher = sids[0].getHasher();
+                     }
+                     else if (!sids[0].isFromSameHasher(Hasher)) {
+-                        if (!warned) {
++                        if (!warned && FC_LOG_INSTANCE.isEnabled(FC_LOGLEVEL_LOG)) {
+                             warned = true;
+                             FC_WARN("hasher mismatch");
+                         }
+-- 
+2.43.0
+

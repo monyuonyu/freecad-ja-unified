@@ -1,0 +1,170 @@
+From f8bb0503b8da3be3110738eba9a2b001d455ad15 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:44:10 +0900
+Subject: [PATCH 367/377] Part views: iso- and the sides seen in any order
+ (iso-rear-left, iso-front-right)
+
+iso-back-left was there but not in the list of views, and iso-rear-left
+was an unknown view (company test 0.7.9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |  2 +-
+ src/Mod/Part/App/ViewTools.cpp          | 41 +++++++++++++++++++++++--
+ src/Mod/Part/App/ViewToolsPy.cpp        |  7 ++---
+ src/Mod/Part/PartViews.py               | 13 ++++++--
+ src/Mod/Part/parttests/TestPartViews.py | 16 ++++++++++
+ 5 files changed, 69 insertions(+), 10 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index a4e122e4a..eaf216f83 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2482,7 +2482,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
+     ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
+     ("render", boost::program_options::value<std::string>(), "Write a PNG picture of the visible objects after processing the input files; needs no display or OpenGL (e.g. --render out.png)")
+-    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-back, iso-front-left, iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left, iso-bottom-back-right, iso-low, dimetric, trimetric, dx,dy,dz (direction from the eye into the model); several names separated by commas write one picture each")
++    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-{front,back}-{left,right} (also rear, and -bottom- from below, in any order), iso-low, dimetric, trimetric, dx,dy,dz (direction from the eye into the model); several names separated by commas write one picture each")
+     ("size", boost::program_options::value<std::string>(), "Picture size for --render, WxH or W (default 1200x900)")
+     ("render-style", boost::program_options::value<std::string>(), "Style for --render: shaded (default), shaded-only, hidden-lines, lines")
+     ("up", boost::program_options::value<std::string>(), "Direction that is up in the picture for --render/--export-*, x,y,z (default 0,0,1)")
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 7644fbf7d..84fc8ab4e 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -911,11 +911,46 @@ Camera Camera::fromName(const std::string& name)
+     if (str >> x >> c1 >> y >> c2 >> z && c1 == ',' && c2 == ',') {
+         return fromDirection(gp_Vec(x, y, z));
+     }
++    // iso- and the sides seen, in any order: iso-front-right, iso-rear-left, iso-left-back,
++    // iso-bottom-front-left… (iso-back-left was there, iso-rear-left was an unknown view;
++    // company test 0.7.9). Seen from the front, the right and the top unless said otherwise
++    if (name.rfind("iso-", 0) == 0) {
++        double dx = -1, dy = 1, dz = -1;
++        bool known = true;
++        std::istringstream words(name.substr(4));
++        std::string word;
++        while (std::getline(words, word, '-')) {
++            if (word == "front") {
++                dy = 1;
++            }
++            else if (word == "back" || word == "rear") {
++                dy = -1;
++            }
++            else if (word == "right") {
++                dx = -1;
++            }
++            else if (word == "left") {
++                dx = 1;
++            }
++            else if (word == "top") {
++                dz = -1;
++            }
++            else if (word == "bottom") {
++                dz = 1;
++            }
++            else {
++                known = false;
++            }
++        }
++        if (known) {
++            return fromDirection(gp_Vec(dx, dy, dz));
++        }
++    }
+     throw Base::ValueError(
+         "Unknown view '" + name
+-        + "' (iso, front, back, right, left, top, bottom, iso-back, iso-front-left, "
+-          "iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left, "
+-          "iso-bottom-back-right, iso-low, dimetric, trimetric or dx,dy,dz)"
++        + "' (iso, front, back, right, left, top, bottom, iso-{front,back}-{left,right} "
++          "(also rear, and -bottom- for a view from below, in any order), iso-low, dimetric, "
++          "trimetric or dx,dy,dz)"
+     );
+ }
+ 
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index c64342114..e15ab5f59 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -690,10 +690,9 @@ PyMethodDef methods[] = {
+      "{'shape'|'mesh'|'object': ..., 'color': (r,g,b), 'faceColors': [(r,g,b), ...]} or a list\n"
+      "of these.  Document objects without a colour get their view colours (headless: as\n"
+      "stored in the FCStd file), others a palette.\n"
+-     "view: iso, front, back, right, left, top, bottom, iso-back, iso-front-left,\n"
+-     "iso-back-right, iso-bottom, iso-bottom-front-left, iso-bottom-back-left,\n"
+-     "iso-bottom-back-right, iso-low, dimetric, trimetric, 'dx,dy,dz' or a vector (direction\n"
+-     "from the eye into the scene).\n"
++     "view: iso, front, back, right, left, top, bottom, iso-{front,back}-{left,right} (also\n"
++     "rear, and -bottom- from below, in any order), iso-low, dimetric, trimetric, 'dx,dy,dz'\n"
++     "or a vector (direction from the eye into the scene).\n"
+      "style: shaded, shaded-only, hidden-lines, lines.\n"
+      "View keywords (renderImage, projectVisible, exportSvg, exportPptx):\n"
+      "  up: vector that points up on the screen (default: +Z, +Y for top/bottom).\n"
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index b12db516e..ad3659fe0 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -573,13 +573,22 @@ def _parse_size(size):
+     return int(size[0]), int(size[1])
+ 
+ 
++def is_view_name(name):
++    """A view name: one of VIEW_NAMES, or iso- and sides in any order (iso-rear-left)"""
++    if name in VIEW_NAMES:
++        return True
++    words = name.split("-")
++    sides = {"front", "back", "rear", "left", "right", "top", "bottom"}
++    return len(words) > 1 and words[0] == "iso" and all(w in sides for w in words[1:])
++
++
+ def _split_views(view):
+     """'iso,front' -> ['iso', 'front'];  '-1,1,-1' stays one view."""
+     if isinstance(view, (list, tuple)) and view and isinstance(view[0], str):
+         return list(view)
+     if isinstance(view, str) and "," in view:
+         names = [v.strip() for v in view.split(",")]
+-        if all(n in VIEW_NAMES for n in names):
++        if all(is_view_name(n) for n in names):
+             return names
+     return [view]
+ 
+@@ -1225,7 +1234,7 @@ def cli_view_options(doc):
+ 
+ def _view_arg(view):
+     """A view name, or 'dx,dy,dz' as a vector."""
+-    if isinstance(view, str) and view not in VIEW_NAMES and view.count(",") == 2:
++    if isinstance(view, str) and not is_view_name(view) and view.count(",") == 2:
+         return App.Vector(*_numbers(view, 3, "view"))
+     return view
+ 
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index f747d6f6c..dce633dc9 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -587,6 +587,22 @@ class TestPartViewOptions(unittest.TestCase):
+         self.holed = block.cut(Part.makeCylinder(5, 20, App.Vector(10, 10, 0)))
+         self.small = Part.makeBox(5, 5, 5, App.Vector(40, 0, 0))
+ 
++    def testIsoViewsInAnyOrder(self):
++        # iso-back-left was there, iso-rear-left an unknown view (company test 0.7.9)
++        import PartViews
++
++        box = Part.makeBox(10, 20, 30)
++        def faces(view):
++            return sorted(round(sum(_poly_area(p) for p in f["polygons"]), 3)
++                          for f in Part.projectVisible(box, view=view)["faces"])  # fmt: skip
++        self.assertEqual(faces("iso-rear-left"), faces("iso-back-left"))
++        self.assertEqual(faces("iso-left-back"), faces("iso-back-left"))
++        self.assertEqual(faces("iso-front-right"), faces("iso"))
++        self.assertTrue(PartViews.is_view_name("iso-bottom-rear-right"))
++        self.assertFalse(PartViews.is_view_name("iso-sideways"))
++        with self.assertRaises(ValueError):
++            Part.projectVisible(box, view="iso-sideways")
++
+     def testSectionFillsCutFaces(self):
+         data = Part.projectVisible([self.holed, self.small], view="top",
+                                    section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
+-- 
+2.43.0
+

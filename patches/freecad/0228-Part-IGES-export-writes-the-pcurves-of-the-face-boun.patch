@@ -1,7 +1,7 @@
 From 578cc08907770504b1139421ac04545434c6a4e7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 16 Oct 2026 07:56:18 +0900
-Subject: [PATCH 228/350] Part: IGES export writes the pcurves of the face
+Subject: [PATCH 228/377] Part: IGES export writes the pcurves of the face
  boundaries
 
 "write.surfacecurve.mode" is set off at start-up (preference

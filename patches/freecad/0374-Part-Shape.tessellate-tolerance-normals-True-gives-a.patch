@@ -1,0 +1,156 @@
+From 99a6623099d7b335e30a7bcdde8aef14af0e51b3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:45:56 +0900
+Subject: [PATCH 374/377] Part: Shape.tessellate(tolerance, normals=True) gives
+ a normal for each point
+
+The normals out of the solid, from OCC's triangulation; the points are
+not shared between faces so that edges stay sharp. A room's smooth
+shading asked them point by point from Python (Surface.parameter,
+normalAt): more than ten minutes at 1 mm (reported on 0.7.9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/TopoShape.pyi         |  5 ++-
+ src/Mod/Part/App/TopoShapePyImp.cpp    | 62 +++++++++++++++++++++++++-
+ src/Mod/Unified/TestPartDesignFixes.py | 19 ++++++++
+ 3 files changed, 83 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Part/App/TopoShape.pyi b/src/Mod/Part/App/TopoShape.pyi
+index 0e7d85b3b..c19be88e0 100644
+--- a/src/Mod/Part/App/TopoShape.pyi
++++ b/src/Mod/Part/App/TopoShape.pyi
+@@ -871,10 +871,13 @@ class TopoShape(ComplexGeoData):
+         ...
+ 
+     @constmethod
+-    def tessellate(self, tolerance: float, ok: bool = ..., /) -> Tuple[List[Vector], List]:
++    def tessellate(self, tolerance: float, ok: bool = False, *, normals: bool = False) -> Tuple[List[Vector], List]:
+         """
+         Tessellate the shape and return a list of vertices and face indices
+         tessellate(tolerance[, ok]) -> (vertex, facets)
++        tessellate(tolerance, normals=True) -> (vertex, facets, normals): a normal for each
++        vertex, out of the solid (the faces' orientation taken into account); the vertices are
++        not shared between faces, so that an edge between two faces stays sharp.
+         """
+         ...
+ 
+diff --git a/src/Mod/Part/App/TopoShapePyImp.cpp b/src/Mod/Part/App/TopoShapePyImp.cpp
+index 3b3dd60d0..7105e0056 100644
+--- a/src/Mod/Part/App/TopoShapePyImp.cpp
++++ b/src/Mod/Part/App/TopoShapePyImp.cpp
+@@ -59,6 +59,7 @@
+ #include <Standard_Version.hxx>
+ #include <TopExp.hxx>
+ #include <TopExp_Explorer.hxx>
++#include <BRepLib_ToolTriangulatedShape.hxx>
+ #include <BRepAdaptor_Surface.hxx>
+ #include <TopLoc_Location.hxx>
+ #include <TopoDS.hxx>
+@@ -1746,15 +1747,72 @@ PyObject* TopoShapePy::hashCode(PyObject* args) const
+     return Py_BuildValue("i", hc);
+ }
+ 
+-PyObject* TopoShapePy::tessellate(PyObject* args) const
++// The triangles of each face with a normal at each node, out of the solid: a browser's 3D
++// view shades curved faces smoothly with them (they were asked face by face from Python,
++// Surface.parameter and normalAt for each point: minutes for a room; reported on 0.7.9)
++static PyObject* tessellateWithNormals(const TopoDS_Shape& shape, double tolerance)
++{
++    BRepMesh_IncrementalMesh mesh(shape, tolerance, Standard_False, 0.5, Standard_True);
++    Py::List vertex, facet, normal;
++    long base = 0;
++    for (TopExp_Explorer xp(shape, TopAbs_FACE); xp.More(); xp.Next()) {
++        const TopoDS_Face& face = TopoDS::Face(xp.Current());
++        TopLoc_Location loc;
++        Handle(Poly_Triangulation) tri = BRep_Tool::Triangulation(face, loc);
++        if (tri.IsNull()) {
++            continue;
++        }
++        BRepLib_ToolTriangulatedShape::ComputeNormals(face, tri);
++        const gp_Trsf trsf = loc.Transformation();
++        const bool reversed = face.Orientation() == TopAbs_REVERSED;
++        for (int i = 1; i <= tri->NbNodes(); ++i) {
++            gp_Pnt p = tri->Node(i).Transformed(trsf);
++            gp_Dir n = tri->Normal(i).Transformed(trsf);
++            if (reversed) {
++                n.Reverse();
++            }
++            vertex.append(Py::asObject(new Base::VectorPy(Base::Vector3d(p.X(), p.Y(), p.Z()))));
++            normal.append(Py::asObject(new Base::VectorPy(Base::Vector3d(n.X(), n.Y(), n.Z()))));
++        }
++        for (int i = 1; i <= tri->NbTriangles(); ++i) {
++            int a {}, b {}, c {};
++            tri->Triangle(i).Get(a, b, c);
++            if (reversed) {
++                std::swap(b, c);
++            }
++            Py::Tuple f(3);
++            f.setItem(0, Py::Long(base + a - 1));
++            f.setItem(1, Py::Long(base + b - 1));
++            f.setItem(2, Py::Long(base + c - 1));
++            facet.append(f);
++        }
++        base += tri->NbNodes();
++    }
++    Py::Tuple tuple(3);
++    tuple.setItem(0, vertex);
++    tuple.setItem(1, facet);
++    tuple.setItem(2, normal);
++    return Py::new_reference_to(tuple);
++}
++
++PyObject* TopoShapePy::tessellate(PyObject* args, PyObject* kwds) const
+ {
+     double tolerance;
+     PyObject* ok = Py_False;
+-    if (!PyArg_ParseTuple(args, "d|O!", &tolerance, &PyBool_Type, &ok)) {
++    PyObject* normals = Py_False;
++    static const std::array<const char*, 4> kwlist {"tolerance", "ok", "normals", nullptr};
++    if (!Base::Wrapped_ParseTupleAndKeywords(args, kwds, "d|O!$O!", kwlist, &tolerance,
++                                             &PyBool_Type, &ok, &PyBool_Type, &normals)) {
+         return nullptr;
+     }
+ 
+     try {
++        if (Base::asBoolean(normals)) {
++            if (Base::asBoolean(ok)) {
++                BRepTools::Clean(getTopoShapePtr()->getShape());
++            }
++            return tessellateWithNormals(getTopoShapePtr()->getShape(), tolerance);
++        }
+         std::vector<Base::Vector3d> Points;
+         std::vector<Data::ComplexGeoData::Facet> Facets;
+         if (Base::asBoolean(ok)) {
+diff --git a/src/Mod/Unified/TestPartDesignFixes.py b/src/Mod/Unified/TestPartDesignFixes.py
+index 72ee2d301..cad2566b3 100644
+--- a/src/Mod/Unified/TestPartDesignFixes.py
++++ b/src/Mod/Unified/TestPartDesignFixes.py
+@@ -107,5 +107,24 @@ class ExtrudeAlongItselfTest(unittest.TestCase):
+         # a wire or an edge in its own plane makes a face, as before
+         self.assertAlmostEqual(Part.makePolygon([V(0, 0, 0), V(10, 0, 0)]).extrude(V(0, 0, 5)).Area, 50, places=6)
+ 
++
++class TessellateNormalsTest(unittest.TestCase):
++    def test_normals_out_of_the_solid(self):
++        # a normal for each point (a browser's smooth shading asked them point by point; 0.7.9)
++        import Part
++
++        cyl = Part.makeCylinder(10, 20)
++        points, facets, normals = cyl.tessellate(0.1, normals=True)
++        self.assertEqual(len(points), len(normals))
++        self.assertTrue(facets)
++        for a, b, c in facets:
++            turn = (points[b] - points[a]).cross(points[c] - points[a])
++            self.assertGreater(turn.dot(normals[a]), 0)  # wound out of the solid
++        for p, n in zip(points, normals):
++            if 1e-6 < p.z < 20 - 1e-6:  # the side: the normal points away from the axis
++                r = App.Vector(p.x, p.y, 0)
++                self.assertGreater(n.dot(r.normalize()), 0.99)
++        self.assertEqual(len(cyl.tessellate(0.1)), 2)  # as before without normals
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

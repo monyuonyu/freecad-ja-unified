@@ -1,0 +1,72 @@
+From 9e160f43bc8fdf2aa0369e4a826fcea05e1c441b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:47:10 +0900
+Subject: [PATCH 369/377] Spreadsheet: a refused alias says why (the unit or
+ constant it is, a cell, used)
+
+L, D, H, T were refused as "conflicts with a reserved unit token"
+without saying which unit (company test 0.7.9). The unit's name is said
+and another name proposed; a name with other characters, a cell's name
+and a used name are said as such.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Spreadsheet/App/Sheet.cpp | 37 +++++++++++++++++++++++++++----
+ 1 file changed, 33 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Spreadsheet/App/Sheet.cpp b/src/Mod/Spreadsheet/App/Sheet.cpp
+index db0135707..199c636f9 100644
+--- a/src/Mod/Spreadsheet/App/Sheet.cpp
++++ b/src/Mod/Spreadsheet/App/Sheet.cpp
+@@ -1658,15 +1658,44 @@ void Sheet::setAlias(CellAddress address, const std::string& alias)
+         cells.setAlias(address, alias);
+     }
+     else {
++        // what the name is taken for, and another to use (L, D, H, T were refused without
++        // saying they are units; company test 0.7.9)
++        static const std::map<std::string, std::string> unitNames = {
++            {"m", "metre"}, {"g", "gram"}, {"s", "second"}, {"A", "ampere"}, {"K", "kelvin"},
++            {"J", "joule"}, {"N", "newton"}, {"W", "watt"}, {"V", "volt"}, {"C", "coulomb"},
++            {"F", "farad"}, {"H", "henry"}, {"T", "tesla"}, {"S", "siemens"}, {"L", "litre"},
++            {"l", "litre"}, {"h", "hour"}, {"Pa", "pascal"}, {"Hz", "hertz"}, {"Wb", "weber"},
++            {"in", "inch"}, {"ft", "foot"}, {"yd", "yard"}, {"mi", "mile"}, {"lb", "pound"},
++            {"oz", "ounce"}, {"deg", "degree"}, {"rad", "radian"}, {"min", "minute"},
++            {"mm", "millimetre"}, {"cm", "centimetre"}, {"km", "kilometre"}, {"kg", "kilogram"},
++            {"um", "micrometre"}, {"nm", "nanometre"}, {"t", "tonne"}, {"thou", "thousandth of an inch"}};
++        const std::string other = alias + "_ or " + alias + "1";
+         switch (classifyReservedAliasName(alias)) {
+-            case ReservedAliasToken::Unit:
+-                throw Base::ValueError("Invalid alias: name conflicts with a reserved unit token");
++            case ReservedAliasToken::Unit: {
++                auto it = unitNames.find(alias);
++                throw Base::ValueError("Invalid alias '" + alias + "': " + alias + " is the unit "
++                                       + (it != unitNames.end() ? it->second : std::string("of that name"))
++                                       + " in formulas; use another name, e.g. " + other);
++            }
+             case ReservedAliasToken::Constant:
+-                throw Base::ValueError("Invalid alias: name conflicts with a reserved constant token");
++                throw Base::ValueError("Invalid alias '" + alias + "': " + alias
++                                       + " is a constant in formulas (e.g. pi, e); use another name, e.g. "
++                                       + other);
+             case ReservedAliasToken::None:
+                 break;
+         }
+-        throw Base::ValueError("Invalid alias");
++        static const boost::regex allowed("^[A-Za-z][_A-Za-z0-9]*$");
++        if (!boost::regex_match(alias, allowed)) {
++            throw Base::ValueError("Invalid alias '" + alias
++                                   + "': letters, digits and _ only, beginning with a letter");
++        }
++        if (cells.isValidCellAddressName(alias)) {
++            throw Base::ValueError("Invalid alias '" + alias + "': it is the name of a cell");
++        }
++        if (!getAddressFromAlias(alias).empty() || cells.getValueFromAlias(alias)) {
++            throw Base::ValueError("Invalid alias '" + alias + "': already used");
++        }
++        throw Base::ValueError("Invalid alias '" + alias + "'");
+     }
+ }
+ 
+-- 
+2.43.0
+

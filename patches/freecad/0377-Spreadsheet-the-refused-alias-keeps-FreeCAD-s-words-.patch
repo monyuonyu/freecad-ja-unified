@@ -1,0 +1,40 @@
+From 3817848734a842c37f595991c038f9520b6eb953 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:53:27 +0900
+Subject: [PATCH 377/377] Spreadsheet: the refused alias keeps FreeCAD's words
+ (reserved unit/constant token)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Spreadsheet/App/Sheet.cpp | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Spreadsheet/App/Sheet.cpp b/src/Mod/Spreadsheet/App/Sheet.cpp
+index 199c636f9..0b8b6fbf5 100644
+--- a/src/Mod/Spreadsheet/App/Sheet.cpp
++++ b/src/Mod/Spreadsheet/App/Sheet.cpp
+@@ -1673,14 +1673,15 @@ void Sheet::setAlias(CellAddress address, const std::string& alias)
+         switch (classifyReservedAliasName(alias)) {
+             case ReservedAliasToken::Unit: {
+                 auto it = unitNames.find(alias);
+-                throw Base::ValueError("Invalid alias '" + alias + "': " + alias + " is the unit "
+-                                       + (it != unitNames.end() ? it->second : std::string("of that name"))
+-                                       + " in formulas; use another name, e.g. " + other);
++                throw Base::ValueError("Invalid alias '" + alias + "': name conflicts with a reserved unit token ("
++                                       + alias
++                                       + (it != unitNames.end() ? " is the unit " + it->second : std::string(" is a unit"))
++                                       + " in formulas); use another name, e.g. " + other);
+             }
+             case ReservedAliasToken::Constant:
+-                throw Base::ValueError("Invalid alias '" + alias + "': " + alias
+-                                       + " is a constant in formulas (e.g. pi, e); use another name, e.g. "
+-                                       + other);
++                throw Base::ValueError("Invalid alias '" + alias
++                                       + "': name conflicts with a reserved constant token (" + alias
++                                       + " is a constant in formulas); use another name, e.g. " + other);
+             case ReservedAliasToken::None:
+                 break;
+         }
+-- 
+2.43.0
+

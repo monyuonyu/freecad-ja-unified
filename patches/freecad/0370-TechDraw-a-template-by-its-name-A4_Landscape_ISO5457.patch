@@ -1,0 +1,127 @@
+From 7cb918e5b8a7c10a60b5065f0314fb4d7b216db3 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:14:40 +0900
+Subject: [PATCH 370/377] TechDraw: a template by its name
+ (A4_Landscape_ISO5457_minimal)
+
+A name without a folder is looked for in the templates that come with
+FreeCAD and in the template folder of the preferences; scripts globbed
+the resource folder for it (company test 0.7.9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawSVGTemplate.cpp | 60 ++++++++++++++++++++++++
+ src/Mod/Unified/TestDrawingPdf.py        | 16 +++++++
+ 2 files changed, 76 insertions(+)
+
+diff --git a/src/Mod/TechDraw/App/DrawSVGTemplate.cpp b/src/Mod/TechDraw/App/DrawSVGTemplate.cpp
+index 0b348a628..344dbd99d 100644
+--- a/src/Mod/TechDraw/App/DrawSVGTemplate.cpp
++++ b/src/Mod/TechDraw/App/DrawSVGTemplate.cpp
+@@ -40,6 +40,11 @@
+ #include "DrawSVGTemplatePy.h"
+ #include "DrawUtil.h"
+ #include "XMLQuery.h"
++#include "Preferences.h"
++
++#include <algorithm>
++#include <cctype>
++#include <filesystem>
+ 
+ using namespace TechDraw;
+ 
+@@ -74,9 +79,64 @@ PyObject *DrawSVGTemplate::getPyObject()
+     return Py::new_reference_to(PythonObject);
+ }
+ 
++// A template by its name: "A4_Landscape_ISO5457_minimal" (with or without .svg) is looked for
++// in the templates that come with FreeCAD and in the template folder of the preferences
++// (scripts globbed the resource folder for it; company test 0.7.9). Empty if none.
++static std::string findTemplateByName(const std::string& name)
++{
++    namespace fs = std::filesystem;
++    auto lower = [](std::string text) {
++        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
++            return static_cast<char>(std::tolower(c));
++        });
++        return text;
++    };
++    std::string wanted = lower(name);
++    if (wanted.size() > 4 && wanted.substr(wanted.size() - 4) == ".svg") {
++        wanted.resize(wanted.size() - 4);
++    }
++    const std::string folders[] = {
++        App::Application::getResourceDir() + "Mod/TechDraw/Templates",
++        TechDraw::Preferences::defaultTemplateDir().toStdString(),
++        App::Application::getUserAppDataDir() + "Templates",
++    };
++    std::string found;
++    for (const auto& folder : folders) {
++        std::error_code ec;
++        if (folder.empty() || !fs::is_directory(Base::FileInfo::stringToPath(folder), ec)) {
++            continue;
++        }
++        for (fs::recursive_directory_iterator it(Base::FileInfo::stringToPath(folder), ec), end; it != end && !ec;
++             it.increment(ec)) {
++            const fs::path& file = it->path();
++            if (lower(Base::FileInfo::pathToString(file.extension())) != ".svg" || lower(Base::FileInfo::pathToString(file.stem())) != wanted) {
++                continue;
++            }
++            // the English one before a translated copy (localized/ja_JP/...)
++            if (found.empty() || Base::FileInfo::pathToString(file).find("localized") == std::string::npos) {
++                found = Base::FileInfo::pathToString(file);
++            }
++        }
++        if (!found.empty()) {
++            return found;
++        }
++    }
++    return found;
++}
++
+ void DrawSVGTemplate::onChanged(const App::Property* prop)
+ {
+     if (prop == &Template && !isRestoring()) {
++        const std::string given = Template.getValue();
++        if (!given.empty() && !Base::FileInfo(given).exists()
++            && given.find('/') == std::string::npos && given.find('\\') == std::string::npos) {
++            const std::string found = findTemplateByName(given);
++            if (!found.empty()) {
++                Template.setValue(found.c_str());  // comes here again with the file
++                return;
++            }
++            Base::Console().warning("Template {}: no such file, and no template of that name\n", given);
++        }
+         //if we are restoring an existing file we just want the properties set as they were saved,
+         //but if we are not restoring, we need to replace the embedded file and extract the new
+         //EditableTexts.
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index d05431447..0d248c0c5 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -20,6 +20,22 @@ class OutputNamesTest(unittest.TestCase):
+         self.assertEqual(DrawingPdf.output_names("d/{page}.pdf", ["x y", "z/w"]), ["d/x_y.pdf", "d/z_w.pdf"])
+ 
+ 
++class TemplateByNameTest(unittest.TestCase):
++    def test_a_template_by_its_name(self):
++        # scripts globbed the resource folder for a template (company test 0.7.9)
++        doc = App.newDocument("tplname")
++        try:
++            tpl = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            tpl.Template = "A3_Landscape_ISO5457_advanced"
++            self.assertTrue(tpl.Template.endswith("A3_Landscape_ISO5457_advanced.svg"))
++            self.assertTrue(os.path.isfile(tpl.Template))
++            self.assertAlmostEqual(tpl.Width.Value, 420)
++            tpl.Template = "a4_landscape_iso5457_minimal.svg"  # case and .svg do not count
++            self.assertAlmostEqual(tpl.Width.Value, 297)
++        finally:
++            App.closeDocument(doc.Name)
++
++
+ class ExportTest(unittest.TestCase):
+     def setUp(self):
+         self.tmp = tempfile.mkdtemp()
+-- 
+2.43.0
+

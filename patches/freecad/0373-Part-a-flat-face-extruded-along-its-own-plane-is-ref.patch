@@ -1,0 +1,89 @@
+From b0c50e284b27524edf9db8cbef70f0f1fc86135a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:38:24 +0900
+Subject: [PATCH 373/377] Part: a flat face extruded along its own plane is
+ refused
+
+No error came, the shape was valid and wrong: a common of it gave false
+volumes and parts far apart overlapped (a bed's brace, reported on
+0.7.9). Shape.extrude says which face and its normal; a wire or an edge
+in its plane still makes a face.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/TopoShapePyImp.cpp    | 26 ++++++++++++++++++++++++++
+ src/Mod/Unified/TestPartDesignFixes.py | 15 +++++++++++++++
+ 2 files changed, 41 insertions(+)
+
+diff --git a/src/Mod/Part/App/TopoShapePyImp.cpp b/src/Mod/Part/App/TopoShapePyImp.cpp
+index 0d7cf3364..3b3dd60d0 100644
+--- a/src/Mod/Part/App/TopoShapePyImp.cpp
++++ b/src/Mod/Part/App/TopoShapePyImp.cpp
+@@ -59,6 +59,7 @@
+ #include <Standard_Version.hxx>
+ #include <TopExp.hxx>
+ #include <TopExp_Explorer.hxx>
++#include <BRepAdaptor_Surface.hxx>
+ #include <TopLoc_Location.hxx>
+ #include <TopoDS.hxx>
+ #include <TopoDS_Iterator.hxx>
+@@ -671,6 +672,31 @@ PyObject* TopoShapePy::extrude(PyObject* args) const
+ 
+     try {
+         Base::Vector3d vec = static_cast<Base::VectorPy*>(pVec)->value();
++        // A flat face moved along its own plane is no solid: no error came, the shape was
++        // valid and wrong (a common of it gave false volumes; reported on 0.7.9)
++        if (vec.Length() > 0) {
++            const gp_Dir dir(vec.x, vec.y, vec.z);
++            int index = 0;
++            for (TopExp_Explorer xp(getTopoShapePtr()->getShape(), TopAbs_FACE); xp.More(); xp.Next()) {
++                ++index;
++                BRepAdaptor_Surface surface(TopoDS::Face(xp.Current()));
++                if (surface.GetType() != GeomAbs_Plane) {
++                    continue;
++                }
++                const gp_Dir normal = surface.Plane().Axis().Direction();
++                if (std::fabs(normal.Dot(dir)) < 1e-7) {
++                    char text[300];
++                    std::snprintf(
++                        text, sizeof(text),
++                        "extrude: the direction (%g, %g, %g) lies in the plane of Face%d (its normal "
++                        "is (%g, %g, %g)); a face is extruded across its plane",
++                        vec.x + 0.0, vec.y + 0.0, vec.z + 0.0, index, normal.X() + 0.0, normal.Y() + 0.0, normal.Z() + 0.0
++                    );
++                    PyErr_SetString(PartExceptionOCCError, text);
++                    return nullptr;
++                }
++            }
++        }
+         return Py::new_reference_to(
+             shape2pyshape(getTopoShapePtr()->makeElementPrism(gp_Vec(vec.x, vec.y, vec.z)))
+         );
+diff --git a/src/Mod/Unified/TestPartDesignFixes.py b/src/Mod/Unified/TestPartDesignFixes.py
+index 808b77a0d..72ee2d301 100644
+--- a/src/Mod/Unified/TestPartDesignFixes.py
++++ b/src/Mod/Unified/TestPartDesignFixes.py
+@@ -92,5 +92,20 @@ class PartDesignFixesTest(unittest.TestCase):
+         self.assertEqual(len(self.body.Shape.Solids), 1)
+ 
+ 
++
++class ExtrudeAlongItselfTest(unittest.TestCase):
++    def test_a_face_extruded_in_its_plane_is_refused(self):
++        # no error came and the solid was wrong (a common gave false volumes; reported on 0.7.9)
++        import Part
++
++        V = App.Vector
++        triangle = Part.Face(Part.makePolygon([V(0, 0, 0), V(10, 0, 0), V(0, 0, 10), V(0, 0, 0)]))
++        with self.assertRaises(Part.OCCError) as ctx:
++            triangle.extrude(V(0, 0, 40))
++        self.assertIn("lies in the plane of Face1", str(ctx.exception))
++        self.assertAlmostEqual(triangle.extrude(V(0, 40, 0)).Volume, 2000, places=6)
++        # a wire or an edge in its own plane makes a face, as before
++        self.assertAlmostEqual(Part.makePolygon([V(0, 0, 0), V(10, 0, 0)]).extrude(V(0, 0, 5)).Area, 50, places=6)
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

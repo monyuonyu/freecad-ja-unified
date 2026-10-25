@@ -1,0 +1,122 @@
+From 3ae2b75362bc5a9a77dda6067f000853542b8eea Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 14:10:54 +0900
+Subject: [PATCH 360/377] TechDraw: a drag on a face or a section's hatch moves
+ its view
+
+A drag on a face only picked the face, and a section view could not be
+moved by its hatch, the most of its area (field test 0.7.4, 0.7.5). A
+click still picks the face; a drag moves the view.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/QGIFace.cpp | 53 ++++++++++++++++++++++++++++++++
+ src/Mod/TechDraw/Gui/QGIFace.h   |  7 +++++
+ src/Mod/TechDraw/Gui/QGIView.h   |  2 ++
+ 3 files changed, 62 insertions(+)
+
+diff --git a/src/Mod/TechDraw/Gui/QGIFace.cpp b/src/Mod/TechDraw/Gui/QGIFace.cpp
+index af1f3cea1..2f7afb381 100644
+--- a/src/Mod/TechDraw/Gui/QGIFace.cpp
++++ b/src/Mod/TechDraw/Gui/QGIFace.cpp
+@@ -43,6 +43,9 @@
+ #include "QGCustomRect.h"
+ #include "QGCustomSvg.h"
+ #include "QGCustomImage.h"
++#include "QGIView.h"
++#include <QApplication>
++#include <QGraphicsSceneMouseEvent>
+ #include "QGICMark.h"
+ #include "QGIPrimPath.h"
+ #include "QGSPage.h"
+@@ -86,6 +89,56 @@ QGIFace::QGIFace(int index) :
+     setLineWeight(0.0);                   //0 = cosmetic
+ }
+ 
++static QGIView* viewOf(QGraphicsItem* item)
++{
++    for (QGraphicsItem* p = item->parentItem(); p; p = p->parentItem()) {
++        if (auto* view = dynamic_cast<QGIView*>(p)) {
++            return view;
++        }
++    }
++    return nullptr;
++}
++
++void QGIFace::mousePressEvent(QGraphicsSceneMouseEvent* event)
++{
++    m_draggingView = false;
++    QGIPrimPath::mousePressEvent(event);
++    QGIView* view = viewOf(this);
++    if (event->button() == Qt::LeftButton && view && (view->flags() & QGraphicsItem::ItemIsMovable)) {
++        event->accept();  // the moves come here, even for a face that cannot be picked (a hatch)
++    }
++}
++
++void QGIFace::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
++{
++    QGIView* view = viewOf(this);
++    if ((event->buttons() & Qt::LeftButton) && view && (view->flags() & QGraphicsItem::ItemIsMovable)) {
++        if (!m_draggingView
++            && (event->screenPos() - event->buttonDownScreenPos(Qt::LeftButton)).manhattanLength()
++                < QApplication::startDragDistance()) {
++            return;
++        }
++        m_draggingView = true;
++        view->setPos(view->pos() + event->scenePos() - event->lastScenePos());
++        event->accept();
++        return;
++    }
++    QGIPrimPath::mouseMoveEvent(event);
++}
++
++void QGIFace::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
++{
++    if (m_draggingView) {
++        m_draggingView = false;
++        if (QGIView* view = viewOf(this)) {
++            view->finishDrag();
++        }
++        event->accept();
++        return;
++    }
++    QGIPrimPath::mouseReleaseEvent(event);
++}
++
+ QGIFace::~QGIFace()
+ {
+     delete m_sharedRender;
+diff --git a/src/Mod/TechDraw/Gui/QGIFace.h b/src/Mod/TechDraw/Gui/QGIFace.h
+index 8fb0238ec..2daa2cd81 100644
+--- a/src/Mod/TechDraw/Gui/QGIFace.h
++++ b/src/Mod/TechDraw/Gui/QGIFace.h
+@@ -130,6 +130,13 @@ public:
+     }
+ 
+ protected:
++    // a drag on a face (a section's hatch too) moves its view: it only picked the face, and a
++    // section view could not be moved by its hatch (field test 0.7.4, 0.7.5)
++    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
++    void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
++    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
++    bool m_draggingView {false};
++
+     void makeMark(double x, double y);  // NOLINT readability-identifier-length
+     double getXForm();
+     void getParameters();
+diff --git a/src/Mod/TechDraw/Gui/QGIView.h b/src/Mod/TechDraw/Gui/QGIView.h
+index e87e59894..ef29658bb 100644
+--- a/src/Mod/TechDraw/Gui/QGIView.h
++++ b/src/Mod/TechDraw/Gui/QGIView.h
+@@ -204,6 +204,8 @@ public:
+     bool isExporting() const;
+ 
+     virtual void setMovableFlag();
++    // the end of a drag that a child item made (a face dragged moves its view)
++    void finishDrag() { dragFinished(); }
+ 
+ protected:
+     QGIView* getQGIVByName(std::string name) const;
+-- 
+2.43.0
+

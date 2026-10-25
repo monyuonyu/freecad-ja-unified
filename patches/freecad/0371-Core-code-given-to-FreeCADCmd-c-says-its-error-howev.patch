@@ -1,0 +1,212 @@
+From 70721cee52182a0dcf812161ff4a043191ee4326 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:14:40 +0900
+Subject: [PATCH 371/377] Core: code given to FreeCADCmd -c says its error,
+ however long
+
+Code of more than 255 characters was asked for as a file name: "File
+name too long" ended FreeCADCmd as "Application unexpectedly
+terminated", without the code's error and output. A name that cannot be
+a file does not exist; the code's Python error is said with its
+traceback and exit code 1; an unknown end says what it was.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp          | 26 +++++++++++++++++++++++++-
+ src/Base/FileInfo.cpp            | 28 ++++++++++++++++++----------
+ src/Main/MainCmd.cpp             | 14 +++++++++++++-
+ src/Mod/Unified/TestGuiScript.py | 13 +++++++++++++
+ 4 files changed, 69 insertions(+), 12 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index eaf216f83..2f3ffd2fc 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -3369,8 +3369,32 @@ void Application::processCmdLineFiles()
+     if (files.size() == 1 && mConfig["RunMode"] == "Cmd" && !Base::FileInfo(files.front()).exists()) {
+         // In case we are in console mode and the argument is not a file but Python code
+         // then execute it. This is to behave like the standard Python executable.
+-        Base::Interpreter().runString(files.front().c_str());
++        // Its error is said with its traceback as a script's: a Python error raised through
++        // PyCXX (a property that refused its value) ended in "Application unexpectedly
++        // terminated", without the error and without what the code had printed (0.7.9)
+         mConfig["RunMode"] = "Exit";
++        try {
++            Base::Interpreter().runString(files.front().c_str());
++        }
++        catch (const Base::SystemExitException&) {
++            throw;
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("-c", e);
++            failed.emplace_back("-c");
++        }
++        catch (const Py::Exception&) {
++            Base::PyGILStateLocker lock;
++            reportScriptError("-c", Base::PyException());
++            failed.emplace_back("-c");
++        }
++        catch (const Base::Exception&) {
++            failed.emplace_back("-c");  // a Python error: runString has said it with its traceback
++        }
++        catch (const std::exception& e) {
++            Base::Console().error("{}\n", e.what());
++            failed.emplace_back("-c");
++        }
+     }
+     else if (files.empty() && mConfig["RunMode"] == "Exit" && !stdinIsTerminal()) {
+         // 'FreeCADCmd < script.py' or 'cat script.py | FreeCADCmd': run the input as one
+diff --git a/src/Base/FileInfo.cpp b/src/Base/FileInfo.cpp
+index 56157c62f..d45f5c7fa 100644
+--- a/src/Base/FileInfo.cpp
++++ b/src/Base/FileInfo.cpp
+@@ -278,16 +278,24 @@ bool FileInfo::hasExtension(std::initializer_list<const char*> Exts) const
+     return std::ranges::any_of(Exts, [this](const char* ext) { return hasExtension(ext); });
+ }
+ 
++// A name that cannot be a file (too long: Python code given to FreeCADCmd -c) does not
++// exist; the error of the system ended FreeCADCmd ("File name too long", 0.7.9)
++static bool existsQuietly(const fs::path& path)
++{
++    std::error_code ec;
++    return fs::exists(path, ec);
++}
++
+ bool FileInfo::exists() const
+ {
+     fs::path path(stringToPath(FileName));
+-    return fs::exists(path);
++    return existsQuietly(path);
+ }
+ 
+ bool FileInfo::isReadable() const
+ {
+     fs::path path = stringToPath(FileName);
+-    if (!fs::exists(path)) {
++    if (!existsQuietly(path)) {
+         return false;
+     }
+     fs::file_status stat = fs::status(path);
+@@ -298,7 +306,7 @@ bool FileInfo::isReadable() const
+ bool directoryIsWritable(const fs::path& dir)
+ {
+     try {
+-        if (!fs::exists(dir) || !fs::is_directory(dir)) {
++        if (!existsQuietly(dir) || !fs::is_directory(dir)) {
+             return false;
+         }
+         fs::path test_file = dir / (".fs_perm_test_" + std::to_string(std::rand()) + ".tmp");
+@@ -320,7 +328,7 @@ bool directoryIsWritable(const fs::path& dir)
+ bool FileInfo::isWritable() const
+ {
+     fs::path path = stringToPath(FileName);
+-    if (!fs::exists(path)) {
++    if (!existsQuietly(path)) {
+         return false;
+     }
+     if (fs::is_directory(path)) {
+@@ -386,7 +394,7 @@ bool FileInfo::setPermissions(Permissions perms)
+     }
+ 
+     fs::path file_path = stringToPath(FileName);
+-    if (!fs::exists(file_path)) {
++    if (!existsQuietly(file_path)) {
+         return false;
+     }
+ 
+@@ -398,7 +406,7 @@ bool FileInfo::setPermissions(Permissions perms)
+ bool FileInfo::isFile() const
+ {
+     fs::path path = stringToPath(FileName);
+-    if (fs::exists(path)) {
++    if (existsQuietly(path)) {
+         return fs::is_regular_file(path);
+     }
+ 
+@@ -409,7 +417,7 @@ bool FileInfo::isFile() const
+ bool FileInfo::isDir() const
+ {
+     fs::path path = stringToPath(FileName);
+-    if (fs::exists(path)) {
++    if (existsQuietly(path)) {
+         return fs::is_directory(path);
+     }
+ 
+@@ -419,7 +427,7 @@ bool FileInfo::isDir() const
+ bool FileInfo::isSymlink() const
+ {
+     fs::path path = stringToPath(FileName);
+-    if (fs::exists(path)) {
++    if (existsQuietly(path)) {
+         return fs::is_symlink(path);
+     }
+ 
+@@ -430,7 +438,7 @@ unsigned int FileInfo::size() const
+ {
+     unsigned int bytes {};
+     fs::path path = stringToPath(FileName);
+-    if (fs::exists(path)) {
++    if (existsQuietly(path)) {
+         bytes = fs::file_size(path);
+     }
+ 
+@@ -512,7 +520,7 @@ bool FileInfo::createDirectories() const
+ {
+     try {
+         fs::path path(stringToPath(FileName));
+-        if (fs::exists(path)) {
++        if (existsQuietly(path)) {
+             return true;
+         }
+ 
+diff --git a/src/Main/MainCmd.cpp b/src/Main/MainCmd.cpp
+index 3adcd7a86..5d4a1680d 100644
+--- a/src/Main/MainCmd.cpp
++++ b/src/Main/MainCmd.cpp
+@@ -260,7 +260,19 @@ int main(int argc, char** argv)
+     }
+     catch (...) {
+         flushPythonStreams();
+-        Console().error("Application unexpectedly terminated\n");
++        // what it was, when it can be told (it ended in a bare "unexpectedly terminated")
++        try {
++            throw;
++        }
++        catch (const Base::SystemExitException& e) {
++            exit(static_cast<int>(e.getExitCode()));
++        }
++        catch (const std::exception& e) {
++            Console().error("Application unexpectedly terminated: {}\n", e.what());
++        }
++        catch (...) {
++            Console().error("Application unexpectedly terminated\n");
++        }
+         exit(1);
+     }
+ 
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index 1a6d7f44f..5234c1cc9 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -67,5 +67,18 @@ class GuiScriptTest(unittest.TestCase):
+             shutil.rmtree(tmp)
+ 
+ 
++class LongCodeTest(unittest.TestCase):
++    def test_long_code_with_an_error(self):
++        # code of more than 255 characters given to -c was taken for a file name: "File name
++        # too long" ended FreeCADCmd, without the code's error and output (0.7.9)
++        code = "print('done before')\n" + "x = 1\n" * 60 + "raise ValueError('the real error')\n"
++        proc = subprocess.run([DrawingPdf._freecadcmd(), "-c", code], capture_output=True, timeout=120)
++        out = proc.stdout.decode("utf-8", "replace") + proc.stderr.decode("utf-8", "replace")
++        self.assertEqual(proc.returncode, 1, out)
++        self.assertIn("done before", out)
++        self.assertIn("the real error", out)
++        self.assertNotIn("unexpectedly", out)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

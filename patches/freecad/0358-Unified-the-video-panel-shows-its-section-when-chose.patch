@@ -1,0 +1,107 @@
+From 1e8715541489128e69356d435ae0ac91f09fcfe0 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:58:01 +0900
+Subject: [PATCH 358/377] Unified: the video panel shows its section when
+ chosen; 720 degrees for a four-stroke
+
+The section was only seen in the video, 80 s later (field test 0.7.8):
+it is shown in the 3D view as soon as it is chosen, and taken away when
+the panel closes. When a formula of the file turns over 720 degrees with
+the joint (the valves of a four-stroke engine) the video goes to 720.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/MotionVideoGui.py | 43 ++++++++++++++++++++++++++-----
+ 1 file changed, 36 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Unified/MotionVideoGui.py b/src/Mod/Unified/MotionVideoGui.py
+index 5b7242797..88fe380d9 100644
+--- a/src/Mod/Unified/MotionVideoGui.py
++++ b/src/Mod/Unified/MotionVideoGui.py
+@@ -45,7 +45,7 @@ class MotionPanel:
+             box.setSuffix(suffix)
+             return box
+         self.start = number(0, -36000, 36000, "°")
+-        self.end = number(360, -36000, 36000, "°")
++        self.end = number(full_turn(joint), -36000, 36000, "°")
+         self.frames = number(72, 2, 3600)
+         self.fps = number(24, 1, 120)
+         lay.addRow(translate("Unified_MotionVideo", "From"), self.start)
+@@ -61,6 +61,9 @@ class MotionPanel:
+                           (translate("Unified_MotionVideo", "Cut top to bottom (top half away)"), "z")):  # fmt: skip
+             self.section.addItem(text, key)
+         lay.addRow(translate("Unified_MotionVideo", "Section"), self.section)
++        # shown at once: chosen without seeing it, the video took 80 s to show it (field test 0.7.8)
++        self._shown_section = ""
++        self.section.currentIndexChanged.connect(lambda i: self.show_section(self.section.currentData()))
+         row = QtWidgets.QHBoxLayout()
+         doc = joint.Document
+         folder = os.path.dirname(doc.FileName) if doc.FileName else os.path.expanduser("~")
+@@ -78,19 +81,50 @@ class MotionPanel:
+         if path:
+             self.path.setText(path)
+ 
++    def show_section(self, key):
++        view = view_of(self.joint.Document)
++        if view is None or not hasattr(view, "toggleClippingPlane"):
++            return
++        if self._shown_section:
++            view.toggleClippingPlane(0)
++        self._shown_section = key
++        if key:
++            view.toggleClippingPlane(1, False, True, section_placement(self.joint.Document, key))
++
+     def accept(self):
+         # the panel goes first: open, it narrows the 3D view (the video was framed differently)
+         settings = (self.joint, self.path.text(), self.start.value(), self.end.value(), int(self.frames.value()),
+                     int(self.fps.value()), self.section.currentData())  # fmt: skip
++        self.show_section("")  # the video cuts it again, and takes it away at the end
+         Gui.Control.closeDialog()
+         QtCore.QTimer.singleShot(200, lambda: record(*settings))
+         return True
+ 
+     def reject(self):
++        self.show_section("")
+         Gui.Control.closeDialog()
+         return True
+ 
+ 
++def full_turn(joint):
++    """360, or 720 when a formula of the file turns over 720 degrees with this joint (a four-
++    stroke engine's valves: the video of 360 showed half of the cycle; field test 0.7.8)"""
++    for o in joint.Document.Objects:
++        for _, expr in getattr(o, "ExpressionEngine", []):
++            if joint.Name + "." in expr and "720" in expr:
++                return 720
++    return 360
++
++
++def section_placement(doc, key):
++    box = MotionVideo._visible_box(doc)
++    centre = box.Center if box.isValid() else App.Vector()
++    # the plane's z points to the half taken away: front (-y), left (-x), top (+z)
++    turn = {"y": App.Rotation(App.Vector(1, 0, 0), 90), "x": App.Rotation(App.Vector(0, 1, 0), -90),
++            "z": App.Rotation()}[key]  # fmt: skip
++    return App.Placement(centre, turn)
++
++
+ def view_of(doc):
+     """The 3D view of the document (another file's view could be the active one: a part file
+     opened for its links)"""
+@@ -124,12 +158,7 @@ def record(joint, path, start, end, frames, fps, section=""):
+     view = view_of(doc)
+     clipped = False
+     if section and view is not None and hasattr(view, "toggleClippingPlane"):
+-        box = MotionVideo._visible_box(doc)
+-        centre = box.Center if box.isValid() else App.Vector()
+-        # the plane's z points to the half taken away: front (-y), left (-x), top (+z)
+-        turn = {"y": App.Rotation(App.Vector(1, 0, 0), 90), "x": App.Rotation(App.Vector(0, 1, 0), -90),
+-                "z": App.Rotation()}[section]  # fmt: skip
+-        view.toggleClippingPlane(1, False, True, App.Placement(centre, turn))
++        view.toggleClippingPlane(1, False, True, section_placement(doc, section))
+         clipped = True
+     bar = Gui.getMainWindow().statusBar()
+     # the joints' markers and the pick's highlight are not part of the picture
+-- 
+2.43.0
+

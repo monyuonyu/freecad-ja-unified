@@ -1,7 +1,7 @@
 From 02a089943055a416d4d896665e030a319e40f4b2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:20:41 +0900
-Subject: [PATCH 243/350] DXF in the integrated environment: open without
+Subject: [PATCH 243/377] DXF in the integrated environment: open without
  asking, extrude picked lines
 
 A DXF file opens without the import-mode dialog (separate Part shapes, the

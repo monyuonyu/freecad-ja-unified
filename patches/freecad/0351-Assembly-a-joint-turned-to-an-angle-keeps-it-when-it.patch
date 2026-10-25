@@ -1,0 +1,86 @@
+From 836f925b9419f3ed4922ac2cc0ffc2c7c07e265b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:23:46 +0900
+Subject: [PATCH 351/377] Assembly: a joint turned to an angle keeps it when
+ its panel closes
+
+The panel sets every property again when it closes; setting an offset
+pre-solves the joint, which matches the two sides as they are, without
+the joint's own angle or distance: a rocker turned to 180 went back to 0
+and the joint was broken by 180 degrees (engine field test 0.7.8). A
+driven joint is solved from where it is.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py      |  8 ++++++-
+ src/Mod/Unified/TestAssemblySolve.py | 35 ++++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 82a0c3ad3..c1c121399 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -858,7 +858,13 @@ class Joint:
+         if prop == "Offset1" or prop == "Offset2":
+             self.updateJCSPlacements(joint)
+ 
+-            presolved = joint.JointType in JointUsingPreSolve and self.preSolve(joint, False)
++            # the pre-solve matches the two sides as they are, without the joint's own angle or
++            # distance: a rocker turned to 180 went back to 0 and the joint was broken by 180
++            # degrees when its panel closed (the panel sets every property again; engine field
++            # test 0.7.8). A driven joint is solved from where it is
++            driven = getattr(joint, "AngleDriven", False) or getattr(joint, "SlideDriven", False)
++            presolved = (joint.JointType in JointUsingPreSolve and not driven
++                         and self.preSolve(joint, False))  # fmt: skip
+ 
+             isAssembly = self.getAssembly(joint).Type == "Assembly"
+             if isAssembly and not presolved:
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index fc7bb6201..24482f2fa 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -415,6 +415,41 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_turned_joint_keeps_its_angle_when_its_panel_closes(self):
++        # the panel sets every property again when it closes; the offset's pre-solve put a
++        # rocker turned to 180 back to 0, and the joint was broken by 180 degrees (field test 0.7.8)
++        import JointObject
++        import UtilsAssembly
++
++        V, P = App.Vector, App.Placement
++        doc = App.newDocument("turned")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            base = asm.newObject("Part::Box", "Base")
++            arm = asm.newObject("Part::Box", "Arm")
++            arm.Length = 40
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), base)
++            j = jg.newObject("App::FeaturePython", "Hinge")
++            JointObject.Joint(j, JointObject.JointTypes.index("Revolute"))
++            j.Detach1 = True; j.Detach2 = True
++            j.Reference1 = (base, ["", ""]); j.Reference2 = (arm, ["", ""])
++            j.Placement1 = P(); j.Placement2 = P()
++            j.AngleDriven = True
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            j.Angle = 180
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            exec(UtilsAssembly.generatePropertySettings(j).split("\n", 1)[1], {"App": App, "obj": j})
++            asm.recompute(True)
++            self.assertEqual(asm.getBrokenJoints(), [])
++            x = arm.Placement.Rotation.multVec(V(1, 0, 0))
++            self.assertAlmostEqual(x.x, -1, places=6)
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

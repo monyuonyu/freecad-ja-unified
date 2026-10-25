@@ -1,0 +1,421 @@
+From 9d89cc41629fdd048564834755b440a8158d17f6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:49:37 +0900
+Subject: [PATCH 375/377] Part: --export-web writes a 3D view to turn in a
+ browser, one HTML without libraries
+
+FreeCAD's WebGL export loads three.js from the internet: not without the
+net and not always on a phone. PartWebView.export (from fcx.web of the
+room models) writes WebGL 1 with the data in the page: the visible
+objects in their colours, curved faces shaded smoothly (the normals of
+tessellate), edges, a switch for each group or part, light or dark,
+walls in front taken away, two fingers on a phone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |   3 +
+ src/Mod/Part/CMakeLists.txt             |   2 +
+ src/Mod/Part/PartViews.py               |   6 +
+ src/Mod/Part/PartWebView.py             |  98 ++++++++++++
+ src/Mod/Part/PartWebViewer.html         | 195 ++++++++++++++++++++++++
+ src/Mod/Part/parttests/TestPartViews.py |  19 +++
+ 6 files changed, 323 insertions(+)
+ create mode 100644 src/Mod/Part/PartWebView.py
+ create mode 100644 src/Mod/Part/PartWebViewer.html
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 24690cf9f..ac96dd854 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2499,6 +2499,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
++    ("export-web", boost::program_options::value<std::string>(), "Write a 3D view to turn in a browser as one HTML file (WebGL, no libraries, works offline and on phones); --deflection sets the triangles' error in mm")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+     ("export-edges", boost::program_options::value<std::string>(), "Edges for --export-svg/--export-polygons/--export-pptx: none, outline (each face region's outline as its own line; PPTX default), all (separate lines; SVG and JSON default)")
+     ("interference", "Report overlapping solids of the visible objects (bounding boxes, then boolean common on the candidate pairs)")
+@@ -2744,6 +2745,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-svg", "ExportSvg"},
+         {"export-polygons", "ExportPolygons"},
+         {"export-pptx", "ExportPptx"},
++        {"export-web", "ExportWeb"},
+         {"export-edges", "ExportEdges"},
+         {"interference-report", "InterferenceReport"},
+         {"export-drawings", "ExportDrawings"},
+@@ -3498,6 +3500,7 @@ void Application::processCmdLineFiles()
+         "ExportSvg",
+         "ExportPolygons",
+         "ExportPptx",
++        "ExportWeb",
+         "ExportDrawings",
+     };
+     if (std::any_of(std::begin(viewKeys), std::end(viewKeys), [&cfg](const char* key) {
+diff --git a/src/Mod/Part/CMakeLists.txt b/src/Mod/Part/CMakeLists.txt
+index 8797c5b48..0227cace2 100644
+--- a/src/Mod/Part/CMakeLists.txt
++++ b/src/Mod/Part/CMakeLists.txt
+@@ -17,6 +17,8 @@ set(Part_Scripts
+     MakeBottle.py
+     PartEnums.py
+     PartViews.py
++    PartWebView.py
++    PartWebViewer.html
+     PartMeshTools.py
+     AcisSat.py
+     TestPartApp.py
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index b4c7d51dc..ccd3c302d 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1310,6 +1310,12 @@ def cli_main():
+         if pptx:
+             export_pptx(path=pptx, data=data, edges=modes["pptx"])
+             print("Wrote %s (edges: %s)" % (pptx, modes["pptx"]))
++    web = _config("ExportWeb")
++    if web:
++        import PartWebView
++
++        PartWebView.export(doc, web, deflection=deflection)
++        print("Wrote %s" % web)
+     drawings = _config("ExportDrawings")
+     if drawings:
+         import DrawingPdf
+diff --git a/src/Mod/Part/PartWebView.py b/src/Mod/Part/PartWebView.py
+new file mode 100644
+index 000000000..60a6306db
+--- /dev/null
++++ b/src/Mod/Part/PartWebView.py
+@@ -0,0 +1,98 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""A 3D view to turn in a browser, in one HTML file: WebGL without libraries (FreeCAD's WebGL
++export loads three.js from the internet: not without the net, not always on a phone).
++
++    FreeCADCmd model.FCStd --export-web model.html [--deflection 0.5]
++    PartWebView.export(doc_or_objects, "model.html", title="", notes=[], walls={})
++
++The visible objects of the document with their colours (as PartViews draws them); curved faces
++shaded smoothly (normals from the triangulation), edges drawn. In the page: turn, zoom, pan
++(two fingers on a phone), show or hide each group (the document's groups and parts, or the
++name before "_"), light or dark, walls in front taken away (walls={label: outward direction}).
++From fcx.web (cad-mcp-lab, the room models).
++"""
++
++import base64
++import json
++import os
++import struct
++
++import FreeCAD as App
++
++
++def _shape_data(shape, deflection, edges):
++    points, facets, normals = shape.tessellate(deflection, normals=True)
++    tri = [c for t in facets for k in t for c in (points[k].x, points[k].y, points[k].z)]
++    nrm = [c for t in facets for k in t for c in (normals[k].x, normals[k].y, normals[k].z)]
++    seg = []
++    if edges:
++        for e in shape.Edges:
++            try:
++                straight = e.Curve.TypeId == "Part::GeomLine"
++            except Exception:  # a curve of no known kind (the edge of an offset face)
++                straight = False
++            q = [e.Vertexes[0].Point, e.Vertexes[-1].Point] if straight else e.discretize(Deflection=deflection)
++            for a, b in zip(q, q[1:]):
++                seg += [a.x, a.y, a.z, b.x, b.y, b.z]
++    pack = lambda xs: base64.b64encode(struct.pack("<%df" % len(xs), *xs)).decode()  # noqa: E731
++    return pack(tri), pack(nrm), pack(seg)
++
++
++def _mesh_data(mesh):
++    pts, facets = mesh.Topology if hasattr(mesh, "Topology") else mesh
++    tri = [c for t in facets for k in t for c in (pts[k].x, pts[k].y, pts[k].z)]
++    return base64.b64encode(struct.pack("<%df" % len(tri), *tri)).decode(), "", ""
++
++
++def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=None, deflection=0.0,
++           edges=True):  # fmt: skip
++    """Write the 3D view of `source` (a document, objects or shapes; see PartViews.scene_entries)
++    to the HTML file `path`. walls: {label or name: (x, y, z)} the outward side of a wall,
++    hidden when looked at from that side; alpha: {label or name: 0..1}. deflection: the size of
++    the triangles' error in mm (0: from the size of the model). Returns the path."""
++    import PartViews
++
++    entries = PartViews.scene_entries(source, colors=None)
++    if not entries:
++        raise RuntimeError("Nothing visible to write")
++    if not deflection:
++        box = App.BoundBox()
++        for e in entries:
++            if hasattr(e.item, "BoundBox"):
++                box.add(e.item.BoundBox)
++        deflection = max(box.DiagonalLength / 2000.0, 0.01) if box.isValid() else 0.5
++    walls = walls or {}
++    alpha = alpha or {}
++    # the groups to show or hide: the outermost group of the document, else the name before
++    # "_" (ベッド_柱: ベッド); all in one group (the parts of an assembly): each part
++    def group_of(e):
++        return e.group[0][1] if e.group else (e.label.split("_")[0] if "_" in e.label else e.label)
++
++    one_group = len({group_of(e) for e in entries}) == 1 and len(entries) > 1
++    parts = []
++    for e in entries:
++        if hasattr(e.item, "tessellate"):
++            if not e.item.Faces:
++                continue
++            tri, nrm, seg = _shape_data(e.item, deflection, edges)
++        else:
++            tri, nrm, seg = _mesh_data(e.item)
++        group = (e.label.split("_")[0] if "_" in e.label else e.label) if one_group else group_of(e)
++        color = e.color or (e.view_colors[0] if e.view_colors else (0.8, 0.8, 0.8))
++        wall = walls.get(e.label, walls.get(e.name))
++        parts.append({"name": e.label, "group": group, "color": [round(float(c), 3) for c in color[:3]],
++                      "alpha": float(alpha.get(e.label, alpha.get(e.name, 1.0))),
++                      "wall": [float(c) for c in wall] if wall is not None else None,
++                      "tri": tri, "nrm": nrm, "seg": seg})  # fmt: skip
++    if not title and isinstance(source, App.Document):
++        title = source.Label
++    here = os.path.dirname(os.path.abspath(__file__))
++    with open(os.path.join(here, "PartWebViewer.html"), encoding="utf-8") as f:
++        html = f.read()
++    data = json.dumps({"title": title, "notes": list(notes), "parts": parts}, ensure_ascii=False)
++    html = html.replace("/*__DATA__*/null", data).replace("__TITLE__", title or "3D")
++    folder = os.path.dirname(os.path.abspath(path))
++    os.makedirs(folder, exist_ok=True)
++    with open(path, "w", encoding="utf-8") as f:
++        f.write(html)
++    return path
+diff --git a/src/Mod/Part/PartWebViewer.html b/src/Mod/Part/PartWebViewer.html
+new file mode 100644
+index 000000000..1cfd78265
+--- /dev/null
++++ b/src/Mod/Part/PartWebViewer.html
+@@ -0,0 +1,195 @@
++<!DOCTYPE html>
++<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
++<!-- A 3D view in one file, without libraries (WebGL 1): written by PartWebView.export (FreeCADCmd --export-web). The data is put in DATA below. From fcx.web (cad-mcp-lab). -->
++<html lang="ja">
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
++<title>__TITLE__</title>
++<style>
++  :root { --bg: #f4f3ef; --panel: rgba(255,255,255,0.88); --text: #222; --sub: #666; --line: #ccc; --btn: #fff; --on: #2f6fde; }
++  body.dark { --bg: #1e1f22; --panel: rgba(40,42,46,0.9); --text: #eee; --sub: #aaa; --line: #555; --btn: #2b2d31; --on: #5b8ff0; }
++  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
++               font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans CJK JP", sans-serif; }
++  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
++  #ui { position: absolute; left: 8px; top: 8px; right: 8px; pointer-events: none; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
++  .box { pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
++  #title { font-weight: 600; font-size: 14px; }
++  #notes { color: var(--sub); font-size: 12px; margin-top: 2px; white-space: pre-line; }
++  button { font: inherit; font-size: 13px; padding: 5px 9px; margin: 2px; border: 1px solid var(--line); border-radius: 6px;
++           background: var(--btn); color: var(--text); }
++  button.on { border-color: var(--on); color: var(--on); }
++  label { display: inline-block; margin: 2px 6px 2px 0; white-space: nowrap; }
++  summary { cursor: pointer; color: var(--sub); }
++  @media (max-width: 600px) { .box { font-size: 11px; padding: 4px 6px; } button { font-size: 12px; padding: 4px 7px; }
++    #title { font-size: 13px; } #notes { font-size: 10.5px; } #help { font-size: 10px; } }
++  #help { position: absolute; left: 8px; bottom: 8px; color: var(--sub); font-size: 11px; pointer-events: none; }
++</style>
++</head>
++<body>
++<canvas id="c"></canvas>
++<div id="msg" style="position:absolute;left:0;right:0;top:45%;text-align:center;color:#666;font-size:15px;padding:0 16px">読み込み中…</div>
++<div id="ui">
++  <div class="box"><div id="title"></div><div id="notes"></div></div>
++  <div class="box" id="views">
++    <button data-v="iso">斜め</button><button data-v="top">上から</button><button data-v="front">正面</button><button data-v="side">横</button>
++    <button id="walls">壁: 手前を消す</button><button id="theme">暗くする</button>
++  </div>
++  <details class="box" id="gwrap" open><summary>表示</summary><div id="groups"></div></details>
++</div>
++<div id="help">ドラッグで回す ・ ホイール／2 本指で拡大 ・ 右ドラッグ／Shift＋ドラッグ／2 本指で移動</div>
++<script>
++// 失敗しても真っ白にしない: エラーは画面の真ん中に出す
++function showMsg(t) { const m = document.getElementById("msg"); if (m) { m.style.display = "block"; m.textContent = t; } }
++window.addEventListener("error", e => showMsg("表示できませんでした: " + (e.message || e)));
++</script>
++<script>
++const DATA = /*__DATA__*/null;
++
++const cv = document.getElementById("c");
++const gl = cv.getContext("webgl", { antialias: true, alpha: false }) || cv.getContext("experimental-webgl");
++if (!gl) { showMsg("このブラウザでは 3D（WebGL）が使えません。Chrome で開くか、設定でハードウェア アクセラレーションを有効にしてください"); throw new Error("WebGL なし"); }
++document.getElementById("title").textContent = DATA.title || "";
++document.getElementById("notes").textContent = (DATA.notes || []).join("\n");
++
++// ---------- 小さな行列の道具（列優先 4×4） ----------
++function persp(fovy, asp, n, f) { const t = 1 / Math.tan(fovy / 2), d = n - f;
++  return [t / asp,0,0,0, 0,t,0,0, 0,0,(f + n) / d,-1, 0,0,2 * f * n / d,0]; }
++function lookAt(e, c, u) { let z = norm(sub(e, c)), x = norm(cross(u, z)), y = cross(z, x);
++  return [x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -dot(x,e),-dot(y,e),-dot(z,e),1]; }
++function mul(a, b) { const r = new Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
++  let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; r[i * 4 + j] = s; } return r; }
++const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]], add = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
++const scl = (a, s) => [a[0]*s, a[1]*s, a[2]*s], dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
++const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
++const norm = a => { const l = Math.hypot(...a) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
++
++// ---------- シェーダ ----------
++function prog(vs, fs) { const p = gl.createProgram();
++  for (const [t, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const s = gl.createShader(t);
++    gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
++    gl.attachShader(p, s); }
++  gl.linkProgram(p); return p; }
++const P_FACE = prog(
++  "attribute vec3 p; attribute vec3 n; uniform mat4 m; varying vec3 vn; void main(){ vn = n; gl_Position = m * vec4(p, 1.0); }",
++  "precision mediump float; varying vec3 vn; uniform vec3 col; uniform float a; uniform vec3 l1; uniform vec3 l2;" +
++  "void main(){ vec3 n = normalize(vn); if (dot(n, l1) < 0.0) n = -n; float d = 0.5 + 0.38 * max(dot(n, l1), 0.0) + 0.17 * max(dot(n, l2), 0.0) + 0.08 * abs(n.z);" +
++  " gl_FragColor = vec4(col * d, a); }");
++const P_LINE = prog(
++  "attribute vec3 p; uniform mat4 m; void main(){ gl_Position = m * vec4(p, 1.0); gl_Position.z -= 0.00012 * gl_Position.w; }",
++  "precision mediump float; uniform vec4 col; void main(){ gl_FragColor = col; }");
++
++// ---------- 部品を GPU に載せる（三角形ごとの法線で角を立てる） ----------
++function f32(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
++  return new Float32Array(u.buffer); }
++let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
++const parts = DATA.parts.map(pt => {
++  const t = f32(pt.tri), given = pt.nrm ? f32(pt.nrm) : null, nrm = given && given.length === t.length ? given : new Float32Array(t.length);
++  for (let i = 0; i < t.length; i += 9) {
++    const a = [t[i], t[i+1], t[i+2]], b = [t[i+3], t[i+4], t[i+5]], c = [t[i+6], t[i+7], t[i+8]];
++    if (nrm !== given) { const n = norm(cross(sub(b, a), sub(c, a))); for (let k = 0; k < 3; k++) nrm.set(n, i + 3 * k); }
++    for (const v of [a, b, c]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
++  }
++  const s = f32(pt.seg), bt = gl.createBuffer(), bn = gl.createBuffer(), bs = gl.createBuffer();
++  gl.bindBuffer(gl.ARRAY_BUFFER, bt); gl.bufferData(gl.ARRAY_BUFFER, t, gl.STATIC_DRAW);
++  gl.bindBuffer(gl.ARRAY_BUFFER, bn); gl.bufferData(gl.ARRAY_BUFFER, nrm, gl.STATIC_DRAW);
++  gl.bindBuffer(gl.ARRAY_BUFFER, bs); gl.bufferData(gl.ARRAY_BUFFER, s, gl.STATIC_DRAW);
++  return { ...pt, bt, bn, bs, nt: t.length / 3, ns: s.length / 3, show: true };
++});
++const center = scl(add(lo, hi), 0.5), radius = Math.hypot(...sub(hi, lo)) / 2 || 1;
++
++// ---------- まとまりごとの表示切替 ----------
++const groups = [...new Set(parts.map(p => p.group))];
++const gbox = document.getElementById("groups");
++for (const g of groups) { const l = document.createElement("label"), c = document.createElement("input");
++  c.type = "checkbox"; c.checked = true; c.onchange = () => { parts.forEach(p => { if (p.group === g) p.show = c.checked; }); draw(); };
++  l.append(c, " " + g); gbox.append(l); }
++
++// ---------- カメラ（中心の周りを回る） ----------
++const VIEWS = { iso: [0.7, 0.8], top: [0, 1.55], front: [0, 0.12], side: [1.5708, 0.12] };
++let [yaw, pitch] = VIEWS.iso, fov = 0.75, target = center.slice(), dist = fit();
++function fit() { const asp = cv.clientWidth / Math.max(1, cv.clientHeight);   // 縦長の画面（スマホ）では引いて全体を入れる
++  return radius * 2.4 * Math.max(1, 1.1 / asp); }
++function eye() { return add(target, scl([Math.sin(yaw) * Math.cos(pitch), -Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch)], dist)); }
++document.querySelectorAll("#views [data-v]").forEach(b => b.onclick = () => {
++  [yaw, pitch] = VIEWS[b.dataset.v]; target = center.slice(); dist = fit(); draw(); });
++if (window.innerWidth < 600) document.getElementById("gwrap").open = false;
++let wallMode = 0;   // 0: 手前を消す、1: 全部、2: なし
++const WALL_TXT = ["壁: 手前を消す", "壁: 全部", "壁: なし"];
++document.getElementById("walls").onclick = e => { wallMode = (wallMode + 1) % 3; e.target.textContent = WALL_TXT[wallMode]; draw(); };
++document.getElementById("theme").onclick = e => { document.body.classList.toggle("dark");
++  e.target.textContent = document.body.classList.contains("dark") ? "明るくする" : "暗くする"; draw(); };
++
++// ---------- 描く ----------
++function draw() {
++  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth * dpr, h = cv.clientHeight * dpr;
++  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
++  gl.viewport(0, 0, w, h);
++  const dark = document.body.classList.contains("dark"), bg = dark ? [0.118, 0.122, 0.133] : [0.957, 0.953, 0.937];
++  gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
++  gl.enable(gl.DEPTH_TEST);
++  const e = eye(), up = Math.abs(Math.cos(pitch)) < 1e-3 ? [Math.sin(yaw), -Math.cos(yaw), 0] : [0, 0, 1];
++  const m = mul(persp(fov, w / h, dist / 50, dist + radius * 4), lookAt(e, target, up));
++  const view = norm(sub(e, center));
++  const visible = p => p.show && !(p.wall && (wallMode === 2 || (wallMode === 0 && dot(view, p.wall) > 0.05)));
++  const l1 = norm(sub(e, target)), l2 = norm([0.3, -0.5, 0.8]);
++  const opaque = parts.filter(p => visible(p) && p.alpha >= 1), clear = parts.filter(p => visible(p) && p.alpha < 1);
++  gl.useProgram(P_FACE);
++  const pa = gl.getAttribLocation(P_FACE, "p"), na = gl.getAttribLocation(P_FACE, "n");
++  gl.uniformMatrix4fv(gl.getUniformLocation(P_FACE, "m"), false, m);
++  gl.uniform3fv(gl.getUniformLocation(P_FACE, "l1"), l1); gl.uniform3fv(gl.getUniformLocation(P_FACE, "l2"), l2);
++  gl.enableVertexAttribArray(pa); gl.enableVertexAttribArray(na);
++  gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1, 1);
++  const face = p => { gl.bindBuffer(gl.ARRAY_BUFFER, p.bt); gl.vertexAttribPointer(pa, 3, gl.FLOAT, false, 0, 0);
++    gl.bindBuffer(gl.ARRAY_BUFFER, p.bn); gl.vertexAttribPointer(na, 3, gl.FLOAT, false, 0, 0);
++    gl.uniform3fv(gl.getUniformLocation(P_FACE, "col"), p.color); gl.uniform1f(gl.getUniformLocation(P_FACE, "a"), p.alpha);
++    gl.drawArrays(gl.TRIANGLES, 0, p.nt); };
++  gl.disable(gl.BLEND); gl.depthMask(true); opaque.forEach(face);
++  gl.disableVertexAttribArray(na);
++  // 線（輪郭）
++  gl.useProgram(P_LINE);
++  const la = gl.getAttribLocation(P_LINE, "p");
++  gl.uniformMatrix4fv(gl.getUniformLocation(P_LINE, "m"), false, m);
++  gl.enableVertexAttribArray(la);
++  for (const p of opaque.concat(clear)) { if (!p.ns) continue;
++    const dk = (p.color[0] + p.color[1] + p.color[2]) / 3 < 0.3;
++    gl.uniform4fv(gl.getUniformLocation(P_LINE, "col"), dk ? [0.45, 0.45, 0.45, 1] : [0.12, 0.12, 0.12, 0.55]);
++    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
++    gl.bindBuffer(gl.ARRAY_BUFFER, p.bs); gl.vertexAttribPointer(la, 3, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.LINES, 0, p.ns); }
++  // 半透明は最後に、奥から
++  if (clear.length) { gl.useProgram(P_FACE); gl.enableVertexAttribArray(pa); gl.enableVertexAttribArray(na);
++    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
++    clear.forEach(face); gl.depthMask(true); }
++}
++
++// ---------- 操作（マウス・指） ----------
++const ptrs = new Map(); let last = null, pinch = null;
++function pan(dx, dy) { const e = eye(), f = norm(sub(target, e)), r = norm(cross(f, [0, 0, 1])), u = cross(r, f);
++  const k = 2 * dist * Math.tan(fov / 2) / cv.clientHeight; target = add(target, add(scl(r, -dx * k), scl(u, dy * k))); }
++cv.addEventListener("contextmenu", e => e.preventDefault());
++cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
++  last = { x: e.clientX, y: e.clientY, b: e.button, s: e.shiftKey }; pinch = null; });
++cv.addEventListener("pointerup", e => { ptrs.delete(e.pointerId); pinch = null; last = null; });
++cv.addEventListener("pointercancel", e => { ptrs.delete(e.pointerId); pinch = null; last = null; });
++cv.addEventListener("pointermove", e => {
++  if (!ptrs.has(e.pointerId)) return;
++  ptrs.set(e.pointerId, [e.clientX, e.clientY]);
++  if (ptrs.size === 2) {   // 2 本指: 開き具合で拡大、重心の動きで移動
++    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
++    if (pinch) { dist = Math.min(radius * 12, Math.max(radius * 0.15, dist * pinch.d / d)); pan(c[0] - pinch.c[0], c[1] - pinch.c[1]); }
++    pinch = { d, c }; draw(); return;
++  }
++  if (!last) return;
++  const dx = e.clientX - last.x, dy = e.clientY - last.y; last.x = e.clientX; last.y = e.clientY;
++  if (last.b === 2 || last.s || e.shiftKey) pan(dx, dy);
++  else { yaw -= dx * 0.008; pitch = Math.min(1.5707, Math.max(-0.2, pitch + dy * 0.008)); }
++  draw();
++});
++cv.addEventListener("wheel", e => { e.preventDefault();
++  dist = Math.min(radius * 12, Math.max(radius * 0.15, dist * Math.exp(e.deltaY * 0.0012))); draw(); }, { passive: false });
++window.addEventListener("resize", draw);
++draw();
++document.getElementById("msg").style.display = "none";
++</script>
++</body>
++</html>
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 20568138a..c079c367a 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -626,6 +626,25 @@ class TestPartViewOptions(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def testWebViewInOneFile(self):
++        # one HTML without libraries from the net (FreeCAD's WebGL export loads three.js)
++        import base64
++        import PartWebView
++
++        path = os.path.join(self.dir, "v.html")
++        PartWebView.export([self.holed, self.small], path, title="試し", walls={"item1": (1, 0, 0)})
++        with open(path, encoding="utf-8") as f:
++            html = f.read()
++        self.assertNotIn("<script src", html)
++        self.assertIn("<title>試し</title>", html)
++        data = json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0])
++        self.assertEqual(len(data["parts"]), 2)
++        for part in data["parts"]:
++            tri = base64.b64decode(part["tri"])
++            self.assertEqual(len(tri) % 36, 0)  # triangles of 3 points of 3 floats
++            self.assertEqual(len(base64.b64decode(part["nrm"])), len(tri))
++        self.assertEqual(data["parts"][1]["wall"], [1.0, 0.0, 0.0])
++
+     def testSectionFillsCutFaces(self):
+         data = Part.projectVisible([self.holed, self.small], view="top",
+                                    section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
+-- 
+2.43.0
+

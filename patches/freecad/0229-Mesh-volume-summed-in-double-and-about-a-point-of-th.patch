@@ -1,7 +1,7 @@
 From 109e7425f81ad6b994f9af77b03ef55db0da4f62 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 16 Oct 2026 08:09:45 +0900
-Subject: [PATCH 229/350] Mesh: volume summed in double and about a point of
+Subject: [PATCH 229/377] Mesh: volume summed in double and about a point of
  the mesh
 
 MeshKernel::GetVolume added the signed tetrahedra about the origin in

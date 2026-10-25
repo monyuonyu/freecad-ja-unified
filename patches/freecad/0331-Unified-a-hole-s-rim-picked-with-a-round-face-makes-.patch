@@ -1,7 +1,7 @@
 From ff0098b286419b26d9f89e35484f47a8b3ddf0e0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:38:15 +0900
-Subject: [PATCH 331/350] Unified: a hole's rim picked with a round face makes
+Subject: [PATCH 331/377] Unified: a hole's rim picked with a round face makes
  the joint on the hole's wall
 
 At the usual zoom a small hole's rim is easier to hit than its wall: a

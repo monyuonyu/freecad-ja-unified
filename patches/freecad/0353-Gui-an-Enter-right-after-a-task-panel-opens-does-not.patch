@@ -1,0 +1,59 @@
+From ea3729323f163beccd8a2807c691787e9eb3846e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:30:06 +0900
+Subject: [PATCH 353/377] Gui: an Enter right after a task panel opens does not
+ close it
+
+The Enter that ran the tool search (or confirmed the input method's
+text) came again to the panel it opened and pressed OK: a belt joint
+was made without its panel, teeth 0 (engine field test 0.7.8). An Enter
+within 0.4 s of a panel being shown, or repeated, is left out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/TaskView/TaskView.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/Gui/TaskView/TaskView.cpp b/src/Gui/TaskView/TaskView.cpp
+index e7943df14..d1f12bc00 100644
+--- a/src/Gui/TaskView/TaskView.cpp
++++ b/src/Gui/TaskView/TaskView.cpp
+@@ -25,6 +25,7 @@
+ #include <QActionEvent>
+ #include <QApplication>
+ #include <QCursor>
++#include <QElapsedTimer>
+ #include <QDockWidget>
+ #include <QLineEdit>
+ #include <QPointer>
+@@ -352,10 +353,19 @@ bool TaskView::event(QEvent* event)
+     return QWidget::event(event);
+ }
+ 
++// When the last dialog was shown: an Enter that comes right after is the one of the tool
++// search that opened it (or of the input method), not the user's "OK" (a belt joint was made
++// without its panel, teeth 0; engine field test 0.7.8)
++static QElapsedTimer sinceDialogShown;
++
+ void TaskView::keyPressEvent(QKeyEvent* ke)
+ {
+     std::optional<TaskInfo> active = currentTaskInfo();
+     if (active) {
++        if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter)
++            && (ke->isAutoRepeat() || (sinceDialogShown.isValid() && sinceDialogShown.elapsed() < 400))) {
++            return;
++        }
+         if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+             // get all buttons of the complete task dialog
+             QList<QPushButton*> list = this->findChildren<QPushButton*>();
+@@ -606,6 +616,7 @@ bool TaskView::showDialog(TaskDialog* dlg, App::Document* doc)
+         return false;
+     }
+     assert(foundTaskInfo == taskInfos.end());
++    sinceDialogShown.start();
+ 
+     TaskInfo outInfo;
+     outInfo.Document = doc;
+-- 
+2.43.0
+

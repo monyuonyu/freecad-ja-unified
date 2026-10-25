@@ -1,0 +1,279 @@
+From 62d7831a7869e650204b845ec22915c06179c659 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:41:54 +0900
+Subject: [PATCH 366/377] Drawing PDF: --check-layout warns of what is out of
+ the frame or on the title block
+
+A note centred on its X ran out to the left of the frame and onto the
+title block on the right, and nothing said so (company test 0.7.9). The
+drawn extent of each view, text and dimension is taken from the page's
+scene and compared with the sheet's frame and title block (named in the
+ISO templates; else the largest rectangle and the editable texts).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp           |   4 +
+ src/Mod/Part/PartViews.py         |   3 +-
+ src/Mod/Unified/DrawingPdf.py     | 147 +++++++++++++++++++++++++++++-
+ src/Mod/Unified/TestDrawingPdf.py |  30 ++++++
+ 4 files changed, 181 insertions(+), 3 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 08495e3ba..a4e122e4a 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2495,6 +2495,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("progress", "Progress of --render/--export-* on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
++    ("check-layout", "With --export-drawings: warn of views, texts and dimensions out of the sheet's frame or on its title block")
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+@@ -2754,6 +2755,9 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+             mConfig[key] = vm[option].as<std::string>();
+         }
+     }
++    if (vm.contains("check-layout")) {
++        mConfig["DrawingCheckLayout"] = "1";
++    }
+     if (vm.contains("progress")) {
+         mConfig["RenderProgress"] = "1";
+     }
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 7b8f6ce00..b12db516e 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1277,7 +1277,8 @@ def cli_main():
+         import DrawingPdf
+ 
+         width = _config("DrawingLineWidth")
+-        for name in DrawingPdf.export(doc, drawings, line_width=float(width) if width else None):
++        for name in DrawingPdf.export(doc, drawings, line_width=float(width) if width else None,
++                                      check_layout=bool(_config("DrawingCheckLayout"))):  # fmt: skip
+             print("Wrote %s" % name)
+     report = _config("InterferenceReport")
+     if report:
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index 0c4470232..cb15a3725 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -53,7 +53,7 @@ def _freecadcmd():
+     raise RuntimeError("FreeCADCmd was not found next to " + home)
+ 
+ 
+-def export(path, out, pages=None, seconds=120, line_width=None):
++def export(path, out, pages=None, seconds=120, line_width=None, check_layout=False):
+     """Write the drawing pages of the file `path` (all, or the names/labels in `pages`) as PDF.
+     line_width: the visible lines in mm (hidden and thin lines half of it, dimensions too);
+     without it the views' own widths, or the line group of the preferences for a file saved
+@@ -65,7 +65,8 @@ def export(path, out, pages=None, seconds=120, line_width=None):
+     with tempfile.TemporaryDirectory() as tmp:
+         result = os.path.join(tmp, "result.json")
+         job = {"path": os.path.abspath(path), "out": os.path.abspath(out), "pages": pages,
+-               "seconds": seconds, "result": result, "line_width": line_width}  # fmt: skip
++               "seconds": seconds, "result": result, "line_width": line_width,
++               "check_layout": check_layout}  # fmt: skip
+         env = dict(os.environ)
+         env[JOB_ENV] = json.dumps(job)
+         env["QT_QPA_PLATFORM"] = "offscreen"
+@@ -162,6 +163,9 @@ def _child():
+         for _ in range(10):  # let the scene take the last results (dimensions, labels)
+             QtWidgets.QApplication.processEvents()
+             time.sleep(0.02)
++        if job.get("check_layout"):
++            for page in pages:
++                warnings.extend(layout_problems(doc, page))
+         names = output_names(job["out"], [p.Label for p in pages])
+         for page, name in zip(pages, names):
+             folder = os.path.dirname(name)
+@@ -178,6 +182,145 @@ def _child():
+         finish(error="%s: %s (line %d)" % (type(e).__name__, e, where.lineno))
+ 
+ 
++_kept = []
++
++
++def sheet_areas(template_file, width, height):
++    """(frame, title block) of a sheet in page mm, y up from the bottom: the frame is the
++    drawing space (ISO templates name it), else the largest rectangle inside the sheet, else
++    10 mm in from the edges; the title block is named so, else where the template's editable
++    texts are (None without them)"""
++    import re
++
++    frame = title = None
++    try:
++        with open(template_file, encoding="utf-8") as f:
++            svg = f.read()
++    except OSError:
++        svg = ""
++    rects = []
++    for m in re.finditer(r"<rect\b([^>]*)>", svg):
++        attrs = dict(re.findall(r'([\w:-]+)="([^"]*)"', m.group(1)))
++        try:
++            x, y, w, h = (float(attrs[k]) for k in ("x", "y", "width", "height"))
++        except (KeyError, ValueError):
++            continue
++        box = (x, height - y - h, x + w, height - y)  # y up
++        name = attrs.get("id", "")
++        if "drawing_space" in name or name == "frame":
++            frame = box
++        elif "title_block" in name and title is None:
++            title = box
++        elif 0 < w < width and 0 < h < height:
++            rects.append((w * h, box))
++    if frame is None:
++        big = [b for a, b in sorted(rects, reverse=True) if a > 0.6 * width * height]
++        frame = big[0] if big else (10.0, 10.0, width - 10.0, height - 10.0)
++    if title is None:
++        points = []
++        for m in re.finditer(r"<text\b([^>]*freecad:editable[^>]*)>", svg):
++            attrs = dict(re.findall(r'([\w:-]+)="([^"]*)"', m.group(1)))
++            try:
++                points.append((float(attrs["x"]), height - float(attrs["y"])))
++            except (KeyError, ValueError):
++                continue
++        if points:
++            xs, ys = [p[0] for p in points], [p[1] for p in points]
++            title = (min(xs) - 3, min(ys) - 3, max(xs) + 20, max(ys) + 6)
++    return frame, title
++
++
++def layout_problems(doc, page):
++    """The views, texts and dimensions of the page that go out of the sheet's frame or onto
++    its title block, as they are drawn (a note centred on its X ran out to the left of the
++    frame, and onto the title block on the right; company test 0.7.9)"""
++    import TechDrawGui
++    from PySide import QtCore
++
++    tpl = getattr(page, "Template", None)
++    width = float(getattr(page, "PageWidth", 297) or 297)
++    height = float(getattr(page, "PageHeight", 210) or 210)
++    template_file = getattr(tpl, "PageResult", "") or getattr(tpl, "Template", "") if tpl is not None else ""
++    frame, title = sheet_areas(template_file, width, height)
++    scene = TechDrawGui.getSceneForPage(page)
++    if scene is None:
++        return []
++    # kept: the Python wrapper deletes the page's scene when it goes, and writing the page
++    # after that crashed
++    _kept.append(scene)
++    # the views placed on the page (a dimension's or balloon's place is its view's: drawn in it)
++    views = [o for o in doc.Objects if o.isDerivedFrom("TechDraw::DrawView") and page in o.InListRecursive
++             and not o.isDerivedFrom("TechDraw::DrawProjGroup")
++             and not o.isDerivedFrom("TechDraw::DrawViewDimension")
++             and not o.isDerivedFrom("TechDraw::DrawViewBalloon")]  # fmt: skip
++
++    def drawn(item):
++        # what is drawn: the visible leaves (not the frame and label shown on hover)
++        kids = [c for c in item.childItems() if c.isVisible()]
++        if not kids:
++            return item.sceneBoundingRect()
++        r = QtCore.QRectF()
++        for c in kids:
++            r = r.united(drawn(c))
++        return r
++
++    def mm(rect):  # the scene is in 0.1 mm, y down
++        return (rect.left() / 10, -rect.bottom() / 10, rect.right() / 10, -rect.top() / 10)
++
++    def label_of(item):
++        pos = item.scenePos()
++        x, y = pos.x() / 10, -pos.y() / 10
++        best = None
++        for v in views:
++            vx, vy = _page_xy(v)
++            d = (vx - x) ** 2 + (vy - y) ** 2
++            if best is None or d < best[0]:
++                best = (d, v.Label)
++        return best[1] if best and best[0] < 1 else "?"
++
++    # the top items: not a child of another (parentItem() is not asked: its Python wrapper of
++    # TechDraw's own item took the item with it, and writing the page crashed)
++    import shiboken6
++
++    items = scene.items()
++    children = {shiboken6.getCppPointer(c)[0] for it in items for c in it.childItems()}
++    problems = []
++    for item in items:
++        if shiboken6.getCppPointer(item)[0] in children or not item.isVisible() or item.zValue() < -1000:
++            continue
++        box = mm(drawn(item))
++        if box[2] - box[0] <= 0 or box[3] - box[1] <= 0:
++            continue
++        if (box[2] - box[0]) * (box[3] - box[1]) > 0.9 * width * height:
++            continue  # the sheet (template) itself
++        sides = {"left": frame[0] - box[0], "bottom": frame[1] - box[1], "right": box[2] - frame[2],
++                 "top": box[3] - frame[3]}  # fmt: skip
++        side = max(sides, key=sides.get)
++        out = sides[side] if sides[side] > 0.1 else None
++        name = label_of(item)
++        if name == "?":
++            continue  # not a view of the page (the sheet itself)
++        page_name = page.Label
++        if out is not None:
++            problems.append("%s: %s goes out of the frame by %.1f mm (%s)" % (page_name, name, out, side))
++        if title and box[0] < title[2] and box[2] > title[0] and box[1] < title[3] and box[3] > title[1]:
++            problems.append("%s: %s is on the title block" % (page_name, name))
++    return sorted(problems)
++
++
++def _page_xy(view):
++    """Where the view is on the page (a view of a projection group is placed in the group)"""
++    def mm(q):
++        return float(getattr(q, "Value", q))
++
++    x, y = mm(view.X), mm(view.Y)
++    for parent in view.InList:
++        if parent.isDerivedFrom("TechDraw::DrawProjGroup"):
++            x += mm(parent.X)
++            y += mm(parent.Y)
++    return x, y
++
++
+ def set_line_widths(doc, pages, width):
+     """The lines of the pages' views: `width` mm for the visible lines (hidden, smooth and the
+     dimensions' lines half of it). Without it the views keep theirs (a file saved without the
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index e4a5541d4..d05431447 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -88,6 +88,36 @@ class ExportTest(unittest.TestCase):
+                 pass
+         self.assertIn(3.3, widths)  # 0.33 mm in the scene's 0.1 mm
+ 
++    def test_layout_check(self):
++        # a note out of the frame and one on the title block are said (company test 0.7.9)
++        doc = App.openDocument(self.path)
++        page = doc.getObject("Page")
++        page.Template.Template = os.path.join(App.getResourceDir(), "Mod", "TechDraw", "Templates", "ISO",
++                                              "A4_Landscape_ISO5457_minimal.svg")  # fmt: skip
++        for name, x, y, text in (("Long", 40, 60, "A note much too long for the left of the sheet, it runs out"),
++                                 ("OnTitle", 250, 30, "On the title block")):  # fmt: skip
++            note = doc.addObject("TechDraw::DrawViewAnnotation", name)
++            page.addView(note)
++            note.Text = [text]
++            note.X, note.Y = x, y
++        doc.recompute()
++        doc.save()
++        App.closeDocument(doc.Name)
++        import DrawingPdf as dp
++
++        warned = []
++        old = App.Console.PrintWarning
++        try:
++            App.Console.PrintWarning = lambda text: warned.append(text)
++            dp.export(self.path, os.path.join(self.tmp, "l.pdf"), pages=["部品図"], check_layout=True)
++        finally:
++            App.Console.PrintWarning = old
++        text = "".join(warned)
++        self.assertIn("Long goes out of the frame", text)
++        self.assertIn("(left)", text)
++        self.assertIn("OnTitle is on the title block", text)
++        self.assertNotIn("View ", text)  # the view itself is in the frame
++
+     def test_one_page_and_a_missing_one(self):
+         out = os.path.join(self.tmp, "one.pdf")
+         self.assertEqual(DrawingPdf.export(self.path, out, pages=["Second"]), [out])
+-- 
+2.43.0
+

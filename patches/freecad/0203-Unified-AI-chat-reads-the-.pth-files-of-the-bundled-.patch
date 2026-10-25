@@ -1,7 +1,7 @@
 From 8aca4bed6d0ffc11acfafe22601cf3fd3556a77b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 30 Sep 2026 11:48:06 +0900
-Subject: [PATCH 203/350] Unified: AI chat reads the .pth files of the bundled
+Subject: [PATCH 203/377] Unified: AI chat reads the .pth files of the bundled
  runtime (pywin32 on Windows)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

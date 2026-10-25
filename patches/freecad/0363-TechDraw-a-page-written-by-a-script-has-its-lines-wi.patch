@@ -1,0 +1,76 @@
+From 446201e04fc8992ab46472e7a78d692c73f8c13d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:35:49 +0900
+Subject: [PATCH 363/377] TechDraw: a page written by a script has its lines'
+ widths on paper
+
+The page's own export turned TechDraw's screen mode off; a script's
+(TechDrawGui.exportPageAsPdf / exportPageAsSvg, --export-drawings) drew
+the lines as the screen does at its zoom, up to four times too thick
+and whatever the line group (company test 0.7.9: rivets at 1:12.5 were
+black dots). Screen mode is off while a page is written.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/Gui/PagePrinter.cpp | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/Mod/TechDraw/Gui/PagePrinter.cpp b/src/Mod/TechDraw/Gui/PagePrinter.cpp
+index dca4f6c39..6e2557bf8 100644
+--- a/src/Mod/TechDraw/Gui/PagePrinter.cpp
++++ b/src/Mod/TechDraw/Gui/PagePrinter.cpp
+@@ -58,6 +58,7 @@
+ #include "Rez.h"
+ #include "ViewProviderPage.h"
+ #include "DrawGuiUtil.h"
++#include "PreferencesGui.h"
+ 
+ using namespace TechDrawGui;
+ using namespace TechDraw;
+@@ -188,6 +189,24 @@ void PagePrinter::printAll(QPrinter* printer, App::Document* doc)
+ }
+ 
+ //! print all pages in a document to pdf
++namespace {
++// TechDraw's screen mode off while a page is written (its widths follow the screen's zoom)
++struct PaperWidths
++{
++    bool was = PreferencesGui::screenMode();
++    PaperWidths()
++    {
++        PreferencesGui::setScreenMode(false);
++    }
++    ~PaperWidths()
++    {
++        PreferencesGui::setScreenMode(was);
++    }
++    PaperWidths(const PaperWidths&) = delete;
++    PaperWidths& operator=(const PaperWidths&) = delete;
++};
++}  // namespace
++
+ void PagePrinter::printAllPdf(QPrinter* printer, App::Document* doc)
+ {
+     QString outputFile = printer->outputFileName();
+@@ -362,6 +381,10 @@ void PagePrinter::printPdf(ViewProviderPage* vpPage, const std::string& file)
+     if (file.empty()) {
+         return;
+     }
++    // the lines' widths on paper, not as the screen draws them at its zoom: the page's own
++    // export did so, a script's (TechDrawGui.exportPageAsPdf, --export-drawings) drew the lines
++    // up to four times too thick (company test 0.7.9)
++    PaperWidths paperWidths;
+ 
+     Base::FileInfo fi{file};
+     if (fi.exists() && !fi.isWritable()) {
+@@ -454,6 +477,7 @@ void PagePrinter::saveSVG(ViewProviderPage* vpPage, const std::string& file)
+     filespec = DU::cleanFilespecBackslash(file);
+     QString filename = QString::fromStdString(filespec);
+ 
++    PaperWidths paperWidths;  // as in printPdf
+     auto ourScene = vpPage->getQGSPage();
+     ourScene->setExportingSvg(true);
+     auto ourDoc = vpPage->getDocument();
+-- 
+2.43.0
+

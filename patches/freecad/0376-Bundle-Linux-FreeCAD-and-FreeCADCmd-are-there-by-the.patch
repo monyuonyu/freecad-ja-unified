@@ -1,0 +1,45 @@
+From 0324a07420ffc63923d1b5bbfed6f62c398c6e4e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 23:50:09 +0900
+Subject: [PATCH 376/377] Bundle (Linux): FreeCAD and FreeCADCmd are there by
+ these names too
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The AppImage had freecad and freecadcmd only; scripts written for a
+build from source or for Windows call FreeCADCmd (AppRun FreeCADCmd …,
+reported on 0.7.9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ package/bundle/linux/create_bundle.sh | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/package/bundle/linux/create_bundle.sh b/package/bundle/linux/create_bundle.sh
+index 2a525c97e..cba197dce 100755
+--- a/package/bundle/linux/create_bundle.sh
++++ b/package/bundle/linux/create_bundle.sh
+@@ -17,6 +17,10 @@ mv ${conda_env}/bin ${conda_env}/bin_tmp
+ mkdir ${conda_env}/bin
+ cp ${conda_env}/bin_tmp/freecad ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/freecadcmd ${conda_env}/bin
++# the names of a build from source and of the Windows bundle too: scripts call FreeCADCmd
++# (AppRun FreeCADCmd ..., reported on 0.7.9)
++ln -s freecad ${conda_env}/bin/FreeCAD
++ln -s freecadcmd ${conda_env}/bin/FreeCADCmd
+ cp ${conda_env}/bin_tmp/ccx ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/python ${conda_env}/bin/
+ cp ${conda_env}/bin_tmp/pip ${conda_env}/bin/
+@@ -147,7 +151,7 @@ pixi list -e default > AppDir/packages.txt
+ sed -i "1s/.*/\nLIST OF PACKAGES:/" AppDir/packages.txt
+ 
+ echo "Running FreeCAD command-line smoke test..."
+-if ! "${conda_env}/bin/freecadcmd" --safe-mode --version; then
++if ! "${conda_env}/bin/freecadcmd" --safe-mode --version || ! "${conda_env}/bin/FreeCADCmd" --safe-mode --version; then
+     echo "FreeCAD command-line smoke test failed; the Linux bundle cannot start."
+     exit 1
+ fi
+-- 
+2.43.0
+

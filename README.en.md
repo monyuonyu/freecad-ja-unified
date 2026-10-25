@@ -22,7 +22,7 @@ A 125 cc air-cooled single-cylinder engine was made with this build to test it. 
 
 Left: the whole engine made by a script (73 parts). Right: the engine made **with mouse and keyboard only** (15 parts, 17 joints), turned 0-720 degrees with "Motion to Video", sectioned; rockers and valves move by formulas of the crank angle, intake and exhaust open once each.
 
-Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced, a head sometimes put turned half a turn, ...
+Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced (not even with ASan), the sketch of a hole on a cylinder not attached to it, `mod` giving a negative result for a negative number, ...
 
 ![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
 
@@ -39,7 +39,9 @@ Screen
 
 Command line (no screen)
 - `freecadcmd model.FCStd --render out.png --view iso` (`--section z=10 --section-color part` for a section)
-- `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF)
+- `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF; `--line-width 0.25`, `--check-layout` for what is out of the frame or on the title block)
+- `--export-web model.html` (a 3D view to turn in a browser, one HTML, offline and on phones)
+- `--gui-script work.py -- args` (a script that needs the GUI, without a screen, with its output and errors)
 - `--interference` (about 1 s for 300 parts)
 - DWG (AutoCAD) read and write up to R2018, Jw_cad drawings (JWW)
 
@@ -329,6 +331,15 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.8.0
+
+From the rest of the whole-engine test, the company's work (drawings and pictures of interior parts without the screen) and a model of a room and its furniture.
+
+- **Drawing PDFs without the screen had lines far too thick** (TechDraw's screen mode was applied to the export): lines are written at their width on paper; `--line-width` sets the visible lines (hidden lines and dimensions half). `--check-layout` says which view, note or dimension goes out of the frame or onto the title block
+- `--gui-script work.py -- args`: a script that needs the GUI, without a screen, with its output and its error (exit code 1). `--export-web model.html`: a 3D view to turn in a browser, one HTML without libraries (offline, phones)
+- `--render` views: iso- and the sides in any order (iso-rear-left). `--focus` takes labels as written, loosely or in part, and says the nearest names. A template by its name. A refused spreadsheet alias says why. Long code given to `FreeCADCmd -c` says its error instead of ending silently. `Shape.tessellate(tol, normals=True)`. A face extruded along its own plane is refused. The AppImage has FreeCADCmd and FreeCAD by these names too
+- GUI: a joint turned to 180 keeps it when its panel closes; a part fixed on a round or flat face keeps its turn (the head came turned by 180); a sketch on a face is turned to the part's axes; a formula in a joint's fx window turns it at once; a belt made from Ctrl+K gets its panel; closing a part file keeps a joint's references; Ctrl+B works while the bar's field has the keyboard; a section view can be dragged by its hatch; the video panel shows its section and goes to 720 for a four-stroke; "hasher mismatch" only in the log
 
 ## Changes in 0.7.9
 

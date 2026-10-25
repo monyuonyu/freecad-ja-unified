@@ -1,0 +1,33 @@
+From 77a8d2161f00bddf731fcddc23fa8b77dfd0be6a Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:58:39 +0900
+Subject: [PATCH 359/377] =?UTF-8?q?Unified:=20the=20tool=20search=20finds?=
+ =?UTF-8?q?=20the=20view=20cut=20open=20by=20"=E6=96=AD=E9=9D=A2"?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"断面" (section) found the section shapes but not the clipping of the
+view (engine field test 0.7.7).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CommandAliases.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
+index ce51d32b6..1705657c1 100644
+--- a/src/Mod/Unified/CommandAliases.py
++++ b/src/Mod/Unified/CommandAliases.py
+@@ -53,6 +53,8 @@ ALIASES = {
+     "Part_ShapeString": ["文字", "文字を形に", "テキスト", "刻印", "Text", "Shape string", "Emboss"],
+     "Part_Offset": ["オフセット", "太らせる", "Offset"],
+     "Part_Section": ["断面", "断面線", "Section"],
++    # the view cut open (engine field test 0.7.7: "断面" did not find it)
++    "Std_ToggleClipPlane": ["断面", "断面で見る", "切って見る", "中を見る", "クリッピング", "Clipping", "Section view"],
+     "Part_CrossSections": ["輪切り", "等間隔の断面", "スライス", "Slice", "Cross sections"],
+     "Part_RefineShape": ["形を整える", "継ぎ目を消す", "Refine"],
+     "Part_CheckGeometry": ["形を調べる", "形状チェック", "Check geometry"],
+-- 
+2.43.0
+

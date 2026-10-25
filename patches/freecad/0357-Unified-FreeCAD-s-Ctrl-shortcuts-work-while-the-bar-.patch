@@ -1,0 +1,65 @@
+From c16dbb36c4df1483c7eaabfe2ab7d880b33a706c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 13:54:24 +0900
+Subject: [PATCH 357/377] Unified: FreeCAD's Ctrl shortcuts work while the
+ bar's number field has the keyboard
+
+After a part is put the bar's field has the keyboard, and Ctrl+B (box
+zoom) did nothing (engine field test 0.7.8). A Ctrl key the field does
+not edit with runs FreeCAD's action of that shortcut.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/Gui/ContextBar.cpp | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/src/Mod/Unified/Gui/ContextBar.cpp b/src/Mod/Unified/Gui/ContextBar.cpp
+index 00e9ba8f1..fca5a71ca 100644
+--- a/src/Mod/Unified/Gui/ContextBar.cpp
++++ b/src/Mod/Unified/Gui/ContextBar.cpp
+@@ -28,6 +28,7 @@
+ #include <Gui/Command.h>
+ #include <Gui/Control.h>
+ #include <Gui/Document.h>
++#include <QAction>
+ #include <Gui/MainWindow.h>
+ #include <Gui/MDIView.h>
+ #include <Gui/View3DInventor.h>
+@@ -510,6 +511,34 @@ void ContextBar::watchView(QWidget* gl)
+ 
+ bool ContextBar::eventFilter(QObject* watched, QEvent* event)
+ {
++    // The bar's number field has the keyboard after a part is put: a Ctrl key the field does not
++    // edit with (Ctrl+B box zoom…) is FreeCAD's shortcut, not the field's (field test 0.7.8)
++    if ((event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress) && isVisible()
++        && watched == findChild<QLineEdit*>(QStringLiteral("UnifiedContextField"))) {
++        auto* key = static_cast<QKeyEvent*>(event);
++        bool editing = key->matches(QKeySequence::Copy) || key->matches(QKeySequence::Cut)
++            || key->matches(QKeySequence::Paste) || key->matches(QKeySequence::Undo)
++            || key->matches(QKeySequence::Redo) || key->matches(QKeySequence::SelectAll)
++            || key->matches(QKeySequence::MoveToNextWord)
++            || key->matches(QKeySequence::MoveToPreviousWord)
++            || key->matches(QKeySequence::DeleteStartOfWord)
++            || key->matches(QKeySequence::DeleteEndOfWord);
++        if ((key->modifiers() & Qt::ControlModifier) && !editing) {
++            if (event->type() == QEvent::ShortcutOverride) {
++                event->ignore();
++                return true;
++            }
++            // the shortcut did not reach FreeCAD with the field focused: run its action here
++            const QKeySequence seq(key->keyCombination());
++            const auto actions = Gui::getMainWindow()->findChildren<QAction*>();
++            for (QAction* action : actions) {
++                if (action->isEnabled() && action->shortcut() == seq) {
++                    action->trigger();
++                    return true;
++                }
++            }
++        }
++    }
+     // While the bar with a number field is shown, a digit typed anywhere but in a text field goes
+     // into the field: it must not turn the view ("1"…"6"), wherever the keyboard focus is (e.g.
+     // after a click on one of the bar's buttons; usability test 0.6.9)
+-- 
+2.43.0
+

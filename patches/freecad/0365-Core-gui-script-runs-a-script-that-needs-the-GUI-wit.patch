@@ -1,0 +1,232 @@
+From dd670c7ed247c64733a010f6fd322e3e5cdd38e5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 22:35:50 +0900
+Subject: [PATCH 365/377] Core: --gui-script runs a script that needs the GUI
+ without a screen
+
+FreeCADCmd --gui-script work.py -- args: a child starts the GUI
+offscreen and runs the script with its output on stdout (the GUI took
+print into its report view), its exception with the traceback and exit
+code 1, and files opened hidden (a 3D view needs OpenGL: endless GL
+errors and nothing done). Company test 0.7.9.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt   |   2 +
+ src/Mod/Unified/GuiScript.py     | 112 +++++++++++++++++++++++++++++++
+ src/Mod/Unified/TestGuiScript.py |  71 ++++++++++++++++++++
+ 3 files changed, 185 insertions(+)
+ create mode 100644 src/Mod/Unified/GuiScript.py
+ create mode 100644 src/Mod/Unified/TestGuiScript.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 638961b5e..3a18f75aa 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -18,6 +18,8 @@ set(Unified_Scripts
+     TestContextRules.py
+     DrawingAuto.py
+     DrawingPdf.py
++    GuiScript.py
++    TestGuiScript.py
+     MotionVideo.py
+     TestMotionVideo.py
+     TestDrawingPdf.py
+diff --git a/src/Mod/Unified/GuiScript.py b/src/Mod/Unified/GuiScript.py
+new file mode 100644
+index 000000000..63efc665b
+--- /dev/null
++++ b/src/Mod/Unified/GuiScript.py
+@@ -0,0 +1,112 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""A script that needs the GUI (view providers, TechDraw's drawing, line widths…), run without
++a screen, its output and its errors as from any script:
++
++    FreeCADCmd --gui-script work.py -- arg1 arg2
++    GuiScript.run("work.py", ["arg1"])     # -> exit code
++
++A child FreeCADCmd starts the GUI offscreen (nothing is shown) and runs the script with
++sys.argv = [script, args…]. Its print goes to the standard output (the GUI takes it into its
++report view otherwise), an exception ends it with its traceback and exit code 1, and
++App.openDocument opens files hidden (a document with a 3D view needs OpenGL, which offscreen
++has not: endless GL errors and nothing done; company test 0.7.9). Message boxes are closed
++and their text said. The GUI is not torn down at the end (that crashed in FreeCADCmd).
++"""
++
++import json
++import os
++import subprocess
++import sys
++import tempfile
++
++import FreeCAD as App
++
++JOB_ENV = "FREECAD_GUI_SCRIPT_JOB"
++
++
++def run(path, args=(), seconds=None):
++    """Run the script `path` with the GUI offscreen in a child FreeCADCmd; its output goes to
++    this process's output. Returns its exit code (0: done; 1: an exception, said on stderr)."""
++    import DrawingPdf
++
++    path = os.path.abspath(path)
++    if not os.path.isfile(path):
++        App.Console.PrintError("--gui-script: no such file: %s\n" % path)
++        return 1
++    with tempfile.TemporaryDirectory() as tmp:
++        result = os.path.join(tmp, "result.json")
++        env = dict(os.environ)
++        env[JOB_ENV] = json.dumps({"path": path, "args": list(args), "result": result})
++        env["QT_QPA_PLATFORM"] = "offscreen"
++        env.setdefault("PYTHONIOENCODING", "utf-8")
++        sys.stdout.flush()
++        sys.stderr.flush()
++        try:
++            proc = subprocess.run([DrawingPdf._freecadcmd(), "-c", "import GuiScript\nGuiScript._child()\n"],
++                                  env=env, timeout=seconds)  # fmt: skip
++        except subprocess.TimeoutExpired:
++            App.Console.PrintError("--gui-script: %s did not end in %s s\n" % (path, seconds))
++            return 1
++        try:
++            with open(result, encoding="utf-8") as f:
++                done = json.load(f)
++        except (OSError, ValueError):
++            App.Console.PrintError("--gui-script: %s stopped (exit code %s) before its end\n"
++                                   % (path, proc.returncode))  # fmt: skip
++            return 1
++    return int(done.get("code", 1))
++
++
++def _child():
++    job = json.loads(os.environ[JOB_ENV])
++    out, err = sys.__stdout__, sys.__stderr__
++
++    def finish(code):
++        with open(job["result"], "w", encoding="utf-8") as f:
++            json.dump({"code": code}, f)
++        out.flush()
++        err.flush()
++        os._exit(code)
++
++    try:
++        import FreeCADGui as Gui
++
++        Gui.showMainWindow()
++        from PySide import QtCore, QtWidgets
++
++        # the GUI takes print into its report view: back to the standard output
++        sys.stdout, sys.stderr = out, err
++
++        def close_dialogs():
++            w = QtWidgets.QApplication.activeModalWidget()
++            if w is not None:
++                texts = [w.windowTitle()] + [lb.text() for lb in w.findChildren(QtWidgets.QLabel) if lb.text()]
++                err.write("--gui-script: a message closed: %s\n" % " ".join(t for t in texts if t))
++                w.close()
++
++        closer = QtCore.QTimer()
++        closer.timeout.connect(close_dialogs)
++        closer.start(200)
++
++        open_document = App.openDocument
++
++        def open_hidden(name, *args, **kw):
++            if not args:
++                kw.setdefault("hidden", True)
++            return open_document(name, *args, **kw)
++
++        App.openDocument = open_hidden
++        sys.argv = [job["path"]] + job["args"]
++        scope = {"__name__": "__main__", "__file__": job["path"]}
++        with open(job["path"], encoding="utf-8") as f:
++            code = compile(f.read(), job["path"], "exec")
++        exec(code, scope)
++        QtWidgets.QApplication.processEvents()
++        finish(0)
++    except SystemExit as e:
++        finish(e.code if isinstance(e.code, int) else (0 if e.code is None else 1))
++    except BaseException:  # the script's error, with its lines, then the end
++        import traceback
++
++        err.write(traceback.format_exc())
++        finish(1)
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+new file mode 100644
+index 000000000..1a6d7f44f
+--- /dev/null
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -0,0 +1,71 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# A script that needs the GUI, run without a screen (company test 0.7.9: no output, no error):
++#   FreeCADCmd -t TestGuiScript
++
++import os
++import shutil
++import subprocess
++import tempfile
++import unittest
++
++import FreeCAD as App
++
++import DrawingPdf
++
++
++def gui_script(text, *args):
++    tmp = tempfile.mkdtemp()
++    try:
++        path = os.path.join(tmp, "work.py")
++        with open(path, "w", encoding="utf-8") as f:
++            f.write(text)
++        cmd = [DrawingPdf._freecadcmd(), "--gui-script", path] + (["--"] + list(args) if args else [])
++        proc = subprocess.run(cmd, capture_output=True, timeout=300)
++        return proc.returncode, proc.stdout.decode("utf-8", "replace"), proc.stderr.decode("utf-8", "replace")
++    finally:
++        shutil.rmtree(tmp)
++
++
++class GuiScriptTest(unittest.TestCase):
++    def test_output_and_the_gui(self):
++        code, out, err = gui_script(
++            "import sys, FreeCADGui as Gui\n"
++            "print('main window', Gui.getMainWindow() is not None)\n"
++            "print('args', sys.argv[1:])\n",
++            "a", "b c",
++        )
++        self.assertEqual(code, 0, err)
++        self.assertIn("main window True", out)
++        self.assertIn("args ['a', 'b c']", out)
++
++    def test_an_error_says_where(self):
++        code, out, err = gui_script("print('before')\n\nraise ValueError('no such rivet')\n")
++        self.assertEqual(code, 1)
++        self.assertIn("before", out)
++        self.assertIn("ValueError: no such rivet", err)
++        self.assertIn("line 3", err)
++
++    def test_a_file_opens_hidden_with_its_view_providers(self):
++        tmp = tempfile.mkdtemp()
++        try:
++            doc = App.newDocument("guiscript")
++            doc.addObject("Part::Box", "Box")
++            doc.recompute()
++            path = os.path.join(tmp, "m.FCStd")
++            doc.saveAs(path)
++            App.closeDocument(doc.Name)
++            code, out, err = gui_script(
++                "import FreeCAD as App\n"
++                "d = App.openDocument(%r)\n"
++                "vo = d.getObject('Box').ViewObject\n"
++                "vo.LineWidth = 3\n"
++                "print('line width', vo.LineWidth)\n" % path
++            )
++            self.assertEqual(code, 0, err)
++            self.assertIn("line width 3.0", out)
++        finally:
++            shutil.rmtree(tmp)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

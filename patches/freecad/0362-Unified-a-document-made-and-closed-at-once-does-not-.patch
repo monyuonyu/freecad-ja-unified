@@ -1,0 +1,46 @@
+From 284594fe580ffc908b44a26c1d4eab847d20feed Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sun, 25 Oct 2026 17:00:07 +0900
+Subject: [PATCH 362/377] Unified: a document made and closed at once does not
+ leave a ReferenceError
+
+The opening's check read the document's name from a timer; a script that
+makes a document, draws it and closes it had it gone by then (reported
+on 0.7.9). The name is taken at once, and a document gone is left alone.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopiesGui.py | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index 5f26b6b3c..6b35a4625 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -228,12 +228,21 @@ def make_parts_selectable(doc):
+ class _OpenObserver:
+     # (no "restored" slot for Python observers: from the document's creation, wait for the end)
+     def slotCreatedDocument(self, doc):
+-        QtCore.QTimer.singleShot(100, lambda: _fix_after_open(doc.Name, 100))
++        # the name now: a document made and closed at once (a picture drawn by a script) is gone
++        # when the timer comes (ReferenceError, 0.7.9)
++        name = doc.Name
++        QtCore.QTimer.singleShot(100, lambda: _fix_after_open(name, 100))
+ 
+ 
+ def _fix_after_open(name, tries):
+     # the view's properties are read after the document's: wait until the opening is over
+-    if (App.isRestoring() or Gui.getDocument(name) is None) and tries > 0:
++    if name not in App.listDocuments():
++        return
++    try:
++        gui_doc = Gui.getDocument(name)
++    except Exception:
++        return
++    if (App.isRestoring() or gui_doc is None) and tries > 0:
+         QtCore.QTimer.singleShot(100, lambda: _fix_after_open(name, tries - 1))
+         return
+     doc = App.listDocuments().get(name)
+-- 
+2.43.0
+

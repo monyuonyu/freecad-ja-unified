@@ -1,7 +1,7 @@
 From 97c487672e5e7cb7370dc9d373e30e21e98a2527 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 15:30:29 +0900
-Subject: [PATCH 286/350] Unified: a click on the push/pull arrow picks the
+Subject: [PATCH 286/377] Unified: a click on the push/pull arrow picks the
  face; only a drag moves it
 
 The arrow over a hovered face took every left press, so the middle of a face could not be picked
