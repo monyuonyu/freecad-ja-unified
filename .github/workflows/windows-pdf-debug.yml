@@ -1,0 +1,45 @@
+name: Windows drawing PDF debug
+
+# 図面 PDF の子プロセスが Windows で落ちる件の調べ（0.7.8 で時々、0.7.9 で毎回）。
+# 公開済みの版を落とし、tests/pdf-debug/run.py で子を何回も走らせて、落ちた回の出力を全部出す。
+# 使い方: gh workflow run windows-pdf-debug.yml -f tag=ja-unified-0.7.8 -f overlay=true
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test"
+        required: true
+      overlay:
+        description: "Copy tests/pdf-debug/overlay/*.py into Mod/Unified"
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the Windows 7z
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release download "${{ inputs.tag }}" --pattern '*-Windows-x86_64.7z' --dir dl
+          7z x -bd -y -odl\x (Get-ChildItem dl\*.7z).FullName | Out-Null
+      - name: Overlay
+        if: inputs.overlay == 'true'
+        shell: pwsh
+        run: Copy-Item tests\pdf-debug\overlay\*.py (Get-ChildItem dl\x\*\Mod\Unified).FullName -Force
+      - name: Child runs
+        shell: pwsh
+        run: |
+          $cmd = (Get-ChildItem dl\x\*\bin\freecadcmd.exe).FullName
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'fc-pdf-appdata'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'fc-pdf-localappdata'
+          $env:PYTHONIOENCODING = 'utf-8'
+          & $cmd tests\pdf-debug\run.py 8 section 2>&1
+          & $cmd tests\pdf-debug\run.py 8 nosection 2>&1
