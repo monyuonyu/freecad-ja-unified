@@ -1,0 +1,475 @@
+From 1d081f23c4aadeda1d84d8bc2b297088439aa8bf Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 00:49:28 +0900
+Subject: [PATCH 378/378] Design check: overlaps of compounds measured solid by
+ solid, a failed boolean said, one item, more parts, --design-check
+
+From a room's model (reported on 0.7.9): the members of a frame were
+never checked against each other and 70 overlaps went unseen.
+- The automatic check ran up to 40 parts only (the room has about 150):
+  up to 400 now (Mod/Unified/DesignCheck AutoMaxParts), the overlaps in
+  another process as before.
+- A shape of many solids (68 brackets) against a post: the boolean failed
+  and was taken as no overlap. The solids are measured pair by pair (boxes
+  first); what cannot be measured is a warning, not "no problem".
+- One item: an App::Part or a group marked so (menu, Ctrl+K) has the
+  overlaps of its parts left out (a chair, a welded bed).
+- DesignCheck.interferences(doc) and FreeCADCmd model.FCStd
+  --design-check [interference]: the same measure from scripts, as JSON,
+  exit code 1 on an error.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp            |  18 ++++
+ src/Mod/Unified/CMakeLists.txt     |   1 +
+ src/Mod/Unified/CommandAliases.py  |   1 +
+ src/Mod/Unified/DesignCheck.py     | 138 ++++++++++++++++++++++++++---
+ src/Mod/Unified/DesignCheckGui.py  |  42 ++++++++-
+ src/Mod/Unified/Gui/Workbench.cpp  |   1 +
+ src/Mod/Unified/TestDesignCheck.py | 102 +++++++++++++++++++++
+ 7 files changed, 288 insertions(+), 15 deletions(-)
+ create mode 100644 src/Mod/Unified/TestDesignCheck.py
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index ac96dd854..a37a88f94 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2494,6 +2494,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+     ("progress", "Progress of --render/--export-* on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
++    ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only")
+     ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
+     ("check-layout", "With --export-drawings: warn of views, texts and dimensions out of the sheet's frame or on its title block")
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+@@ -2751,6 +2752,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-drawings", "ExportDrawings"},
+         {"line-width", "DrawingLineWidth"},
+         {"gui-script", "GuiScript"},
++        {"design-check", "DesignCheck"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+         if (vm.contains(option)) {
+@@ -3494,6 +3496,22 @@ void Application::processCmdLineFiles()
+         }
+     }
+ 
++    if (cfg.contains("DesignCheck")) {
++        try {
++            Base::Interpreter().runString("import DesignCheck\nDesignCheck.cli_main()\n");
++        }
++        catch (const Base::SystemExitException&) {
++            failed.emplace_back("--design-check");
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("DesignCheck", e);
++            failed.emplace_back("--design-check");
++        }
++        catch (const Base::Exception&) {
++            failed.emplace_back("--design-check");
++        }
++    }
++
+     static const char* viewKeys[] = {
+         "RenderFile",
+         "InterferenceReport",
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 3a18f75aa..0dedd227a 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -19,6 +19,7 @@ set(Unified_Scripts
+     DrawingAuto.py
+     DrawingPdf.py
+     GuiScript.py
++    TestDesignCheck.py
+     TestGuiScript.py
+     MotionVideo.py
+     TestMotionVideo.py
+diff --git a/src/Mod/Unified/CommandAliases.py b/src/Mod/Unified/CommandAliases.py
+index 1705657c1..13a726a77 100644
+--- a/src/Mod/Unified/CommandAliases.py
++++ b/src/Mod/Unified/CommandAliases.py
+@@ -151,4 +151,5 @@ ALIASES = {
+     "Std_Redo": ["やり直し", "リドゥ", "Redo"],
+     "Unified_AIChat": ["AI", "チャット", "相談", "Claude"],
+     "Unified_DesignCheck": ["検査", "設計の検査", "チェック", "DRC", "Check"],
++    "Unified_DesignCheckOneItem": ["1 つの品物", "ひとつの品物", "干渉を調べない", "重なりを除く", "One item"],
+ }
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index c7c8edafc..54598a8cb 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -67,6 +67,7 @@ RULES = {
+     "split": QT_TRANSLATE_NOOP("DesignCheck", "Part split into pieces"),
+     "not_solid": QT_TRANSLATE_NOOP("DesignCheck", "Not a closed solid"),
+     "interference": QT_TRANSLATE_NOOP("DesignCheck", "Parts overlap"),
++    "interference_unchecked": QT_TRANSLATE_NOOP("DesignCheck", "Overlap could not be checked"),
+     "joint_broken": QT_TRANSLATE_NOOP("DesignCheck", "Joint does not hold"),
+     "sketch_conflict": QT_TRANSLATE_NOOP("DesignCheck", "Conflicting constraints"),
+     "sketch_redundant": QT_TRANSLATE_NOOP("DesignCheck", "Redundant constraints"),
+@@ -90,6 +91,7 @@ class Issue:
+         self.objects = list(objects)          # 関係する物の名前（ドキュメント内の Name）
+         self.location = location              # App.Vector（その場所に寄せるため）か None
+         self.fix = fix                        # 自動で直す方法（FIXES の名前）か None
++        self.volume = None                    # 干渉なら重なりの体積 [mm³]
+ 
+     def as_dict(self, doc=None):
+         def label(n):
+@@ -399,16 +401,49 @@ def _thread_in_hole(oa, ob, volume):
+     return False
+ 
+ 
++def _common_volume(a, b):
++    """(重なりの体積, 重なりの中心)。立体が何個もまとまった形（ブラケット 68 個の部品）どうしの common は
++    失敗したり 0 を返したりする: 立体の組ごとに外形の箱で絞って測り、足す。測れなければ (None, None)
++    （計算の失敗を「重なりなし」にしない。部屋の模型の 0.7.9 で見逃しかけた）"""
++    sa = a.Solids or [a]
++    sb = b.Solids or [b]
++    if len(sa) == 1 and len(sb) == 1:
++        try:
++            c = a.common(b)
++            v = c.Volume
++            return v, (c.BoundBox.Center if v > 0 else None)
++        except Exception:
++            pass
++    total, box, failed = 0.0, None, False
++    for x in sa:
++        for y in sb:
++            if not x.BoundBox.intersect(y.BoundBox):
++                continue
++            try:
++                c = x.common(y)
++                v = c.Volume
++            except Exception:
++                failed = True
++                continue
++            if v > 0:
++                total += v
++                if box is None:
++                    box = App.BoundBox(c.BoundBox)
++                else:
++                    box.add(c.BoundBox)
++    if failed and total <= 0:
++        return None, None
++    return total, (box.Center if box is not None else None)
++
++
+ def _pair_compute(a, b, need_touch, opt):
+-    """2 つの形の (重なりの体積, 重なりの中心, 接しているか)。重い（形によっては 1 組に数秒）"""
+-    try:
+-        c = a.common(b)
+-        v = c.Volume
+-        center = c.BoundBox.Center if v > 0 else None
+-    except Exception:
+-        v, center = 0.0, None
++    """2 つの形の (重なりの体積, 重なりの中心, 接しているか)。重い（形によっては 1 組に数秒）。
++    体積が None: 測れなかった"""
++    v, center = _common_volume(a, b)
+     touch = None
+-    if v > opt["interference_mm3"]:
++    if v is None:
++        touch = True if need_touch else None  # 測れない組を浮きの根拠にもしない
++    elif v > opt["interference_mm3"]:
+         touch = True
+     elif need_touch:
+         touch = _dist(a, b) <= opt["touch_mm"]
+@@ -574,22 +609,35 @@ def iter_interference(doc, issues, opt, shapes):
+                     done += 1
+             finally:
+                 bg.close()
++    one = {n: one_items(doc.getObject(n)) for n in shapes}
+     for k, ((na, a), (nb, b)) in enumerate(pairs):
+         yield Progress(k, len(pairs), message(k))
++        if one[na] & one[nb]:
++            # the parts of one item (a chair, a bed welded together): overlap on purpose
++            touch[na] = touch[nb] = True
++            continue
+         # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
+         pair_touch = need_touch and not (touch[na] and touch[nb])
+         v, center, t = _pair(a, b, pair_touch, opt)
++        if v is None:
++            issues.append(Issue(WARNING, "interference_unchecked",
++                                translate("DesignCheck", "Could not check whether {0} and {1} overlap (the boolean "
++                                          "operation failed)").format(doc.getObject(na).Label, doc.getObject(nb).Label),
++                                [na, nb], a.BoundBox.Center))  # fmt: skip
++            continue
+         if pair_touch and not t and _fitted(a, b):
+             t = True  # a pin in a hole with a clearance fit is held by it, not floating
+         if v > opt["interference_mm3"] and _thread_in_hole(doc.getObject(na), doc.getObject(nb), v):
+             v = 0.0  # a screw of the parts shelf in its tapped hole: the thread overlaps, as it should
+             t = True
+         if v > opt["interference_mm3"]:
+-            issues.append(Issue(ERROR, "interference",
+-                                translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
+-                                    doc.getObject(na).Label, doc.getObject(nb).Label, v),
+-                                [na, nb], center,
+-                                fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None))
++            issue = Issue(ERROR, "interference",
++                          translate("DesignCheck", "{0} and {1} overlap by {2:.1f} mm³").format(
++                              doc.getObject(na).Label, doc.getObject(nb).Label, v),
++                          [na, nb], center,
++                          fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None)
++            issue.volume = v
++            issues.append(issue)
+         if t:
+             touch[na] = touch[nb] = True
+     if need_touch:
+@@ -833,6 +881,45 @@ ORDER = {ERROR: 0, WARNING: 1, INFO: 2}
+ IGNORE_PROP = "DesignCheckIgnore"
+ 
+ 
++ONE_ITEM_PROP = "DesignCheckOneItem"
++
++
++def one_items(obj):
++    """The containers (App::Part, groups) marked as one item that obj is in: the parts of one
++    item (a chair, a monitor arm, a bed welded together) overlap on purpose and are not checked
++    against each other (a room's model said 70 overlaps; reported on 0.7.9)"""
++    if obj is None:
++        return set()
++    return {o.Name for o in obj.InListRecursive if getattr(o, ONE_ITEM_PROP, False)}
++
++
++def set_one_item(container, on=True):
++    """Mark an App::Part or a group as one item (its parts are not checked against each other)"""
++    if ONE_ITEM_PROP not in container.PropertiesList:
++        container.addProperty("App::PropertyBool", ONE_ITEM_PROP, "DesignCheck",
++                              QT_TRANSLATE_NOOP("App::Property", "One item: the overlaps of its parts are "
++                                                "not checked"))  # fmt: skip
++    setattr(container, ONE_ITEM_PROP, bool(on))
++
++
++def interferences(doc=None, **options):
++    """Only the overlaps of the parts, as the design check finds them (the same measure from a
++    script): [{"a", "b" (labels), "names", "volume" (mm³; None: could not be checked),
++    "center"}]. Parts of one item are left out."""
++    doc = doc or App.ActiveDocument
++    opt = dict(DEFAULTS, floating=False, **options)
++    issues = []
++    check_interference(doc, issues, opt, parts(doc))
++    out = []
++    for i in issues:
++        if i.rule not in ("interference", "interference_unchecked") or _is_ignored(doc, i):
++            continue
++        a, b = (doc.getObject(n) for n in i.objects)
++        out.append({"a": a.Label, "b": b.Label, "names": list(i.objects), "volume": i.volume,
++                    "center": i.location})  # fmt: skip
++    return out
++
++
+ def ignored_rules(obj):
+     """obj で無視すると決めた規則（ファイルに記録される）"""
+     return list(getattr(obj, IGNORE_PROP, []) or [])
+@@ -900,6 +987,31 @@ def summary(issues):
+     return {s: sum(1 for i in issues if i.severity == s) for s in (ERROR, WARNING, INFO)}
+ 
+ 
++def cli_main():
++    """FreeCADCmd model.FCStd --design-check [interference]: the open document checked, the
++    issues as JSON on stdout, exit code 1 on an error"""
++    import json
++    import sys
++
++    doc = App.ActiveDocument
++    if doc is None:
++        raise RuntimeError("--design-check: no document is open (give a .FCStd file)")
++    doc.recompute()
++    what = App.ConfigGet("DesignCheck") or "all"
++    if what == "interference":
++        found = interferences(doc)
++        print(json.dumps({"interferences": found}, ensure_ascii=False, indent=1, default=lambda v: list(v)))
++        errors = any(f["volume"] is not None for f in found)
++    else:
++        issues = run(doc)
++        print(json.dumps({"summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
++                         ensure_ascii=False, indent=1))  # fmt: skip
++        errors = bool(summary(issues)[ERROR])
++    sys.stdout.flush()
++    if errors:
++        sys.exit(1)
++
++
+ def main(path, fix=False):
+     """コマンドラインから: FreeCADCmd -c "import DesignCheck; DesignCheck.main('a.FCStd')" 。
+     fix=True なら直せるものを直して上書き保存する。エラーが残れば終了コード 1"""
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index ac088fccc..0d9695cfd 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -467,9 +467,12 @@ class Indicator:
+             if self.button is not None:
+                 self.button.hide()
+             return
+-        # 大きなモデルでは重いので、部品が多いときは常時の検査を省く（ボタンから手で検査できる）
++        # 大きなモデルでは重いので、部品がとても多いときは常時の検査を省く（ボタンから手で検査できる）。
++        # 40 では部屋の模型（約 150 部品）で一度も走らず、部材の干渉を 70 件見逃した（0.7.9）。
++        # 重なりの計算は別のプロセスで、覚えた組は計算し直さない
++        limit = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Unified/DesignCheck").GetInt("AutoMaxParts", 400)
+         try:
+-            many = len(DesignCheck.parts(doc)) > 40
++            many = len(DesignCheck.parts(doc)) > limit
+         except Exception as e:
+             self.stop()
+             self.show_failed(doc, e)
+@@ -565,3 +568,38 @@ class Indicator:
+ 
+ indicator = Indicator()
+ Gui.addCommand("Unified_DesignCheck", DesignCheckCommand())
++
++
++class OneItemCommand:
++    """The picked App::Part or group is one item: the overlaps of its parts are not checked"""
++
++    def GetResources(self):
++        return {
++            "Pixmap": "Part_Common",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_DesignCheckOneItem", "One Item (Overlaps Inside Wanted)"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_DesignCheckOneItem",
++                "The picked part container or group is one item (a chair, a bed welded together): the design "
++                "check does not report the overlaps of its parts. Again to undo.",
++            ),
++        }
++
++    def containers(self):
++        return [o for o in Gui.Selection.getSelection()
++                if o.isDerivedFrom("App::Part") or o.isDerivedFrom("App::DocumentObjectGroup")]  # fmt: skip
++
++    def IsActive(self):
++        return bool(self.containers())
++
++    def Activated(self):
++        objs = self.containers()
++        on = not all(getattr(o, DesignCheck.ONE_ITEM_PROP, False) for o in objs)
++        doc = objs[0].Document
++        doc.openTransaction(translate("DesignCheck", "One item"))
++        for o in objs:
++            DesignCheck.set_one_item(o, on)
++        doc.commitTransaction()
++        doc.recompute()
++
++
++Gui.addCommand("Unified_DesignCheckOneItem", OneItemCommand())
+diff --git a/src/Mod/Unified/Gui/Workbench.cpp b/src/Mod/Unified/Gui/Workbench.cpp
+index c5ae23916..5ded17123 100644
+--- a/src/Mod/Unified/Gui/Workbench.cpp
++++ b/src/Mod/Unified/Gui/Workbench.cpp
+@@ -159,6 +159,7 @@ Gui::MenuItem* Workbench::classicMenuBar() const
+           << "PartDesign_Clone"
+           << "Separator"
+           << "Unified_DesignCheck"
++          << "Unified_DesignCheckOneItem"
+           << "Unified_AIChat"
+           << "Part_CheckGeometry";
+ 
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+new file mode 100644
+index 000000000..3bf0df1a3
+--- /dev/null
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -0,0 +1,102 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# The design check's overlaps (a room's model: 70 overlaps missed, a compound of 68 brackets
++# whose boolean failed taken as no overlap; reported on 0.7.9):
++#   FreeCADCmd -t TestDesignCheck
++
++import json
++import os
++import shutil
++import subprocess
++import tempfile
++import unittest
++
++import FreeCAD as App
++import Part
++
++import DesignCheck
++
++
++def box(doc, name, x, y, z, l=10, w=10, h=10):
++    o = doc.addObject("Part::Box", name)
++    o.Length, o.Width, o.Height = l, w, h
++    o.Placement.Base = App.Vector(x, y, z)
++    return o
++
++
++class DesignCheckOverlapTest(unittest.TestCase):
++    def setUp(self):
++        DesignCheck._PAIR_CACHE.clear()
++        self.doc = App.newDocument("designcheck")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def test_a_compound_of_many_solids(self):
++        # 10 brackets in one shape; 3 of them through a bar
++        brackets = [Part.makeBox(4, 4, 4, App.Vector(10 * i, 0, 0)) for i in range(10)]
++        part = self.doc.addObject("Part::Feature", "Brackets")
++        part.Shape = Part.makeCompound(brackets)
++        box(self.doc, "Bar", 0, 1, 1, l=25, w=2, h=2)  # through brackets 0, 1, 2 (2 x 2 x 4 each)
++        self.doc.recompute()
++        found = DesignCheck.interferences(self.doc)
++        self.assertEqual(len(found), 1)
++        self.assertAlmostEqual(found[0]["volume"], 3 * 2 * 2 * 4, places=3)
++
++    def test_one_item_is_not_checked_inside(self):
++        item = self.doc.addObject("App::Part", "Chair")
++        a = box(self.doc, "Seat", 0, 0, 0)
++        b = box(self.doc, "Leg", 5, 5, 5)
++        item.addObject(a)
++        item.addObject(b)
++        c = box(self.doc, "Wall", 8, 0, 0)  # through the seat and the leg, not one item with them
++        self.doc.recompute()
++        names = lambda: sorted(tuple(sorted(f["names"])) for f in DesignCheck.interferences(self.doc))  # noqa: E731
++        self.assertIn(("Leg", "Seat"), names())
++        DesignCheck.set_one_item(item)
++        DesignCheck._PAIR_CACHE.clear()
++        self.assertNotIn(("Leg", "Seat"), names())
++        self.assertIn(("Seat", "Wall"), names())  # the item against other parts: still checked
++        self.assertTrue(c.Name)
++
++    def test_a_failed_boolean_is_said(self):
++        box(self.doc, "A", 0, 0, 0)
++        box(self.doc, "B", 5, 5, 5)
++        self.doc.recompute()
++        real = DesignCheck._common_volume
++        try:
++            DesignCheck._common_volume = lambda a, b: (None, None)
++            issues = DesignCheck.run(self.doc)
++        finally:
++            DesignCheck._common_volume = real
++        rules = [i.rule for i in issues]
++        self.assertIn("interference_unchecked", rules)
++        self.assertNotIn("interference", rules)
++        self.assertEqual([i.severity for i in issues if i.rule == "interference_unchecked"], [DesignCheck.WARNING])
++
++
++class DesignCheckCommandLineTest(unittest.TestCase):
++    def test_design_check_interference(self):
++        import DrawingPdf
++
++        tmp = tempfile.mkdtemp()
++        try:
++            doc = App.newDocument("dccli")
++            box(doc, "Shelf", 0, 0, 0, l=100, w=30, h=2)
++            box(doc, "Post", 50, 10, -20, l=3, w=3, h=60)
++            doc.recompute()
++            path = os.path.join(tmp, "m.FCStd")
++            doc.saveAs(path)
++            App.closeDocument(doc.Name)
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--design-check", "interference"],
++                                  capture_output=True, timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
++            out = proc.stdout.decode("utf-8", "replace")
++            self.assertEqual(proc.returncode, 1, out + proc.stderr.decode("utf-8", "replace"))
++            data = json.loads(out[out.index("{"):])
++            self.assertEqual([sorted((f["a"], f["b"])) for f in data["interferences"]], [["Post", "Shelf"]])
++            self.assertAlmostEqual(data["interferences"][0]["volume"], 3 * 3 * 2, places=3)
++        finally:
++            shutil.rmtree(tmp)
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.43.0
+

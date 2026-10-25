@@ -1,7 +1,7 @@
 From e5a838f95c4c7636ff7c185f275e26062df685bb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 15:27:21 +0900
-Subject: [PATCH 238/377] Core: pass non-ASCII command line arguments correctly
+Subject: [PATCH 238/378] Core: pass non-ASCII command line arguments correctly
  on Windows (FreeCADCmd)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

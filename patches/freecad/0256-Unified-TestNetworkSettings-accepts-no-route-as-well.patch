@@ -1,7 +1,7 @@
 From d2e041d2e67304cedbbaa32d2e38afcb02e39832 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:15:17 +0900
-Subject: [PATCH 256/377] Unified: TestNetworkSettings accepts "no route" as
+Subject: [PATCH 256/378] Unified: TestNetworkSettings accepts "no route" as
  well as a timeout for the black-hole address
 
 Windows CI runners may answer 10.255.255.1 with "unreachable" instead of

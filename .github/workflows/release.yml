@@ -105,7 +105,8 @@ jobs:
           git checkout -q FETCH_HEAD
           git submodule update -q --init --recursive
           # FreeCAD のソースは CRLF のファイルが多いので --keep-cr が要る
-          git am -q --keep-cr ../patches/patches/freecad/*.patch
+          # 1 本ずつつないで流す: ファイル名を並べると Windows のコマンドの長さの上限を超える（375 本で止まった）
+          for p in ../patches/patches/freecad/*.patch; do cat "$p"; done | git am -q --keep-cr
           git -C src/3rdParty/OndselSolver am -q --keep-cr "$PWD/../patches/patches/ondselsolver/"*.patch
           git log --oneline -3
 

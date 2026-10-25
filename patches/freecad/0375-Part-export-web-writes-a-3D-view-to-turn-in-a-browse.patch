@@ -1,7 +1,7 @@
 From 9d89cc41629fdd048564834755b440a8158d17f6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:49:37 +0900
-Subject: [PATCH 375/377] Part: --export-web writes a 3D view to turn in a
+Subject: [PATCH 375/378] Part: --export-web writes a 3D view to turn in a
  browser, one HTML without libraries
 
 FreeCAD's WebGL export loads three.js from the internet: not without the

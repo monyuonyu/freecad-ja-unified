@@ -1,7 +1,7 @@
 From c7919254a39b3d8098781eb9fbf13da212b38208 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:33:38 +0900
-Subject: [PATCH 292/377] App: a spreadsheet cell's change reaches the
+Subject: [PATCH 292/378] App: a spreadsheet cell's change reaches the
  expressions that use its alias
 
 With the fine-grained recompute the dependents of a recomputed object are
