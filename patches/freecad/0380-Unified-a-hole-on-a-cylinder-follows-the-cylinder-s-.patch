@@ -1,0 +1,155 @@
+From f93271e6af64650a214d7d8f6ae276da3bde06db Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 18:19:00 +0900
+Subject: [PATCH 380/381] Unified: a hole on a cylinder follows the cylinder's
+ diameter
+
+The sketch of a hole on a cylindrical face was put there unattached: a
+new diameter left the hole where it was (field test 0.7.4). It is
+attached to the face at a hidden point (TangentPlane): the point is
+projected on the face again when it changes. A cancelled hole leaves
+neither behind. Test (needs the GUI module): FreeCADCmd --gui-script.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/TestPartDesignFixes.py | 43 ++++++++++++++++++++++
+ src/Mod/Unified/UnifiedCommands.py     | 49 ++++++++++++++++++++++----
+ 2 files changed, 85 insertions(+), 7 deletions(-)
+
+diff --git a/src/Mod/Unified/TestPartDesignFixes.py b/src/Mod/Unified/TestPartDesignFixes.py
+index cad2566b3..b551feae9 100644
+--- a/src/Mod/Unified/TestPartDesignFixes.py
++++ b/src/Mod/Unified/TestPartDesignFixes.py
+@@ -126,5 +126,48 @@ class TessellateNormalsTest(unittest.TestCase):
+                 self.assertGreater(n.dot(r.normalize()), 0.99)
+         self.assertEqual(len(cyl.tessellate(0.1)), 2)  # as before without normals
+ 
++
++class HoleOnRoundFaceTest(unittest.TestCase):
++    def test_the_hole_follows_the_diameter(self):
++        # the sketch of a hole on a cylinder was not attached: a new diameter left it in the air
++        # (field test 0.7.4)
++        import Part
++        import Sketcher
++
++        try:
++            import UnifiedCommands
++        except Exception:
++            self.skipTest("needs the GUI module")
++        doc = App.newDocument("roundhole")
++        try:
++            body = doc.addObject("PartDesign::Body", "Body")
++            base = body.newObject("Sketcher::SketchObject", "Base")
++            base.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
++            base.MapMode = "FlatFace"
++            base.addGeometry(Part.Circle(App.Vector(), App.Vector(0, 0, 1), 20))
++            radius = base.addConstraint(Sketcher.Constraint("Radius", 0, 20))
++            pad = body.newObject("PartDesign::Pad", "Pad")
++            pad.Profile = base
++            pad.Length = 40
++            doc.recompute()
++            face = next("Face%d" % (i + 1) for i, f in enumerate(pad.Shape.Faces)
++                        if f.Surface.__class__.__name__ == "Cylinder")  # fmt: skip
++            sketch = UnifiedCommands._hole_on_round_face(pad, App.Vector(20, 0, 15), App.Vector(1, 0, 0), face)
++            hole = body.newObject("PartDesign::Hole", "Hole")
++            hole.Profile = sketch
++            hole.Diameter = 6
++            hole.Depth = 8
++            doc.recompute()
++            full = 3.14159265 * 400 * 40
++            self.assertLess(hole.Shape.Volume, full - 100)
++            base.setDatum(radius, App.Units.Quantity("30 mm"))
++            doc.recompute()
++            self.assertAlmostEqual(sketch.Placement.Base.x, 30, places=6)
++            self.assertFalse([o.Name for o in doc.Objects if "Invalid" in o.State])
++            # the hole still cuts the bigger cylinder (from its new face, not in the air)
++            self.assertLess(hole.Shape.Volume, 3.14159265 * 900 * 40 - 100)
++        finally:
++            App.closeDocument(doc.Name)
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/src/Mod/Unified/UnifiedCommands.py b/src/Mod/Unified/UnifiedCommands.py
+index 99363f911..e15f184d8 100644
+--- a/src/Mod/Unified/UnifiedCommands.py
++++ b/src/Mod/Unified/UnifiedCommands.py
+@@ -61,19 +61,35 @@ def _picked_round_face():
+     return sel.Object, name, point, normal
+ 
+ 
+-def _hole_on_round_face(obj, point, normal):
++def _hole_on_round_face(obj, point, normal, face_name=None):
+     """The sketch of a hole on a cylindrical face: a point on a plane touching the face there,
+-    facing out (the hole goes in along the face's normal, toward the axis). None outside a body."""
++    facing out (the hole goes in along the face's normal, toward the axis). None outside a body.
++    With the face's name the plane is attached to the face at a hidden point (TangentPlane): the
++    hole follows the face when its diameter changes (it stayed where it was; field test 0.7.4)"""
+     import Part
+ 
+     body = obj.getParentGeoFeatureGroup()
+     if body is None or not body.isDerivedFrom("PartDesign::Body"):
+         return None
+-    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+-    sketch.MapMode = "Deactivated"
+     local = body.getGlobalPlacement().inverse()
+-    where = FreeCAD.Placement(point, FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), normal))
+-    sketch.Placement = local.multiply(where)
++    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
++    if face_name:
++        mark = body.newObject("PartDesign::Point", "HolePoint")
++        mark.Label = translate("Unified_Hole", "Hole position")
++        mark.MapMode = "Deactivated"
++        mark.Placement = FreeCAD.Placement(local.multVec(point), FreeCAD.Rotation())
++        if FreeCAD.GuiUp and mark.ViewObject is not None:
++            mark.ViewObject.Visibility = False
++        sketch.AttachmentSupport = [(obj, face_name), (mark, "")]
++        sketch.MapMode = "TangentPlane"
++        body.Document.recompute()
++        z = sketch.getGlobalPlacement().Rotation.multVec(FreeCAD.Vector(0, 0, 1))
++        if z.dot(normal) < 0:  # facing out, as the hole expects
++            sketch.AttachmentOffset = FreeCAD.Placement(FreeCAD.Vector(), FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), 180))
++    else:
++        sketch.MapMode = "Deactivated"
++        where = FreeCAD.Placement(point, FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), normal))
++        sketch.Placement = local.multiply(where)
+     sketch.addGeometry(Part.Point(FreeCAD.Vector(0, 0, 0)))
+     body.Document.recompute()
+     return sketch
+@@ -205,7 +221,7 @@ class HoleCommand:
+     def on_round_face(self, obj, face_name, point, normal):
+         doc = obj.Document
+         doc.openTransaction(translate("Unified_Hole", "Hole position"))
+-        sketch = _hole_on_round_face(obj, point, normal)
++        sketch = _hole_on_round_face(obj, point, normal, face_name)
+         doc.commitTransaction()
+         if sketch is None:
+             FreeCADGui.runCommand("PartDesign_Hole")
+@@ -215,6 +231,25 @@ class HoleCommand:
+         FreeCADGui.Selection.addSelection(sketch)
+         FreeCADGui.runCommand("PartDesign_Hole")
+ 
++        # the hole cancelled: the sketch and its point do not stay behind
++        def remove_if_unused():
++            if FreeCADGui.Control.activeDialog():
++                QtCore.QTimer.singleShot(300, remove_if_unused)
++                return
++            try:
++                if sketch.InList:
++                    return
++                marks = [o for o, _ in sketch.AttachmentSupport if o.isDerivedFrom("PartDesign::Point")]
++                doc.removeObject(sketch.Name)
++                for m in marks:
++                    if not m.InList:
++                        doc.removeObject(m.Name)
++                doc.recompute()
++            except Exception:
++                pass
++
++        QtCore.QTimer.singleShot(300, remove_if_unused)
++
+ 
+ FreeCADGui.addCommand("Unified_Hole", HoleCommand())
+ 
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 8b323d280cfa716c9ffde8d3d70f8c099708689e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 02:10:47 +0900
-Subject: [PATCH 346/378] Assembly: a slider can be moved to a distance;
+Subject: [PATCH 346/381] Assembly: a slider can be moved to a distance;
  formulas follow while a joint's panel is open
 
 - A slider joint has "Move to a distance" (SlideDriven, SlideDistance,

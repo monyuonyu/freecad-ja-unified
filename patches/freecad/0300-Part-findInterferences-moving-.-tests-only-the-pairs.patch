@@ -1,7 +1,7 @@
 From b98f5a8a8db49415e78cf3763f3f1be331260473 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:14:23 +0900
-Subject: [PATCH 300/378] Part: findInterferences(moving=[...]) tests only the
+Subject: [PATCH 300/381] Part: findInterferences(moving=[...]) tests only the
  pairs with a moving part
 
 Checking a mechanism pose by pose repeated the booleans of the still parts

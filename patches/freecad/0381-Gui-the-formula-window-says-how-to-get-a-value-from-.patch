@@ -1,0 +1,54 @@
+From bb6124c94bfc11558c8a5017c4118e4256f730b5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 18:24:01 +0900
+Subject: [PATCH 381/381] Gui: the formula window says how to get a value from
+ 0 when mod() gives a negative one
+
+mod() keeps the sign of its first number (FreeCAD's rule, kept: files
+of others rely on it); a crank angle's window written with it was wrong
+below 0 (field test 0.7.7). When the result is negative and the formula
+uses mod(), the window says so and shows % ((-140) % 720 = 580).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Dialogs/DlgExpressionInput.cpp | 7 +++++++
+ src/Gui/Language/FreeCAD_ja.ts         | 5 +++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/Gui/Dialogs/DlgExpressionInput.cpp b/src/Gui/Dialogs/DlgExpressionInput.cpp
+index f27eddca0..2d57aeb1f 100644
+--- a/src/Gui/Dialogs/DlgExpressionInput.cpp
++++ b/src/Gui/Dialogs/DlgExpressionInput.cpp
+@@ -425,6 +425,13 @@ void DlgExpressionInput::checkExpression(const QString& text)
+                 }
+ 
+                 numberRange.throwIfOutOfRange(value);
++                // mod() keeps the sign of its first number (as in FreeCAD always); a crank angle
++                // window written with it was wrong below 0 (field test 0.7.7): say so, and the
++                // operator that gives a value from 0
++                if (value.getValue() < 0 && text.contains(QLatin1String("mod("))) {
++                    msg += tr(" (mod() keeps the sign of the first number; for 0 to the second use %, "
++                              "e.g. (-140) % 720 = 580)");
++                }
+                 message = msg.toStdString();
+             }
+         }
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index de21cc852..c42ecf609 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -14408,6 +14408,11 @@ This makes the docked panel stay transparent at all times.</source>
+       <source> (Warning: unit discarded)</source>
+       <translation>（警告: 単位が破棄されました）</translation>
+     </message>
++    <message>
++      <location filename="../Dialogs/DlgExpressionInput.cpp" line="432"/>
++      <source> (mod() keeps the sign of the first number; for 0 to the second use %, e.g. (-140) % 720 = 580)</source>
++      <translation>（mod() の答えは最初の数と同じ符号になる。0 から 2 つ目の数までにしたいときは % を使う。例: (-140) % 720 = 580）</translation>
++    </message>
+     <message>
+       <location filename="../Dialogs/DlgExpressionInput.cpp" line="510"/>
+       <source>Invalid property name: %1</source>
+-- 
+2.43.0
+

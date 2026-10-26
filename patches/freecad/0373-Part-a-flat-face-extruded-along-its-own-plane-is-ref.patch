@@ -1,7 +1,7 @@
 From b0c50e284b27524edf9db8cbef70f0f1fc86135a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:38:24 +0900
-Subject: [PATCH 373/378] Part: a flat face extruded along its own plane is
+Subject: [PATCH 373/381] Part: a flat face extruded along its own plane is
  refused
 
 No error came, the shape was valid and wrong: a common of it gave false

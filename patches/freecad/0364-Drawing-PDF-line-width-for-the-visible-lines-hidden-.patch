@@ -1,7 +1,7 @@
 From 5b77d85bcfc007a9da36eb13b9331ce51426220e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:35:49 +0900
-Subject: [PATCH 364/378] Drawing PDF: --line-width for the visible lines
+Subject: [PATCH 364/381] Drawing PDF: --line-width for the visible lines
  (hidden lines and dimensions half)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

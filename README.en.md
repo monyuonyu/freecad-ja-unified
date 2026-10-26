@@ -22,7 +22,7 @@ A 125 cc air-cooled single-cylinder engine was made with this build to test it. 
 
 Left: the whole engine made by a script (73 parts). Right: the engine made **with mouse and keyboard only** (15 parts, 17 joints), turned 0-720 degrees with "Motion to Video", sectioned; rockers and valves move by formulas of the crank angle, intake and exhaust open once each.
 
-Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced (not even with ASan), the sketch of a hole on a cylinder not attached to it, `mod` giving a negative result for a negative number, ...
+Each version was tried on the same tasks with the screen only: 0.6.9: 2 of 6 (a crash lost the work); 0.7.3: 4; 0.7.5: all 6 (parts, assembly, drawing); **0.7.8: the whole engine** (valve train, cam chain, valves moved by formulas, sectioned video, reopened). What stopped it was fixed in each version; still open: rare crashes not reproduced (not even with ASan), ...
 
 ![Parts made with the screen only: piston, connecting rod, crank, finned cylinder](docs/images/engine_gui_parts.png)
 
@@ -331,6 +331,12 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.8.1
+
+- The design check is faster: a room of 125 parts 12.9 s to 10.2 s the first time, about 3 s again or after moving a part (pairs that only touch get no boolean, the rest go at once to C++ threads, lighter fingerprints; `--interference` gains the same)
+- A hole on a cylinder follows the cylinder's diameter (its sketch is attached to the face)
+- The formula window shows `%` when `mod()` gives a negative result (`mod(-140; 720)` is -140 by FreeCAD's rule; `(-140) % 720` is 580)
 
 ## Changes in 0.8.0
 

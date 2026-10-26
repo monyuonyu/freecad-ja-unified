@@ -1,7 +1,7 @@
 From 02dcb5e0259ad2cc11f3af5b68072d7b185b09fd Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 03:44:21 +0900
-Subject: [PATCH 348/378] Unified: the parts of an assembly can be picked again
+Subject: [PATCH 348/381] Unified: the parts of an assembly can be picked again
  when its file opens
 
 The joint panel's isolation makes the other parts unselectable for a

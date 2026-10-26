@@ -1,7 +1,7 @@
 From 21e447bcadf43502887d91be6d6efb8f17e8bb30 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 02:08:41 +0900
-Subject: [PATCH 345/378] Assembly: editing a joint, a click in the tree does
+Subject: [PATCH 345/381] Assembly: editing a joint, a click in the tree does
  not replace its references
 
 A whole object picked in the tree while a joint's panel was open became

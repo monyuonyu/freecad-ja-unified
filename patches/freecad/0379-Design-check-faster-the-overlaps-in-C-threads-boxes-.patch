@@ -1,0 +1,264 @@
+From 23ee06f56a11d29c0f32c615fbc35def0b943653 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 01:30:49 +0900
+Subject: [PATCH 379/381] Design check: faster - the overlaps in C++ threads,
+ boxes that only touch skipped, fingerprints once
+
+A room of 125 parts: 12.9 s (18.7 with floating parts) to 10.2 s the
+first time, 2.8 s again or after moving a part.
+- The pairs not measured before go at once to Part.findInterferences
+  (threads, the GIL let go: a Python thread keeps the screen alive),
+  shapes cut into their solids; a pair that fails there is measured
+  again solid by solid, and said if it still cannot be.
+- findInterferences leaves out boxes that share no more than minVolume:
+  the overlap is inside both boxes (parts on the floor only touch).
+- The pair cache's fingerprint is taken once per shape, without volume
+  and area; isValid is remembered by fingerprint.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp          |  11 +++
+ src/Mod/Part/parttests/TestPartViews.py |   4 +-
+ src/Mod/Unified/DesignCheck.py          | 122 ++++++++++++++++++------
+ src/Mod/Unified/TestDesignCheck.py      |   7 +-
+ 4 files changed, 111 insertions(+), 33 deletions(-)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 84fc8ab4e..3ff83a4ea 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -2207,6 +2207,17 @@ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+             if (B.y0 > A.y1 + tol || A.y0 > B.y1 + tol || B.z0 > A.z1 + tol || A.z0 > B.z1 + tol) {
+                 continue;
+             }
++            // the overlap is inside both boxes: boxes that share less than minVolume (parts that
++            // only touch, a cabinet on the floor) cannot overlap by more; no boolean for them (most
++            // of the time of a room's design check went to such pairs)
++            if (tol == 0) {
++                const double dx = std::min(A.x1, B.x1) - std::max(A.x0, B.x0);
++                const double dy = std::min(A.y1, B.y1) - std::max(A.y0, B.y0);
++                const double dz = std::min(A.z1, B.z1) - std::max(A.z0, B.z0);
++                if (dx <= 0 || dy <= 0 || dz <= 0 || dx * dy * dz <= minVolume) {
++                    continue;
++                }
++            }
+             int a = std::min(order[i], order[j]);
+             int b = std::max(order[i], order[j]);
+             if (moving && !(*moving)[a] && !(*moving)[b]) {
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index c079c367a..f2c502331 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -554,13 +554,13 @@ class TestPartViews(unittest.TestCase):
+         self.assertEqual([(i, j) for i, j, v in pairs], [(0, 1), (1, 2)])
+         self.assertAlmostEqual(pairs[0][2], 125, places=6)
+         self.assertAlmostEqual(pairs[1][2], 125, places=6)
+-        self.assertEqual(stats["candidates"], 3)
++        self.assertEqual(stats["candidates"], 2)  # a and c only touch: their boxes share no volume, no boolean
+         self.assertEqual(Part.findInterferences([a, d]), [])
+         self.assertEqual(len(Part.findInterferences([a, b, c, d], threads=1)), 2)
+         # moving: only pairs with a moving shape (c moves: b-c stays, a-b is not tested)
+         pairs, stats = Part.findInterferences([a, b, c, d], stats=True, moving=[2])
+         self.assertEqual([(i, j) for i, j, v in pairs], [(1, 2)])
+-        self.assertEqual(stats["candidates"], 2)
++        self.assertEqual(stats["candidates"], 1)  # a-c only touch
+         self.assertEqual(Part.findInterferences([a, b, c, d], moving=[]), [])
+         with self.assertRaises(IndexError):
+             Part.findInterferences([a, b], moving=[2])
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 54598a8cb..b6830b0eb 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -288,10 +288,22 @@ def check_bodies(doc, issues, opt):
+                                     [o.Name]))
+ 
+ 
++_VALID_CACHE = {}  # {fingerprint: isValid}: the automatic check runs after each recompute
++
++
++def _valid(s, fp=None):
++    key = fp if fp is not None else _fingerprint(s)
++    if key not in _VALID_CACHE:
++        if len(_VALID_CACHE) > 5000:
++            _VALID_CACHE.clear()
++        _VALID_CACHE[key] = s.isValid()
++    return _VALID_CACHE[key]
++
++
+ def check_shapes(doc, issues, opt, shapes):
+     for n, s in shapes.items():
+         o = doc.getObject(n)
+-        if not s.isValid():
++        if not _valid(s):
+             issues.append(Issue(ERROR, "invalid_shape",
+                                 translate("DesignCheck", "{0}: the shape is broken (isValid is false)").format(o.Label), [n]))
+         sol = s.Solids
+@@ -318,9 +330,10 @@ _PAIR_CACHE = {}
+ 
+ 
+ def _fingerprint(s):
++    # the vertices, counts and box: the volume and area (computed each time) took most of it
+     bb = s.BoundBox
+     verts = hash(tuple(sorted((round(v.X, 4), round(v.Y, 4), round(v.Z, 4)) for v in s.Vertexes)))
+-    return (round(s.Volume, 3), round(s.Area, 3), len(s.Faces), len(s.Edges), verts,
++    return (len(s.Solids), len(s.Faces), len(s.Edges), verts,
+             tuple(round(v, 3) for v in (bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax)))
+ 
+ 
+@@ -417,7 +430,8 @@ def _common_volume(a, b):
+     total, box, failed = 0.0, None, False
+     for x in sa:
+         for y in sb:
+-            if not x.BoundBox.intersect(y.BoundBox):
++            common_box = x.BoundBox.intersected(y.BoundBox)
++            if not common_box.isValid() or common_box.XLength * common_box.YLength * common_box.ZLength <= 1e-9:
+                 continue
+             try:
+                 c = x.common(y)
+@@ -553,6 +567,42 @@ def worker_main(jobfile):
+         sys.stdout.flush()
+ 
+ 
++def _measure_overlaps(items, wanted, opt):
++    """The overlaps of the pairs `wanted` ({(name a, name b)}) of items [(name, shape)], all at
++    once in C++ threads (Part.findInterferences: boxes first, then the booleans on all cores;
++    a common at a time here took 9 of the 13 s of a room of 125 parts). The shapes are cut into
++    their solids, so that a shape of many solids is measured solid by solid; the volumes of a
++    pair of parts are added. {(a, b): (volume or None if a boolean failed, centre)}"""
++    names = {n for pair in wanted for n in pair}
++    solids, owner = [], []
++    for n, shape in items:
++        if n not in names:
++            continue
++        for x in shape.Solids or [shape]:
++            solids.append(x)
++            owner.append(n)
++    found = Part.findInterferences(solids, minVolume=opt["interference_mm3"])
++    out = {pair: [0.0, None, False] for pair in wanted}
++    for i, j, volume in found:
++        a, b = owner[i], owner[j]
++        pair = (a, b) if (a, b) in out else (b, a)
++        if a == b or pair not in out:
++            continue
++        if volume < 0:
++            out[pair][2] = True  # this pair of solids could not be measured
++            continue
++        out[pair][0] += volume
++        box = solids[i].BoundBox.intersected(solids[j].BoundBox)
++        out[pair][1] = box.Center if box.isValid() else solids[i].BoundBox.Center
++    result = {}
++    for pair, (volume, center, failed) in out.items():
++        if failed and volume <= opt["interference_mm3"]:
++            result[pair] = None  # measured again, slowly, below
++        else:
++            result[pair] = (volume, center)
++    return result
++
++
+ def check_interference(doc, issues, opt, shapes):
+     """部品どうしの干渉。opt["floating"] が真なら、どこにも接していない部品も調べる（重いので手動の検査だけ）"""
+     for _ in iter_interference(doc, issues, opt, shapes):
+@@ -585,30 +635,30 @@ def iter_interference(doc, issues, opt, shapes):
+         return translate("DesignCheck", "Checking whether {0} and {1} overlap").format(
+             doc.getObject(na).Label, doc.getObject(nb).Label)
+ 
+-    if opt.get("background") and pairs and _worker_exe() is not None:
+-        # まだ結果を覚えていない組を、別のプロセスでまとめて計算する（浮きのための距離も全部の組で測る）
+-        todo = [k for k, ((_, a), (_, b)) in enumerate(pairs) if _pair_cached(_pair_key(a, b, opt), need_touch) is None]
+-        if todo:
+-            import queue
+-            bg = _Background([(pairs[k][0][1], pairs[k][1][1], need_touch) for k in todo], opt)
+-            try:
+-                done = len(pairs) - len(todo)
+-                while done < len(pairs):
+-                    try:
+-                        r = bg.results.get_nowait()
+-                    except queue.Empty:
+-                        p = Progress(done, len(pairs), message(todo[done - (len(pairs) - len(todo))]))
+-                        p.waiting = True
+-                        yield p
+-                        continue
+-                    if r is None:
+-                        break  # 途中で終わった（残りはこのプロセスで計算する）
+-                    (_, a), (_, b) = pairs[todo[r["i"]]]
+-                    center = None if r["center"] is None else App.Vector(*r["center"])
+-                    _remember(_pair_key(a, b, opt), (r["v"], center, r["touch"]))
+-                    done += 1
+-            finally:
+-                bg.close()
++    # each shape's fingerprint once (by pair it took 2.5 s of a room's 13)
++    fp = {n: _fingerprint(sh) for n, sh in items}
++
++    def key(na, nb):
++        tol = (opt["interference_mm3"], opt["touch_mm"])
++        fa, fb = fp[na], fp[nb]
++        return ((fa, fb) if fa <= fb else (fb, fa)) + tol
++
++    todo = {(na, nb) for (na, _), (nb, _) in pairs if _PAIR_CACHE.get(key(na, nb)) is None}
++    measured = {}
++    if todo:
++        import threading
++
++        # in a thread: C++ lets go of the GIL, the screen stays alive while it runs
++        box = {}
++        worker = threading.Thread(target=lambda: box.update(r=_measure_overlaps(items, todo, opt)), daemon=True)
++        worker.start()
++        while worker.is_alive():
++            p = Progress(0, len(pairs), translate("DesignCheck", "Checking whether {0} pairs of parts overlap").format(
++                len(todo)))  # fmt: skip
++            p.waiting = True
++            yield p
++            worker.join(0.05)
++        measured = box.get("r", {})
+     one = {n: one_items(doc.getObject(n)) for n in shapes}
+     for k, ((na, a), (nb, b)) in enumerate(pairs):
+         yield Progress(k, len(pairs), message(k))
+@@ -618,7 +668,23 @@ def iter_interference(doc, issues, opt, shapes):
+             continue
+         # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
+         pair_touch = need_touch and not (touch[na] and touch[nb])
+-        v, center, t = _pair(a, b, pair_touch, opt)
++        k_ab = key(na, nb)
++        hit = _PAIR_CACHE.get(k_ab)
++        if hit is not None and (hit[2] is not None or not pair_touch):
++            v, center, t = hit
++        else:
++            got = measured.get((na, nb)) or measured.get((nb, na)) if hit is None else (hit[0], hit[1])
++            if got is None and hit is None:
++                got = _common_volume(a, b)  # the C++ boolean failed: once more, solid by solid
++            v, center = got
++            t = None
++            if v is None:
++                t = True if pair_touch else None
++            elif v > opt["interference_mm3"]:
++                t = True
++            elif pair_touch:
++                t = _dist(a, b) <= opt["touch_mm"]
++            _remember(k_ab, (v, center, t))
+         if v is None:
+             issues.append(Issue(WARNING, "interference_unchecked",
+                                 translate("DesignCheck", "Could not check whether {0} and {1} overlap (the boolean "
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index 3bf0df1a3..bee7acf6f 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -62,12 +62,13 @@ class DesignCheckOverlapTest(unittest.TestCase):
+         box(self.doc, "A", 0, 0, 0)
+         box(self.doc, "B", 5, 5, 5)
+         self.doc.recompute()
+-        real = DesignCheck._common_volume
+-        try:
++        real = DesignCheck._common_volume, DesignCheck._measure_overlaps
++        try:  # the booleans fail: in the C++ threads, then solid by solid
++            DesignCheck._measure_overlaps = lambda items, wanted, opt: {pair: None for pair in wanted}
+             DesignCheck._common_volume = lambda a, b: (None, None)
+             issues = DesignCheck.run(self.doc)
+         finally:
+-            DesignCheck._common_volume = real
++            DesignCheck._common_volume, DesignCheck._measure_overlaps = real
+         rules = [i.rule for i in issues]
+         self.assertIn("interference_unchecked", rules)
+         self.assertNotIn("interference", rules)
+-- 
+2.43.0
+
