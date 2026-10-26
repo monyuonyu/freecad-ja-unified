@@ -1,7 +1,7 @@
 From df72967886d4f95822f5be5e0ef81a61d80c1b41 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 12:15:16 +0900
-Subject: [PATCH 323/381] Unified: "Slides in place", turning in place takes
+Subject: [PATCH 323/389] Unified: "Slides in place", turning in place takes
  the part's fixing away, and both on the bar of a linked part
 
 - "Turns in place" removes the fixing of the part (the first part put in

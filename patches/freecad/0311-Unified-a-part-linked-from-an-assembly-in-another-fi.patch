@@ -1,7 +1,7 @@
 From 1f5c88c9eeffda750cc8dc38380e8eed6f945564 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:22:36 +0900
-Subject: [PATCH 311/381] Unified: a part linked from an assembly in another
+Subject: [PATCH 311/389] Unified: a part linked from an assembly in another
  file is still a part of its own file
 
 doc.RootObjects leaves out an object that an object of another document

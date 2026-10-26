@@ -1,7 +1,7 @@
 From a00e67f78e9ef925e67b01b1cb6bc23abed6bcc3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:52:33 +0900
-Subject: [PATCH 295/381] Assembly joints without activating the assembly;
+Subject: [PATCH 295/389] Assembly joints without activating the assembly;
  small holes win the pick; picks refused in words
 
 - The joint tools work on the document's only assembly without

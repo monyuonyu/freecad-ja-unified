@@ -1,0 +1,129 @@
+From 992d1e913dd1c45cc629e602091eb100ba396f27 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 19:56:47 +0900
+Subject: [PATCH 383/389] Assembly: after opening a file, a big step of a
+ driven angle is walked from its saved value
+
+A crank saved at 270, the file opened again and set to 0 was solved in
+one step: the cam on a 2:1 chain took the other answer, half a turn off,
+with every joint holding (engine field test 0.8.1). The parts of a file
+are where the joints' saved values put them; those are now the values
+the next solve walks from.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/App/AssemblyObject.cpp | 18 ++++++++
+ src/Mod/Assembly/App/AssemblyObject.h   |  1 +
+ src/Mod/Unified/TestAssemblySolve.py    | 55 +++++++++++++++++++++++++
+ 3 files changed, 74 insertions(+)
+
+diff --git a/src/Mod/Assembly/App/AssemblyObject.cpp b/src/Mod/Assembly/App/AssemblyObject.cpp
+index 618cb1b49..0b75d995d 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.cpp
++++ b/src/Mod/Assembly/App/AssemblyObject.cpp
+@@ -363,6 +363,24 @@ App::DocumentObjectExecReturn* AssemblyObject::execute()
+     return ret;
+ }
+ 
++// The parts of a file are where the joints' saved values put them: those values are the ones
++// the next solve walks from. Without them a crank saved at 270 and set to 0 was solved in one
++// step, and a chain's cam took the other answer, half a turn off, silently (field test 0.8.1)
++void AssemblyObject::onDocumentRestored()
++{
++    App::Part::onDocumentRestored();
++    heldDriveValue.clear();
++    for (auto* obj : getOutListRecursive()) {
++        if (!obj->getPropertyByName("JointType")) {
++            continue;
++        }
++        const double value = driveValue(obj);
++        if (!std::isnan(value)) {
++            heldDriveValue[obj->getNameInDocument()] = value;
++        }
++    }
++}
++
+ void AssemblyObject::onChanged(const App::Property* prop)
+ {
+     if (prop == &Group) {
+diff --git a/src/Mod/Assembly/App/AssemblyObject.h b/src/Mod/Assembly/App/AssemblyObject.h
+index 8ca2d8fad..5832ba9cb 100644
+--- a/src/Mod/Assembly/App/AssemblyObject.h
++++ b/src/Mod/Assembly/App/AssemblyObject.h
+@@ -92,6 +92,7 @@ public:
+ 
+     App::DocumentObjectExecReturn* execute() override;
+     void onChanged(const App::Property* prop) override;
++    void onDocumentRestored() override;
+     /* Solve the assembly. It will update first the joints, solve, update placements of the parts
+     and redraw the joints Args : enableRedo : This store initial positions to enable undo while
+     being in an active transaction (joint creation).*/
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 459faac3e..8b4d74404 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -480,6 +480,61 @@ class AssemblySolveTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_a_belt_keeps_its_timing_after_reopening(self):
++        # a crank saved at 270, the file opened again, set to 0: the cam on a 2:1 chain was
++        # half a turn off, silently (engine field test 0.8.1)
++        import os
++        import shutil
++        import tempfile
++
++        import JointObject
++
++        V, P = App.Vector, App.Placement
++        tmp = tempfile.mkdtemp()
++        doc = App.newDocument("beltreopen")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            jg = asm.newObject("Assembly::JointGroup", "Joints")
++            base = asm.newObject("Part::Box", "Base")
++            w1 = asm.newObject("Part::Cylinder", "W1")
++            w2 = asm.newObject("Part::Cylinder", "W2")
++            w2.Placement = P(V(100, 0, 0), App.Rotation())
++            doc.recompute()
++            JointObject.GroundedJoint(jg.newObject("App::FeaturePython", "Ground"), base)
++            def joint(kind, name, a, pa, b, pb):
++                j = jg.newObject("App::FeaturePython", name)
++                JointObject.Joint(j, JointObject.JointTypes.index(kind))
++                j.Detach1 = True; j.Detach2 = True
++                j.Reference1 = (a, ["", ""]); j.Reference2 = (b, ["", ""])
++                j.Placement1 = pa; j.Placement2 = pb
++                return j
++            drive = joint("Revolute", "Drive", base, P(), w1, P())
++            drive.AngleDriven = True
++            joint("Revolute", "Axle2", base, P(V(100, 0, 0), App.Rotation()), w2, P())
++            belt = joint("Belt", "Chain", w1, P(), w2, P())
++            belt.Distance = 12.27; belt.Distance2 = 24.33
++            belt.Teeth1 = 14; belt.Teeth2 = 28
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            start = App.Rotation(w2.Placement.Rotation)
++            drive.Angle = 270
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            path = os.path.join(tmp, "belt.FCStd")
++            doc.saveAs(path)
++            App.closeDocument(doc.Name)
++            doc = App.openDocument(path)
++            asm, drive, w2 = doc.getObject("Assembly"), doc.getObject("Drive"), doc.getObject("W2")
++            drive.Angle = 0
++            doc.recompute()
++            self.assertEqual(asm.solve(), 0)
++            turn = start.inverted() * w2.Placement.Rotation
++            self.assertAlmostEqual(math.degrees(turn.Angle), 0, places=4)
++        finally:
++            App.closeDocument(doc.Name)
++            shutil.rmtree(tmp)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

@@ -1,0 +1,40 @@
+From 0ca428f0442d796fb100c10eba3cc21cf13048dd Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 19:50:21 +0900
+Subject: [PATCH 382/389] Assembly: a click in the tree while a joint's panel
+ is open keeps its references
+
+Another joint clicked in the tree (kept out of the selection while
+editing) cleared the selection, and the panel took the references away:
+both None, silently, not back with Cancel (engine field test 0.8.1).
+Only a clearing that does not come from the tree takes them away.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 68f2cef23..bdd13576a 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -2828,6 +2828,16 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+             global activeTask
+             if activeTask is not self or not files <= set(App.listDocuments()):
+                 return
++            # a click in the tree (on another joint, kept out of the selection while editing)
++            # clears the selection: not the user taking the references away (both were lost,
++            # silently; field test 0.8.1). Only a click in the 3D view clears them
++            if Gui.Selection.getSelectionEx("", 0):
++                return
++            under = QtWidgets.QApplication.widgetAt(QtGui.QCursor.pos())
++            while under is not None:
++                if under.metaObject().className() == "Gui::TreeWidget":
++                    return
++                under = under.parentWidget()
+             self.refs.clear()
+             self.updateJoint()
+ 
+-- 
+2.43.0
+

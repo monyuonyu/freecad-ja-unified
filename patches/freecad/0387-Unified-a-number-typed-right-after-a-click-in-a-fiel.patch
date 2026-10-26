@@ -1,0 +1,50 @@
+From f4db65d6006494edface522c78c9aa1dc2096cec Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 20:08:29 +0900
+Subject: [PATCH 387/389] Unified: a number typed right after a click in a
+ field is not cut by the field's selection
+
+A click in a number field selects the whole number when the click ends,
+a moment later. FreeCAD busy (a crank turning), the first digit went in
+before it, the selection came, and the next digit replaced the first:
+180 typed, 80 put (engine field test 0.8.1). A key that comes first
+gets the selection first.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/UnifiedChrome.py | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/UnifiedChrome.py b/src/Mod/Unified/UnifiedChrome.py
+index 1b92436d9..e4a1428ab 100644
+--- a/src/Mod/Unified/UnifiedChrome.py
++++ b/src/Mod/Unified/UnifiedChrome.py
+@@ -672,8 +672,24 @@ class KeyFilter(QtCore.QObject):
+                         spin.setProperty("unifiedSelectOnRelease", True)
+                 elif spin.property("unifiedSelectOnRelease"):
+                     spin.setProperty("unifiedSelectOnRelease", False)
+-                    QtCore.QTimer.singleShot(0, spin.selectAll)
++                    # A key typed before the selection is made gets it first: FreeCAD busy, the
++                    # first digit went in, the selection came, the next replaced it (180 typed,
++                    # 80 put; engine field test 0.8.1)
++                    spin.setProperty("unifiedSelectPending", True)
++
++                    def select(spin=spin):
++                        if spin.property("unifiedSelectPending"):
++                            spin.setProperty("unifiedSelectPending", False)
++                            spin.selectAll()
++
++                    QtCore.QTimer.singleShot(0, select)
+                 return False
++        if t == QtCore.QEvent.KeyPress and isinstance(obj, QtWidgets.QWidget):
++            target = obj if obj.property("unifiedSelectPending") else obj.parent()
++            if isinstance(target, QtWidgets.QWidget) and target.property("unifiedSelectPending"):
++                target.setProperty("unifiedSelectPending", False)
++                if hasattr(target, "selectAll") and event.text():
++                    target.selectAll()  # now, before the key: it replaces the whole number
+         if t == QtCore.QEvent.ShortcutOverride and isinstance(obj, QtWidgets.QWidget) and _digit_while_sketching(event):
+             # While a sketch is drawn the digits are numbers (a size being typed), never the
+             # standard views "1"…"6" (engine field test 0.6.9: typing 1 or 3 turned the view)
+-- 
+2.43.0
+

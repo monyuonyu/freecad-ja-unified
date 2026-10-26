@@ -1,7 +1,7 @@
 From bb6124c94bfc11558c8a5017c4118e4256f730b5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 18:24:01 +0900
-Subject: [PATCH 381/381] Gui: the formula window says how to get a value from
+Subject: [PATCH 381/389] Gui: the formula window says how to get a value from
  0 when mod() gives a negative one
 
 mod() keeps the sign of its first number (FreeCAD's rule, kept: files

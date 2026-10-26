@@ -1,0 +1,75 @@
+From 241597ec190f2f8b7e58a9d1f259b623ca853331 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 19:59:34 +0900
+Subject: [PATCH 384/389] Unified: nothing picked and no panel open, no part of
+ an assembly stays isolated
+
+A joint picked isolates its two parts (FreeCAD); after the bar's "Turns
+in Place" the other 14 parts stayed see-through and unpickable, and Esc
+and a click in the empty view did not bring them back (engine field test
+0.8.1). The bar's joints end the isolation before the new joint is
+picked, and a cleared selection with no panel open ends it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopiesGui.py | 33 +++++++++++++++++++++++++++-
+ 1 file changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index 6b35a4625..91db2309f 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -253,11 +253,41 @@ def _fix_after_open(name, tries):
+             App.Console.PrintLog("Unified: selectable parts: {}\n".format(e))
+ 
+ 
++def end_isolation(doc):
++    """The parts of the file's assemblies shown and pickable again: a joint picked isolates its
++    two parts (FreeCAD), and after the bar's "Turns in Place" the other 14 parts stayed see-through
++    and unpickable, Esc and a click in the empty view did not bring them back (field test 0.8.1)"""
++    for asm in doc.Objects:
++        if asm.isDerivedFrom("Assembly::AssemblyObject") and asm.ViewObject is not None:
++            try:
++                asm.ViewObject.clearIsolate()
++            except Exception:
++                pass
++    make_parts_selectable(doc)
++
++
++class _ClearedSelection:
++    # nothing picked and no panel open: no part is left isolated
++    def clearSelection(self, doc_name):
++        QtCore.QTimer.singleShot(0, lambda: self.later(doc_name))
++
++    def later(self, doc_name):
++        if Gui.Control.activeDialog() or Gui.Selection.getSelectionEx("", 0):
++            return
++        doc = App.listDocuments().get(doc_name) if doc_name else App.ActiveDocument
++        if doc is not None:
++            end_isolation(doc)
++
++
+ _observer = None
++_cleared = None
+ 
+ 
+ def install():
+-    global _filter, _observer
++    global _filter, _observer, _cleared
++    if _cleared is None:
++        _cleared = _ClearedSelection()
++        Gui.Selection.addObserver(_cleared)
+     if _filter is None:
+         import UnifiedChrome
+ 
+@@ -324,6 +354,7 @@ class HingeToGroundCommand:
+         finally:
+             doc.commitTransaction()
+         Gui.Selection.clearSelection()
++        end_isolation(doc)
+         Gui.Selection.addSelection(joint)
+ 
+ 
+-- 
+2.43.0
+

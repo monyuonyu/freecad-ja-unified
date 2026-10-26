@@ -1,0 +1,59 @@
+From e977dd065fe7e0822320910c69694f9e440c9cfc Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 20:22:39 +0900
+Subject: [PATCH 389/389] Unified: the joints of a file saved by a script get
+ their view when it opens
+
+A file saved without the screen has no views of its own: the joints'
+panel did not open on a double click (the panel failed half made) and
+their markers were not drawn - an assembly made by a script could not
+be edited on the screen. When the file opens, joints without a view get
+the one of their kind (by the class's name), attached.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/AssemblyCopiesGui.py | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/src/Mod/Unified/AssemblyCopiesGui.py b/src/Mod/Unified/AssemblyCopiesGui.py
+index 91db2309f..d330c8b0b 100644
+--- a/src/Mod/Unified/AssemblyCopiesGui.py
++++ b/src/Mod/Unified/AssemblyCopiesGui.py
+@@ -251,6 +251,34 @@ def _fix_after_open(name, tries):
+             make_parts_selectable(doc)
+         except Exception as e:
+             App.Console.PrintLog("Unified: selectable parts: {}\n".format(e))
++        try:
++            give_joints_their_view(doc)
++        except Exception as e:
++            App.Console.PrintLog("Unified: joints' views: {}\n".format(e))
++
++
++def give_joints_their_view(doc):
++    """Joints of a file saved without the screen (a script) have no view of their own: their
++    panel did not open on a double click, the markers were not drawn. They get it."""
++    import JointObject
++
++    # by the class's name: the proxy restored from the file is of the class of that name, not
++    # always the very class object of the module loaded here
++    kinds = {"GroundedJoint": JointObject.ViewProviderGroundedJoint,
++             "RigidGroupJoint": JointObject.ViewProviderRigidGroupJoint,
++             "Joint": JointObject.ViewProviderJoint}  # fmt: skip
++    for obj in doc.Objects:
++        vo = getattr(obj, "ViewObject", None)
++        proxy = getattr(obj, "Proxy", None)
++        # (an empty view proxy reads as a number, not None)
++        view = getattr(vo, "Proxy", None) if vo is not None else None
++        if vo is None or proxy is None or (view is not None and not isinstance(view, (int, float))):
++            continue
++        view_kind = kinds.get(type(proxy).__name__)
++        if view_kind is not None:
++            view = view_kind(vo)
++            if hasattr(view, "attach"):  # (made on an existing view: not attached by FreeCAD)
++                view.attach(vo)
+ 
+ 
+ def end_isolation(doc):
+-- 
+2.43.0
+

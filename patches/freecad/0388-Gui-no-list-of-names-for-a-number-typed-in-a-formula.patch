@@ -1,0 +1,56 @@
+From 463a3bb7ce44a70dd13cddd54313f8733e899891 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 20:18:11 +0900
+Subject: [PATCH 388/389] Gui: no list of names for a number typed in a
+ formula; the mod() hint for a mod() only
+
+A 0 typed in the formula window opened the list of every name with a 0
+in it over the OK button, and the first click only closed it; the hint
+about mod() came for a negative result of a formula that only used a
+mod() inside (engine field test 0.8.1).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Dialogs/DlgExpressionInput.cpp |  3 ++-
+ src/Gui/ExpressionCompleter.cpp        | 11 ++++++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/Dialogs/DlgExpressionInput.cpp b/src/Gui/Dialogs/DlgExpressionInput.cpp
+index 2d57aeb1f..29a94cfb7 100644
+--- a/src/Gui/Dialogs/DlgExpressionInput.cpp
++++ b/src/Gui/Dialogs/DlgExpressionInput.cpp
+@@ -428,7 +428,8 @@ void DlgExpressionInput::checkExpression(const QString& text)
+                 // mod() keeps the sign of its first number (as in FreeCAD always); a crank angle
+                 // window written with it was wrong below 0 (field test 0.7.7): say so, and the
+                 // operator that gives a value from 0
+-                if (value.getValue() < 0 && text.contains(QLatin1String("mod("))) {
++                // (only for a formula that is a mod(): a negative of something else is not it)
++                if (value.getValue() < 0 && text.trimmed().startsWith(QLatin1String("mod("))) {
+                     msg += tr(" (mod() keeps the sign of the first number; for 0 to the second use %, "
+                               "e.g. (-140) % 720 = 580)");
+                 }
+diff --git a/src/Gui/ExpressionCompleter.cpp b/src/Gui/ExpressionCompleter.cpp
+index 20e53bbf9..3378bb475 100644
+--- a/src/Gui/ExpressionCompleter.cpp
++++ b/src/Gui/ExpressionCompleter.cpp
+@@ -920,7 +920,16 @@ void ExpressionCompleter::slotUpdate(const QString& prefix, int pos)
+     init();
+ 
+     QString completionPrefix = tokenizer.perform(prefix, pos);
+-    if (completionPrefix.isEmpty()) {
++    // a number being typed is no name: the list of all names with a 0 in them covered the
++    // OK button, and the first click only closed it (engine field test 0.8.1)
++    bool number = !completionPrefix.isEmpty();
++    for (QChar c : completionPrefix) {
++        if (!c.isDigit() && c != QLatin1Char('.') && c != QLatin1Char(',')) {
++            number = false;
++            break;
++        }
++    }
++    if (completionPrefix.isEmpty() || number) {
+         if (auto itemView = popup()) {
+             itemView->setVisible(false);
+         }
+-- 
+2.43.0
+

@@ -332,6 +332,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.8.2
+
+From the 3rd GUI-only engine test (0.8.1: all 6 tasks done with the screen, 0-720 degrees right however turned, no crash): a click in the tree on another joint no longer empties the open joint's references; a crank saved at 270 and set to 0 after reopening no longer leaves a chain's cam half a turn off; no part stays see-through and unpickable after the bar's joints; formulas follow a joint deleted and made again; the part the pre-solve moves keeps its turn whichever was picked first; a number typed while FreeCAD is busy no longer loses its first digit; no list of names over OK for a number in the formula window; joints of a file saved by a script can be edited on the screen.
+
 ## Changes in 0.8.1
 
 - The design check is faster: a room of 125 parts 12.9 s to 10.2 s the first time, about 3 s again or after moving a part (pairs that only touch get no boolean, the rest go at once to C++ threads, lighter fingerprints; `--interference` gains the same)

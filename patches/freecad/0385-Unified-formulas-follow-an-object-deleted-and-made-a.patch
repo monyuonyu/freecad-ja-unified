@@ -1,0 +1,161 @@
+From 4681e66b29f6e9b543a1b1f3485a8f13e78b53c9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 20:01:37 +0900
+Subject: [PATCH 385/389] Unified: formulas follow an object deleted and made
+ again under the same name
+
+FreeCAD kept the formula's text but not its link: the formulas that used
+a crank's joint, made again as "Revolute", were computed once and then
+stood still, silently (engine field test 0.8.1). Before a recompute of a
+file where objects were made, a formula naming an object that is there
+but not linked is set again.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/CMakeLists.txt      |  1 +
+ src/Mod/Unified/ExpressionRelink.py | 61 +++++++++++++++++++++++++++++
+ src/Mod/Unified/Init.py             | 13 ++++++
+ src/Mod/Unified/TestUnifiedFiles.py | 27 +++++++++++++
+ 4 files changed, 102 insertions(+)
+ create mode 100644 src/Mod/Unified/ExpressionRelink.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 0dedd227a..1284f97d6 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -19,6 +19,7 @@ set(Unified_Scripts
+     DrawingAuto.py
+     DrawingPdf.py
+     GuiScript.py
++    ExpressionRelink.py
+     TestDesignCheck.py
+     TestGuiScript.py
+     MotionVideo.py
+diff --git a/src/Mod/Unified/ExpressionRelink.py b/src/Mod/Unified/ExpressionRelink.py
+new file mode 100644
+index 000000000..61ac17067
+--- /dev/null
++++ b/src/Mod/Unified/ExpressionRelink.py
+@@ -0,0 +1,61 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Formulas that named an object which was deleted and made again (the same name) follow it
++again. FreeCAD keeps the formula's text, but its link to the new object is not made: the
++formula is computed once and then no more (a crank made again as "Revolute": the valves and
++rockers stood still, silently; engine field test 0.8.1). Before a recompute of a file where
++objects were made, a formula naming an object that is there but not linked is set again."""
++
++import re
++
++import FreeCAD as App
++
++_NAME = re.compile(r"(?<![\w.<])([A-Za-z_][A-Za-z0-9_]*)\s*\.")
++
++
++class _Relink:
++    def __init__(self):
++        self.pending = set()
++
++    def slotCreatedObject(self, obj):
++        doc = getattr(obj, "Document", None)
++        if doc is not None:
++            self.pending.add(doc.Name)
++
++    def slotBeforeRecomputeDocument(self, doc):
++        if doc.Name not in self.pending:
++            return
++        self.pending.discard(doc.Name)
++        relink(doc)
++
++
++def relink(doc):
++    """Set again each formula of doc that names an object of doc it is not linked to. Returns
++    the number of formulas set again."""
++    count = 0
++    for obj in doc.Objects:
++        engine = getattr(obj, "ExpressionEngine", None)
++        if not engine:
++            continue
++        linked = {o.Name for o in obj.OutList}
++        for path, expr in list(engine):
++            names = set(_NAME.findall(expr))
++            missing = [n for n in names if n not in linked and n != obj.Name and doc.getObject(n) is not None]
++            if not missing:
++                continue
++            try:
++                obj.setExpression(path, None)
++                obj.setExpression(path, expr)
++                count += 1
++            except Exception as e:
++                App.Console.PrintLog("Formula of %s.%s not linked again: %s\n" % (obj.Name, path, e))
++    return count
++
++
++_observer = None
++
++
++def install():
++    global _observer
++    if _observer is None:
++        _observer = _Relink()
++        App.addDocumentObserver(_observer)
+diff --git a/src/Mod/Unified/Init.py b/src/Mod/Unified/Init.py
+index a6083ca17..bac36d6de 100644
+--- a/src/Mod/Unified/Init.py
++++ b/src/Mod/Unified/Init.py
+@@ -56,3 +56,16 @@ try:
+     NetworkSettings.apply()
+ except Exception as e:
+     FreeCAD.Console.PrintWarning("Network settings: %s\n" % e)
++
++
++def _install_expression_relink():
++    # formulas follow an object made again under the same name (engine field test 0.8.1)
++    try:
++        import ExpressionRelink
++
++        ExpressionRelink.install()
++    except Exception:
++        pass
++
++
++_install_expression_relink()
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index 26b55810f..b2d227b00 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -155,5 +155,32 @@ class TestDwgText(unittest.TestCase):
+                 App.closeDocument(back.Name)
+             shutil.rmtree(tmp)
+ 
++
++class FormulaRelinkTest(unittest.TestCase):
++    def test_a_formula_follows_an_object_made_again(self):
++        # a joint used by formulas deleted and made again (the same name): the formulas were
++        # computed once and then stood still (engine field test 0.8.1)
++        doc = App.newDocument("relink")
++        try:
++            def drive(value):
++                o = doc.addObject("App::FeaturePython", "Drive")
++                o.addProperty("App::PropertyAngle", "Angle")
++                o.Angle = value
++                return o
++            drive(10)
++            user = doc.addObject("App::FeaturePython", "User")
++            user.addProperty("App::PropertyAngle", "Angle")
++            user.setExpression("Angle", "Drive.Angle * 2")
++            doc.recompute()
++            doc.removeObject("Drive")
++            doc.recompute()
++            again = drive(30)
++            doc.recompute()
++            again.Angle = 40
++            doc.recompute()
++            self.assertAlmostEqual(user.Angle.Value, 80)
++        finally:
++            App.closeDocument(doc.Name)
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

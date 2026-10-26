@@ -1,0 +1,125 @@
+From 94405f8ba998968194bde515ce9897baa1e005d7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 26 Oct 2026 20:04:22 +0900
+Subject: [PATCH 386/389] Assembly: the part the pre-solve moves keeps its
+ turn, picked first or second
+
+The turn was kept for the second part only; a head picked first on a
+cylinder not grounded yet is the one the pre-solve moves, and it came
+turned by 180 degrees (engine field test 0.8.1). The moving side is
+chosen as the pre-solve chooses it. The panel's offset fields show the
+offset after it (they showed 0 for 180, and touching them turned the
+part back).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py      | 34 ++++++++++++++++++++--------
+ src/Mod/Unified/TestAssemblySolve.py | 26 +++++++++++++++++++++
+ 2 files changed, 50 insertions(+), 10 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index bdd13576a..2e77d2f09 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -961,8 +961,10 @@ class Joint:
+         joint's axis when it stands along it already. A round face has no direction of its own
+         across the axis; a cylinder fixed on a piston, then the head on the cylinder, were put
+         turned by 180 degrees (engine field test 0.7.7, 0.7.8). The parts are drawn the way
+-        they go together, so the way they are is kept: the moving side's offset takes the turn."""
+-        if joint.JointType not in ("Fixed", "Slider") or joint.Detach2:
++        they go together, so the way they are is kept: the moving side's offset takes the turn.
++        The moving side is the one the pre-solve moves (the first not held: the head on a
++        cylinder not grounded yet was the first; field test 0.8.1)."""
++        if joint.JointType not in ("Fixed", "Slider"):
+             return
+         assembly = self.getAssembly(joint)
+         part1 = UtilsAssembly.getMovingPart(joint.Reference1)
+@@ -970,21 +972,30 @@ class Joint:
+         if not part1 or not part2 or assembly is None or assembly.Type != "Assembly":
+             return
+         joint.Suppressed = True
++        part1Connected = assembly.isPartConnected(part1)
+         part2Connected = assembly.isPartConnected(part2)
+         joint.Suppressed = False
+-        if part2Connected:  # the second part does not move: nothing to keep
++        if not part1Connected:
++            moving, still = (joint.Reference1, 0), (joint.Reference2, 1)
++        elif not part2Connected:
++            moving, still = (joint.Reference2, 1), (joint.Reference1, 0)
++        else:
++            return  # both held: the pre-solve moves nothing
++        if (joint.Detach1 if moving[1] == 0 else joint.Detach2):
+             return
+-        fixed = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, joint.Reference1, 0), joint.Reference1)
+-        moving = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, joint.Reference2, 1), joint.Reference2)
+-        flip = App.Rotation() if UtilsAssembly.arePlacementSameDir(fixed, moving) else App.Rotation(App.Vector(1, 0, 0), 180)
++        fixed = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, still[0], still[1]), still[0])
++        moved = UtilsAssembly.getJcsGlobalPlc(self.findPlacement(joint, moving[0], moving[1]), moving[0])
++        flip = App.Rotation() if UtilsAssembly.arePlacementSameDir(fixed, moved) else App.Rotation(App.Vector(1, 0, 0), 180)
+         # the offset turn q that matches the moving side to the fixed one without turning the part
+-        q = moving.Rotation.inverted() * fixed.Rotation * flip.inverted()
++        q = moved.Rotation.inverted() * fixed.Rotation * flip.inverted()
+         z = q.multVec(App.Vector(0, 0, 1))
+         if z.z < 1 - 1e-9 or abs(q.Angle) < 1e-9:  # the part does not stand along the axis, or no turn
+             return
+-        turn = App.Rotation(App.Vector(0, 0, 1), math.degrees(math.atan2(q.multVec(App.Vector(1, 0, 0)).y,
+-                                                                         q.multVec(App.Vector(1, 0, 0)).x)))  # fmt: skip
+-        joint.Offset2 = App.Placement(joint.Offset2.Base, joint.Offset2.Rotation * turn)
++        x = q.multVec(App.Vector(1, 0, 0))
++        turn = App.Rotation(App.Vector(0, 0, 1), math.degrees(math.atan2(x.y, x.x)))
++        name = "Offset1" if moving[1] == 0 else "Offset2"
++        offset = getattr(joint, name)
++        setattr(joint, name, App.Placement(offset.Base, offset.Rotation * turn))
+ 
+     def updateJCSPlacements(self, joint):
+         if not joint.Detach1:
+@@ -2505,6 +2516,9 @@ class TaskAssemblyCreateJoint(QtCore.QObject):
+ 
+         # Then we pass the new list to the joint object
+         self.joint.Proxy.setJointConnectors(self.joint, self.refs)
++        # the offset may have been turned to keep a part's turn: the fields show it (they
++        # showed 0 for a turn of 180, and touching them turned the part back)
++        self.updateOffsetWidgets()
+ 
+         self.updateIsolation()
+ 
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 8b4d74404..3d7b44ba1 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -535,6 +535,32 @@ class AssemblySolveTest(unittest.TestCase):
+             App.closeDocument(doc.Name)
+             shutil.rmtree(tmp)
+ 
++    def test_the_first_picked_part_keeps_its_turn_too(self):
++        # neither part held yet (a head on a cylinder not grounded): the pre-solve moves the
++        # first picked; it was turned by 180 degrees (engine field test 0.8.1)
++        import JointObject
++
++        V, R, P = App.Vector, App.Rotation, App.Placement
++        doc = App.newDocument("keepturn1")
++        try:
++            asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
++            asm.Type = "Assembly"
++            asm.newObject("Assembly::JointGroup", "Joints")
++            cyl = asm.newObject("Part::Cylinder", "Cylinder")
++            head = asm.newObject("Part::Box", "Head")
++            head.Placement = P(V(50, 0, 0), R(V(0, 0, 1), 30))
++            doc.recompute()
++            j = doc.getObject("Joints").newObject("App::FeaturePython", "Fix")
++            JointObject.Joint(j, JointObject.JointTypes.index("Fixed"))
++            j.Proxy.setJointConnectors(j, [[head, ["Face5", "Face5"]], [cyl, ["Face3", "Face3"]]])
++            doc.recompute()
++            x = head.Placement.Rotation.multVec(V(1, 0, 0))
++            self.assertAlmostEqual(math.degrees(math.atan2(x.y, x.x)), 30, places=6)
++            self.assertAlmostEqual(head.Placement.Base.z, cyl.Height.Value, places=6)
++            self.assertAlmostEqual(cyl.Placement.Rotation.Angle, 0, places=9)  # the cylinder stays
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

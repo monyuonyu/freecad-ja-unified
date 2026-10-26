@@ -1,7 +1,7 @@
 From 12c377d2b85eb7b66df6dd7684b6c73f44d60685 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:46:33 +0900
-Subject: [PATCH 356/381] Assembly: a formula typed in the joint panel's fx
+Subject: [PATCH 356/389] Assembly: a formula typed in the joint panel's fx
  window turns the joint at once
 
 The fx window put the formula in the joint, the field showed 30, and the

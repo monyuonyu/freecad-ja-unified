@@ -1,7 +1,7 @@
 From 474d2f54fe0fb53d58495e6f770da20e77b70c05 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 22:07:49 +0900
-Subject: [PATCH 341/381] DWG and drawing PDF: texts kept, R2018 written, this
+Subject: [PATCH 341/389] DWG and drawing PDF: texts kept, R2018 written, this
  version's converter, pages without a sheet
 
 From the company's test of 0.7.6:
