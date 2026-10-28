@@ -1,7 +1,7 @@
 From 0ca428f0442d796fb100c10eba3cc21cf13048dd Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 19:50:21 +0900
-Subject: [PATCH 382/389] Assembly: a click in the tree while a joint's panel
+Subject: [PATCH 382/395] Assembly: a click in the tree while a joint's panel
  is open keeps its references
 
 Another joint clicked in the tree (kept out of the selection while

@@ -1,7 +1,7 @@
 From 3bffb4a66edb17926c54fc1da1ca5662b8d888bd Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:16:05 +0900
-Subject: [PATCH 329/389] Unified: the bar after closing a sketch looks again
+Subject: [PATCH 329/395] Unified: the bar after closing a sketch looks again
  until the sketch's dialog has gone
 
 A sketch closed with "Done" sometimes got no bar (engine field test

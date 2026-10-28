@@ -1,7 +1,7 @@
 From 99b4412584389f150fe6553ea8b6de860c4ae741 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:22:15 +0900
-Subject: [PATCH 290/389] Unified: the bar for a part of the assembly; closing
+Subject: [PATCH 290/395] Unified: the bar for a part of the assembly; closing
  the last 3D view closes the file; files open on their 3D view
 
 - A face of a part put into the assembly from another file gets the

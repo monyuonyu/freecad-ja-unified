@@ -1,7 +1,7 @@
 From 94405f8ba998968194bde515ce9897baa1e005d7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 20:04:22 +0900
-Subject: [PATCH 386/389] Assembly: the part the pre-solve moves keeps its
+Subject: [PATCH 386/395] Assembly: the part the pre-solve moves keeps its
  turn, picked first or second
 
 The turn was kept for the second part only; a head picked first on a

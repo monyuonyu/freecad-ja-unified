@@ -1,7 +1,7 @@
 From ae5db92963af4eb7d373a7713a93e15a6609ea51 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:30:08 +0900
-Subject: [PATCH 283/389] Unified: why a part does not move by dragging is said
+Subject: [PATCH 283/395] Unified: why a part does not move by dragging is said
  at the cursor
 
 The status bar is overwritten by what the cursor is over; the message

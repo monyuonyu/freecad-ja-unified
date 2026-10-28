@@ -1,0 +1,85 @@
+From dfd18b9f87fc69764bd4253332987576b55ee67b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 28 Oct 2026 12:34:44 +0900
+Subject: [PATCH 393/395] Unified: drawing PDF says at once when a view has
+ nothing to draw
+
+A view whose part was not read waited the whole time (120 s) for its
+lines; now the export ends at once with the views and why.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DrawingPdf.py     | 24 ++++++++++++++++++++++++
+ src/Mod/Unified/TestDrawingPdf.py | 14 ++++++++++++++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/src/Mod/Unified/DrawingPdf.py b/src/Mod/Unified/DrawingPdf.py
+index 9f7fc450b..5a3a37149 100644
+--- a/src/Mod/Unified/DrawingPdf.py
++++ b/src/Mod/Unified/DrawingPdf.py
+@@ -150,6 +150,12 @@ def _child():
+ 
+         views = [v for v in doc.Objects if v.isDerivedFrom("TechDraw::DrawViewPart")
+                  and any(p in v.InListRecursive for p in pages)]  # fmt: skip
++        # a view with nothing to draw (its part not read: "Cannot create object 'Body'") waited
++        # the whole time for its lines (field test of 0.8.1: 129 s)
++        empty = [(v.Label, _no_shape(v)) for v in views if _no_shape(v)]
++        if empty:
++            finish(error="Nothing to draw in these views (their parts could not be read?): "
++                   + "; ".join("%s: %s" % e for e in empty))
+         end = time.time() + job["seconds"]
+         while time.time() < end:
+             QtWidgets.QApplication.processEvents()
+@@ -345,6 +351,24 @@ def set_line_widths(doc, pages, width):
+             vo.LineWidth = width / 2
+ 
+ 
++def _no_shape(view):
++    """Why `view` has nothing to draw (its sources gone or without a shape), else "" """
++    import Part
++
++    sources = list(getattr(view, "Source", None) or []) + list(getattr(view, "XSource", None) or [])
++    if not sources:
++        return "no source"
++    names = []
++    for obj in sources:
++        try:
++            if not Part.getShape(obj).isNull():
++                return ""
++        except Exception:
++            pass
++        names.append(obj.Label)
++    return "no shape in " + ", ".join(names)
++
++
+ def _has_lines(view):
+     try:
+         return bool(view.getVisibleEdges())
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index a210c499d..de8dc9428 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -76,6 +76,20 @@ class ExportTest(unittest.TestCase):
+             with open(w, "rb") as f:
+                 self.assertEqual(f.read(5), b"%PDF-")
+ 
++    def test_a_part_not_read_is_said_at_once(self):
++        # the part of the views not read: 120 s waited for their lines (field test of 0.8.1)
++        import time
++
++        doc = App.openDocument(self.path)
++        doc.removeObject("Box")
++        doc.save()
++        App.closeDocument(doc.Name)
++        start = time.time()
++        with self.assertRaises(RuntimeError) as cm:
++            DrawingPdf.export(self.path, os.path.join(self.tmp, "out.pdf"))
++        self.assertLess(time.time() - start, 60)
++        self.assertIn("Nothing to draw", str(cm.exception))
++
+     def test_a_page_without_sheet_is_left_out(self):
+         # one page without a template stopped all, or gave a blank PDF (company test 0.7.6)
+         doc = App.openDocument(self.path)
+-- 
+2.43.0
+

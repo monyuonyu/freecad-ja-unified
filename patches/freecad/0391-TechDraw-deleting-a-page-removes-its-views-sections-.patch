@@ -1,0 +1,148 @@
+From e58ab7da11284de97f11bcb0038706b257771e19 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 28 Oct 2026 12:30:45 +0900
+Subject: [PATCH 391/395] TechDraw: deleting a page removes its views, sections
+ and dimensions
+
+The view's removal of its hatches and dimensions used {} in a printf
+format (Unknown document '{}'); the page's loop now removes its views by
+name, each looked up again; a group's anchor removed with the group is
+not a corrupt group.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/TechDraw/App/DrawPage.cpp      | 18 ++++++++-----
+ src/Mod/TechDraw/App/DrawProjGroup.cpp |  1 +
+ src/Mod/TechDraw/App/DrawViewPart.cpp  |  8 +++---
+ src/Mod/Unified/TestDrawingPdf.py      | 35 ++++++++++++++++++++++++++
+ 4 files changed, 52 insertions(+), 10 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/DrawPage.cpp b/src/Mod/TechDraw/App/DrawPage.cpp
+index 5082d566e..4c75e6ceb 100644
+--- a/src/Mod/TechDraw/App/DrawPage.cpp
++++ b/src/Mod/TechDraw/App/DrawPage.cpp
+@@ -432,12 +432,18 @@ void DrawPage::unsetupObject()
+     std::string pageName = getNameInDocument();
+ 
+     try {
+-        for (auto& v : Views.getValues()) {
+-            //NOTE: the order of objects in Page.Views does not reflect the object hierarchy
+-            //      this means that a ProjGroup could be deleted before its child ProjGroupItems.
+-            //      this causes problems when removing objects from document
+-            if (v->isAttachedToDocument()) {
+-                std::string viewName = v->getNameInDocument();
++        //NOTE: the order of objects in Page.Views does not reflect the object hierarchy
++        //      this means that a ProjGroup could be deleted before its child ProjGroupItems.
++        //      a view removes others with it (a group its items, a view its dimensions):
++        //      by name, each looked up again before it is removed
++        std::vector<std::string> viewNames;
++        for (auto* v : Views.getValues()) {
++            if (v && v->isAttachedToDocument()) {
++                viewNames.emplace_back(v->getNameInDocument());
++            }
++        }
++        for (const auto& viewName : viewNames) {
++            if (doc->getObject(viewName.c_str())) {
+                 Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                                  docName.c_str(), viewName.c_str());
+             }
+diff --git a/src/Mod/TechDraw/App/DrawProjGroup.cpp b/src/Mod/TechDraw/App/DrawProjGroup.cpp
+index dffccac3e..81c5c33e2 100644
+--- a/src/Mod/TechDraw/App/DrawProjGroup.cpp
++++ b/src/Mod/TechDraw/App/DrawProjGroup.cpp
+@@ -1216,6 +1216,7 @@ void DrawProjGroup::handleChangedPropertyType(Base::XMLReader& reader, const cha
+ 
+ void DrawProjGroup::unsetupObject()
+ {
++    nowUnsetting = true;  // the anchor removed with its group: not a corrupt group
+     if (getDocument() && !getDocument()->isAnyRestoring()) {
+ 
+         std::vector<std::string> childNamesToDelete;
+diff --git a/src/Mod/TechDraw/App/DrawViewPart.cpp b/src/Mod/TechDraw/App/DrawViewPart.cpp
+index 124675fdb..54d04187e 100644
+--- a/src/Mod/TechDraw/App/DrawViewPart.cpp
++++ b/src/Mod/TechDraw/App/DrawViewPart.cpp
+@@ -1383,7 +1383,7 @@ void DrawViewPart::unsetupObject()
+     std::vector<TechDraw::DrawHatch*>::iterator it = hatches.begin();
+     for (; it != hatches.end(); it++) {
+         std::string viewName = (*it)->getNameInDocument();
+-        Base::Interpreter().runStringArg("App.getDocument(\"{}\").removeObject(\"{}\")",
++        Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                          docName.c_str(), viewName.c_str());
+     }
+ 
+@@ -1392,7 +1392,7 @@ void DrawViewPart::unsetupObject()
+     std::vector<TechDraw::DrawGeomHatch*>::iterator it2 = gHatches.begin();
+     for (; it2 != gHatches.end(); it2++) {
+         std::string viewName = (*it2)->getNameInDocument();
+-        Base::Interpreter().runStringArg("App.getDocument(\"{}\").removeObject(\"{}\")",
++        Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                          docName.c_str(), viewName.c_str());
+     }
+ 
+@@ -1406,7 +1406,7 @@ void DrawViewPart::unsetupObject()
+             page->removeView(*it3);
+             const char* name = (*it3)->getNameInDocument();
+             if (name) {
+-                Base::Interpreter().runStringArg("App.getDocument(\"{}\").removeObject(\"{}\")",
++                Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                                  docName.c_str(), name);
+             }
+         }
+@@ -1422,7 +1422,7 @@ void DrawViewPart::unsetupObject()
+             page->removeView(*it3);
+             const char* name = (*it3)->getNameInDocument();
+             if (name) {
+-                Base::Interpreter().runStringArg("App.getDocument(\"{}\").removeObject(\"{}\")",
++                Base::Interpreter().runStringArg("App.getDocument(\"%s\").removeObject(\"%s\")",
+                                                  docName.c_str(), name);
+             }
+         }
+diff --git a/src/Mod/Unified/TestDrawingPdf.py b/src/Mod/Unified/TestDrawingPdf.py
+index 0d248c0c5..a210c499d 100644
+--- a/src/Mod/Unified/TestDrawingPdf.py
++++ b/src/Mod/Unified/TestDrawingPdf.py
+@@ -142,5 +142,40 @@ class ExportTest(unittest.TestCase):
+         self.assertIn("No drawing page", str(ctx.exception))
+ 
+ 
++class PageDeleteTest(unittest.TestCase):
++    def test_a_page_goes_with_its_views(self):
++        # deleting a page left its three views, section and dimension in the tree ("error while
++        # deleting children", "DPG may be corrupt - Anchor deleted"; field test of 0.8.1)
++        import TechDraw  # noqa: F401
++
++        doc = App.newDocument("pagedelete")
++        try:
++            box = doc.addObject("Part::Box", "Box")
++            page = doc.addObject("TechDraw::DrawPage", "Page")
++            page.Template = doc.addObject("TechDraw::DrawSVGTemplate", "Template")
++            group = doc.addObject("TechDraw::DrawProjGroup", "ProjGroup")
++            page.addView(group)
++            group.Source = [box]
++            for side in ("Front", "Right", "Top"):
++                group.addProjection(side)
++            doc.recompute()
++            section = doc.addObject("TechDraw::DrawViewSection", "Section")
++            page.addView(section)
++            section.BaseView, section.Source = group.Anchor, [box]
++            dim = doc.addObject("TechDraw::DrawViewDimension", "Dim")
++            dim.Type, dim.References2D = "DistanceX", [(group.Anchor, "Edge0")]
++            page.addView(dim)
++            doc.recompute()
++            doc.UndoMode = 1
++            doc.openTransaction("delete")
++            doc.removeObject("Page")
++            doc.commitTransaction()
++            self.assertEqual([o.Name for o in doc.Objects], ["Box"])
++            doc.undo()
++            self.assertEqual(len(doc.Objects), 9)
++        finally:
++            App.closeDocument(doc.Name)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From 34ce4d000dd965e13531807be4570f268a3fedc6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 09:51:30 +0900
-Subject: [PATCH 214/389] Part: 2D export keeps the model's groups (PPTX group
+Subject: [PATCH 214/395] Part: 2D export keeps the model's groups (PPTX group
  shapes, SVG <g>, JSON paths)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

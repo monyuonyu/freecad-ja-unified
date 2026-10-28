@@ -1,0 +1,78 @@
+From b4f6bbf66756a8fc539331c11863b25c0e469964 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 28 Oct 2026 12:36:08 +0900
+Subject: [PATCH 394/395] Assembly: deleting an object a joint's formulas use
+ is asked first
+
+A joint let anything it points at be deleted without a question; the
+parts it joins still are, an object named in its formulas (the angle of
+another joint) now brings the dependencies question.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Assembly/JointObject.py      | 20 ++++++++++++++++++--
+ src/Mod/Unified/TestAssemblySolve.py | 18 ++++++++++++++++++
+ 2 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 2e77d2f09..1605d631a 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -1410,8 +1410,24 @@ class ViewProviderJoint:
+ 
+         return True
+ 
+-    def canDelete(self, _obj):
+-        return True
++    def canDelete(self, obj):
++        # the parts it joins: deleted without a question; an object its formulas use (the angle
++        # of another joint): asked first, the formulas break (field test of 0.8.1)
++        joint = getattr(self, "app_obj", None)
++        return joint is None or not uses_in_formulas(joint, obj)
++
++
++def uses_in_formulas(obj, used):
++    """Whether a formula of `obj` names the object `used` (by its name or <<label>>)"""
++    import re
++
++    try:
++        engine = obj.ExpressionEngine
++    except Exception:
++        return False
++    name = re.compile(r"(?<![\w.])%s(?![\w])" % re.escape(used.Name))
++    label = "<<%s>>" % used.Label
++    return any(name.search(expr) or label in expr for _path, expr in engine)
+ 
+ 
+ class RigidGroupJoint:
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 3d7b44ba1..521aa0336 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -562,5 +562,23 @@ class AssemblySolveTest(unittest.TestCase):
+             App.closeDocument(doc.Name)
+ 
+ 
++class FormulaUseTest(unittest.TestCase):
++    def test_what_a_joint_formula_uses(self):
++        # deleting a joint that formulas use was not asked (field test of 0.8.1)
++        import JointObject
++
++        doc, sheet, asm, piston, r, L = build(revolute_drive=True)
++        try:
++            drive = doc.getObject("Drive")
++            crank_rod = doc.getObject("CrankRod")
++            self.assertTrue(JointObject.uses_in_formulas(drive, sheet))
++            self.assertFalse(JointObject.uses_in_formulas(drive, crank_rod))
++            crank_rod.setExpression("Offset1", "placement(vector(0; 0; 0); rotation(vector(0; 0; 1); Drive.Angle))")
++            self.assertTrue(JointObject.uses_in_formulas(crank_rod, drive))
++            self.assertFalse(JointObject.uses_in_formulas(crank_rod, doc.getObject("Base")))
++        finally:
++            App.closeDocument(doc.Name)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

@@ -1,0 +1,118 @@
+From 7baa776137843ff015c99978676044ee7c6f300f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Tue, 27 Oct 2026 16:39:12 +0900
+Subject: [PATCH 390/395] Core: --output tries each exporter of the format
+ until one writes the file
+
+-o x.stl went to the first module only; where it was FEM's exporter it
+failed with "No FEM mesh for export selected" while Mesh writes the
+parts (reported on 0.8.2). The modules are tried in turn; if none
+writes the file, the reason of each is said and the exit code is 1.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp          | 46 +++++++++++++++++++-------------
+ src/Mod/Unified/TestGuiScript.py | 24 +++++++++++++++++
+ 2 files changed, 52 insertions(+), 18 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index a37a88f94..dec3dfdeb 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -3445,31 +3445,41 @@ void Application::processCmdLineFiles()
+         const bool existedBefore = fs::exists(target, ec);
+         const auto timeBefore = existedBefore ? fs::last_write_time(target, ec) : fs::file_time_type {};
+         bool exported = false;
+-        try {
+-            const std::vector<std::string> mods = GetApplication().getExportModules(fi.extension());
+-            if (!GetApplication().getActiveDocument()) {
+-                Base::Console().error("Cannot export to {}: no document is open\n", it->second);
+-            }
+-            else if (!mods.empty()) {
+-                Base::Interpreter().loadModule(mods.front().c_str());
+-                Base::Interpreter().runStringArg("import %s",mods.front().c_str());
+-                Base::Interpreter().runStringArg("%s.export(App.ActiveDocument.Objects, '%s')"
+-                    ,mods.front().c_str(),output.c_str());
++        // Each module that writes the format, in turn, until one has written the file: the first
++        // could be one for other objects (STL: FEM's exporter, "No FEM mesh for export selected",
++        // where Mesh writes the parts; reported on 0.8.2)
++        const std::vector<std::string> mods = GetApplication().getExportModules(fi.extension());
++        if (!GetApplication().getActiveDocument()) {
++            Base::Console().error("Cannot export to {}: no document is open\n", it->second);
++        }
++        else if (mods.empty()) {
++            Base::Console().error("File format not supported: {} \n", output);
++        }
++        std::string reasons;
++        for (const auto& mod : GetApplication().getActiveDocument() ? mods : std::vector<std::string> {}) {
++            try {
++                Base::Interpreter().loadModule(mod.c_str());
++                Base::Interpreter().runStringArg("import %s", mod.c_str());
++                Base::Interpreter().runStringArg("%s.export(App.ActiveDocument.Objects, '%s')",
++                                                 mod.c_str(), output.c_str());
+                 exported = fs::exists(target, ec)
+                     && (!existedBefore || fs::last_write_time(target, ec) != timeBefore);
+                 if (!exported) {
+-                    Base::Console().error("Export failed: {} was not written\n", it->second);
++                    reasons += "\n  " + mod + ": the file was not written";
+                 }
+             }
+-            else {
+-                Base::Console().error("File format not supported: {} \n", output);
++            catch (const Base::Exception& e) {
++                reasons += "\n  " + mod + ": " + e.what();
++            }
++            catch (...) {
++                reasons += "\n  " + mod + ": unknown error";
++            }
++            if (exported) {
++                break;
+             }
+         }
+-        catch (const Base::Exception& e) {
+-            Base::Console().error("Exception while saving to file: {} [{}]\n", output, e.what());
+-        }
+-        catch (...) {
+-            Base::Console().error("Unknown exception while saving to file: {} \n", output);
++        if (!exported && !reasons.empty()) {
++            Base::Console().error("Export failed: {} was not written{}\n", it->second, reasons);
+         }
+         if (!exported) {
+             failed.push_back(it->second);
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index ef3a6709b..0ece1b89b 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -113,5 +113,29 @@ class LongCodeTest(unittest.TestCase):
+         self.assertNotIn("unexpectedly", out)
+ 
+ 
++class OutputFileTest(unittest.TestCase):
++    def test_output_stl_and_a_failure(self):
++        # -o x.stl: FEM's exporter was tried alone and failed, exit code 0 (reported on 0.8.2)
++        tmp = tempfile.mkdtemp()
++        try:
++            doc = App.newDocument("outstl")
++            doc.addObject("Part::Box", "Box")
++            doc.recompute()
++            path = os.path.join(tmp, "m.FCStd")
++            doc.saveAs(path)
++            App.closeDocument(doc.Name)
++            out = os.path.join(tmp, "m.stl")
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "-o", out], capture_output=True, timeout=120,
++                                  stdin=subprocess.DEVNULL)  # fmt: skip
++            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
++            self.assertGreater(os.path.getsize(out), 0)
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "-o", os.path.join(tmp, "no", "dir", "m.stl")],
++                                  capture_output=True, timeout=120, stdin=subprocess.DEVNULL)  # fmt: skip
++            self.assertEqual(proc.returncode, 1)
++            self.assertIn(b"was not written", proc.stdout + proc.stderr)
++        finally:
++            shutil.rmtree(tmp)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

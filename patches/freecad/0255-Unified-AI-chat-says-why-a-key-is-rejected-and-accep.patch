@@ -1,7 +1,7 @@
 From ccbd9d1068a9f2b2265a94981ac129a5dcec6398 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:14:47 +0900
-Subject: [PATCH 255/389] Unified: AI chat says why a key is rejected, and
+Subject: [PATCH 255/395] Unified: AI chat says why a key is rejected, and
  accepts a login token or a pasted key with stray characters
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

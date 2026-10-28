@@ -1,0 +1,162 @@
+From 100f4b4763d55d0f05a7e02d4a52de16c764b0c9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Wed, 28 Oct 2026 13:00:44 +0900
+Subject: [PATCH 395/395] Gui: a number typed in a field a formula sets is
+ answered with a hint
+
+The field is read-only then: the key was dropped without a word, and a
+digit went on to be a shortcut (5 turned the view). The field takes the
+key and says that a formula sets the value, how to change or remove it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Language/FreeCAD_ja.ts   | 10 ++++++++++
+ src/Gui/QuantitySpinBox.cpp      |  3 +++
+ src/Gui/SpinBox.cpp              | 33 ++++++++++++++++++++++++++++++++
+ src/Gui/SpinBox.h                |  1 +
+ src/Mod/Unified/TestGuiScript.py | 25 ++++++++++++++++++++++++
+ 5 files changed, 72 insertions(+)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index c42ecf609..030fcd33f 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -14342,6 +14342,16 @@ This makes the docked panel stay transparent at all times.</source>
+       <translation>完全一致</translation>
+     </message>
+   </context>
++  <context>
++    <name>Gui::ExpressionSpinBox</name>
++    <message>
++      <location filename="../SpinBox.cpp" line="317"/>
++      <source>A formula sets this value: what you type is not used.
++Press = (or the formula icon) to change the formula, or Reset there to type a number.</source>
++      <translation>この値は式で決まっているため、打った数字は使われません。
++式を変えるには = か式のアイコン（ƒx）を押します。数字を打ちたいときは、そこで「リセット」を押して式を外します。</translation>
++    </message>
++  </context>
+   <context>
+     <name>Gui::ExpressionTextEdit</name>
+     <message>
+diff --git a/src/Gui/QuantitySpinBox.cpp b/src/Gui/QuantitySpinBox.cpp
+index 75ace44ec..72c624e5c 100644
+--- a/src/Gui/QuantitySpinBox.cpp
++++ b/src/Gui/QuantitySpinBox.cpp
+@@ -1027,6 +1027,9 @@ void QuantitySpinBox::closeEvent(QCloseEvent* event)
+ 
+ bool QuantitySpinBox::event(QEvent* event)
+ {
++    if (takesKeyOfShortcut(event)) {
++        return true;
++    }
+     return QAbstractSpinBox::event(event);
+ }
+ 
+diff --git a/src/Gui/SpinBox.cpp b/src/Gui/SpinBox.cpp
+index 71638676c..294d30695 100644
+--- a/src/Gui/SpinBox.cpp
++++ b/src/Gui/SpinBox.cpp
+@@ -26,6 +26,7 @@
+ #include <QStyle>
+ #include <QStyleOptionSpinBox>
+ #include <QStylePainter>
++#include <QToolTip>
+ 
+ #include <boost/math/special_functions/round.hpp>
+ 
+@@ -301,6 +302,23 @@ void ExpressionSpinBox::openFormulaDialog()
+     Gui::adjustDialogPosition(box);
+ }
+ 
++bool ExpressionSpinBox::takesKeyOfShortcut(QEvent* event) const
++{
++    // read-only (a formula sets it), the field let a typed digit be a shortcut ("5" turned the
++    // view): the key comes to the field, for its word that the formula sets the value
++    if (event->type() != QEvent::ShortcutOverride || !isBound() || !hasExpression()
++        || !spinbox->isReadOnly()) {
++        return false;
++    }
++    auto* key = static_cast<QKeyEvent*>(event);
++    const auto mods = key->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
++    if (mods != Qt::NoModifier || key->text().isEmpty() || !key->text().at(0).isPrint()) {
++        return false;
++    }
++    event->accept();
++    return true;
++}
++
+ bool ExpressionSpinBox::handleKeyEvent(const QString& text)
+ {
+     if (text == QLatin1String("=") && isBound()) {
+@@ -308,6 +326,21 @@ bool ExpressionSpinBox::handleKeyEvent(const QString& text)
+         return true;
+     }
+ 
++    // a number typed in a field a formula sets was dropped without a word (field test of 0.8.1)
++    if (isBound() && hasExpression() && spinbox->isReadOnly() && !text.isEmpty()
++        && text.at(0).isPrint()) {
++        QToolTip::showText(
++            spinbox->mapToGlobal(QPoint(0, spinbox->height())),
++            QCoreApplication::translate(
++                "Gui::ExpressionSpinBox",
++                "A formula sets this value: what you type is not used.\n"
++                "Press = (or the formula icon) to change the formula, or Reset there to type a number."
++            ),
++            spinbox
++        );
++        return true;
++    }
++
+     return false;
+ }
+ 
+diff --git a/src/Gui/SpinBox.h b/src/Gui/SpinBox.h
+index 70fb1296b..9e0d8701f 100644
+--- a/src/Gui/SpinBox.h
++++ b/src/Gui/SpinBox.h
+@@ -74,6 +74,7 @@ protected:
+     void resizeWidget();
+ 
+     bool handleKeyEvent(const QString&);
++    bool takesKeyOfShortcut(QEvent*) const;
+     virtual void openFormulaDialog();
+ 
+     void drawControl(QStyleOptionSpinBox&);
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index 0ece1b89b..3d85bab29 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -137,5 +137,30 @@ class OutputFileTest(unittest.TestCase):
+             shutil.rmtree(tmp)
+ 
+ 
++class FormulaFieldTest(unittest.TestCase):
++    def test_a_number_typed_in_a_field_a_formula_sets(self):
++        # dropped without a word, and "5" turned the view (field test of 0.8.1)
++        code, out, err = gui_script(
++            "import FreeCADGui as Gui\n"
++            "from PySide import QtCore, QtWidgets\n"
++            "from PySide6.QtTest import QTest\n"
++            "import AssemblyCopiesGui, TestAssemblySolve\n"
++            "doc = TestAssemblySolve.build(revolute_drive=True)[0]\n"
++            "AssemblyCopiesGui.give_joints_their_view(doc)\n"
++            "drive = doc.getObject('Drive')\n"
++            "drive.ViewObject.Proxy.doubleClicked(drive.ViewObject)\n"
++            "for _ in range(20): QtWidgets.QApplication.processEvents()\n"
++            "box = Gui.getMainWindow().findChild(QtWidgets.QAbstractSpinBox, 'driveAngleSpinbox')\n"
++            "box.setFocus()\n"
++            "QTest.keyClick(box, QtCore.Qt.Key_5)\n"
++            "for _ in range(20): QtWidgets.QApplication.processEvents()\n"
++            "print('read only', box.isReadOnly())\n"
++            "print('hint', 'formula' in QtWidgets.QToolTip.text())\n"
++        )
++        self.assertEqual(code, 0, err)
++        self.assertIn("read only True", out)
++        self.assertIn("hint True", out)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+
