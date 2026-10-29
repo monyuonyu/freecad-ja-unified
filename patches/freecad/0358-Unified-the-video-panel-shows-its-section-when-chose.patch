@@ -1,7 +1,7 @@
 From 1e8715541489128e69356d435ae0ac91f09fcfe0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:58:01 +0900
-Subject: [PATCH 358/404] Unified: the video panel shows its section when
+Subject: [PATCH 358/405] Unified: the video panel shows its section when
  chosen; 720 degrees for a four-stroke
 
 The section was only seen in the video, 80 s later (field test 0.7.8):

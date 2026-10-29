@@ -1,7 +1,7 @@
 From f4db65d6006494edface522c78c9aa1dc2096cec Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 20:08:29 +0900
-Subject: [PATCH 387/404] Unified: a number typed right after a click in a
+Subject: [PATCH 387/405] Unified: a number typed right after a click in a
  field is not cut by the field's selection
 
 A click in a number field selects the whole number when the click ends,

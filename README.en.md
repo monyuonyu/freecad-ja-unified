@@ -332,6 +332,11 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.1
+
+- **MuJoCo export: the centre of mass and inertia of Compound parts were wrong** (300 of 365 parts got a placeholder inertia and their box's centre, up to 362 mm off): the part's solids are measured one by one and added with the parallel axis theorem
+- Densities and masses other than by material: `--mjcf-density map.json` (`{"density": {"Floor_*": 2700}, "mass": {"PSU_*": 0.3}}`; a mass given scales the inertia to it), or a `Mass` / `Density` property of the part
+
 ## Changes in 0.9.0
 
 - **A rough MuJoCo model (MJCF)**: `--export-mjcf model.xml [--mjcf-mesh]` (from a script, `MjcfExport.export`). Each part with mass, centre of mass and inertia from its solids and density (the material's, else 7850 kg/m³; FreeCAD's "Default" material is a placeholder of 1 kg/m³, taken as none), a box for contacts with the surroundings (not with each other: an engine's boxes overlap and jammed the crank), a coarse STL for the looks. From the grounded parts and the assembly's origin the joints are followed as hinges, slides and balls; a joint closing a loop becomes `<equality connect>`; belts and gears a ratio of the two hinges (teeth, else radii; the sign from the axes). An engine is written in 12 s and turns in MuJoCo with the camshaft at half the crank

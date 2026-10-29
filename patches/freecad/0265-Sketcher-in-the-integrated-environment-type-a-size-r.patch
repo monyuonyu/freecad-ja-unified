@@ -1,7 +1,7 @@
 From b4a65accf99c7f261cab2c4aefc62230f5b1b505 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:42:12 +0900
-Subject: [PATCH 265/404] Sketcher in the integrated environment: type a size
+Subject: [PATCH 265/405] Sketcher in the integrated environment: type a size
  right where it is
 
 Double-clicking a size of a sketch opened a dialog with a name, a

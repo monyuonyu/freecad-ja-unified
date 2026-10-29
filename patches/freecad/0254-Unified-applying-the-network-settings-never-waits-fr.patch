@@ -1,7 +1,7 @@
 From 93eb3cf545d7ab1af9b5fbad6c700ae2b2b0290b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:14:33 +0900
-Subject: [PATCH 254/404] Unified: applying the network settings never waits
+Subject: [PATCH 254/405] Unified: applying the network settings never waits
  (froze for minutes on Windows)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

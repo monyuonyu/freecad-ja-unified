@@ -1,7 +1,7 @@
 From 96ed5e4c297a390d66ce847e906e5e0cee1f2952 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:20:50 +0900
-Subject: [PATCH 244/404] TechDraw in the integrated environment: a three-view
+Subject: [PATCH 244/405] TechDraw in the integrated environment: a three-view
  drawing that is right at once
 
 The front view looked in the direction the 3D view happened to have, so an

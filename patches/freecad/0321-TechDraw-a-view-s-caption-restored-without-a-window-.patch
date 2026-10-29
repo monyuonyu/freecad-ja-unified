@@ -1,7 +1,7 @@
 From 3f7244be7763258fcab2371e7117e6a1206d73e9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 12:04:13 +0900
-Subject: [PATCH 321/404] TechDraw: a view's caption restored without a window
+Subject: [PATCH 321/405] TechDraw: a view's caption restored without a window
  does not crash
 
 QGICaption::snapToView took scene()->views().first() even when the scene

@@ -1,7 +1,7 @@
 From e58ab7da11284de97f11bcb0038706b257771e19 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 28 Oct 2026 12:30:45 +0900
-Subject: [PATCH 391/404] TechDraw: deleting a page removes its views, sections
+Subject: [PATCH 391/405] TechDraw: deleting a page removes its views, sections
  and dimensions
 
 The view's removal of its hatches and dimensions used {} in a printf

@@ -1,7 +1,7 @@
 From 94a9371de7de72d4fd6f7375afa1c2c5271f434b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:51:23 +0900
-Subject: [PATCH 252/404] Unified: the bar next to a pick follows a table of
+Subject: [PATCH 252/405] Unified: the bar next to a pick follows a table of
  rules, with a number to type
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

@@ -1,7 +1,7 @@
 From ea3729323f163beccd8a2807c691787e9eb3846e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:30:06 +0900
-Subject: [PATCH 353/404] Gui: an Enter right after a task panel opens does not
+Subject: [PATCH 353/405] Gui: an Enter right after a task panel opens does not
  close it
 
 The Enter that ran the tool search (or confirmed the input method's

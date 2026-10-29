@@ -1,0 +1,282 @@
+From 6121fa64378e9a4f2e5a957fe1b82d785c69c796 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 30 Oct 2026 02:13:43 +0900
+Subject: [PATCH 405/405] Unified: MJCF mass properties of all the solids of a
+ part; densities and masses by name
+
+A Compound has no MatrixOfInertia: 300 of a model's 365 parts got a
+placeholder inertia and their box's centre (362 mm off). The solids are
+added with the parallel axis theorem. --mjcf-density map.json gives
+densities and masses by name pattern ({"density": {...}, "mass":
+{...}}: a bought part's catalogue mass); a Mass or Density property of
+the part is used too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp           |   2 +
+ src/Mod/Unified/MjcfExport.py     | 107 +++++++++++++++++++++++++-----
+ src/Mod/Unified/TestMjcfExport.py |  58 ++++++++++++++++
+ 3 files changed, 151 insertions(+), 16 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index ea4a80694..68935f8f8 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2496,6 +2496,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
+     ("export-mjcf", boost::program_options::value<std::string>(), "Write a rough MuJoCo model (MJCF): the parts as bodies with mass, centre of mass and inertia (material density, else 7850 kg/m3), a box each for contacts, the assembly's joints as hinges and slides (loops as equality constraints)")
++    ("mjcf-density", boost::program_options::value<std::string>(), "With --export-mjcf: a JSON file of densities and masses by part name: {\"density\": {\"Floor_*\": 2700}, \"mass\": {\"PSU_*\": 0.3}}")
+     ("mjcf-mesh", "With --export-mjcf: also each part's mesh (STL next to the file) for the looks")
+     ("ignore-pairs", boost::program_options::value<std::string>(), "With --design-check: a text file of the pairs of parts that overlap on purpose, one pair a line: A, B (labels or names of parts or of their groups; * and ? match any characters; # a comment)")
+     ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}; \"carry\": {\"from\": [\"Bolts\"], \"margin\": 3} also turns the solids of those parts whose centre is in the moving parts' box; {\"joint\": \"Revolute\", \"from\": 0, \"to\": 360, \"step\": 10} turns an assembly's revolute joint instead, the parts moving as the joints and formulas say")
+@@ -2762,6 +2763,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"gui-script", "GuiScript"},
+         {"design-check", "DesignCheck"},
+         {"export-mjcf", "ExportMjcf"},
++        {"mjcf-density", "MjcfDensity"},
+         {"ignore-pairs", "DesignCheckIgnorePairs"},
+         {"sweep", "DesignCheckSweep"},
+     };
+diff --git a/src/Mod/Unified/MjcfExport.py b/src/Mod/Unified/MjcfExport.py
+index 78b9c41d1..1352a0d7f 100644
+--- a/src/Mod/Unified/MjcfExport.py
++++ b/src/Mod/Unified/MjcfExport.py
+@@ -7,8 +7,12 @@ project that wrote this by hand for each model).
+     FreeCADCmd model.FCStd --export-mjcf model.xml [--mjcf-mesh]
+     MjcfExport.export(doc, "model.xml", density=7850, mesh=False) -> report
+ 
+-Units: metres, kilograms (FreeCAD's mm are divided by 1000). Density: the part's material
+-(ShapeMaterial's Density), else `density` (kg/m³, default 7850, steel); the report says which.
++Units: metres, kilograms (FreeCAD's mm are divided by 1000). Mass properties: all the solids
++of a part (a Compound too) with the parallel axis theorem. Density, in this order: a pattern of
++--mjcf-density map.json ({"density": {"床板_*": 2700}, "mass": {"電源_*": 0.3}}: a mass given
++scales the part's inertia to it), a Mass or Density property of the part, its material
++(ShapeMaterial; FreeCAD's "Default" of 1 kg/m³ is none), else `density` (7850, steel); the
++report says which parts took the default.
+ The assembly's grounded parts are fixed to the world; from them the joints are followed:
+ Revolute → hinge, Slider → slide, Cylindrical → hinge + slide, Ball → ball, Belt and Gears →
+ a ratio of the two hinges (<equality joint>, teeth else radii), Fixed → the part
+@@ -40,8 +44,70 @@ def _quat(rot):
+     return " ".join(_f(c) for c in (q[3], q[0], q[1], q[2]))
+ 
+ 
+-def _density(obj, default):
+-    """kg/m³ of the part's material, else default; (value, from where)"""
++def _mass_properties(shape):
++    """(volume mm³, centre of mass, 3×3 inertia about it for unit density) of all the solids of
++    `shape`, added with the parallel axis theorem: a Compound has no MatrixOfInertia, and its
++    centre was taken as its box's (362 mm off for 31 nuts in one part; reported on 0.9.0)"""
++    solids = shape.Solids or ([shape] if hasattr(shape, "MatrixOfInertia") else [])
++    parts = []
++    for x in solids:
++        v = x.Volume
++        if v <= 0:
++            continue
++        m = x.MatrixOfInertia
++        parts.append((v, x.CenterOfMass, [[m.A11, m.A12, m.A13], [m.A21, m.A22, m.A23], [m.A31, m.A32, m.A33]]))
++    if not parts:
++        return shape.Volume if hasattr(shape, "Volume") else 0.0, shape.BoundBox.Center, None
++    total = sum(v for v, _, _ in parts)
++    com = App.Vector()
++    for v, c, _ in parts:
++        com += c * (v / total)
++    tensor = [[0.0] * 3 for _ in range(3)]
++    for v, c, t in parts:
++        d = [c.x - com.x, c.y - com.y, c.z - com.z]
++        dd = d[0] ** 2 + d[1] ** 2 + d[2] ** 2
++        for i in range(3):
++            for j in range(3):
++                # the solid's own tensor (unit density: already times its volume) + v (|d|² δ − d dᵀ)
++                tensor[i][j] += t[i][j] + v * ((dd if i == j else 0.0) - d[i] * d[j])
++    return total, com, tensor
++
++
++def load_density_map(path):
++    """{"density": {pattern: kg/m³}, "mass": {pattern: kg}} from a JSON file (a flat {pattern:
++    kg/m³} is the densities)"""
++    import json
++
++    with open(path, encoding="utf-8-sig") as f:
++        data = json.load(f)
++    if "density" not in data and "mass" not in data:
++        data = {"density": data}
++    return {"density": data.get("density", {}), "mass": data.get("mass", {})}
++
++
++def _density(obj, default, given=None):
++    """kg/m³ for the part, and from where: a mass or density given by pattern (given), a Mass
++    or Density property of the part (kg, kg/m³), its material, else default. A mass comes as
++    ("mass <kg>")"""
++    import fnmatch
++
++    names = [obj.Label, obj.Name]
++    for kind in ("mass", "density"):
++        for pattern, value in (given or {}).get(kind, {}).items():
++            if any(fnmatch.fnmatchcase(n, pattern) for n in names):
++                return (0.0, "mass %s" % float(value)) if kind == "mass" else (float(value), "given %s" % pattern)
++    for o in (obj, getattr(obj, "getLinkedObject", lambda *a: obj)(True)):
++        for prop, kind in (("Mass", "mass"), ("Density", "density")):
++            v = getattr(o, prop, None)
++            if v is None:
++                continue
++            try:
++                unit = "kg" if kind == "mass" else "kg/m^3"
++                value = App.Units.Quantity(v).getValueAs(unit).Value if hasattr(v, "Unit") else float(v)
++            except Exception:
++                continue
++            if value > 0:
++                return (0.0, "mass %s" % value) if kind == "mass" else (value, "property Density")
+     for o in (obj, getattr(obj, "getLinkedObject", lambda *a: obj)(True)):
+         mat = getattr(o, "ShapeMaterial", None)
+         try:
+@@ -88,9 +154,10 @@ def _owner(obj, parts):
+     return None
+ 
+ 
+-def export(doc=None, path="model.xml", density=7850.0, mesh=False):
+-    """Write the MJCF file. Returns a report {"bodies", "joints", "loops", "unsupported",
+-    "free", "defaults" (parts given the default density)}"""
++def export(doc=None, path="model.xml", density=7850.0, mesh=False, given=None):
++    """Write the MJCF file. given: {"density": {pattern: kg/m³}, "mass": {pattern: kg}} (labels
++    or names, * and ?; see load_density_map). Returns a report {"bodies", "joints", "loops",
++    "unsupported", "free", "defaults" (parts given the default density), "no_inertia"}"""
+     import Part
+ 
+     doc = doc or App.ActiveDocument
+@@ -98,7 +165,8 @@ def export(doc=None, path="model.xml", density=7850.0, mesh=False):
+     if not parts:
+         raise RuntimeError("No visible solid part to write")
+     asm = next((o for o in doc.Objects if o.isDerivedFrom("Assembly::AssemblyObject")), None)
+-    report = {"bodies": [], "joints": [], "loops": [], "coupled": [], "unsupported": [], "free": [], "defaults": []}
++    report = {"bodies": [], "joints": [], "loops": [], "coupled": [], "unsupported": [], "free": [], "defaults": [],
++              "no_inertia": []}  # fmt: skip
+ 
+     # the joints as edges between parts; the grounded parts
+     grounded, edges = set(), []
+@@ -131,17 +199,20 @@ def export(doc=None, path="model.xml", density=7850.0, mesh=False):
+         plc = shape.Placement
+         rel = parent_plc.inverse().multiply(plc)
+         body = ET.SubElement(parent, "body", name=obj.Label, pos=_vec(rel.Base), quat=_quat(rel.Rotation))
+-        rho, where = _density(obj, density)
++        local = shape.transformed(plc.inverse().toMatrix())  # in the body frame
++        vol, com, tensor = _mass_properties(local)  # mm³, mm, mm^5 (unit density, about com)
++        rho, where = _density(obj, density, given)
++        if where.startswith("mass "):  # a mass given (a bought part's catalogue mass)
++            rho = float(where.split()[1]) / max(vol * 1e-9, 1e-15)
+         if where == "default":
+             report["defaults"].append(obj.Label)
+-        local = shape.transformed(plc.inverse().toMatrix())  # in the body frame
+-        vol = local.Volume  # mm³
+         mass = vol * rho * 1e-9
+-        com = local.CenterOfMass if hasattr(local, "CenterOfMass") else local.BoundBox.Center
+         try:
+-            m = local.MatrixOfInertia  # about the centre of mass, unit density, mm^5
++            if tensor is None:
++                raise ValueError("no inertia")
+             k = rho * 1e-9 * 1e-6  # kg/mm³ -> kg, mm² -> m²
+-            full = (m.A11 * k, m.A22 * k, m.A33 * k, m.A12 * k, m.A13 * k, m.A23 * k)
++            full = (tensor[0][0] * k, tensor[1][1] * k, tensor[2][2] * k, tensor[0][1] * k, tensor[0][2] * k,
++                    tensor[1][2] * k)  # fmt: skip
+             import numpy
+ 
+             eig = numpy.linalg.eigvalsh(numpy.array([[full[0], full[3], full[4]], [full[3], full[1], full[5]],
+@@ -152,7 +223,8 @@ def export(doc=None, path="model.xml", density=7850.0, mesh=False):
+                 ET.SubElement(body, "inertial", pos=_vec(com), mass=_f(max(mass, 1e-6)),
+                               diaginertia=" ".join(_f(max(x, 1e-12)) for x in full[:3]))  # fmt: skip
+         except Exception:
+-            ET.SubElement(body, "inertial", pos=_vec(com), mass=_f(mass), diaginertia="1e-6 1e-6 1e-6")
++            report["no_inertia"].append(obj.Label)
++            ET.SubElement(body, "inertial", pos=_vec(com), mass=_f(max(mass, 1e-6)), diaginertia="1e-6 1e-6 1e-6")
+         bb = local.BoundBox
+         ET.SubElement(body, "geom", type="box", name=obj.Label + "_box", pos=_vec(bb.Center),
+                       size=" ".join(_f(max(d, 1e-3) / 2 * 0.001) for d in (bb.XLength, bb.YLength, bb.ZLength)),
+@@ -275,7 +347,8 @@ def cli_main():
+     if doc is None:
+         raise RuntimeError("--export-mjcf: no document is open (give a .FCStd file)")
+     doc.recompute()
+-    rep = export(doc, path, mesh=bool(App.ConfigGet("MjcfMesh")))
++    dmap = App.ConfigGet("MjcfDensity")
++    rep = export(doc, path, mesh=bool(App.ConfigGet("MjcfMesh")), given=load_density_map(dmap) if dmap else None)
+     print("Wrote %s: %d bodies, %d joints" % (path, len(rep["bodies"]), len(rep["joints"])))
+     if rep["loops"]:
+         print("  loops closed with <equality connect>: " + ", ".join(rep["loops"]))
+@@ -285,5 +358,7 @@ def cli_main():
+         print("  joints left out (no MuJoCo joint for them): " + ", ".join(rep["unsupported"]))
+     if rep["free"]:
+         print("  parts no joint reaches (free joints): " + ", ".join(rep["free"]))
++    if rep["no_inertia"]:
++        print("  no inertia from the shape (a placeholder 1e-6): " + ", ".join(rep["no_inertia"]))
+     if rep["defaults"]:
+         print("  density 7850 kg/m³ assumed (no material): " + ", ".join(rep["defaults"]))
+diff --git a/src/Mod/Unified/TestMjcfExport.py b/src/Mod/Unified/TestMjcfExport.py
+index dbd8a6e28..aaa690288 100644
+--- a/src/Mod/Unified/TestMjcfExport.py
++++ b/src/Mod/Unified/TestMjcfExport.py
+@@ -71,5 +71,63 @@ class MjcfExportTest(unittest.TestCase):
+         self.assertEqual({g.get("contype") + g.get("conaffinity") for g in root.iter("geom")}, {"10"})
+ 
+ 
++class MjcfMassTest(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.mkdtemp()
++        self.doc = App.newDocument("mjcfmass")
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++        shutil.rmtree(self.tmp)
++
++    def inertial(self, path, name):
++        body = [b for b in ET.parse(path).getroot().iter("body") if b.get("name") == name][0]
++        return body.find("inertial")
++
++    def test_a_compound_of_solids(self):
++        # a Compound has no MatrixOfInertia: 300 of 365 parts got a placeholder inertia and their
++        # box's centre (reported on 0.9.0)
++        import Part
++
++        a, b = Part.makeBox(10, 10, 10), Part.makeBox(10, 20, 30, App.Vector(100, 0, 0))
++        comp = self.doc.addObject("Part::Feature", "Nuts")
++        comp.Shape = Part.makeCompound([a, b])
++        one = self.doc.addObject("Part::Feature", "Fused")
++        one.Shape = a.fuse(b)
++        one.Placement.Base = App.Vector(0, 500, 0)
++        self.doc.recompute()
++        path = os.path.join(self.tmp, "m.xml")
++        rep = MjcfExport.export(self.doc, path)
++        self.assertEqual(rep["no_inertia"], [])
++        c, f = self.inertial(path, "Nuts"), self.inertial(path, "Fused")
++        self.assertIsNotNone(c.get("fullinertia"))
++        self.assertEqual(c.get("mass"), f.get("mass"))
++        com = [float(x) for x in c.get("pos").split()]
++        self.assertAlmostEqual(com[0], (5 * 1000 + 105 * 6000) / 7000 * 0.001, places=6)  # not the box's 0.055
++        for x, y in zip(c.get("fullinertia").split(), f.get("fullinertia").split()):
++            self.assertAlmostEqual(float(x), float(y), delta=abs(float(y)) * 1e-6 + 1e-15)
++
++    def test_densities_and_masses_given(self):
++        import Part
++
++        for name in ("Floor_A", "PSU_A", "Worker"):
++            o = self.doc.addObject("Part::Feature", name)
++            o.Shape = Part.makeBox(100, 100, 100)  # 1e6 mm³ = 0.001 m³
++        w = self.doc.getObject("Worker")
++        w.addProperty("App::PropertyMass", "Mass")
++        w.Mass = 70.0
++        self.doc.recompute()
++        path = os.path.join(self.tmp, "d.json")
++        with open(path, "w", encoding="utf-8") as f:
++            f.write('{"density": {"Floor_*": 2700}, "mass": {"PSU_*": 0.3}}')
++        out = os.path.join(self.tmp, "d.xml")
++        rep = MjcfExport.export(self.doc, out, given=MjcfExport.load_density_map(path))
++        mass = {n: float(self.inertial(out, n).get("mass")) for n in ("Floor_A", "PSU_A", "Worker")}
++        self.assertAlmostEqual(mass["Floor_A"], 2.7, places=6)
++        self.assertAlmostEqual(mass["PSU_A"], 0.3, places=6)
++        self.assertAlmostEqual(mass["Worker"], 70.0, places=6)
++        self.assertEqual(rep["defaults"], [])
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+
