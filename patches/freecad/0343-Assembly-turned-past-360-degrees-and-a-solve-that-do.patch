@@ -1,7 +1,7 @@
 From d52d1dc2c69dec69c044ebe6506bad0a1673835a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 02:06:00 +0900
-Subject: [PATCH 343/406] Assembly: turned past 360 degrees, and a solve that
+Subject: [PATCH 343/407] Assembly: turned past 360 degrees, and a solve that
  does not hold says so
 
 - "Turn to an angle" takes any angle (720 is two turns of a four-stroke

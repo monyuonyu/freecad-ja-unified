@@ -1,7 +1,7 @@
 From 31344861038f06a8b6ed174e0adad3572824d36c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 17:59:17 +0900
-Subject: [PATCH 401/406] BIM: WebGL export without a 3D view, of edge-only
+Subject: [PATCH 401/407] BIM: WebGL export without a 3D view, of edge-only
  shapes, with the file's colours
 
 FreeCADCmd: FreeCADGui could be imported with no document and the

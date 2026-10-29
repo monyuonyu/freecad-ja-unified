@@ -1,0 +1,30 @@
+From 918400506b2eec89a1b81d7a461b1de09d7d8f52 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 30 Oct 2026 03:47:24 +0900
+Subject: [PATCH 407/407] Unified: the MJCF tree in the same order every time
+
+The joints came in the order of a set: the rod hung on the crank or on
+the piston from one run to the next (a test failed one time in six).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/MjcfExport.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/Mod/Unified/MjcfExport.py b/src/Mod/Unified/MjcfExport.py
+index 1352a0d7f..dcbc774e8 100644
+--- a/src/Mod/Unified/MjcfExport.py
++++ b/src/Mod/Unified/MjcfExport.py
+@@ -185,6 +185,9 @@ def export(doc=None, path="model.xml", density=7850.0, mesh=False, given=None):
+                     edges.append((j, a, b))
+     else:
+         grounded = set(parts)
++    # the same file, the same tree (the joints came in the order of a set: the rod hung on the
++    # crank or on the piston from one run to the next)
++    edges.sort(key=lambda e: e[0].Name)
+ 
+     root = ET.Element("mujoco", model=doc.Label)
+     ET.SubElement(root, "compiler", angle="radian", autolimits="true")
+-- 
+2.43.0
+

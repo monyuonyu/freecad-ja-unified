@@ -1,7 +1,7 @@
 From 463a3bb7ce44a70dd13cddd54313f8733e899891 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 20:18:11 +0900
-Subject: [PATCH 388/406] Gui: no list of names for a number typed in a
+Subject: [PATCH 388/407] Gui: no list of names for a number typed in a
  formula; the mod() hint for a mod() only
 
 A 0 typed in the formula window opened the list of every name with a 0

@@ -1,7 +1,7 @@
 From e28739c827d274e07b191ef2175aade400ea5a55 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 16:19:31 +0900
-Subject: [PATCH 240/406] Unified: snap parts together and move them point to
+Subject: [PATCH 240/407] Unified: snap parts together and move them point to
  point, with clicks only
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

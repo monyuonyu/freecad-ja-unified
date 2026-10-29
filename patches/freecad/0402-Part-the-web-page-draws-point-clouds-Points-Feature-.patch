@@ -1,7 +1,7 @@
 From 03791ee56a359f14de7994b8def47875b8e0a85b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 18:01:40 +0900
-Subject: [PATCH 402/406] Part: the web page draws point clouds
+Subject: [PATCH 402/407] Part: the web page draws point clouds
  (Points::Feature) with their colours
 
 A scan's points were not written. Visible Points features are written as

@@ -1,7 +1,7 @@
 From fce2b43a26d4bf50832ddca2e0ac0b893d20f3ac Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:18:00 +0900
-Subject: [PATCH 308/406] Assembly: a solve that does not hold puts the parts
+Subject: [PATCH 308/407] Assembly: a solve that does not hold puts the parts
  back and says which joint
 
 When the joints could not be made to hold (a cylindrical joint whose
