@@ -1,0 +1,622 @@
+From 3103c3431b3690d140a0ec6a500954d4e39e1f36 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 30 Oct 2026 00:26:25 +0900
+Subject: [PATCH 403/403] Unified: collisions through an assembly's motion,
+ from the screen and the command line
+
+The sweep turned named parts rigidly. DesignCheck.sweep_joint turns an
+assembly's revolute joint step by step, solves it at each angle (the
+parts move as the joints and formulas say: a cam's valve, a rocker) and
+checks all the parts; pairs overlapping at every angle are told apart
+(likely on purpose). The joint's angle is put back.
+
+Screen: a revolute joint picked, the context bar's "Collisions" opens a
+panel (from, to, step, stop); a hit turns the joint to its angle and
+picks the two parts; a pair can be marked as overlapping on purpose.
+Command line: --sweep with {"joint": name}.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                       |   2 +-
+ src/Mod/Unified/CMakeLists.txt                |   3 +-
+ src/Mod/Unified/ContextRules.py               |   2 +
+ src/Mod/Unified/DesignCheck.py                |  75 +++++-
+ .../Gui/Resources/translations/Unified_ja.ts  |  95 ++++++++
+ src/Mod/Unified/InitGui.py                    |   2 +
+ src/Mod/Unified/SweepCheckGui.py              | 226 ++++++++++++++++++
+ src/Mod/Unified/TestAssemblySolve.py          |  36 +++
+ src/Mod/Unified/TestGuiScript.py              |  40 ++++
+ 9 files changed, 478 insertions(+), 3 deletions(-)
+ create mode 100644 src/Mod/Unified/SweepCheckGui.py
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 87036ccd6..af8c757e6 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2496,7 +2496,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
+     ("ignore-pairs", boost::program_options::value<std::string>(), "With --design-check: a text file of the pairs of parts that overlap on purpose, one pair a line: A, B (labels or names of parts or of their groups; * and ? match any characters; # a comment)")
+-    ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}; \"carry\": {\"from\": [\"Bolts\"], \"margin\": 3} also turns the solids of those parts whose centre is in the moving parts' box")
++    ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}; \"carry\": {\"from\": [\"Bolts\"], \"margin\": 3} also turns the solids of those parts whose centre is in the moving parts' box; {\"joint\": \"Revolute\", \"from\": 0, \"to\": 360, \"step\": 10} turns an assembly's revolute joint instead, the parts moving as the joints and formulas say")
+     ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
+     ("check-layout", "With --export-drawings: warn of views, texts and dimensions out of the sheet's frame or on its title block")
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 1284f97d6..c9aa7745f 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -82,7 +82,8 @@ endif(BUILD_GUI)
+ list(APPEND Unified_Scripts HistoryLine.py TestHistoryLine.py SelectionWords.py TestSelectionWords.py TestLooseOutline.py AssemblyCopies.py TestAssemblyCopies.py TestRecompute.py TestAssemblySolve.py TestPartDesignFixes.py
+     TaskPanels.py TestTaskPanels.py Wording.py TestWording.py)
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py MotionVideoGui.py)
++    list(APPEND Unified_Scripts HistoryLineGui.py SelectionWordsGui.py TaskPanelsGui.py HoleMultiGui.py AssemblyCopiesGui.py FollowGui.py MotionVideoGui.py
++    SweepCheckGui.py)
+ endif(BUILD_GUI)
+ 
+ # The A4 sheet with its title block in Japanese (the default sheet of new drawings)
+diff --git a/src/Mod/Unified/ContextRules.py b/src/Mod/Unified/ContextRules.py
+index ac463e387..653d87f46 100644
+--- a/src/Mod/Unified/ContextRules.py
++++ b/src/Mod/Unified/ContextRules.py
+@@ -196,6 +196,8 @@ RULES = {
+     "joint": [
+         # a revolute joint: the assembly moving, as a video
+         A("Unified_MotionVideo", T("Video")),
++        # turned through its motion, the parts checked for collisions at each angle
++        A("Unified_SweepCheck", T("Collisions")),
+         A("Std_ToggleVisibility", T("Hide")),
+         A("Std_Delete", T("Delete")),
+     ],
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 01de44046..f3337173b 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -1142,6 +1142,66 @@ def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0,
+             "hits": hits, "first": hits[0]["angle"] if hits else None}  # fmt: skip
+ 
+ 
++def sweep_joint(joint, start=0.0, end=360.0, step=10.0, progress=None, **options):
++    """Turn the assembly's revolute joint `joint` from `start` to `end` degrees by `step`, solve
++    the assembly at each angle (the parts move as the joints and formulas say: a cam's valve,
++    a rocker) and check all the parts for overlaps there. The joint's angle (and its formula)
++    is put back. progress(i, n, angle) is called before each angle; returning True stops.
++    ignore_pairs and one items as in interferences. Returns {"angles": [...], "hits": [{"angle",
++    "a", "b", "names", "volume", "center"}], "always": [[a, b]] (pairs overlapping at every
++    angle: likely on purpose), "failed": [angles where the joints did not hold], "first":
++    angle or None (of a pair not always overlapping), "stopped": bool}"""
++    import MotionVideo
++
++    if getattr(joint, "JointType", "") != "Revolute":
++        raise ValueError("sweep_joint: %s is not a revolute joint" % joint.Label)
++    if step <= 0:
++        raise ValueError("sweep_joint: the step must be more than 0")
++    doc = joint.Document
++    angles = []
++    a = float(start)
++    while (a < end - 1e-9) if end >= start else (a > end + 1e-9):
++        angles.append(round(a, 9))
++        a += step if end >= start else -step
++    angles.append(float(end))
++    was = joint.Angle.Value
++    was_formula = MotionVideo.formula(joint, "Angle")
++    was_driven = bool(getattr(joint, "AngleDriven", False))
++    hits, failed, seen, stopped = [], [], {}, False
++    try:
++        if not was_driven:
++            joint.AngleDriven = True
++        for i, angle in enumerate(angles):
++            if progress is not None and progress(i, len(angles), angle):
++                stopped = True
++                break
++            if not MotionVideo.pose(joint, angle):
++                failed.append(angle)
++            for f in interferences(doc, **options):
++                if f["volume"] is None:
++                    continue
++                hits.append(dict(f, angle=angle))
++                key = tuple(sorted(f["names"]))
++                seen.setdefault(key, set()).add(angle)
++    finally:
++        if was_formula:
++            joint.setExpression("Angle", was_formula)
++        else:
++            joint.setExpression("Angle", None)
++            joint.Angle = was
++        if not was_driven:
++            joint.AngleDriven = False
++        doc.recompute()
++        asm = MotionVideo.assembly_of(joint)
++        if asm is not None:
++            asm.solve()
++    done = angles[:len(angles) if not stopped else i]
++    always = [list(k) for k, at in seen.items() if len(done) > 1 and len(at) == len(done)]
++    moving = [h for h in hits if sorted(h["names"]) not in always]
++    return {"angles": done, "hits": hits, "always": always, "failed": failed,
++            "first": moving[0]["angle"] if moving else None, "stopped": stopped}  # fmt: skip
++
++
+ def interferences(doc=None, **options):
+     """Only the overlaps of the parts, as the design check finds them (the same measure from a
+     script): [{"a", "b" (labels), "names", "volume" (mm³; None: could not be checked),
+@@ -1253,9 +1313,22 @@ def cli_main():
+             raise RuntimeError("--design-check sweep: give the motion with --sweep motion.json")
+         with open(spec_file, encoding="utf-8-sig") as f:
+             spec = json.load(f)
+-        known = {"moving", "axis", "from", "to", "step", "carry"}
++        known = {"moving", "axis", "from", "to", "step", "carry", "joint"}
+         if set(spec) - known:
+             raise RuntimeError("--sweep: unknown keys %s (known: %s)" % (sorted(set(spec) - known), sorted(known)))
++        if spec.get("joint"):
++            # an assembly's revolute joint turned, the parts moving as the joints and formulas say
++            name = spec["joint"]
++            joint = doc.getObject(name) or next((o for o in doc.Objects if o.Label == name), None)
++            if joint is None:
++                raise RuntimeError("--sweep: no joint named %s" % name)
++            result = sweep_joint(joint, float(spec.get("from", 0)), float(spec.get("to", 360)),
++                                 float(spec.get("step", 10)), **options)  # fmt: skip
++            print(json.dumps({"sweep": result}, ensure_ascii=False, indent=1, default=lambda v: list(v)))
++            sys.stdout.flush()
++            if [h for h in result["hits"] if sorted(h["names"]) not in result["always"]]:
++                sys.exit(1)
++            return
+         moving = spec.get("moving") or []
+         axis = spec.get("axis") or [0, 0, 0, 0, 0, 1]
+         if isinstance(moving, str):
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 172b1560c..4a7ae2e4f 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1225,12 +1225,107 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <translation>選んだ回転ジョイントを角度の範囲で回し、3D 画面に見えているとおりを動画（MP4）にします</translation>
+     </message>
+ </context>
++<context>
++    <name>Unified_SweepCheck</name>
++    <message>
++        <source>Collisions Through the Motion</source>
++        <translation>動きの中の当たり</translation>
++    </message>
++    <message>
++        <source>The joint “{}” is turned step by step; at each angle the assembly is solved and all the parts are checked for overlaps.</source>
++        <translation>ジョイント「{}」を少しずつ回し、角度ごとに組立を解いて、すべての部品の重なりを調べます。</translation>
++    </message>
++    <message>
++        <source>From</source>
++        <translation>開始</translation>
++    </message>
++    <message>
++        <source>To</source>
++        <translation>終了</translation>
++    </message>
++    <message>
++        <source>Every</source>
++        <translation>刻み</translation>
++    </message>
++    <message>
++        <source>Check</source>
++        <translation>調べる</translation>
++    </message>
++    <message>
++        <source>Stop</source>
++        <translation>止める</translation>
++    </message>
++    <message>
++        <source>Angle</source>
++        <translation>角度</translation>
++    </message>
++    <message>
++        <source>Parts</source>
++        <translation>部品</translation>
++    </message>
++    <message>
++        <source>Overlap</source>
++        <translation>重なり</translation>
++    </message>
++    <message>
++        <source>These two may overlap (on purpose)</source>
++        <translation>この 2 つは重なってよい（わざと）</translation>
++    </message>
++    <message>
++        <source>{0:g}° ({1} of {2})</source>
++        <translation>{0:g}°（{2} のうち {1}）</translation>
++    </message>
++    <message>
++        <source>always</source>
++        <translation>いつも</translation>
++    </message>
++    <message>
++        <source>at every angle</source>
++        <translation>どの角度でも</translation>
++    </message>
++    <message>
++        <source>{0} angles checked</source>
++        <translation>{0} の角度を調べた</translation>
++    </message>
++    <message>
++        <source> (stopped)</source>
++        <translation>（途中で止めた）</translation>
++    </message>
++    <message>
++        <source>; first collision at {0:g}°</source>
++        <translation>。最初の当たりは {0:g}°</translation>
++    </message>
++    <message>
++        <source>; no collision through the motion</source>
++        <translation>。動きの中で当たりなし</translation>
++    </message>
++    <message>
++        <source>; {0} pairs overlap at every angle (on purpose?)</source>
++        <translation>。どの角度でも重なっている組が {0}（わざと？）</translation>
++    </message>
++    <message>
++        <source>; the joints did not hold at {0} angles (e.g. {1:g}°)</source>
++        <translation>。{0} の角度でジョイントが成り立たなかった（例 {1:g}°）</translation>
++    </message>
++    <message>
++        <source>Parts that may overlap</source>
++        <translation>重なってよい部品</translation>
++    </message>
++    <message>
++        <source>Turn the picked revolute joint step by step and check, at each angle, whether any parts overlap (the assembly moves as its joints and formulas say)</source>
++        <translation>選んだ回転ジョイントを少しずつ回し、角度ごとに部品が重なっていないかを調べる（組立はジョイントと式のとおりに動く）</translation>
++    </message>
++</context>
+ <context>
+     <name>ContextRules</name>
+     <message>
+         <source>Video</source>
+         <translation>動画</translation>
+     </message>
++    <message>
++        <source>Collisions</source>
++        <translation>当たり</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_MotionVideo</name>
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 38191c5f2..069d101b7 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -89,6 +89,8 @@ class UnifiedWorkbench(Workbench):
+             AssemblyCopiesGui.install()
+             # 回転ジョイントを回して、3D の見えているとおりに動画にする
+             import MotionVideoGui  # noqa: F401
++            # 回転ジョイントを少しずつ回し、角度ごとに部品の当たりを調べる
++            import SweepCheckGui  # noqa: F401
+             # ねじは穴に、図面の中心線は穴についていく。最後の 3D を閉じたら文書を閉じる（保存を聞く）
+             import FollowGui
+ 
+diff --git a/src/Mod/Unified/SweepCheckGui.py b/src/Mod/Unified/SweepCheckGui.py
+new file mode 100644
+index 000000000..d2cc7b8fc
+--- /dev/null
++++ b/src/Mod/Unified/SweepCheckGui.py
+@@ -0,0 +1,226 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Collisions through a motion, from the screen: the picked revolute joint is turned step by
++step, the assembly solved at each angle (the parts move as the joints and formulas say), and
++every pair of parts checked for overlaps (DesignCheck.sweep_joint). A hit in the list turns the
++joint to that angle and picks the two parts; a pair that overlaps at every angle can be marked
++as overlapping on purpose (DesignCheck.allow_overlap, kept in the file).
++"""
++
++import FreeCAD as App
++import FreeCADGui as Gui
++from PySide import QtCore, QtWidgets
++
++import DesignCheck
++import MotionVideo
++
++translate = App.Qt.translate
++
++
++def QT_TRANSLATE_NOOP(context, text):
++    return text
++
++
++def picked_joint():
++    sel = Gui.Selection.getSelection()
++    if len(sel) == 1 and getattr(sel[0], "JointType", "") == "Revolute":
++        return sel[0]
++    return None
++
++
++class SweepPanel:
++    def __init__(self, joint):
++        import MotionVideoGui
++
++        self.joint = joint
++        self.doc = joint.Document
++        self.was = joint.Angle.Value
++        self.was_formula = MotionVideo.formula(joint, "Angle")
++        self.was_driven = bool(getattr(joint, "AngleDriven", False))
++        self.posed = False
++        self.result = None
++        self.running = False
++        self.stop = False
++        self.form = QtWidgets.QWidget()
++        self.form.setWindowTitle(translate("Unified_SweepCheck", "Collisions Through the Motion"))
++        lay = QtWidgets.QVBoxLayout(self.form)
++        intro = QtWidgets.QLabel(translate(
++            "Unified_SweepCheck",
++            "The joint “{}” is turned step by step; at each angle the assembly is solved and all the "
++            "parts are checked for overlaps.").format(joint.Label))  # fmt: skip
++        intro.setWordWrap(True)
++        lay.addWidget(intro)
++        grid = QtWidgets.QFormLayout()
++
++        def number(value, low, high, suffix):
++            box = QtWidgets.QDoubleSpinBox()
++            box.setRange(low, high)
++            box.setDecimals(1)
++            box.setValue(value)
++            box.setSuffix(suffix)
++            return box
++
++        self.start = number(0, -36000, 36000, "°")
++        self.end = number(MotionVideoGui.full_turn(joint), -36000, 36000, "°")
++        self.step = number(10, 0.1, 360, "°")
++        grid.addRow(translate("Unified_SweepCheck", "From"), self.start)
++        grid.addRow(translate("Unified_SweepCheck", "To"), self.end)
++        grid.addRow(translate("Unified_SweepCheck", "Every"), self.step)
++        lay.addLayout(grid)
++        row = QtWidgets.QHBoxLayout()
++        self.run_btn = QtWidgets.QPushButton(translate("Unified_SweepCheck", "Check"))
++        self.run_btn.clicked.connect(self.run)
++        row.addWidget(self.run_btn)
++        self.status = QtWidgets.QLabel("")
++        self.status.setWordWrap(True)
++        row.addWidget(self.status, 1)
++        lay.addLayout(row)
++        self.tree = QtWidgets.QTreeWidget()
++        self.tree.setHeaderLabels([translate("Unified_SweepCheck", "Angle"), translate("Unified_SweepCheck", "Parts"),
++                                   translate("Unified_SweepCheck", "Overlap")])  # fmt: skip
++        self.tree.setRootIsDecorated(False)
++        self.tree.itemClicked.connect(self.show_hit)
++        lay.addWidget(self.tree, 1)
++        self.allow_btn = QtWidgets.QPushButton(translate("Unified_SweepCheck", "These two may overlap (on purpose)"))
++        self.allow_btn.setEnabled(False)
++        self.allow_btn.clicked.connect(self.allow)
++        lay.addWidget(self.allow_btn)
++        self.tree.itemSelectionChanged.connect(
++            lambda: self.allow_btn.setEnabled(bool(self.tree.selectedItems()) and not self.running))
++
++    # -- running
++    def run(self):
++        if self.running:
++            self.stop = True
++            return
++        self.put_back()
++        self.running, self.stop = True, False
++        self.run_btn.setText(translate("Unified_SweepCheck", "Stop"))
++        self.tree.clear()
++        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
++
++        def progress(i, n, angle):
++            self.status.setText(translate("Unified_SweepCheck", "{0:g}° ({1} of {2})").format(angle, i + 1, n))
++            QtWidgets.QApplication.processEvents()
++            return self.stop
++
++        try:
++            self.result = DesignCheck.sweep_joint(self.joint, self.start.value(), self.end.value(),
++                                                  self.step.value(), progress=progress)  # fmt: skip
++        except Exception as e:
++            self.status.setText(str(e))
++            return
++        finally:
++            QtWidgets.QApplication.restoreOverrideCursor()
++            self.running = False
++            self.run_btn.setText(translate("Unified_SweepCheck", "Check"))
++        self.fill()
++
++    def fill(self):
++        r = self.result
++        always = {tuple(p) for p in r["always"]}
++        moving = [h for h in r["hits"] if tuple(sorted(h["names"])) not in always]
++        for h in moving:
++            item = QtWidgets.QTreeWidgetItem(["%g°" % h["angle"], "%s × %s" % (h["a"], h["b"]), "%.1f mm³" % h["volume"]])
++            item.setData(0, QtCore.Qt.UserRole, (h["angle"], list(h["names"])))
++            self.tree.addTopLevelItem(item)
++        for names in sorted(always):
++            a, b = (self.doc.getObject(n) for n in names)
++            item = QtWidgets.QTreeWidgetItem([translate("Unified_SweepCheck", "always"), "%s × %s" % (a.Label, b.Label),
++                                              translate("Unified_SweepCheck", "at every angle")])  # fmt: skip
++            item.setData(0, QtCore.Qt.UserRole, (None, list(names)))
++            self.tree.addTopLevelItem(item)
++        for k in range(3):
++            self.tree.resizeColumnToContents(k)
++        text = translate("Unified_SweepCheck", "{0} angles checked").format(len(r["angles"]))
++        if r["stopped"]:
++            text += translate("Unified_SweepCheck", " (stopped)")
++        if r["first"] is not None:
++            text += translate("Unified_SweepCheck", "; first collision at {0:g}°").format(r["first"])
++        elif not moving:
++            text += translate("Unified_SweepCheck", "; no collision through the motion")
++        if always:
++            text += translate("Unified_SweepCheck", "; {0} pairs overlap at every angle (on purpose?)").format(len(always))
++        if r["failed"]:
++            text += translate("Unified_SweepCheck", "; the joints did not hold at {0} angles (e.g. {1:g}°)").format(
++                len(r["failed"]), r["failed"][0])  # fmt: skip
++        self.status.setText(text)
++
++    # -- looking at a hit
++    def show_hit(self, item, _column=0):
++        angle, names = item.data(0, QtCore.Qt.UserRole)
++        if angle is not None and not self.running:
++            if not self.joint.AngleDriven:
++                self.joint.AngleDriven = True
++            MotionVideo.pose(self.joint, angle)
++            self.posed = True
++        Gui.Selection.clearSelection()
++        for n in names:
++            o = self.doc.getObject(n)
++            if o is not None:
++                Gui.Selection.addSelection(o)
++
++    def allow(self):
++        items = self.tree.selectedItems()
++        if not items:
++            return
++        _, names = items[0].data(0, QtCore.Qt.UserRole)
++        a, b = (self.doc.getObject(n) for n in names)
++        self.doc.openTransaction(translate("Unified_SweepCheck", "Parts that may overlap"))
++        DesignCheck.allow_overlap(a, b)
++        self.doc.commitTransaction()
++        # the pair's rows go
++        for k in reversed(range(self.tree.topLevelItemCount())):
++            if sorted(self.tree.topLevelItem(k).data(0, QtCore.Qt.UserRole)[1]) == sorted(names):
++                self.tree.takeTopLevelItem(k)
++
++    def put_back(self):
++        if not self.posed:
++            return
++        if self.was_formula:
++            self.joint.setExpression("Angle", self.was_formula)
++        else:
++            self.joint.setExpression("Angle", None)
++            self.joint.Angle = self.was
++        if not self.was_driven:
++            self.joint.AngleDriven = False
++        self.doc.recompute()
++        asm = MotionVideo.assembly_of(self.joint)
++        if asm is not None:
++            asm.solve()
++        self.posed = False
++
++    def getStandardButtons(self):
++        return QtWidgets.QDialogButtonBox.Close
++
++    def reject(self):
++        if self.running:
++            self.stop = True
++            return False
++        self.put_back()
++        Gui.Selection.clearSelection()
++        Gui.Control.closeDialog()
++        return True
++
++
++class SweepCheckCommand:
++    def GetResources(self):
++        return {
++            "Pixmap": "Assembly_CreateJointRevolute",
++            "MenuText": QT_TRANSLATE_NOOP("Unified_SweepCheck", "Collisions Through the Motion"),
++            "ToolTip": QT_TRANSLATE_NOOP(
++                "Unified_SweepCheck",
++                "Turn the picked revolute joint step by step and check, at each angle, whether any "
++                "parts overlap (the assembly moves as its joints and formulas say)",
++            ),
++        }
++
++    def IsActive(self):
++        return picked_joint() is not None and not Gui.Control.activeDialog()
++
++    def Activated(self):
++        joint = picked_joint()
++        if joint is not None:
++            Gui.Control.showDialog(SweepPanel(joint))
++
++
++Gui.addCommand("Unified_SweepCheck", SweepCheckCommand())
+diff --git a/src/Mod/Unified/TestAssemblySolve.py b/src/Mod/Unified/TestAssemblySolve.py
+index 521aa0336..ab88e94e2 100644
+--- a/src/Mod/Unified/TestAssemblySolve.py
++++ b/src/Mod/Unified/TestAssemblySolve.py
+@@ -580,5 +580,41 @@ class FormulaUseTest(unittest.TestCase):
+             App.closeDocument(doc.Name)
+ 
+ 
++class SweepJointTest(unittest.TestCase):
++    def test_parts_moved_by_the_joints_are_checked_at_each_angle(self):
++        # the sweep turned parts rigidly; an assembly's parts move as the joints say (asked to be
++        # used from the screen, 0.8.8)
++        import DesignCheck
++        import MotionVideo
++
++        doc, sheet, asm, piston, r, L = build(revolute_drive=True)
++        try:
++            drive = doc.getObject("Drive")
++            rod = doc.getObject("Rod")
++            MotionVideo.pose(drive, 90)
++            c = rod.Shape.BoundBox.Center
++            stop = doc.addObject("Part::Box", "Stop")   # outside the assembly: stands still
++            stop.Length = stop.Width = stop.Height = 2
++            stop.Placement.Base = c - App.Vector(1, 1, 1)
++            MotionVideo.pose(drive, 0)
++            doc.recompute()
++            before = drive.Angle.Value
++            got = DesignCheck.sweep_joint(drive, 0, 180, 30)
++            stops = sorted({h["angle"] for h in got["hits"] if "Stop" in h["names"]})
++            self.assertIn(90.0, stops)
++            self.assertNotIn(0.0, stops)
++            self.assertNotIn(180.0, stops)
++            self.assertEqual(got["angles"], [0, 30, 60, 90, 120, 150, 180])
++            self.assertEqual(got["failed"], [])
++            self.assertAlmostEqual(drive.Angle.Value, before)  # put back
++            self.assertNotIn(["Rod", "Stop"], got["always"])
++            # stopped from the progress
++            got = DesignCheck.sweep_joint(drive, 0, 180, 30, progress=lambda i, n, a: i == 2)
++            self.assertTrue(got["stopped"])
++            self.assertEqual(got["angles"], [0, 30])
++        finally:
++            App.closeDocument(doc.Name)
++
++
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index 0ecbf86a9..c38a8d246 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -166,5 +166,45 @@ class FormulaFieldTest(unittest.TestCase):
+         self.assertIn("hint True", out)
+ 
+ 
++class SweepCheckPanelTest(unittest.TestCase):
++    def test_the_panel_finds_and_shows_a_collision(self):
++        # from the screen: turned through its motion, a hit shown at its angle (asked on 0.8.8)
++        code, out, err = gui_script(SWEEP_PANEL)
++        self.assertEqual(code, 0, err)
++        self.assertIn("hit at 90 True", out)
++        self.assertIn("posed 90.0 ['Rod', 'Stop']", out)
++        self.assertIn("restored True", out)
++
++
++SWEEP_PANEL = """
++import gc, FreeCAD as App, FreeCADGui as Gui
++from PySide import QtWidgets
++import AssemblyCopiesGui, TestAssemblySolve, MotionVideo, SweepCheckGui
++doc = TestAssemblySolve.build(revolute_drive=True)[0]
++AssemblyCopiesGui.give_joints_their_view(doc)
++drive, rod = doc.getObject("Drive"), doc.getObject("Rod")
++MotionVideo.pose(drive, 90)
++stop = doc.addObject("Part::Box", "Stop")
++stop.Length = stop.Width = stop.Height = 2
++stop.Placement.Base = rod.Shape.BoundBox.Center - App.Vector(1, 1, 1)
++MotionVideo.pose(drive, 0)
++doc.recompute()
++before = drive.Angle.Value
++Gui.Selection.addSelection(drive)
++Gui.runCommand("Unified_SweepCheck")
++p = next(o for o in gc.get_objects() if isinstance(o, SweepCheckGui.SweepPanel))
++p.end.setValue(180)
++p.step.setValue(30)
++p.run()
++items = [p.tree.topLevelItem(k) for k in range(p.tree.topLevelItemCount())]
++hit = next(i for i in items if "Stop" in i.text(1))
++print("hit at 90", hit.text(0) == "90°")
++p.show_hit(hit)
++print("posed", round(drive.Angle.Value, 3), [o.Name for o in Gui.Selection.getSelection()])
++p.reject()
++print("restored", round(drive.Angle.Value, 3) == round(before, 3))
++"""
++
++
+ if __name__ == "__main__":
+     unittest.main()
+-- 
+2.43.0
+

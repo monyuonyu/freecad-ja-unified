@@ -1,7 +1,7 @@
 From 2c17c8a792738817f0ddfb8783b78479c33d0cab Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:11:30 +0900
-Subject: [PATCH 299/402] Assembly: a joint reference of one name is the
+Subject: [PATCH 299/403] Assembly: a joint reference of one name is the
  element's centre
 
 A script that set Reference1 = (obj, ["Face1"]) got the joint at the

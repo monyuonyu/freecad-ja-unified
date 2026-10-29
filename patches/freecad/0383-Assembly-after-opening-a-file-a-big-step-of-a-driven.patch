@@ -1,7 +1,7 @@
 From 992d1e913dd1c45cc629e602091eb100ba396f27 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 19:56:47 +0900
-Subject: [PATCH 383/402] Assembly: after opening a file, a big step of a
+Subject: [PATCH 383/403] Assembly: after opening a file, a big step of a
  driven angle is walked from its saved value
 
 A crank saved at 270, the file opened again and set to 0 was solved in

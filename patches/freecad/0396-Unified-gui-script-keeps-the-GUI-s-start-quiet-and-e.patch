@@ -1,7 +1,7 @@
 From 2d117688f32f25c37b03839b39acb794c37d2aeb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 11:39:27 +0900
-Subject: [PATCH 396/402] Unified: --gui-script keeps the GUI's start quiet and
+Subject: [PATCH 396/403] Unified: --gui-script keeps the GUI's start quiet and
  ends an error with the script's line
 
 Some 55 lines (style tokens, Fontconfig, OpenGL) came before the script's

@@ -332,6 +332,11 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.8.9
+
+- **Collisions through an assembly's motion, from the screen**: with a revolute joint picked, "Collisions" on the context bar turns it step by step, solves the assembly at each angle (valves and rockers moved by formulas too) and checks all the parts; a hit turns the joint to its angle and picks the two parts; pairs overlapping at every angle are listed apart and can be marked as overlapping on purpose (kept in the file); the angle is put back. An engine model, crank 0-720° by 30°: about 100 s (the piston was found in the head and the valves at top dead centre)
+- From the command line: `"joint": name` in `--sweep`'s motion.json; from a script: `DesignCheck.sweep_joint(joint, 0, 720, 30)`
+
 ## Changes in 0.8.8
 
 From a LiDAR map exported without a screen (some 370 faces and meshes and a path of lines).

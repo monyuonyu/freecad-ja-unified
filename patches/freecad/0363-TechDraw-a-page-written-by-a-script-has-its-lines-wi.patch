@@ -1,7 +1,7 @@
 From 446201e04fc8992ab46472e7a78d692c73f8c13d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:35:49 +0900
-Subject: [PATCH 363/402] TechDraw: a page written by a script has its lines'
+Subject: [PATCH 363/403] TechDraw: a page written by a script has its lines'
  widths on paper
 
 The page's own export turned TechDraw's screen mode off; a script's
