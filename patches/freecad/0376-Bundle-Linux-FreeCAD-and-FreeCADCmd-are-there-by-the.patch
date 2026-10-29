@@ -1,7 +1,7 @@
 From 0324a07420ffc63923d1b5bbfed6f62c398c6e4e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:50:09 +0900
-Subject: [PATCH 376/400] Bundle (Linux): FreeCAD and FreeCADCmd are there by
+Subject: [PATCH 376/402] Bundle (Linux): FreeCAD and FreeCADCmd are there by
  these names too
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

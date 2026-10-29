@@ -1,0 +1,188 @@
+From 31344861038f06a8b6ed174e0adad3572824d36c Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 17:59:17 +0900
+Subject: [PATCH 401/402] BIM: WebGL export without a 3D view, of edge-only
+ shapes, with the file's colours
+
+FreeCADCmd: FreeCADGui could be imported with no document and the
+camera raised AttributeError; with no camera in the file either, a view
+from the corner of the objects' box. Objects were grey: the colours kept
+in the file (ShapeAppearance) are read as PartViews does. A shape of
+edges only raised ValueError (np.vectorize on no vertices), its edges
+were not written, and its empty wire stopped the page (Invalid typed
+array length); free edges are written as wires, empty lists are kept
+empty.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/BIM/bimtests/TestWebGLExport.py | 31 ++++++++++++
+ src/Mod/BIM/importers/importWebGL.py    | 67 +++++++++++++++++++++----
+ 2 files changed, 89 insertions(+), 9 deletions(-)
+
+diff --git a/src/Mod/BIM/bimtests/TestWebGLExport.py b/src/Mod/BIM/bimtests/TestWebGLExport.py
+index 6324516a0..347920aa5 100644
+--- a/src/Mod/BIM/bimtests/TestWebGLExport.py
++++ b/src/Mod/BIM/bimtests/TestWebGLExport.py
+@@ -121,6 +121,37 @@ class TestWebGLExport(TestArchBase):
+                 result = importWebGL.getHTMLTemplate()
+                 self.assertIsNone(result)
+ 
++    def test_headless_export_with_a_path_and_a_mesh(self):
++        """Without a 3D view: no camera in the file, a shape of edges only (a path) and a mesh.
++        It raised AttributeError (camera), ValueError (no vertices), and the page stopped at
++        the path (an empty wire); the path's edges were not written (reported on 0.8.7)."""
++        import json
++        import FreeCAD
++        import Mesh
++        import Part
++
++        doc = self.document
++        doc.addObject("Part::Box", "Box")
++        path = doc.addObject("Part::Feature", "Path")
++        path.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(50, 0, 0), FreeCAD.Vector(50, 50, 20)])
++        scan = doc.addObject("Mesh::Feature", "Scan")
++        scan.Mesh = Mesh.createSphere(5)
++        doc.recompute()
++        out = os.path.join(self.test_dir, "headless.html")
++        with patch.object(importWebGL, "FreeCADGui", None), patch.object(
++            importWebGL, "getHTMLTemplate", return_value="<html>$pagetitle $data $threejs_version $version</html>"
++        ):
++            self.assertTrue(importWebGL.export(doc.Objects, out))
++        with open(out, encoding="utf-8") as f:
++            text = f.read()
++        data = json.loads(text[text.index("{"):text.rindex("}") + 1])
++        self.assertIn("position_x", data["camera"])
++        objs = {o["name"]: o for o in data["objects"]}
++        self.assertEqual(objs["Path"]["verts"], "")
++        self.assertEqual(len(objs["Path"]["wires"]), 2)  # its two edges
++        self.assertTrue(all(objs["Path"]["wires"]))  # no empty wire
++        self.assertTrue(objs["Scan"]["verts"])
++
+ 
+ if __name__ == "__main__":
+     # Allow running tests directly
+diff --git a/src/Mod/BIM/importers/importWebGL.py b/src/Mod/BIM/importers/importWebGL.py
+index d5353135b..adc150d5e 100644
+--- a/src/Mod/BIM/importers/importWebGL.py
++++ b/src/Mod/BIM/importers/importWebGL.py
+@@ -202,10 +202,10 @@ def export(
+ 
+     data = {"camera": {}, "file": {}, "objects": []}
+ 
+-    populate_camera(data["camera"], camera)
+-
+     # Take the objects out of groups
+     objectslist = Draft.get_group_contents(exportList, walls=True, addgroups=False)
++
++    populate_camera(data["camera"], camera, objectslist)
+     # objectslist = Arch.pruneIncluded(objectslist)
+ 
+     for obj in objectslist:
+@@ -331,6 +331,16 @@ def export(
+                     for v in wo.discretize(QuasiDeflection=0.005):
+                         wire.extend([f"{v.x:.5f}", f"{v.y:.5f}", f"{v.z:.5f}"])
+                     wires.append(wire)
++            # edges of no face (a shape of wires only, a path): they were left out
++            face_edges = [e for f in objShape.Faces for e in f.Edges]
++            for e in objShape.Edges:
++                if any(e.isSame(fe) for fe in face_edges):
++                    continue
++                wire = []
++                for v in e.discretize(QuasiDeflection=0.005):
++                    wire.extend([f"{v.x:.5f}", f"{v.y:.5f}", f"{v.z:.5f}"])
++                if len(wire) >= 6:
++                    wires.append(wire)
+ 
+             if not disableCompression:
+                 wires, objdata["floats"] = compress_wires(wires, objdata["floats"])
+@@ -380,9 +390,19 @@ def get_view_properties(obj, label: str, colors: dict[str, str] | None) -> tuple
+     if FreeCADGui and hasattr(obj.ViewObject, "ShapeColor"):
+         color = Draft.getrgb(obj.ViewObject.ShapeColor, testbw=False)
+         opacity = int((100 - obj.ViewObject.Transparency) / 5) / 20  # 0>>1 with step of 0.05
+-    elif colors:
+-        if label in colors:
+-            color = Draft.getrgb(colors[label], testbw=False)
++    elif colors and label in colors:
++        color = Draft.getrgb(colors[label], testbw=False)
++    else:
++        # without a GUI: the colours kept in the file (GuiDocument.xml, ShapeAppearance too);
++        # every object was grey
++        try:
++            import PartViews
++
++            found = PartViews.object_colors(obj)
++            if found:
++                color = Draft.getrgb(tuple(found[0][:3]), testbw=False)
++        except Exception:
++            pass
+     return color, opacity
+ 
+ 
+@@ -396,9 +416,34 @@ class CameraDict(TypedDict):
+     position_z: NotRequired[str]
+ 
+ 
+-def populate_camera(data: CameraDict, camera: str | None):
+-    if not FreeCADGui and not camera:
+-        camera = OfflineRenderingUtils.getCamera(FreeCAD.ActiveDocument.FileName)
++def populate_camera(data: CameraDict, camera: str | None, objects=()):
++    view = None
++    if not camera and FreeCADGui and getattr(FreeCADGui, "ActiveDocument", None) is not None:
++        view = getattr(FreeCADGui.ActiveDocument, "ActiveView", None)
++    if not camera and view is None:
++        # no 3D view (FreeCADCmd: FreeCADGui can be imported, without a document; it raised
++        # AttributeError): the camera kept in the file, else a view from the corner
++        try:
++            camera = OfflineRenderingUtils.getCamera(FreeCAD.ActiveDocument.FileName)
++        except Exception:
++            camera = None
++        if not camera:
++            box = FreeCAD.BoundBox()
++            for o in objects:
++                for prop in ("Shape", "Mesh"):
++                    item = getattr(o, prop, None)
++                    if item is not None and hasattr(item, "BoundBox") and item.BoundBox.isValid():
++                        box.add(item.BoundBox)
++                        break
++            center = box.Center if box.isValid() else FreeCAD.Vector()
++            size = box.DiagonalLength if box.isValid() else 100.0
++            eye = center + FreeCAD.Vector(1, -1, 1).normalize() * size * 1.5
++            data["type"] = "Perspective"
++            data["focalDistance"] = size * 1.5
++            data["position_x"] = eye.x
++            data["position_y"] = eye.y
++            data["position_z"] = eye.z
++            return
+ 
+     if camera:
+         # REF: src/Mod/BIM/OfflineRenderingUtils.py
+@@ -412,7 +457,7 @@ def populate_camera(data: CameraDict, camera: str | None):
+         data["position_y"] = cameraPosition[1]
+         data["position_z"] = cameraPosition[2]
+     else:
+-        v = FreeCADGui.ActiveDocument.ActiveView
++        v = view
+         data["type"] = v.getCameraType()
+         data["focalDistance"] = v.getCameraNode().focalDistance.getValue()
+         data["position_x"] = v.viewPosition().Base.x
+@@ -445,6 +490,8 @@ def compress_wires(wires: list[list[str]], floats: list[str]) -> tuple[list[list
+     """
+     Create floats list to compress wires being written into the JS
+     """
++    if not wires:  # np.array_split gave one empty wire: the page stopped (Invalid typed array length)
++        return [], floats
+     lengths = []
+     for w in wires:
+         lengths.append(len(w))
+@@ -459,6 +506,8 @@ def compress_verts(verts: list[str], floats: list[str]) -> tuple[list[int], list
+     """
+     Create floats list to compress verts and wires being written into the JS
+     """
++    if not verts:  # a shape without faces: np.vectorize raised on size 0
++        return [], list(floats)
+     floats_v, ind, verts_v = np.unique(verts, return_index=True, return_inverse=True)
+ 
+     # Reorder as np.unique orders the resulting array (needed for facet matching)
+-- 
+2.43.0
+

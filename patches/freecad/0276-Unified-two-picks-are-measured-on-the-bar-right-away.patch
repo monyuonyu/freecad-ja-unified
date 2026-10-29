@@ -1,7 +1,7 @@
 From 9ceaec66f489802523deb967584a974ecdc7d6e9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:08:56 +0900
-Subject: [PATCH 276/400] Unified: two picks are measured on the bar right
+Subject: [PATCH 276/402] Unified: two picks are measured on the bar right
  away; hovering a tool previews its result
 
 The bar next to a pick shows, on its left, what one or two picked things measure without

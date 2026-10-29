@@ -332,6 +332,14 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.8.8
+
+From a LiDAR map exported without a screen (some 370 faces and meshes and a path of lines).
+
+- **BIM's WebGL export (importWebGL) failed without a 3D view**: the camera was taken from a view there was not (AttributeError); with no camera in the file either, the objects' box is seen from the corner. Everything was grey without a GUI: the colours kept in the file (ShapeAppearance) are read
+- A shape without faces (a path of lines) raised ValueError, its lines were not written, and an empty wire stopped the page (RangeError): the lines are written, empty lists stay empty
+- `--export-web` draws point clouds (Points::Feature) with their colours. BIM's WebGL loads three.js from the internet; `--export-web` is one HTML file that opens offline
+
 ## Changes in 0.8.7
 
 - **`--export-web` lighter still**: positions as Int16 in the box of all (error box/65534: 0.06 mm for 4 m) and normals as Int8, some 40% of the float32 page; parts of `--web-simplify` are 8-sided prisms or boxes without normals (shaded flat by the page). A model with 400 plain bolts in one part stayed over 30 MB even simplified

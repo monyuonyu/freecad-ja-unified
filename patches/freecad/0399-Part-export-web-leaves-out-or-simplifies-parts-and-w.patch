@@ -1,7 +1,7 @@
 From 26d65c68d636aff94d508ac81d3b491e7afbc4f5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 13:10:59 +0900
-Subject: [PATCH 399/400] Part: --export-web leaves out or simplifies parts,
+Subject: [PATCH 399/402] Part: --export-web leaves out or simplifies parts,
  and warns of a page over 30 MB
 
 A page of 54 MB (a third of it bolts) was stopped by a company PC's

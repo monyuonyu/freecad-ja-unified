@@ -1,7 +1,7 @@
 From 38132c6cd8bd497cfad554733fc9c019e918d5d0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:33:08 +0900
-Subject: [PATCH 317/400] Unified: a hole on a round end goes to its centre; a
+Subject: [PATCH 317/402] Unified: a hole on a round end goes to its centre; a
  hole across a round face
 
 - Hole on a flat face clicked near the middle of a round end or eye (half

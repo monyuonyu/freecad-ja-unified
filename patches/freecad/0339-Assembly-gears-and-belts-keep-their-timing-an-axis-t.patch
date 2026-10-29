@@ -1,7 +1,7 @@
 From 4e35463ee867853949dd6aa69cd192f04c6238fa Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 21:58:49 +0900
-Subject: [PATCH 339/400] Assembly: gears and belts keep their timing; an axis
+Subject: [PATCH 339/402] Assembly: gears and belts keep their timing; an axis
  that turned over does not hold
 
 - A gear's or belt's timing is kept in the joint (GearPhase, from its

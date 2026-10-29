@@ -1,7 +1,7 @@
 From 1d5d3227955dc711fd0adaa6adba9840548e9635 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:26:51 +0900
-Subject: [PATCH 248/400] Unified: find any tool by typing (Ctrl+K)
+Subject: [PATCH 248/402] Unified: find any tool by typing (Ctrl+K)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

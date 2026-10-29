@@ -1,7 +1,7 @@
 From e9e81a7d0aa34662f720c38347ad3e2f46a2ec91 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:28:12 +0900
-Subject: [PATCH 314/400] Unified: a sketch opens straight on and with what is
+Subject: [PATCH 314/402] Unified: a sketch opens straight on and with what is
  in front of it cut away
 
 A groove's or a pin hole's sketch on a plane through a piston was hidden by

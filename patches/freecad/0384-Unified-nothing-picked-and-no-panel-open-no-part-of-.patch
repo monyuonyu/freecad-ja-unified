@@ -1,7 +1,7 @@
 From 241597ec190f2f8b7e58a9d1f259b623ca853331 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 19:59:34 +0900
-Subject: [PATCH 384/400] Unified: nothing picked and no panel open, no part of
+Subject: [PATCH 384/402] Unified: nothing picked and no panel open, no part of
  an assembly stays isolated
 
 A joint picked isolates its two parts (FreeCAD); after the bar's "Turns

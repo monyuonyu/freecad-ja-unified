@@ -325,6 +325,10 @@ AI 要执行的代码默认每次都会显示，只有点“実行する”（�
 此外还修复了装配求解器（OndselSolver）中，在 Linux 和 macOS 上导出装配（ASMT）时关节类型名损坏的问题
 （截取类型名时以 Windows 的格式为前提。是在上游测试 #32922 于 Linux 上失败时发现的）。
 
+## 0.8.8 的变更
+
+BIM 的 WebGL 导出（importWebGL）在无界面时崩溃（相机从不存在的视图获取；文件中无相机时从包围盒斜上方观察），无界面时颜色全为灰色（现读取文件中的 ShapeAppearance）；只有线的形状导致 ValueError、线未写出、空线使页面停止绘制——均已修复。`--export-web` 现可绘制带颜色的点云（Points::Feature），且无需联网。
+
 ## 0.8.7 的变更
 
 `--export-web` 更轻：顶点按整体包围盒以 Int16、法线以 Int8 写入（4m 模型误差 0.06mm），约为 float32 的 40%；`--web-simplify` 的零件改为八棱柱或方块且不写法线。`--web-exclude` 可使用 `[BCD]` 这样的字符集。

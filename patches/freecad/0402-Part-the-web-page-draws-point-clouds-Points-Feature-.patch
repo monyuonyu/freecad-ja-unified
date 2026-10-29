@@ -1,0 +1,192 @@
+From 03791ee56a359f14de7994b8def47875b8e0a85b Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 18:01:40 +0900
+Subject: [PATCH 402/402] Part: the web page draws point clouds
+ (Points::Feature) with their colours
+
+A scan's points were not written. Visible Points features are written as
+Int16 points in the box of all, with their Color list as bytes, drawn as
+points; --web-exclude leaves them out too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/PartWebView.py             | 48 ++++++++++++++++++++++---
+ src/Mod/Part/PartWebViewer.html         | 22 +++++++++++-
+ src/Mod/Part/parttests/TestPartViews.py | 29 +++++++++++++++
+ 3 files changed, 93 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Part/PartWebView.py b/src/Mod/Part/PartWebView.py
+index e06b76a7a..4ba230f49 100644
+--- a/src/Mod/Part/PartWebView.py
++++ b/src/Mod/Part/PartWebView.py
+@@ -121,6 +121,36 @@ def _simple_data(shape, deflection):
+     return tri, [], []   # no normals: flat, the page works them out
+ 
+ 
++def _clouds(source, exclude=()):
++    """The visible point clouds (Points::Feature, a scan) of `source`: [(object, [x, y, z, ...],
++    [r, g, b, ...] 0-255 or [])]. They were not written (reported on 0.8.7)"""
++    import fnmatch
++
++    if isinstance(source, App.Document):
++        objs = source.Objects
++    elif isinstance(source, (list, tuple)):
++        objs = [o for o in source if isinstance(o, App.DocumentObject)]
++    elif isinstance(source, App.DocumentObject):
++        objs = [source]
++    else:
++        objs = []
++    out = []
++    for o in objs:
++        if not o.TypeId.startswith("Points::") or not getattr(o, "Visibility", True):
++            continue
++        if any(fnmatch.fnmatch(n.lower(), p.lower()) for p in exclude for n in (o.Label, o.Name)):
++            continue
++        pts = [c for v in o.Points.Points for c in (v.x, v.y, v.z)]
++        if not pts:
++            continue
++        cols = []
++        given = getattr(o, "Color", None)
++        if isinstance(given, (list, tuple)) and len(given) * 3 == len(pts):
++            cols = [max(0, min(255, int(round(c * 255)))) for col in given for c in tuple(col)[:3]]
++        out.append((o, pts, cols))
++    return out
++
++
+ def _mesh_data(mesh):
+     pts, facets = mesh.Topology if hasattr(mesh, "Topology") else mesh
+     tri = [c for t in facets for k in t for c in (pts[k].x, pts[k].y, pts[k].z)]
+@@ -138,7 +168,8 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+     entries = PartViews.scene_entries(source, colors=None)
+     if exclude:
+         entries = [e for e in entries if not _matches(e, exclude)]
+-    if not entries:
++    clouds = _clouds(source, exclude)
++    if not entries and not clouds:
+         raise RuntimeError("Nothing visible to write")
+     if not deflection:
+         box = App.BoundBox()
+@@ -175,9 +206,14 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+                       })  # fmt: skip
+     # Positions as Int16 in the box of all, normals as Int8: half the size of float32 (a page of
+     # 1,000 parts over 30 MB; reported on 0.8.6). The error: the box / 65534 (4 m: 0.06 mm)
+-    xs = [v for tri, _, seg in raw for v in tri[0::3] + seg[0::3]]
+-    ys = [v for tri, _, seg in raw for v in tri[1::3] + seg[1::3]]
+-    zs = [v for tri, _, seg in raw for v in tri[2::3] + seg[2::3]]
++    for obj, pts, cols in clouds:
++        parts.append({"name": obj.Label, "group": obj.Label, "color": [0.2, 0.45, 0.8], "alpha": 1.0, "wall": None,
++                      "pcol": base64.b64encode(bytes(cols)).decode() if cols else ""})  # fmt: skip
++        raw.append(([], [], [], pts))
++    raw = [r if len(r) == 4 else r + ([],) for r in raw]
++    xs = [v for tri, _, seg, pts in raw for v in tri[0::3] + seg[0::3] + pts[0::3]]
++    ys = [v for tri, _, seg, pts in raw for v in tri[1::3] + seg[1::3] + pts[1::3]]
++    zs = [v for tri, _, seg, pts in raw for v in tri[2::3] + seg[2::3] + pts[2::3]]
+     lo = [min(a) if a else 0.0 for a in (xs, ys, zs)]
+     span = [(max(a) - m) if a else 1.0 for a, m in zip((xs, ys, zs), lo)]
+     step = [max(d, 1e-9) / 65534.0 for d in span]
+@@ -190,8 +226,10 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+         out = [max(-127, min(127, int(round(v * 127)))) for v in vals]
+         return base64.b64encode(struct.pack("<%db" % len(out), *out)).decode()
+ 
+-    for part, (tri, nrm, seg) in zip(parts, raw):
++    for part, (tri, nrm, seg, pts) in zip(parts, raw):
+         part["tri"], part["nrm"], part["seg"] = q16(tri), q8(nrm) if nrm else "", q16(seg) if seg else ""
++        if pts:
++            part["pts"] = q16(pts)
+     if not title and isinstance(source, App.Document):
+         title = source.Label
+     here = os.path.dirname(os.path.abspath(__file__))
+diff --git a/src/Mod/Part/PartWebViewer.html b/src/Mod/Part/PartWebViewer.html
+index 838078278..2a28ea6b8 100644
+--- a/src/Mod/Part/PartWebViewer.html
++++ b/src/Mod/Part/PartWebViewer.html
+@@ -75,6 +75,9 @@ const P_FACE = prog(
+   "precision mediump float; varying vec3 vn; uniform vec3 col; uniform float a; uniform vec3 l1; uniform vec3 l2;" +
+   "void main(){ vec3 n = normalize(vn); if (dot(n, l1) < 0.0) n = -n; float d = 0.5 + 0.38 * max(dot(n, l1), 0.0) + 0.17 * max(dot(n, l2), 0.0) + 0.08 * abs(n.z);" +
+   " gl_FragColor = vec4(col * d, a); }");
++const P_POINT = prog(
++  "attribute vec3 p; attribute vec3 c; uniform mat4 m; uniform float sz; varying vec3 vc; void main(){ vc = c; gl_Position = m * vec4(p, 1.0); gl_PointSize = sz; }",
++  "precision mediump float; varying vec3 vc; void main(){ gl_FragColor = vec4(vc, 1.0); }");
+ const P_LINE = prog(
+   "attribute vec3 p; uniform mat4 m; void main(){ gl_Position = m * vec4(p, 1.0); gl_Position.z -= 0.00012 * gl_Position.w; }",
+   "precision mediump float; uniform vec4 col; void main(){ gl_FragColor = col; }");
+@@ -99,11 +102,18 @@ const parts = DATA.parts.map(pt => {
+     if (nrm !== given) { const n = norm(cross(sub(b, a), sub(c, a))); for (let k = 0; k < 3; k++) nrm.set(n, i + 3 * k); }
+     for (const v of [a, b, c]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
+   }
++  // points (a scan's cloud): positions as the triangles', a colour each (Uint8) or the part's
++  let bp = null, bc = null, np = 0;
++  if (pt.pts) { const q = pos(pt.pts), cols = new Float32Array(q.length), given = pt.pcol ? new Uint8Array(bytes(pt.pcol)) : null;
++    for (let i = 0; i < q.length; i++) cols[i] = given ? given[i] / 255 : pt.color[i % 3];
++    for (let i = 0; i < q.length; i += 3) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q[i + k]); hi[k] = Math.max(hi[k], q[i + k]); }
++    bp = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bp); gl.bufferData(gl.ARRAY_BUFFER, q, gl.STATIC_DRAW);
++    bc = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bc); gl.bufferData(gl.ARRAY_BUFFER, cols, gl.STATIC_DRAW); np = q.length / 3; }
+   const s = pos(pt.seg), bt = gl.createBuffer(), bn = gl.createBuffer(), bs = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, bt); gl.bufferData(gl.ARRAY_BUFFER, t, gl.STATIC_DRAW);
+   gl.bindBuffer(gl.ARRAY_BUFFER, bn); gl.bufferData(gl.ARRAY_BUFFER, nrm, gl.STATIC_DRAW);
+   gl.bindBuffer(gl.ARRAY_BUFFER, bs); gl.bufferData(gl.ARRAY_BUFFER, s, gl.STATIC_DRAW);
+-  return { ...pt, bt, bn, bs, nt: t.length / 3, ns: s.length / 3, show: true };
++  return { ...pt, bt, bn, bs, bp, bc, np, nt: t.length / 3, ns: s.length / 3, show: true };
+ });
+ const center = scl(add(lo, hi), 0.5), radius = Math.hypot(...sub(hi, lo)) / 2 || 1;
+ 
+@@ -155,6 +165,16 @@ function draw() {
+     gl.drawArrays(gl.TRIANGLES, 0, p.nt); };
+   gl.disable(gl.BLEND); gl.depthMask(true); opaque.forEach(face);
+   gl.disableVertexAttribArray(na);
++  // 点群
++  const clouds = opaque.concat(clear).filter(p => p.np);
++  if (clouds.length) { gl.useProgram(P_POINT);
++    const qa = gl.getAttribLocation(P_POINT, "p"), ca = gl.getAttribLocation(P_POINT, "c");
++    gl.uniformMatrix4fv(gl.getUniformLocation(P_POINT, "m"), false, m);
++    gl.uniform1f(gl.getUniformLocation(P_POINT, "sz"), 2.0 * dpr);
++    gl.enableVertexAttribArray(qa); gl.enableVertexAttribArray(ca);
++    for (const p of clouds) { gl.bindBuffer(gl.ARRAY_BUFFER, p.bp); gl.vertexAttribPointer(qa, 3, gl.FLOAT, false, 0, 0);
++      gl.bindBuffer(gl.ARRAY_BUFFER, p.bc); gl.vertexAttribPointer(ca, 3, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.POINTS, 0, p.np); }
++    gl.disableVertexAttribArray(ca); gl.disableVertexAttribArray(qa); }
+   // 線（輪郭）
+   gl.useProgram(P_LINE);
+   const la = gl.getAttribLocation(P_LINE, "p");
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 910db589c..7350e778c 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -697,6 +697,35 @@ class TestPartViewOptions(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def testWebViewPointCloud(self):
++        # a scan's points (Points::Feature) were not written (reported on 0.8.7)
++        import base64
++        import Points
++        import PartWebView
++
++        doc = App.newDocument("WebPoints")
++        try:
++            doc.addObject("Part::Box", "Box")
++            cloud = doc.addObject("Points::Feature", "Scan")
++            cloud.Points = Points.Points([App.Vector(20 + i, 0, i * 0.5) for i in range(50)])
++            cloud.addProperty("App::PropertyColorList", "Color")
++            cloud.Color = [(1.0, 0.0, 0.0)] * 50
++            doc.recompute()
++            path = os.path.join(self.dir, "p.html")
++            PartWebView.export(doc, path)
++            with open(path, encoding="utf-8") as f:
++                data = json.loads(f.read().split("const DATA = ", 1)[1].split(";\n", 1)[0])
++            scan = [p for p in data["parts"] if p["name"] == "Scan"][0]
++            q = struct.unpack("<150h", base64.b64decode(scan["pts"]))
++            xs = [data["q"]["lo"][0] + (v + 32767) * data["q"]["step"][0] for v in q[0::3]]
++            self.assertAlmostEqual(max(xs), 69, delta=0.01)
++            self.assertEqual(base64.b64decode(scan["pcol"])[:3], bytes([255, 0, 0]))
++            PartWebView.export(doc, path, exclude=["Scan"])
++            with open(path, encoding="utf-8") as f:
++                self.assertNotIn('"pts"', f.read())
++        finally:
++            App.closeDocument(doc.Name)
++
+     def testSectionFillsCutFaces(self):
+         data = Part.projectVisible([self.holed, self.small], view="top",
+                                    section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
+-- 
+2.43.0
+
