@@ -1,7 +1,7 @@
 From 90f5acb726935738cb3d664ab1ff97e7309a7a75 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:31:55 +0900
-Subject: [PATCH 261/407] Assembly in the integrated environment: STEP parts,
+Subject: [PATCH 261/410] Assembly in the integrated environment: STEP parts,
  joints by how they move
 
 - "Open file" in the panel that puts parts takes STEP and IGES files (read

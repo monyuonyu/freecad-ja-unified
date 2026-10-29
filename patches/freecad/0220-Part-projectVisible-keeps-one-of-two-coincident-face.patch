@@ -1,7 +1,7 @@
 From 2d44bcb8faa8a7db980379d79b49fbda905bc7ac Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:06:32 +0900
-Subject: [PATCH 220/407] Part: projectVisible keeps one of two coincident
+Subject: [PATCH 220/410] Part: projectVisible keeps one of two coincident
  faces
 
 Coincident groups (a body twice, copies in a STEP assembly) each counted the

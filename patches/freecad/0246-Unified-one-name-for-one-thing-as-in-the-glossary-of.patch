@@ -1,7 +1,7 @@
 From d2c509614fef53caf23cbebb859d50dd22e69946 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:20:50 +0900
-Subject: [PATCH 246/407] Unified: one name for one thing, as in the glossary
+Subject: [PATCH 246/410] Unified: one name for one thing, as in the glossary
  of the redesign
 
 Additive loft/pipe/helix/primitive, multi-transform, datum, grounding,

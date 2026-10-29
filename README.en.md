@@ -332,6 +332,12 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.4
+
+- **Japanese translations filled in**: the 297 strings left in the common workbenches (TechDraw, Part, Draft, Sketcher, Spreadsheet, PartDesign, the main window and more). Some 2,900 remain in BIM, CAM and FEM
+- A sweep of every menu, toolbar and preference text in Japanese: apart from names that stay English (fonts, languages, licences, standards, keys), only Draft's "Draft tray" toolbar was English. Draft's compiled translations are rebuilt, so strings translated before now show too
+- 0.9.3 has no Linux build: the new appimagetool (2026-10-29) stopped it; the tool's version is now fixed (0.9.3's changes are in 0.9.4)
+
 ## Changes in 0.9.3
 
 - The MuJoCo export (`--export-mjcf`) could give another tree for the same file (the rod on the crank one time, on the piston the next): the joints are followed in the order of their names

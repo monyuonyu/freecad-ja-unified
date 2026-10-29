@@ -1,0 +1,2352 @@
+From 4970cf0f12cdaf3ae6318c166be6f4c3a22e5211 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 30 Oct 2026 08:19:28 +0900
+Subject: [PATCH 408/410] Translations (ja): the 297 strings left of the common
+ workbenches
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+TechDraw 87, Part 80, Draft 63, Sketcher 13, Spreadsheet 13, PartDesign
+9, Base, Material, Robot, Gui, ReverseEngineering, Start, Test, Mesh and
+Tux: all their unfinished Japanese translations, in the words already
+used (追加/減算, くっつける, 表示用の線, エイリアス). BIM, CAM and FEM are
+left for now.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Base/Resources/translations/Base_ja.ts    |  12 +-
+ src/Gui/Language/FreeCAD_ja.ts                |   8 +-
+ .../Draft/Resources/translations/Draft_ja.ts  | 132 ++++++-------
+ .../Gui/Resources/translations/Material_ja.ts |  12 +-
+ .../Gui/Resources/translations/Mesh_ja.ts     |   2 +-
+ .../Gui/Resources/translations/Part_ja.ts     | 160 ++++++++--------
+ .../Resources/translations/PartDesign_ja.ts   |  18 +-
+ .../translations/ReverseEngineering_ja.ts     |   8 +-
+ .../Gui/Resources/translations/Robot_ja.ts    |  12 +-
+ .../Gui/Resources/translations/Sketcher_ja.ts |  26 +--
+ .../Resources/translations/Spreadsheet_ja.ts  |  28 +--
+ .../Resources/translations/StartPage_ja.ts    |   4 +-
+ .../Gui/Resources/translations/TechDraw_ja.ts | 176 +++++++++---------
+ .../Gui/Resources/translations/Test_ja.ts     |   4 +-
+ src/Mod/Tux/Resources/translations/Tux_ja.ts  |   2 +-
+ 15 files changed, 301 insertions(+), 303 deletions(-)
+
+diff --git a/src/Base/Resources/translations/Base_ja.ts b/src/Base/Resources/translations/Base_ja.ts
+index 87f604343..1fa648b38 100644
+--- a/src/Base/Resources/translations/Base_ja.ts
++++ b/src/Base/Resources/translations/Base_ja.ts
+@@ -64,32 +64,32 @@
+     <message>
+       <location filename="../../Exception.cpp" line="323"/>
+       <source>No permission to read the file</source>
+-      <translation type="unfinished">No permission to read the file</translation>
++      <translation>ファイルを読む権限がありません</translation>
+     </message>
+     <message>
+       <location filename="../../Exception.cpp" line="325"/>
+       <source>No write permission for the file or the file is read-only</source>
+-      <translation type="unfinished">No write permission for the file or the file is read-only</translation>
++      <translation>ファイルに書く権限がないか、ファイルが読み取り専用です</translation>
+     </message>
+     <message>
+       <location filename="../../Exception.cpp" line="326"/>
+       <source>File format not supported</source>
+-      <translation type="unfinished">File format not supported</translation>
++      <translation>このファイル形式には対応していません</translation>
+     </message>
+     <message>
+       <location filename="../../Exception.cpp" line="327"/>
+       <source>Error reading from file</source>
+-      <translation type="unfinished">Error reading from file</translation>
++      <translation>ファイルの読み込みでエラーが起きました</translation>
+     </message>
+     <message>
+       <location filename="../../Exception.cpp" line="328"/>
+       <source>Error writing to file</source>
+-      <translation type="unfinished">Error writing to file</translation>
++      <translation>ファイルへの書き込みでエラーが起きました</translation>
+     </message>
+     <message>
+       <location filename="../../Exception.cpp" line="330"/>
+       <source>Directory does not exist</source>
+-      <translation type="unfinished">Directory does not exist</translation>
++      <translation>フォルダがありません</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index 030fcd33f..cbb03869c 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -7386,7 +7386,7 @@ Specify another directory?</source>
+     <message>
+       <location filename="Translator.cpp" line="259"/>
+       <source>Hebrew</source>
+-      <translation type="unfinished">Hebrew</translation>
++      <translation>ヘブライ語</translation>
+     </message>
+     <message>
+       <location filename="Translator.cpp" line="221"/>
+@@ -9167,7 +9167,7 @@ the current copy will be lost.
+     <message>
+       <location filename="../ViewProviderImagePlane.cpp" line="252"/>
+       <source>Cannot load image file %1. The decoded image requires at least %2 MiB, exceeding the %3 MiB limit. Reduce its dimensions before loading it.</source>
+-      <translation type="unfinished">Cannot load image file %1. The decoded image requires at least %2 MiB, exceeding the %3 MiB limit. Reduce its dimensions before loading it.</translation>
++      <translation>画像ファイル %1 を読み込めません。展開すると %2 MiB 以上になり、上限の %3 MiB を超えます。画像を小さくしてから読み込んでください。</translation>
+     </message>
+     <message>
+       <location filename="../FileDialog.cpp" line="301"/>
+@@ -14480,12 +14480,12 @@ Press = (or the formula icon) to change the formula, or Reset there to type a nu
+     <message>
+       <location filename="../Dialogs/DlgThemeEditor.cpp" line="138"/>
+       <source>Linear Gradient</source>
+-      <translation type="unfinished">Linear Gradient</translation>
++      <translation>線形グラデーション</translation>
+     </message>
+     <message>
+       <location filename="../Dialogs/DlgThemeEditor.cpp" line="140"/>
+       <source>Radial Gradient</source>
+-      <translation type="unfinished">Radial Gradient</translation>
++      <translation>放射状グラデーション</translation>
+     </message>
+     <message>
+       <location filename="../Dialogs/DlgThemeEditor.cpp" line="142"/>
+diff --git a/src/Mod/Draft/Resources/translations/Draft_ja.ts b/src/Mod/Draft/Resources/translations/Draft_ja.ts
+index 4cc832ca5..609f0c8cb 100644
+--- a/src/Mod/Draft/Resources/translations/Draft_ja.ts
++++ b/src/Mod/Draft/Resources/translations/Draft_ja.ts
+@@ -1003,7 +1003,7 @@ will be moved to the center of the view.</source>
+     <message>
+       <location filename="../ui/TaskSelectPlane.ui" line="20"/>
+       <source>Choose an option below. Or define a working plane by selecting 1 to 3 vertices, 1 or more shapes, or a working plane proxy, and then confirm with a click in the 3D view.</source>
+-      <translation type="unfinished">Choose an option below. Or define a working plane by selecting 1 to 3 vertices, 1 or more shapes, or a working plane proxy, and then confirm with a click in the 3D view.</translation>
++      <translation>下から選ぶか、頂点を 1〜3 個、形を 1 つ以上、または作業平面の代わりの物を選んで作業平面を決め、3D ビューをクリックして確定します。</translation>
+     </message>
+     <message>
+       <location filename="../ui/TaskSelectPlane.ui" line="214"/>
+@@ -2059,7 +2059,7 @@ a raw wire from the original shape is added</source>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="120"/>
+       <source>Apply cuts</source>
+-      <translation type="unfinished">Apply cuts</translation>
++      <translation>切り抜きを適用</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="140"/>
+@@ -2076,16 +2076,16 @@ a raw wire from the original shape is added</source>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="190"/>
+       <source>Maximum deviation for approximation of complex curves</source>
+-      <translation type="unfinished">Maximum deviation for approximation of complex curves</translation>
++      <translation>複雑な曲線を近似するときの最大のずれ</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="210"/>
+       <source>Maximum deviation for the approximation of ellipses, hyperbolas, parabolas, and
+ Bézier and B-spline curves to arcs and lines. Can be useful for the CAM Workbench.
+ Set to zero to disable approximation.</source>
+-      <translation type="unfinished">Maximum deviation for the approximation of ellipses, hyperbolas, parabolas, and
+-Bézier and B-spline curves to arcs and lines. Can be useful for the CAM Workbench.
+-Set to zero to disable approximation.</translation>
++      <translation>楕円・双曲線・放物線、ベジェ曲線・B スプライン曲線を円弧と線で近似するときの最大のずれ。
++CAM ワークベンチで役に立つことがあります。
++0 にすると近似しません。</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-svg.ui" line="256"/>
+@@ -2753,7 +2753,7 @@ if they match the X, Y or Z axis of the global coordinate system</source>
+     <message>
+       <location filename="../ui/preferences-dwg.ui" line="100"/>
+       <source>Note: DXF options apply to DWG files as well.</source>
+-      <translation type="unfinished">Note: DXF options apply to DWG files as well.</translation>
++      <translation>注: DXF の設定は DWG ファイルにも効きます。</translation>
+     </message>
+     <message>
+       <location filename="../ui/preferences-draftinterface.ui" line="26"/>
+@@ -3748,17 +3748,17 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_labels.py" line="243"/>
+       <source>%1 pick arrow point</source>
+-      <translation type="unfinished">%1 pick arrow point</translation>
++      <translation>%1 矢印の点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_labels.py" line="247"/>
+       <source>%1 pick corner point</source>
+-      <translation type="unfinished">%1 pick corner point</translation>
++      <translation>%1 角の点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_labels.py" line="251"/>
+       <source>%1 pick text point</source>
+-      <translation type="unfinished">%1 pick text point</translation>
++      <translation>%1 文字の点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_ellipses.py" line="77"/>
+@@ -3788,7 +3788,7 @@ or try saving to a lower DWG version.</source>
+       <location filename="../../drafttests/test_lines_gui.py" line="56"/>
+       <location filename="../../drafttests/test_lines_gui.py" line="94"/>
+       <source>Point identical to previous point</source>
+-      <translation type="unfinished">Point identical to previous point</translation>
++      <translation>前の点と同じ点です</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_lines.py" line="327"/>
+@@ -3898,7 +3898,7 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_move.py" line="255"/>
+       <source>%1 pick start point</source>
+-      <translation type="unfinished">%1 pick start point</translation>
++      <translation>%1 始点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_move.py" line="259"/>
+@@ -3963,42 +3963,42 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="76"/>
+       <source>Hold %1 constrain</source>
+-      <translation type="unfinished">Hold %1 constrain</translation>
++      <translation>%1 を押したまま: 拘束</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="81"/>
+       <source>Hold %1 horizontal/vertical dimension</source>
+-      <translation type="unfinished">Hold %1 horizontal/vertical dimension</translation>
++      <translation>%1 を押したまま: 水平/垂直の寸法</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="86"/>
+       <source>Hold %1 radial dimension</source>
+-      <translation type="unfinished">Hold %1 radial dimension</translation>
++      <translation>%1 を押したまま: 半径の寸法</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="93"/>
+       <source>Hold %1 snap</source>
+-      <translation type="unfinished">Hold %1 snap</translation>
++      <translation>%1 を押したまま: くっつける</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="98"/>
+       <source>Hold %1 copy</source>
+-      <translation type="unfinished">Hold %1 copy</translation>
++      <translation>%1 を押したまま: コピー</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="114"/>
+       <source>%1 select objects to modify</source>
+-      <translation type="unfinished">%1 select objects to modify</translation>
++      <translation>%1 変更するオブジェクトを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="116"/>
+       <source>%1 select object to modify</source>
+-      <translation type="unfinished">%1 select object to modify</translation>
++      <translation>%1 変更するオブジェクトを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="133"/>
+       <source>%1 / %2 / %3 switch constraint</source>
+-      <translation type="unfinished">%1 / %2 / %3 switch constraint</translation>
++      <translation>%1 / %2 / %3 拘束を切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="143"/>
+@@ -4018,12 +4018,12 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="172"/>
+       <source>%1 / hold %2 select edge</source>
+-      <translation type="unfinished">%1 / hold %2 select edge</translation>
++      <translation>%1 / %2 を押したまま: エッジを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_tool_utils.py" line="174"/>
+       <source>Hold %1 select edge</source>
+-      <translation type="unfinished">Hold %1 select edge</translation>
++      <translation>%1 を押したまま: エッジを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_polygons.py" line="312"/>
+@@ -4105,7 +4105,7 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_subelements.py" line="86"/>
+       <source>Only Draft lines, wires, and curves can be highlighted</source>
+-      <translation type="unfinished">Only Draft lines, wires, and curves can be highlighted</translation>
++      <translation>強調表示できるのは Draft の線・ワイヤー・曲線だけです</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_subelements.py" line="120"/>
+@@ -4115,7 +4115,7 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_subelements.py" line="176"/>
+       <source>%1 run Move, Rotate or Scale on subelements</source>
+-      <translation type="unfinished">%1 run Move, Rotate or Scale on subelements</translation>
++      <translation>%1 部分要素に移動・回転・拡大縮小を実行</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_subelements.py" line="179"/>
+@@ -4132,22 +4132,22 @@ or try saving to a lower DWG version.</source>
+     <message>
+       <location filename="../../draftguitools/gui_edit.py" line="374"/>
+       <source>%1 select object to edit</source>
+-      <translation type="unfinished">%1 select object to edit</translation>
++      <translation>%1 編集するオブジェクトを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_edit.py" line="382"/>
+       <source>%1 pick node to edit</source>
+-      <translation type="unfinished">%1 pick node to edit</translation>
++      <translation>%1 編集する節点を選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_edit.py" line="384"/>
+       <source>%1 options for hovered node/edge</source>
+-      <translation type="unfinished">%1 options for hovered node/edge</translation>
++      <translation>%1 マウスの下の節点/エッジの操作</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_edit.py" line="392"/>
+       <source>%1 place node</source>
+-      <translation type="unfinished">%1 place node</translation>
++      <translation>%1 節点を置く</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_edit.py" line="541"/>
+@@ -4307,17 +4307,17 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_rotate.py" line="357"/>
+       <source>%1 pick rotation center</source>
+-      <translation type="unfinished">%1 pick rotation center</translation>
++      <translation>%1 回転の中心を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_rotate.py" line="359"/>
+       <source>%1 pick base angle</source>
+-      <translation type="unfinished">%1 pick base angle</translation>
++      <translation>%1 基準の角度を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_rotate.py" line="361"/>
+       <source>%1 pick rotation angle</source>
+-      <translation type="unfinished">%1 pick rotation angle</translation>
++      <translation>%1 回転の角度を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_rotate.py" line="201"/>
+@@ -4484,7 +4484,7 @@ The final angle will be the base angle plus this amount.</source>
+       <location filename="../../draftguitools/gui_trimex.py" line="178"/>
+       <location filename="../../draftguitools/gui_trimex.py" line="694"/>
+       <source>Select a single face to extrude</source>
+-      <translation type="unfinished">Select a single face to extrude</translation>
++      <translation>押し出す面を 1 つだけ選んでください</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="568"/>
+@@ -4504,32 +4504,32 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="667"/>
+       <source>%1 pick target</source>
+-      <translation type="unfinished">%1 pick target</translation>
++      <translation>%1 対象を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="669"/>
+       <source>Hold %1 free direction</source>
+-      <translation type="unfinished">Hold %1 free direction</translation>
++      <translation>%1 を押したまま: 方向を自由に</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="672"/>
+       <source>Hold %1 keep active endpoint</source>
+-      <translation type="unfinished">Hold %1 keep active endpoint</translation>
++      <translation>%1 を押したまま: 動かす端点を固定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="675"/>
+       <source>Hold %1 invert trim direction</source>
+-      <translation type="unfinished">Hold %1 invert trim direction</translation>
++      <translation>%1 を押したまま: トリムの向きを反対に</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="684"/>
+       <source>Extrude Face</source>
+-      <translation type="unfinished">Extrude Face</translation>
++      <translation>面を押し出す</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="685"/>
+       <source>Select a face to extrude</source>
+-      <translation type="unfinished">Select a face to extrude</translation>
++      <translation>押し出す面を選んでください</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_offset.py" line="92"/>
+@@ -4544,7 +4544,7 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_offset.py" line="337"/>
+       <source>%1 pick distance</source>
+-      <translation type="unfinished">%1 pick distance</translation>
++      <translation>%1 距離を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="168"/>
+@@ -4592,7 +4592,7 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_edit_draft_objects.py" line="119"/>
+       <source>Set Point as First</source>
+-      <translation type="unfinished">Set Point as First</translation>
++      <translation>この点を最初の点に</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_edit_draft_objects.py" line="126"/>
+@@ -4730,12 +4730,12 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_beziers.py" line="503"/>
+       <source>%1 define first point and knot</source>
+-      <translation type="unfinished">%1 define first point and knot</translation>
++      <translation>%1 最初の点と節を決める</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_beziers.py" line="509"/>
+       <source>%1 define next point and knot</source>
+-      <translation type="unfinished">%1 define next point and knot</translation>
++      <translation>%1 次の点と節を決める</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_ellipses.py" line="73"/>
+@@ -4798,17 +4798,17 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_scale.py" line="296"/>
+       <source>%1 pick base point</source>
+-      <translation type="unfinished">%1 pick base point</translation>
++      <translation>%1 基点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_scale.py" line="298"/>
+       <source>%1 pick reference distance</source>
+-      <translation type="unfinished">%1 pick reference distance</translation>
++      <translation>%1 基準の距離を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_scale.py" line="300"/>
+       <source>%1 pick new distance</source>
+-      <translation type="unfinished">%1 pick new distance</translation>
++      <translation>%1 新しい距離を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftmake/make_layer.py" line="158"/>
+@@ -4831,27 +4831,27 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_dimensions.py" line="583"/>
+       <source>%1 pick dimension position</source>
+-      <translation type="unfinished">%1 pick dimension position</translation>
++      <translation>%1 寸法の位置を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_dimensions.py" line="585"/>
+       <source>%1 select edge</source>
+-      <translation type="unfinished">%1 select edge</translation>
++      <translation>%1 エッジを選択</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_dimensions.py" line="602"/>
+       <source>%1 pick next dimension point</source>
+-      <translation type="unfinished">%1 pick next dimension point</translation>
++      <translation>%1 次の寸法の点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_dimensions.py" line="610"/>
+       <source>%1 pick first dimension point</source>
+-      <translation type="unfinished">%1 pick first dimension point</translation>
++      <translation>%1 寸法の 1 点目を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_dimensions.py" line="619"/>
+       <source>%1 pick second dimension point</source>
+-      <translation type="unfinished">%1 pick second dimension point</translation>
++      <translation>%1 寸法の 2 点目を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="80"/>
+@@ -4876,22 +4876,22 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="536"/>
+       <source>%1 pick first point of selection rectangle</source>
+-      <translation type="unfinished">%1 pick first point of selection rectangle</translation>
++      <translation>%1 選択の四角形の 1 点目を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="538"/>
+       <source>%1 pick opposite point of selection rectangle</source>
+-      <translation type="unfinished">%1 pick opposite point of selection rectangle</translation>
++      <translation>%1 選択の四角形の対角の点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="540"/>
+       <source>%1 pick start point of displacement</source>
+-      <translation type="unfinished">%1 pick start point of displacement</translation>
++      <translation>%1 移動の始点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="542"/>
+       <source>%1 pick end point of displacement</source>
+-      <translation type="unfinished">%1 pick end point of displacement</translation>
++      <translation>%1 移動の終点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_stretch.py" line="180"/>
+@@ -4947,12 +4947,12 @@ The final angle will be the base angle plus this amount.</source>
+     <message>
+       <location filename="../../draftguitools/gui_mirror.py" line="210"/>
+       <source>%1 pick start point of mirror line</source>
+-      <translation type="unfinished">%1 pick start point of mirror line</translation>
++      <translation>%1 鏡映線の始点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_mirror.py" line="212"/>
+       <source>%1 pick end point of mirror line</source>
+-      <translation type="unfinished">%1 pick end point of mirror line</translation>
++      <translation>%1 鏡映線の終点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_clone.py" line="86"/>
+@@ -5984,7 +5984,7 @@ of existing objects in all opened documents?</source>
+     <message>
+       <location filename="../../draftguitools/gui_split.py" line="123"/>
+       <source>%1 click on a line to split it</source>
+-      <translation type="unfinished">%1 click on a line to split it</translation>
++      <translation>%1 分割する線をクリック</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_togglemodes.py" line="76"/>
+@@ -6104,17 +6104,17 @@ FreeCADでこれらライブラリーのダウンロードを有効にするた
+     <message>
+       <location filename="../../draftobjects/hatch.py" line="243"/>
+       <source>No valid faces for hatch</source>
+-      <translation type="unfinished">No valid faces for hatch</translation>
++      <translation>ハッチングできる面がありません</translation>
+     </message>
+     <message>
+       <location filename="../../draftviewproviders/view_wpproxy.py" line="97"/>
+       <source>Save Camera View</source>
+-      <translation type="unfinished">Save Camera View</translation>
++      <translation>カメラの視点を保存</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_field_locks.py" line="90"/>
+       <source>Keeps the value fixed during 3D input. The lock icon or a double-click unlocks the field.</source>
+-      <translation type="unfinished">Keeps the value fixed during 3D input. The lock icon or a double-click unlocks the field.</translation>
++      <translation>3D の入力の間、値を固定します。鍵のアイコンかダブルクリックで固定を外します。</translation>
+     </message>
+   </context>
+   <context>
+@@ -6664,7 +6664,7 @@ If the "Copy" option is active, it will create rotated copies.</source>
+     <message>
+       <location filename="../../draftguitools/gui_trimex.py" line="72"/>
+       <source>Trims or extends the selected object</source>
+-      <translation type="unfinished">Trims or extends the selected object</translation>
++      <translation>選んだオブジェクトをトリム（切る）または延長します</translation>
+     </message>
+   </context>
+   <context>
+@@ -6951,7 +6951,7 @@ It is a list of strings; each element in the list will be displayed in its own l
+     <message>
+       <location filename="../../draftobjects/hatch.py" line="55"/>
+       <source>The objects and faces used by this object</source>
+-      <translation type="unfinished">The objects and faces used by this object</translation>
++      <translation>このオブジェクトが使うオブジェクトと面</translation>
+     </message>
+     <message>
+       <location filename="../../draftobjects/hatch.py" line="63"/>
+@@ -8938,7 +8938,7 @@ shape. Best for viewing very large files with maximum performance.</source>
+     <message>
+       <location filename="../../Init.py" line="35"/>
+       <source>Flattened SVG</source>
+-      <translation type="unfinished">Flattened SVG</translation>
++      <translation>平らにした SVG</translation>
+     </message>
+   </context>
+   <context>
+@@ -8946,14 +8946,14 @@ shape. Best for viewing very large files with maximum performance.</source>
+     <message>
+       <location filename="../../draftguitools/gui_shape2dview.py" line="140"/>
+       <source>Force 2D View Update</source>
+-      <translation type="unfinished">Force 2D View Update</translation>
++      <translation>2D ビューを強制的に更新</translation>
+     </message>
+     <message>
+       <location filename="../../draftguitools/gui_shape2dview.py" line="144"/>
+       <source>Forces an update of the selected 2D Views or all 2D Views in the document.
+ The 'Auto Update' property of the views is ignored.</source>
+-      <translation type="unfinished">Forces an update of the selected 2D Views or all 2D Views in the document.
+-The 'Auto Update' property of the views is ignored.</translation>
++      <translation>選んだ 2D ビュー、または文書のすべての 2D ビューを強制的に更新します。
++ビューの「Auto Update」プロパティは無視されます。</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/Material/Gui/Resources/translations/Material_ja.ts b/src/Mod/Material/Gui/Resources/translations/Material_ja.ts
+index 5f7c96b52..06f97a840 100644
+--- a/src/Mod/Material/Gui/Resources/translations/Material_ja.ts
++++ b/src/Mod/Material/Gui/Resources/translations/Material_ja.ts
+@@ -251,7 +251,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="204"/>
+       <source>Defines the base color of a surface when illuminated by light. It represents how the object scatters light evenly in all directions, independent of the viewer’s angle. This property will influence the material color the most.</source>
+-      <translation type="unfinished">Defines the base color of a surface when illuminated by light. It represents how the object scatters light evenly in all directions, independent of the viewer’s angle. This property will influence the material color the most.</translation>
++      <translation>光が当たったときの表面の基本の色。見る向きによらず、光をあらゆる方向に均等に散らす色です。材料の色を最も大きく左右します。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="215"/>
+@@ -261,7 +261,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="217"/>
+       <source>Defines the color of a surface under indirect, uniform lighting, representing how it appears when illuminated only by ambient light in a scene, without directional light, shading, or highlights</source>
+-      <translation type="unfinished">Defines the color of a surface under indirect, uniform lighting, representing how it appears when illuminated only by ambient light in a scene, without directional light, shading, or highlights</translation>
++      <translation>間接的で一様な光（環境光）だけが当たったときの表面の色。向きのある光・陰影・ハイライトの無い状態の見え方です</translation>
+     </message>
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="228"/>
+@@ -271,7 +271,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="230"/>
+       <source>Defines the color of a surface that appears to emit as if it were a light source, independent of external lighting, making the object look self-illuminated. Set to black to have no emissive color.</source>
+-      <translation type="unfinished">Defines the color of a surface that appears to emit as if it were a light source, independent of external lighting, making the object look self-illuminated. Set to black to have no emissive color.</translation>
++      <translation>外の光によらず、それ自体が光源のように光って見える表面の色。物体が自ら光っているように見えます。光らせないときは黒にします。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="241"/>
+@@ -281,7 +281,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="243"/>
+       <source>Defines the color and intensity of the bright, mirror-like highlights that appear on shiny or reflective surfaces when light hits them directly. Set to bright colors for shiny objects.</source>
+-      <translation type="unfinished">Defines the color and intensity of the bright, mirror-like highlights that appear on shiny or reflective surfaces when light hits them directly. Set to bright colors for shiny objects.</translation>
++      <translation>光が直接当たったとき、つやのある面や反射する面に出る、鏡のような明るいハイライトの色と強さ。つやのある物には明るい色を設定します。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="254"/>
+@@ -291,7 +291,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="256"/>
+       <source>Defines the size and sharpness of specular highlights on a surface. Higher values produce small, sharp highlights, while lower values create broad, soft highlights. Note that the highlight intensity is defined by specular color.</source>
+-      <translation type="unfinished">Defines the size and sharpness of specular highlights on a surface. Higher values produce small, sharp highlights, while lower values create broad, soft highlights. Note that the highlight intensity is defined by specular color.</translation>
++      <translation>表面の鏡面ハイライトの大きさと鋭さ。大きい値ほど小さく鋭いハイライトに、小さい値ほど広くやわらかいハイライトになります。ハイライトの強さは鏡面色で決まります。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="268"/>
+@@ -301,7 +301,7 @@
+     <message>
+       <location filename="../../DlgInspectAppearance.cpp" line="269"/>
+       <source>Defines how much light passes through an object, making it partially or fully see-through</source>
+-      <translation type="unfinished">Defines how much light passes through an object, making it partially or fully see-through</translation>
++      <translation>物体を通り抜ける光の量。物体が部分的に、または完全に透けて見えます</translation>
+     </message>
+   </context>
+   <context>
+diff --git a/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts b/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
+index 5d91ffb1e..a54e675d7 100644
+--- a/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
++++ b/src/Mod/Mesh/Gui/Resources/translations/Mesh_ja.ts
+@@ -6,7 +6,7 @@
+     <message>
+       <location filename="../../Command.cpp" line="751"/>
+       <source>Mesh</source>
+-      <translation type="unfinished">Mesh</translation>
++      <translation>メッシュ</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="752"/>
+diff --git a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+index b25db1a34..4c135ae8a 100644
+--- a/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
++++ b/src/Mod/Part/Gui/Resources/translations/Part_ja.ts
+@@ -582,13 +582,13 @@
+       <location filename="../../AttacherTexts.cpp" line="364"/>
+       <source>Midplane between faces</source>
+       <comment>AttachmentPlane mode caption</comment>
+-      <translation type="unfinished">Midplane between faces</translation>
++      <translation>面と面の中間の平面</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="365"/>
+       <source>Plane origin is midway between two planar faces and its orientation equally bisects their angle. For non-parallel faces the plane contains their intersection line.</source>
+       <comment>AttachmentPlane mode tooltip</comment>
+-      <translation type="unfinished">Plane origin is midway between two planar faces and its orientation equally bisects their angle. For non-parallel faces the plane contains their intersection line.</translation>
++      <translation>平面の原点は 2 つの平らな面のちょうど中間にあり、向きは 2 面の角度を 2 等分します。平行でない面の場合、平面は 2 面の交線を含みます。</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="375"/>
+@@ -895,13 +895,13 @@
+       <location filename="../../AttacherTexts.cpp" line="111"/>
+       <source>Midplane between faces</source>
+       <comment>Attachment3D mode caption</comment>
+-      <translation type="unfinished">Midplane between faces</translation>
++      <translation>面と面の中間の平面</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="112"/>
+       <source>Plane origin is midway between two planar faces and its orientation equally bisects their angle. For non-parallel faces the plane contains their intersection line.</source>
+       <comment>Attachment3D mode tooltip</comment>
+-      <translation type="unfinished">Plane origin is midway between two planar faces and its orientation equally bisects their angle. For non-parallel faces the plane contains their intersection line.</translation>
++      <translation>平面の原点は 2 つの平らな面のちょうど中間にあり、向きは 2 面の角度を 2 等分します。平行でない面の場合、平面は 2 面の交線を含みます。</translation>
+     </message>
+     <message>
+       <location filename="../../AttacherTexts.cpp" line="200"/>
+@@ -2425,7 +2425,7 @@ Note: The placement is expressed in local space of object being attached.</sourc
+     <message>
+       <location filename="../../CrossSections.ui" line="52"/>
+       <source>Position</source>
+-      <translation type="unfinished">Position</translation>
++      <translation>位置</translation>
+     </message>
+     <message>
+       <location filename="../../CrossSections.ui" line="109"/>
+@@ -2839,7 +2839,7 @@ If both lengths are zero, magnitude of direction is used.</source>
+     <message>
+       <location filename="../../DlgExtrusion.cpp" line="506"/>
+       <source>The document '%1' doesn't exist.</source>
+-      <translation type="unfinished">The document '%1' doesn't exist.</translation>
++      <translation>文書「%1」がありません。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgExtrusion.cpp" line="567"/>
+@@ -3198,7 +3198,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgImportStep.ui" line="29"/>
+       <source>Merges all shapes into a single compound during import, resolving part instances and applying transforms. Increases import time but does not affect geometry accuracy or rendering quality.</source>
+-      <translation type="unfinished">Merges all shapes into a single compound during import, resolving part instances and applying transforms. Increases import time but does not affect geometry accuracy or rendering quality.</translation>
++      <translation>読み込むときに、すべての形を 1 つのコンパウンドにまとめます（部品の繰り返しを解き、変換を適用します）。読み込みに時間がかかりますが、形の精度や表示の品質は変わりません。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgImportStep.ui" line="32"/>
+@@ -3551,17 +3551,17 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="493"/>
+       <source>Height of the cylinder along the local Z axis</source>
+-      <translation type="unfinished">Height of the cylinder along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った円柱の高さ</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="516"/>
+       <source>Skew angle of the cylinder in the first direction</source>
+-      <translation type="unfinished">Skew angle of the cylinder in the first direction</translation>
++      <translation>円柱の 1 つ目の方向の傾き</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="542"/>
+       <source>Skew angle of the cylinder in the second direction</source>
+-      <translation type="unfinished">Skew angle of the cylinder in the second direction</translation>
++      <translation>円柱の 2 つ目の方向の傾き</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="593"/>
+@@ -3571,7 +3571,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="600"/>
+       <source>Rotation angle of the cylinder cross-section</source>
+-      <translation type="unfinished">Rotation angle of the cylinder cross-section</translation>
++      <translation>円柱の断面の回転角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="670"/>
+@@ -3583,7 +3583,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="677"/>
+       <source>Radius of the cone at the bottom</source>
+-      <translation type="unfinished">Radius of the cone at the bottom</translation>
++      <translation>円錐の底の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="693"/>
+@@ -3595,12 +3595,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="700"/>
+       <source>Radius of the cone at the top</source>
+-      <translation type="unfinished">Radius of the cone at the top</translation>
++      <translation>円錐の上の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="723"/>
+       <source>Height of the cone along the local Z axis</source>
+-      <translation type="unfinished">Height of the cone along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った円錐の高さ</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="765"/>
+@@ -3611,7 +3611,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="772"/>
+       <source>Rotation angle of the cone cross-section</source>
+-      <translation type="unfinished">Rotation angle of the cone cross-section</translation>
++      <translation>円錐の断面の回転角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="849"/>
+@@ -3628,7 +3628,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="901"/>
+       <source>Rotation angle of the sphere cross-section around the local Z axis</source>
+-      <translation type="unfinished">Rotation angle of the sphere cross-section around the local Z axis</translation>
++      <translation>ローカル Z 軸まわりの球の断面の回転角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="917"/>
+@@ -3638,22 +3638,22 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="924"/>
+       <source>Start angle of the sphere along the local Z axis</source>
+-      <translation type="unfinished">Start angle of the sphere along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った球の開始角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="956"/>
+       <source>End angle of the sphere along the local Z axis</source>
+-      <translation type="unfinished">End angle of the sphere along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った球の終了角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1033"/>
+       <source>Radius of the ellipsoid along the local Z axis</source>
+-      <translation type="unfinished">Radius of the ellipsoid along the local Z axis</translation>
++      <translation>ローカル Z 軸方向の楕円体の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1056"/>
+       <source>Radius of the ellipsoid along the local X axis</source>
+-      <translation type="unfinished">Radius of the ellipsoid along the local X axis</translation>
++      <translation>ローカル X 軸方向の楕円体の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1072"/>
+@@ -3663,12 +3663,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1079"/>
+       <source>Radius of the ellipsoid along the local Y axis</source>
+-      <translation type="unfinished">Radius of the ellipsoid along the local Y axis</translation>
++      <translation>ローカル Y 軸方向の楕円体の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1131"/>
+       <source>Rotation angle of the ellipsoid cross-section around the local Z axis</source>
+-      <translation type="unfinished">Rotation angle of the ellipsoid cross-section around the local Z axis</translation>
++      <translation>ローカル Z 軸まわりの楕円体の断面の回転角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1147"/>
+@@ -3679,37 +3679,37 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1154"/>
+       <source>Start angle of the ellipsoid along the local Z axis</source>
+-      <translation type="unfinished">Start angle of the ellipsoid along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った楕円体の開始角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1186"/>
+       <source>End angle of the ellipsoid along the local Z axis</source>
+-      <translation type="unfinished">End angle of the ellipsoid along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った楕円体の終了角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1260"/>
+       <source>Radius from the center of the torus to the center of the cross-section</source>
+-      <translation type="unfinished">Radius from the center of the torus to the center of the cross-section</translation>
++      <translation>トーラスの中心から断面の中心までの半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1283"/>
+       <source>Radius of the torus cross-section</source>
+-      <translation type="unfinished">Radius of the torus cross-section</translation>
++      <translation>トーラスの断面の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1335"/>
+       <source>Rotation angle of the torus cross-section around the local Z axis</source>
+-      <translation type="unfinished">Rotation angle of the torus cross-section around the local Z axis</translation>
++      <translation>ローカル Z 軸まわりのトーラスの断面の回転角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1358"/>
+       <source>Start angle of the torus cross-section</source>
+-      <translation type="unfinished">Start angle of the torus cross-section</translation>
++      <translation>トーラスの断面の開始角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1390"/>
+       <source>End angle of the torus cross-section</source>
+-      <translation type="unfinished">End angle of the torus cross-section</translation>
++      <translation>トーラスの断面の終了角度</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1460"/>
+@@ -3720,7 +3720,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1467"/>
+       <source>Number of sides of the polygon cross-section</source>
+-      <translation type="unfinished">Number of sides of the polygon cross-section</translation>
++      <translation>多角形の断面の辺の数</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1486"/>
+@@ -3731,22 +3731,22 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1493"/>
+       <source>Circumradius of the polygon cross-section</source>
+-      <translation type="unfinished">Circumradius of the polygon cross-section</translation>
++      <translation>多角形の断面の外接円の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1516"/>
+       <source>Height of the prism along the local Z axis</source>
+-      <translation type="unfinished">Height of the prism along the local Z axis</translation>
++      <translation>ローカル Z 軸に沿った角柱の高さ</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1539"/>
+       <source>Skew angle of the prism in the first direction</source>
+-      <translation type="unfinished">Skew angle of the prism in the first direction</translation>
++      <translation>角柱の 1 つ目の方向の傾き</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1565"/>
+       <source>Skew angle of the prism in the second direction</source>
+-      <translation type="unfinished">Skew angle of the prism in the second direction</translation>
++      <translation>角柱の 2 つ目の方向の傾き</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1611"/>
+@@ -3756,12 +3756,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1618"/>
+       <source>Minimum X value of the base face</source>
+-      <translation type="unfinished">Minimum X value of the base face</translation>
++      <translation>底面の X の最小値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1631"/>
+       <source>Maximum X value of the base face</source>
+-      <translation type="unfinished">Maximum X value of the base face</translation>
++      <translation>底面の X の最大値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1647"/>
+@@ -3771,12 +3771,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1654"/>
+       <source>Minimum Y value (height start)</source>
+-      <translation type="unfinished">Minimum Y value (height start)</translation>
++      <translation>Y の最小値（高さの始まり）</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1667"/>
+       <source>Maximum Y value (height end)</source>
+-      <translation type="unfinished">Maximum Y value (height end)</translation>
++      <translation>Y の最大値（高さの終わり）</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1683"/>
+@@ -3786,12 +3786,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1690"/>
+       <source>Minimum Z value of the base face</source>
+-      <translation type="unfinished">Minimum Z value of the base face</translation>
++      <translation>底面の Z の最小値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1703"/>
+       <source>Maximum Z value of the base face</source>
+-      <translation type="unfinished">Maximum Z value of the base face</translation>
++      <translation>底面の Z の最大値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1719"/>
+@@ -3801,12 +3801,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1726"/>
+       <source>Minimum X value of the top face</source>
+-      <translation type="unfinished">Minimum X value of the top face</translation>
++      <translation>上面の X の最小値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1742"/>
+       <source>Maximum X value of the top face</source>
+-      <translation type="unfinished">Maximum X value of the top face</translation>
++      <translation>上面の X の最大値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1758"/>
+@@ -3816,12 +3816,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1765"/>
+       <source>Minimum Z value of the top face</source>
+-      <translation type="unfinished">Minimum Z value of the top face</translation>
++      <translation>上面の Z の最小値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1781"/>
+       <source>Maximum Z value of the top face</source>
+-      <translation type="unfinished">Maximum Z value of the top face</translation>
++      <translation>上面の Z の最大値</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="1848"/>
+@@ -3913,7 +3913,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="2200"/>
+       <source>Define the circle by selecting 3 points in the 3D view</source>
+-      <translation type="unfinished">Define the circle by selecting 3 points in the 3D view</translation>
++      <translation>3D ビューで 3 点を選んで円を決めます</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="2203"/>
+@@ -4016,7 +4016,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="2649"/>
+       <source>Circumradius of the regular polygon</source>
+-      <translation type="unfinished">Circumradius of the regular polygon</translation>
++      <translation>正多角形の外接円の半径</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrimitives.ui" line="509"/>
+@@ -4076,7 +4076,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgPrimitives.cpp" line="2654"/>
+       <source>C&amp;reate</source>
+-      <translation type="unfinished">C&amp;reate</translation>
++      <translation>作成(&amp;R)</translation>
+     </message>
+   </context>
+   <context>
+@@ -4303,7 +4303,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgRevolution.cpp" line="538"/>
+       <source>Selecting… (Line or Arc)</source>
+-      <translation type="unfinished">Selecting… (Line or Arc)</translation>
++      <translation>選択中…（線または円弧）</translation>
+     </message>
+   </context>
+   <context>
+@@ -4341,7 +4341,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettings3DViewPartImp.cpp" line="88"/>
+       <source>Deviation</source>
+-      <translation type="unfinished">Deviation</translation>
++      <translation>偏差</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettings3DViewPartImp.cpp" line="89"/>
+@@ -4389,12 +4389,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="33"/>
+       <source>Validates the geometry (BRep) after every boolean operation to detect errors. Note: This may slow down performance on complex models.</source>
+-      <translation type="unfinished">Validates the geometry (BRep) after every boolean operation to detect errors. Note: This may slow down performance on complex models.</translation>
++      <translation>ブール演算のたびに形（BRep）を検証して誤りを見つけます。注: 複雑なモデルでは遅くなることがあります。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="58"/>
+       <source>Automatically cleans up the shape after boolean operations by removing redundant coplanar edges and merging adjacent faces</source>
+-      <translation type="unfinished">Automatically cleans up the shape after boolean operations by removing redundant coplanar edges and merging adjacent faces</translation>
++      <translation>ブール演算のあと、同じ平面上の余分なエッジを消し、隣り合う面をまとめて形を自動で整えます</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="80"/>
+@@ -4404,12 +4404,12 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="83"/>
+       <source>Automatically runs a refinement pass after creating Part Design features to remove unnecessary edges and clean up the geometry</source>
+-      <translation type="unfinished">Automatically runs a refinement pass after creating Part Design features to remove unnecessary edges and clean up the geometry</translation>
++      <translation>Part Design のフィーチャーを作ったあと、自動で整える処理を行い、不要なエッジを消して形をきれいにします</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="108"/>
+       <source>Sets new bodies to allow multiple disconnected solids (compounds). If unchecked, a body is strictly limited to a single contiguous solid.</source>
+-      <translation type="unfinished">Sets new bodies to allow multiple disconnected solids (compounds). If unchecked, a body is strictly limited to a single contiguous solid.</translation>
++      <translation>新しいボディで、離れた複数のソリッド（コンパウンド）を許します。チェックしないと、ボディは 1 つのつながったソリッドに限られます。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="133"/>
+@@ -4419,7 +4419,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="145"/>
+       <source>Currently not implemented: this option does not yet modify automatically generated Part feature names</source>
+-      <translation type="unfinished">Currently not implemented: this option does not yet modify automatically generated Part feature names</translation>
++      <translation>まだ実装されていません: この設定は、自動で付く Part のフィーチャー名をまだ変えません</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="164"/>
+@@ -4429,7 +4429,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="178"/>
+       <source>Specifies which profile geometry types are accepted by the Part Design Hole feature</source>
+-      <translation type="unfinished">Specifies which profile geometry types are accepted by the Part Design Hole feature</translation>
++      <translation>Part Design の穴のフィーチャーが受け付けるプロファイルの形の種類</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="181"/>
+@@ -4439,7 +4439,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="194"/>
+       <source>Specifies which sketch elements (points, circles, or arcs) the Hole tool should automatically detect and use as hole centers</source>
+-      <translation type="unfinished">Specifies which sketch elements (points, circles, or arcs) the Hole tool should automatically detect and use as hole centers</translation>
++      <translation>穴のツールが自動で穴の中心として見つけて使うスケッチの要素（点・円・円弧）</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="207"/>
+@@ -4464,7 +4464,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="258"/>
+       <source>Always open the attachment dialog when creating a new sketch in Part Design, regardless of selection or holding the Shift key. Without this, only a single face or datum plane selection skips the dialog.</source>
+-      <translation type="unfinished">Always open the attachment dialog when creating a new sketch in Part Design, regardless of selection or holding the Shift key. Without this, only a single face or datum plane selection skips the dialog.</translation>
++      <translation>Part Design で新しいスケッチを作るとき、選択や Shift キーによらず、いつもアタッチメントのダイアログを開きます。これが無い場合は、面か基準平面を 1 つだけ選んだときにダイアログを飛ばします。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="261"/>
+@@ -4539,7 +4539,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="427"/>
+       <source>Enables larger snapping increments while  manipulating draggers</source>
+-      <translation type="unfinished">Enables larger snapping increments while  manipulating draggers</translation>
++      <translation>ドラッガーを動かすとき、大きい刻みでくっつけられるようにします</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="445"/>
+@@ -4549,7 +4549,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="452"/>
+       <source>Defines the modifier key used for fine snapping while dragging</source>
+-      <translation type="unfinished">Defines the modifier key used for fine snapping while dragging</translation>
++      <translation>ドラッグ中に細かい刻みでくっつけるときの修飾キー</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="472"/>
+@@ -4569,7 +4569,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="515"/>
+       <source>Multiplies the base movement increment when coarse snapping is active</source>
+-      <translation type="unfinished">Multiplies the base movement increment when coarse snapping is active</translation>
++      <translation>大きい刻みのとき、基本の移動の刻みに掛ける倍率</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="532"/>
+@@ -4579,7 +4579,7 @@ Check one or more edge entities first.</source>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="548"/>
+       <source>Sets the rotation step in degrees applied when coarse snapping is active</source>
+-      <translation type="unfinished">Sets the rotation step in degrees applied when coarse snapping is active</translation>
++      <translation>大きい刻みのときの回転の刻み（度）</translation>
+     </message>
+     <message>
+       <location filename="../../DlgSettingsGeneral.ui" line="233"/>
+@@ -5829,7 +5829,7 @@ Individual boolean operation checks:</source>
+     <message>
+       <location filename="../../TaskAttacher.cpp" line="1498"/>
+       <source>%1 select and confirm</source>
+-      <translation type="unfinished">%1 select and confirm</translation>
++      <translation>%1 選んで確定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskAttacher.cpp" line="1648"/>
+@@ -7747,12 +7747,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../ViewProviderPreviewExtension.cpp" line="159"/>
+       <source>Preview requires a Part-based view provider; none found for %1.</source>
+-      <translation type="unfinished">Preview requires a Part-based view provider; none found for %1.</translation>
++      <translation>プレビューには Part の表示プロバイダーが必要ですが、%1 にはありません。</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderPreviewExtension.cpp" line="160"/>
+       <source>unknown object</source>
+-      <translation type="unfinished">unknown object</translation>
++      <translation>不明なオブジェクト</translation>
+     </message>
+     <message>
+       <location filename="../../ViewProviderPreviewExtension.cpp" line="303"/>
+@@ -7774,7 +7774,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternCircularParametersWidget.ui" line="29"/>
+       <source>Circular Pattern</source>
+-      <translation type="unfinished">Circular Pattern</translation>
++      <translation>円形パターン</translation>
+     </message>
+     <message>
+       <location filename="../../PatternCircularParametersWidget.ui" line="35"/>
+@@ -7794,7 +7794,7 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternCircularParametersWidget.ui" line="82"/>
+       <source>Concentric circles</source>
+-      <translation type="unfinished">Concentric circles</translation>
++      <translation>同心円</translation>
+     </message>
+     <message>
+       <location filename="../../PatternCircularParametersWidget.ui" line="95"/>
+@@ -7807,13 +7807,13 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternPointParametersWidget.ui" line="8"/>
+       <source>Point object</source>
+-      <translation type="unfinished">Point object</translation>
++      <translation>点のオブジェクト</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPointParametersWidget.ui" line="14"/>
+       <location filename="../../PatternPointParametersWidget.cpp" line="48"/>
+       <source>Select Point Object</source>
+-      <translation type="unfinished">Select Point Object</translation>
++      <translation>点のオブジェクトを選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -7827,12 +7827,12 @@ Overlapping volumes of the shapes will be removed.</source>
+       <location filename="../../PatternPathParametersWidget.ui" line="7"/>
+       <location filename="../../PatternPathParametersWidget.cpp" line="145"/>
+       <source>Select Path</source>
+-      <translation type="unfinished">Select Path</translation>
++      <translation>経路を選択</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="8"/>
+       <source>Spacing mode</source>
+-      <translation type="unfinished">Spacing mode</translation>
++      <translation>間隔の決め方</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="10"/>
+@@ -7847,42 +7847,42 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="14"/>
+       <source>Start offset</source>
+-      <translation type="unfinished">Start offset</translation>
++      <translation>開始のずらし</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="16"/>
+       <source>End offset</source>
+-      <translation type="unfinished">End offset</translation>
++      <translation>終了のずらし</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="18"/>
+       <source>Reverse path</source>
+-      <translation type="unfinished">Reverse path</translation>
++      <translation>経路を反対向きに</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.ui" line="19"/>
+       <source>Align to path</source>
+-      <translation type="unfinished">Align to path</translation>
++      <translation>経路に沿って向きをそろえる</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.cpp" line="112"/>
+       <source>Fixed count</source>
+-      <translation type="unfinished">Fixed count</translation>
++      <translation>個数を固定</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.cpp" line="112"/>
+       <source>Fixed spacing</source>
+-      <translation type="unfinished">Fixed spacing</translation>
++      <translation>間隔を固定</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.cpp" line="112"/>
+       <source>Fixed count and spacing</source>
+-      <translation type="unfinished">Fixed count and spacing</translation>
++      <translation>個数と間隔を固定</translation>
+     </message>
+     <message>
+       <location filename="../../PatternPathParametersWidget.cpp" line="157"/>
+       <source>(+%1)</source>
+-      <translation type="unfinished">(+%1)</translation>
++      <translation>(+%1)</translation>
+     </message>
+   </context>
+   <context>
+@@ -7916,12 +7916,12 @@ Overlapping volumes of the shapes will be removed.</source>
+     <message>
+       <location filename="../../PatternInstanceControls.cpp" line="226"/>
+       <source>Restores this instance</source>
+-      <translation type="unfinished">Restores this instance</translation>
++      <translation>この複製を戻す</translation>
+     </message>
+     <message>
+       <location filename="../../PatternInstanceControls.cpp" line="231"/>
+       <source>Suppresses this instance</source>
+-      <translation type="unfinished">Suppresses this instance</translation>
++      <translation>この複製を抑制する</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+index 8234161ad..fa9ffd76b 100644
+--- a/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
++++ b/src/Mod/PartDesign/Gui/Resources/translations/PartDesign_ja.ts
+@@ -1346,7 +1346,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.ui" line="2365"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPrimitiveParameters.ui" line="2370"/>
+@@ -2103,7 +2103,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskHelixParameters.ui" line="285"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHelixParameters.ui" line="290"/>
+@@ -2359,7 +2359,7 @@ If zero, it is equal to Radius2</source>
+     <message>
+       <location filename="../../TaskLoftParameters.ui" line="126"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskLoftParameters.ui" line="131"/>
+@@ -2710,7 +2710,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="773"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPadPocketParameters.ui" line="778"/>
+@@ -2867,7 +2867,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskPipeParameters.ui" line="169"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskPipeParameters.ui" line="174"/>
+@@ -3110,7 +3110,7 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskRevolutionParameters.ui" line="394"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRevolutionParameters.ui" line="399"/>
+@@ -3333,12 +3333,12 @@ measured along the specified direction</source>
+     <message>
+       <location filename="../../TaskThicknessParameters.cpp" line="216"/>
+       <source>Recto verso applies the thickness equally to both sides</source>
+-      <translation type="unfinished">Recto verso applies the thickness equally to both sides</translation>
++      <translation>レクト・ベルソ: 厚みを両側に均等に付けます</translation>
+     </message>
+     <message>
+       <location filename="../../TaskThicknessParameters.cpp" line="219"/>
+       <source>Total wall thickness; half is applied to each side</source>
+-      <translation type="unfinished">Total wall thickness; half is applied to each side</translation>
++      <translation>壁の厚みの合計。半分ずつ両側に付けます</translation>
+     </message>
+     <message>
+       <location filename="../../TaskThicknessParameters.cpp" line="293"/>
+@@ -4547,7 +4547,7 @@ Only available for holes without thread</source>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="1221"/>
+       <source>Subtraction</source>
+-      <translation type="unfinished">Subtraction</translation>
++      <translation>減算</translation>
+     </message>
+     <message>
+       <location filename="../../TaskHoleParameters.ui" line="1226"/>
+diff --git a/src/Mod/ReverseEngineering/Gui/Resources/translations/ReverseEngineering_ja.ts b/src/Mod/ReverseEngineering/Gui/Resources/translations/ReverseEngineering_ja.ts
+index 8bde2dc0c..ece742054 100644
+--- a/src/Mod/ReverseEngineering/Gui/Resources/translations/ReverseEngineering_ja.ts
++++ b/src/Mod/ReverseEngineering/Gui/Resources/translations/ReverseEngineering_ja.ts
+@@ -593,12 +593,12 @@
+     <message>
+       <location filename="../../Workbench.cpp" line="36"/>
+       <source>&amp;Reverse Engineering</source>
+-      <translation type="unfinished">&amp;Reverse Engineering</translation>
++      <translation>リバースエンジニアリング(&amp;R)</translation>
+     </message>
+     <message>
+       <location filename="../../Workbench.cpp" line="37"/>
+       <source>Surface Reconstruction</source>
+-      <translation type="unfinished">Surface Reconstruction</translation>
++      <translation>表面の再構成</translation>
+     </message>
+     <message>
+       <location filename="../../Workbench.cpp" line="38"/>
+@@ -608,7 +608,7 @@
+     <message>
+       <location filename="../../Workbench.cpp" line="39"/>
+       <source>Approximation</source>
+-      <translation type="unfinished">Approximation</translation>
++      <translation>近似</translation>
+     </message>
+   </context>
+   <context>
+@@ -641,7 +641,7 @@
+     <message>
+       <location filename="../../FitBSplineCurve.ui" line="47"/>
+       <source>Equidistant</source>
+-      <translation type="unfinished">Equidistant</translation>
++      <translation>等間隔</translation>
+     </message>
+     <message>
+       <location filename="../../FitBSplineCurve.ui" line="55"/>
+diff --git a/src/Mod/Robot/Gui/Resources/translations/Robot_ja.ts b/src/Mod/Robot/Gui/Resources/translations/Robot_ja.ts
+index 6c6bd0915..dd117e7e6 100644
+--- a/src/Mod/Robot/Gui/Resources/translations/Robot_ja.ts
++++ b/src/Mod/Robot/Gui/Resources/translations/Robot_ja.ts
+@@ -47,7 +47,7 @@
+     <message>
+       <location filename="../../CommandTrajectory.cpp" line="57"/>
+       <source>Trajectory</source>
+-      <translation type="unfinished">Trajectory</translation>
++      <translation>軌跡</translation>
+     </message>
+     <message>
+       <location filename="../../CommandTrajectory.cpp" line="58"/>
+@@ -491,7 +491,7 @@
+     <message>
+       <location filename="../../TaskEdge2TracParameter.cpp" line="41"/>
+       <source>TaskEdge2TracParameter</source>
+-      <translation type="unfinished">TaskEdge2TracParameter</translation>
++      <translation>エッジから軌跡のパラメーター</translation>
+     </message>
+     <message>
+       <location filename="../../TaskEdge2TracParameter.ui" line="29"/>
+@@ -564,7 +564,7 @@
+     <message>
+       <location filename="../../TaskRobot6Axis.cpp" line="41"/>
+       <source>TaskRobot6Axis</source>
+-      <translation type="unfinished">TaskRobot6Axis</translation>
++      <translation>6 軸ロボット</translation>
+     </message>
+   </context>
+   <context>
+@@ -572,7 +572,7 @@
+     <message>
+       <location filename="../../TaskRobotControl.cpp" line="36"/>
+       <source>TaskRobotControl</source>
+-      <translation type="unfinished">TaskRobotControl</translation>
++      <translation>ロボットの制御</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRobotControl.ui" line="37"/>
+@@ -690,7 +690,7 @@
+     <message>
+       <location filename="../../TaskRobotMessages.cpp" line="36"/>
+       <source>TaskRobotMessages</source>
+-      <translation type="unfinished">TaskRobotMessages</translation>
++      <translation>ロボットのメッセージ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskRobotMessages.ui" line="20"/>
+@@ -791,7 +791,7 @@
+     <message>
+       <location filename="../../TaskTrajectoryDressUpParameter.cpp" line="43"/>
+       <source>Dress Up Parameter</source>
+-      <translation type="unfinished">Dress Up Parameter</translation>
++      <translation>仕上げのパラメーター</translation>
+     </message>
+     <message>
+       <location filename="../../TaskTrajectoryDressUpParameter.ui" line="55"/>
+diff --git a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+index c93e65d49..3c120816e 100644
+--- a/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
++++ b/src/Mod/Sketcher/Gui/Resources/translations/Sketcher_ja.ts
+@@ -1673,7 +1673,7 @@ invalid constraints, and degenerate geometry</source>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="4186"/>
+       <source>Select geometry from a single sketch.</source>
+-      <translation type="unfinished">Select geometry from a single sketch.</translation>
++      <translation>1 つのスケッチから形を選んでください。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="4243"/>
+@@ -1697,47 +1697,47 @@ invalid constraints, and degenerate geometry</source>
+       <location filename="../../CommandConstraints.cpp" line="5576"/>
+       <location filename="../../CommandConstraints.cpp" line="5583"/>
+       <source>Coincident constraint not added</source>
+-      <translation type="unfinished">Coincident constraint not added</translation>
++      <translation>一致の拘束を追加しませんでした</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5548"/>
+       <source>The selected points are already coincident.</source>
+-      <translation type="unfinished">The selected points are already coincident.</translation>
++      <translation>選んだ点はすでに一致しています。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5554"/>
+       <source>Cannot add a coincident constraint because it would collapse geometry to zero length.</source>
+-      <translation type="unfinished">Cannot add a coincident constraint because it would collapse geometry to zero length.</translation>
++      <translation>形の長さが 0 になるため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5570"/>
+       <source>Cannot add the coincident constraint because it would create redundant constraints.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because it would create redundant constraints.</translation>
++      <translation>冗長な拘束になるため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5577"/>
+       <source>Cannot add the coincident constraint because it would conflict with existing constraints.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because it would conflict with existing constraints.</translation>
++      <translation>既存の拘束と矛盾するため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5584"/>
+       <source>Cannot add the coincident constraint because it would over-constrain the sketch.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because it would over-constrain the sketch.</translation>
++      <translation>スケッチが過剰拘束になるため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5591"/>
+       <source>Cannot add the coincident constraint because the sketch has malformed constraints.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because the sketch has malformed constraints.</translation>
++      <translation>スケッチに不正な拘束があるため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5598"/>
+       <source>Cannot add the coincident constraint because the solver failed to converge.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because the solver failed to converge.</translation>
++      <translation>ソルバーが収束しなかったため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="5605"/>
+       <source>Cannot add the coincident constraint because the sketch contains constraints that refer to invalid geometry.</source>
+-      <translation type="unfinished">Cannot add the coincident constraint because the sketch contains constraints that refer to invalid geometry.</translation>
++      <translation>スケッチに無効な形を参照する拘束があるため、一致の拘束を追加できません。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandConstraints.cpp" line="6929"/>
+@@ -4168,7 +4168,7 @@ This is done by analyzing the sketch geometries and constraints.</source>
+     <message>
+       <location filename="../../ViewProviderSketch.cpp" line="5038"/>
+       <source>Missing external geometry</source>
+-      <translation type="unfinished">Missing external geometry</translation>
++      <translation>外部の形が見つかりません</translation>
+     </message>
+   </context>
+   <context>
+@@ -4822,12 +4822,12 @@ The grid spacing changes if it becomes smaller than the specified pixel size.</s
+     <message>
+       <location filename="../../SketcherSettingsGrid.ui" line="246"/>
+       <source>Minor grid line width in pixels</source>
+-      <translation type="unfinished">Minor grid line width in pixels</translation>
++      <translation>細かい格子線の太さ（ピクセル）</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsGrid.ui" line="384"/>
+       <source>Major grid line width in pixels</source>
+-      <translation type="unfinished">Major grid line width in pixels</translation>
++      <translation>太い格子線の太さ（ピクセル）</translation>
+     </message>
+     <message>
+       <location filename="../../SketcherSettingsGrid.ui" line="271"/>
+diff --git a/src/Mod/Spreadsheet/Gui/Resources/translations/Spreadsheet_ja.ts b/src/Mod/Spreadsheet/Gui/Resources/translations/Spreadsheet_ja.ts
+index b4a5fad55..d258888af 100644
+--- a/src/Mod/Spreadsheet/Gui/Resources/translations/Spreadsheet_ja.ts
++++ b/src/Mod/Spreadsheet/Gui/Resources/translations/Spreadsheet_ja.ts
+@@ -735,8 +735,8 @@ switch the design configuration. The property will be created if not exist.</sou
+       <location filename="../../PropertiesDialog.cpp" line="47"/>
+       <source>Allows referring to a cell by an alias name, for example
+ Spreadsheet.my_alias_name instead of Spreadsheet.B1</source>
+-      <translation type="unfinished">Allows referring to a cell by an alias name, for example
+-Spreadsheet.my_alias_name instead of Spreadsheet.B1</translation>
++      <translation>セルをエイリアス名で参照できるようにします。例えば
++Spreadsheet.B1 の代わりに Spreadsheet.my_alias_name</translation>
+     </message>
+   </context>
+   <context>
+@@ -1269,62 +1269,62 @@ Defaults to: %V = %A
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="342"/>
+       <source>Alias conflicts with a reserved unit token used by expressions</source>
+-      <translation type="unfinished">Alias conflicts with a reserved unit token used by expressions</translation>
++      <translation>エイリアスが、式で使う予約された単位の名前と重なります</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="343"/>
+       <source>Invalid: reserved unit token</source>
+-      <translation type="unfinished">Invalid: reserved unit token</translation>
++      <translation>無効: 予約された単位の名前</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="346"/>
+       <source>Alias conflicts with a reserved constant token used by expressions</source>
+-      <translation type="unfinished">Alias conflicts with a reserved constant token used by expressions</translation>
++      <translation>エイリアスが、式で使う予約された定数の名前と重なります</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="347"/>
+       <source>Invalid: reserved constant token</source>
+-      <translation type="unfinished">Invalid: reserved constant token</translation>
++      <translation>無効: 予約された定数の名前</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="350"/>
+       <source>Alias already defined</source>
+-      <translation type="unfinished">Alias already defined</translation>
++      <translation>エイリアスはすでに定義されています</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="351"/>
+       <source>Invalid: alias already exists</source>
+-      <translation type="unfinished">Invalid: alias already exists</translation>
++      <translation>無効: エイリアスはすでにあります</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="354"/>
+       <source>Alias cannot look like a cell address such as A1 or C12</source>
+-      <translation type="unfinished">Alias cannot look like a cell address such as A1 or C12</translation>
++      <translation>エイリアスは A1 や C12 のようなセルの番地の形にできません</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="355"/>
+       <source>Invalid: alias matches cell address pattern</source>
+-      <translation type="unfinished">Invalid: alias matches cell address pattern</translation>
++      <translation>無効: セルの番地の形です</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="358"/>
+       <source>Alias conflicts with an existing spreadsheet property name</source>
+-      <translation type="unfinished">Alias conflicts with an existing spreadsheet property name</translation>
++      <translation>エイリアスが、スプレッドシートの既存のプロパティ名と重なります</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="359"/>
+       <source>Invalid: conflicts with existing property name</source>
+-      <translation type="unfinished">Invalid: conflicts with existing property name</translation>
++      <translation>無効: 既存のプロパティ名と重なります</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="362"/>
+       <source>Alias must start with a letter and contain only letters, digits, and '_'</source>
+-      <translation type="unfinished">Alias must start with a letter and contain only letters, digits, and '_'</translation>
++      <translation>エイリアスは英字で始め、英字・数字・「_」だけにしてください</translation>
+     </message>
+     <message>
+       <location filename="../../PropertiesDialog.cpp" line="363"/>
+       <source>Invalid: bad alias syntax</source>
+-      <translation type="unfinished">Invalid: bad alias syntax</translation>
++      <translation>無効: エイリアスの書き方が正しくありません</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts b/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
+index 813a283df..a007ca20c 100644
+--- a/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
++++ b/src/Mod/Start/Gui/Resources/translations/StartPage_ja.ts
+@@ -271,12 +271,12 @@ Multiple folders can be added using ";;" to separate paths.</source>
+     <message>
+       <location filename="../../../App/DisplayedFilesModel.cpp" line="131"/>
+       <source>Created at:</source>
+-      <translation type="unfinished">Created at:</translation>
++      <translation>作成日時:</translation>
+     </message>
+     <message>
+       <location filename="../../../App/DisplayedFilesModel.cpp" line="132"/>
+       <source>Modified at:</source>
+-      <translation type="unfinished">Modified at:</translation>
++      <translation>更新日時:</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+index 7f0e75fa9..a2f32c4fe 100644
+--- a/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
++++ b/src/Mod/TechDraw/Gui/Resources/translations/TechDraw_ja.ts
+@@ -52,7 +52,7 @@
+     <message>
+       <location filename="../../CommandAnnotate.cpp" line="983"/>
+       <source>Adds a cosmetic line that passes through 2 selected points</source>
+-      <translation type="unfinished">Adds a cosmetic line that passes through 2 selected points</translation>
++      <translation>選んだ 2 点を通る表示用の線を追加します</translation>
+     </message>
+   </context>
+   <context>
+@@ -1582,7 +1582,7 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../CommandCreateDims.cpp" line="1970"/>
+       <source>Inserts a dimension showing the horizontal extent (overall length) of an object or feature</source>
+-      <translation type="unfinished">Inserts a dimension showing the horizontal extent (overall length) of an object or feature</translation>
++      <translation>オブジェクトや形状の水平方向の範囲（全長）を示す寸法を追加します</translation>
+     </message>
+   </context>
+   <context>
+@@ -2085,7 +2085,7 @@ Left clicking on empty space will validate the current dimension. Right clicking
+     <message>
+       <location filename="../../CommandCreateDims.cpp" line="2095"/>
+       <source>Inserts a dimension showing the vertical extent (overall length) of an object or feature</source>
+-      <translation type="unfinished">Inserts a dimension showing the vertical extent (overall length) of an object or feature</translation>
++      <translation>オブジェクトや形状の垂直方向の範囲（全長）を示す寸法を追加します</translation>
+     </message>
+   </context>
+   <context>
+@@ -2195,7 +2195,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../Command.cpp" line="1774"/>
+       <source>Create Spreadsheet View</source>
+-      <translation type="unfinished">Create Spreadsheet View</translation>
++      <translation>スプレッドシートのビューを作成</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="347"/>
+@@ -3028,7 +3028,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../mrichtextedit.cpp" line="258"/>
+       <source>Document Source</source>
+-      <translation type="unfinished">Document Source</translation>
++      <translation>文書のソース</translation>
+     </message>
+     <message>
+       <location filename="../../mrichtextedit.cpp" line="355"/>
+@@ -3126,7 +3126,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../Command.cpp" line="186"/>
+       <source>Select a template file</source>
+-      <translation type="unfinished">Select a template file</translation>
++      <translation>テンプレートのファイルを選択</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="187"/>
+@@ -3136,7 +3136,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../Command.cpp" line="600"/>
+       <source>Empty Selection</source>
+-      <translation type="unfinished">Empty Selection</translation>
++      <translation>選択されていません</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="996"/>
+@@ -3303,17 +3303,17 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../Command.cpp" line="1922"/>
+       <source>Save DXF file</source>
+-      <translation type="unfinished">Save DXF file</translation>
++      <translation>DXF ファイルを保存</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2174"/>
+       <source>Selected Direction is within %1 degrees of a standard direction. Replace selected Direction with %2?</source>
+-      <translation type="unfinished">Selected Direction is within %1 degrees of a standard direction. Replace selected Direction with %2?</translation>
++      <translation>選んだ方向は、標準の方向から %1 度以内です。選んだ方向を %2 に置き換えますか？</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="2179"/>
+       <source>Direction is close to standard</source>
+-      <translation type="unfinished">Direction is close to standard</translation>
++      <translation>方向が標準の方向に近い</translation>
+     </message>
+     <message>
+       <location filename="../../Command.cpp" line="1422"/>
+@@ -3538,7 +3538,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="122"/>
+       <source>Can not make hole circle for %1</source>
+-      <translation type="unfinished">Can not make hole circle for %1</translation>
++      <translation>%1 の穴の円を作れません</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="244"/>
+@@ -3549,17 +3549,17 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+       <location filename="../../CommandExtensionPack.cpp" line="245"/>
+       <location filename="../../CommandExtensionPack.cpp" line="1678"/>
+       <source>Can not make centerlines for %1</source>
+-      <translation type="unfinished">Can not make centerlines for %1</translation>
++      <translation>%1 の中心線を作れません</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="984"/>
+       <source>Select a center for the circle.</source>
+-      <translation type="unfinished">Select a center for the circle.</translation>
++      <translation>円の中心を選んでください。</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="1677"/>
+       <source>TechDraw extend/shorten line</source>
+-      <translation type="unfinished">TechDraw extend/shorten line</translation>
++      <translation>TechDraw 線の延長・短縮</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="1884"/>
+@@ -3574,12 +3574,12 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="2222"/>
+       <source>TechDraw create thread circle</source>
+-      <translation type="unfinished">TechDraw create thread circle</translation>
++      <translation>TechDraw ねじの円を作成</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="2223"/>
+       <source>Can not make thread circle for %1</source>
+-      <translation type="unfinished">Can not make thread circle for %1</translation>
++      <translation>%1 のねじの円を作れません</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionPack.cpp" line="2240"/>
+@@ -3751,7 +3751,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../CommandDecorate.cpp" line="365"/>
+       <source>Select an image file</source>
+-      <translation type="unfinished">Select an image file</translation>
++      <translation>画像ファイルを選択</translation>
+     </message>
+     <message>
+       <location filename="../../CommandDecorate.cpp" line="421"/>
+@@ -4067,7 +4067,7 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../CommandExtensionDims.cpp" line="119"/>
+       <source>Prefix Text</source>
+-      <translation type="unfinished">Prefix Text</translation>
++      <translation>前に付ける文字</translation>
+     </message>
+     <message>
+       <location filename="../../CommandExtensionDims.cpp" line="1985"/>
+@@ -4290,12 +4290,12 @@ If no object is selected, a file browser opens to select an SVG or image file.</
+     <message>
+       <location filename="../../TemplateTextField.cpp" line="58"/>
+       <source>Updates the text</source>
+-      <translation type="unfinished">Updates the text</translation>
++      <translation>文字を更新します</translation>
+     </message>
+     <message>
+       <location filename="../../SymbolChooser.cpp" line="61"/>
+       <source>Select a Symbol</source>
+-      <translation type="unfinished">Select a Symbol</translation>
++      <translation>記号を選択</translation>
+     </message>
+   </context>
+   <context>
+@@ -5401,12 +5401,12 @@ for using drawings as a 1:1 cutting guide.
+     <message>
+       <location filename="../../DlgPrefsTechDrawColors.ui" line="672"/>
+       <source>Break line</source>
+-      <translation type="unfinished">Break line</translation>
++      <translation>破断線</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawColors.ui" line="679"/>
+       <source>Break line color for broken views</source>
+-      <translation type="unfinished">Break line color for broken views</translation>
++      <translation>破断ビューの破断線の色</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawColors.ui" line="710"/>
+@@ -5639,42 +5639,42 @@ This affects only the toolbar; all tools remain available via the menu and short
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="595"/>
+       <source>Snapping</source>
+-      <translation type="unfinished">Snapping</translation>
++      <translation>くっつける</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="627"/>
+       <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If this is checked, new dimensions will be set to snap to position.  If not checked, new dimensions will not snap.  Snapping for individual dimensions may be adjusted with the &amp;quot;AllowSnapping&amp;quot; property.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If this is checked, new dimensions will be set to snap to position.  If not checked, new dimensions will not snap.  Snapping for individual dimensions may be adjusted with the &amp;quot;AllowSnapping&amp;quot; property.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;チェックすると、新しい寸法が決まった位置にくっつきます。チェックしないと、くっつきません。寸法ごとのくっつき方は「AllowSnapping」プロパティで変えられます。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="630"/>
+       <source>Snap dimensions</source>
+-      <translation type="unfinished">Snap dimensions</translation>
++      <translation>寸法をくっつける</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="658"/>
+       <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Fraction of the dimension text length within which the text snaps to its centered position.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Fraction of the dimension text length within which the text snaps to its centered position.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;寸法の文字の長さに対するこの割合の範囲に入ると、文字が中央の位置にくっつきます。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="677"/>
+       <source>Dimension text factor</source>
+-      <translation type="unfinished">Dimension text factor</translation>
++      <translation>寸法の文字の割合</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="684"/>
+       <source>Chain factor</source>
+-      <translation type="unfinished">Chain factor</translation>
++      <translation>連続寸法の割合</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="697"/>
+       <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Fraction of the spacing between dimensions within which they snap as chain or ordinate dimensions.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Fraction of the spacing between dimensions within which they snap as chain or ordinate dimensions.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;寸法どうしの間隔に対するこの割合の範囲に入ると、連続寸法や座標寸法としてくっつきます。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="737"/>
+       <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Note: Snapping settings for views are on the general tab.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Note: Snapping settings for views are on the general tab.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;注: ビューのくっつき方の設定は「一般」タブにあります。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawDimensions.ui" line="529"/>
+@@ -6049,7 +6049,7 @@ can override the global &apos;Update with 3D&apos; parameter</source>
+     <message>
+       <location filename="../../DlgPrefsTechDrawGeneral.ui" line="910"/>
+       <source>Snaps a view into its aligned position when it is within this fraction of the view size from the alignment target.</source>
+-      <translation type="unfinished">Snaps a view into its aligned position when it is within this fraction of the view size from the alignment target.</translation>
++      <translation>揃える相手からビューの大きさのこの割合の範囲に入ると、ビューが揃った位置にくっつきます。</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawGeneral.ui" line="981"/>
+@@ -6059,7 +6059,7 @@ can override the global &apos;Update with 3D&apos; parameter</source>
+     <message>
+       <location filename="../../DlgPrefsTechDrawGeneral.ui" line="1035"/>
+       <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Note: Snapping settings for dimensions are on the dimensions tab.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+-      <translation type="unfinished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Note: Snapping settings for dimensions are on the dimensions tab.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
++      <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;注: 寸法のくっつき方の設定は「寸法」タブにあります。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+     </message>
+     <message>
+       <location filename="../../DlgPrefsTechDrawGeneral.ui" line="1071"/>
+@@ -6300,17 +6300,17 @@ Fast, but result is a collection of short straight lines.</source>
+     <message>
+       <location filename="../../MDIViewPage.cpp" line="101"/>
+       <source>&amp;Keep Updated</source>
+-      <translation type="unfinished">&amp;Keep Updated</translation>
++      <translation>いつも更新(&amp;K)</translation>
+     </message>
+     <message>
+       <location filename="../../MDIViewPage.cpp" line="104"/>
+       <source>Show &amp;Frames</source>
+-      <translation type="unfinished">Show &amp;Frames</translation>
++      <translation>枠を表示(&amp;F)</translation>
+     </message>
+     <message>
+       <location filename="../../MDIViewPage.cpp" line="107"/>
+       <source>Show &amp;Grid</source>
+-      <translation type="unfinished">Show &amp;Grid</translation>
++      <translation>格子を表示(&amp;G)</translation>
+     </message>
+     <message>
+       <location filename="../../MDIViewPage.cpp" line="110"/>
+@@ -6418,7 +6418,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="102"/>
+       <source>Bubble Appearance</source>
+-      <translation type="unfinished">Bubble Appearance</translation>
++      <translation>吹き出しの見た目</translation>
+     </message>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="118"/>
+@@ -6498,7 +6498,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="291"/>
+       <source>Kink length</source>
+-      <translation type="unfinished">Kink length</translation>
++      <translation>折れ線の長さ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="298"/>
+@@ -6523,7 +6523,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="312"/>
+       <source>Symbol scale</source>
+-      <translation type="unfinished">Symbol scale</translation>
++      <translation>記号の倍率</translation>
+     </message>
+     <message>
+       <location filename="../../TaskBalloon.ui" line="319"/>
+@@ -6586,7 +6586,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="77"/>
+       <source>The centerline is positioned at the center of the combined bounding box of the selected elements</source>
+-      <translation type="unfinished">The centerline is positioned at the center of the combined bounding box of the selected elements</translation>
++      <translation>中心線は、選んだ要素をまとめた外形の箱の中心に置かれます</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="95"/>
+@@ -6612,27 +6612,27 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="150"/>
+       <source>Position</source>
+-      <translation type="unfinished">Position</translation>
++      <translation>位置</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="174"/>
+       <source>Shifts the line up (+) or down (-)</source>
+-      <translation type="unfinished">Shifts the line up (+) or down (-)</translation>
++      <translation>線を上（+）または下（-）にずらします</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="190"/>
+       <source>Shifts the line left (-) or right (+)</source>
+-      <translation type="unfinished">Shifts the line left (-) or right (+)</translation>
++      <translation>線を左（-）または右（+）にずらします</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="220"/>
+       <source>Rotates the line counterclockwise (+) or clockwise (-)</source>
+-      <translation type="unfinished">Rotates the line counterclockwise (+) or clockwise (-)</translation>
++      <translation>線を反時計回り（+）または時計回り（-）に回します</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="246"/>
+       <source>Extends the line by the specified amount beyond its natural endpoints</source>
+-      <translation type="unfinished">Extends the line by the specified amount beyond its natural endpoints</translation>
++      <translation>線を本来の端点から指定した長さだけ延ばします</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCenterLine.ui" line="264"/>
+@@ -6849,7 +6849,7 @@ Do you want to continue?</source>
+       <location filename="../../TaskCosVertex.cpp" line="158"/>
+       <location filename="../../TaskCosVertex.cpp" line="250"/>
+       <source>Pick Point</source>
+-      <translation type="unfinished">Pick Point</translation>
++      <translation>点を指定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskCosVertex.ui" line="114"/>
+@@ -7296,7 +7296,7 @@ Do you want to continue?</source>
+     <message>
+       <location filename="../../TaskDetail.ui" line="91"/>
+       <source>Position</source>
+-      <translation type="unfinished">Position</translation>
++      <translation>位置</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDetail.ui" line="194"/>
+@@ -7531,33 +7531,33 @@ by negative value of &apos;Overtolerance&apos;.</source>
+     <message>
+       <location filename="../../TaskDimension.ui" line="330"/>
+       <source>Override Angles</source>
+-      <translation type="unfinished">Override Angles</translation>
++      <translation>角度を上書き</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="341"/>
+       <source>Sets the extension line angle to match the selected edge or vertices</source>
+-      <translation type="unfinished">Sets the extension line angle to match the selected edge or vertices</translation>
++      <translation>補助線の角度を、選んだエッジや頂点に合わせます</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="357"/>
+       <location filename="../../TaskDimension.ui" line="403"/>
+       <source>°</source>
+-      <translation type="unfinished">°</translation>
++      <translation>°</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="370"/>
+       <source>Sets the dimension line angle to match the selected edge or vertices</source>
+-      <translation type="unfinished">Sets the dimension line angle to match the selected edge or vertices</translation>
++      <translation>寸法線の角度を、選んだエッジや頂点に合わせます</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="380"/>
+       <source>Resets the dimension line angle to the default orthographic value</source>
+-      <translation type="unfinished">Resets the dimension line angle to the default orthographic value</translation>
++      <translation>寸法線の角度を、既定の正投影の値に戻します</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="423"/>
+       <source>Resets the extension line angle to the default orthographic value</source>
+-      <translation type="unfinished">Resets the extension line angle to the default orthographic value</translation>
++      <translation>補助線の角度を、既定の正投影の値に戻します</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimension.ui" line="390"/>
+@@ -7948,9 +7948,7 @@ You can pick further points to get line segments.</source>
+     <message numerus="yes">
+       <location filename="../../TaskLineDecor.cpp" line="81"/>
+       <source>%n line(s)</source>
+-      <translation type="unfinished">
+-        <numerusform>%n line(s)</numerusform>
+-      </translation>
++      <translation><numerusform>%n 本の線</numerusform></translation>
+     </message>
+   </context>
+   <context>
+@@ -8751,7 +8749,7 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../DlgTemplateField.ui" line="88"/>
+       <source>Applies autofill to this field</source>
+-      <translation type="unfinished">Applies autofill to this field</translation>
++      <translation>この欄に自動入力を適用します</translation>
+     </message>
+     <message>
+       <location filename="../../DlgTemplateField.ui" line="101"/>
+@@ -9023,22 +9021,22 @@ using the given X/Y spacings</source>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="91"/>
+       <source>Replace References With Selection</source>
+-      <translation type="unfinished">Replace References With Selection</translation>
++      <translation>参照を選択したものに置き換える</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="107"/>
+       <source>2D References</source>
+-      <translation type="unfinished">2D References</translation>
++      <translation>2D の参照</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="202"/>
+       <source>3D References</source>
+-      <translation type="unfinished">3D References</translation>
++      <translation>3D の参照</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="246"/>
+       <source>Sub-Element</source>
+-      <translation type="unfinished">Sub-Element</translation>
++      <translation>部分要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.ui" line="31"/>
+@@ -9524,7 +9522,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskAddOffsetVertex.ui" line="36"/>
+       <source>The selected vertex this offset vertex is based on</source>
+-      <translation type="unfinished">The selected vertex this offset vertex is based on</translation>
++      <translation>このオフセット頂点のもとになる、選んだ頂点</translation>
+     </message>
+     <message>
+       <location filename="../../TaskAddOffsetVertex.ui" line="45"/>
+@@ -9539,7 +9537,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskAddOffsetVertex.ui" line="59"/>
+       <source>The X offset distance from the source vertex</source>
+-      <translation type="unfinished">The X offset distance from the source vertex</translation>
++      <translation>元の頂点からの X 方向のずらし</translation>
+     </message>
+     <message>
+       <location filename="../../TaskAddOffsetVertex.ui" line="72"/>
+@@ -10267,7 +10265,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskDimRepair.cpp" line="81"/>
+       <source>Sub-Element</source>
+-      <translation type="unfinished">Sub-Element</translation>
++      <translation>部分要素</translation>
+     </message>
+     <message>
+       <location filename="../../TaskDimRepair.cpp" line="247"/>
+@@ -10296,17 +10294,17 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="14"/>
+       <source>Spreadsheet View Parameters</source>
+-      <translation type="unfinished">Spreadsheet View Parameters</translation>
++      <translation>スプレッドシートのビューの設定</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="20"/>
+       <source>Range:</source>
+-      <translation type="unfinished">Range:</translation>
++      <translation>範囲:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="27"/>
+       <source>Enter the top-left cell of the range (e.g., A1)</source>
+-      <translation type="unfinished">Enter the top-left cell of the range (e.g., A1)</translation>
++      <translation>範囲の左上のセルを入力（例 A1）</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="30"/>
+@@ -10316,52 +10314,52 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="37"/>
+       <source> to </source>
+-      <translation type="unfinished"> to </translation>
++      <translation> から </translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="44"/>
+       <source>Enter the bottom-right cell of the range (e.g., B2)</source>
+-      <translation type="unfinished">Enter the bottom-right cell of the range (e.g., B2)</translation>
++      <translation>範囲の右下のセルを入力（例 B2）</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="47"/>
+       <source>B2</source>
+-      <translation type="unfinished">B2</translation>
++      <translation>B2</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="54"/>
+       <source>View Appearance</source>
+-      <translation type="unfinished">View Appearance</translation>
++      <translation>ビューの見た目</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="60"/>
+       <source>Scale:</source>
+-      <translation type="unfinished">Scale:</translation>
++      <translation>倍率:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="67"/>
+       <source>Scale of the view. Let you adjust the overall size of the table.</source>
+-      <translation type="unfinished">Scale of the view. Let you adjust the overall size of the table.</translation>
++      <translation>ビューの倍率。表全体の大きさを変えます。</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="83"/>
+       <source>Font:</source>
+-      <translation type="unfinished">Font:</translation>
++      <translation>フォント:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="93"/>
+       <source>Text Size:</source>
+-      <translation type="unfinished">Text Size:</translation>
++      <translation>文字の大きさ:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="100"/>
+       <source>Font size in points</source>
+-      <translation type="unfinished">Font size in points</translation>
++      <translation>フォントの大きさ（ポイント）</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="119"/>
+       <source>Text Color:</source>
+-      <translation type="unfinished">Text Color:</translation>
++      <translation>文字の色:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="126"/>
+@@ -10371,22 +10369,22 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="140"/>
+       <source>Line Width:</source>
+-      <translation type="unfinished">Line Width:</translation>
++      <translation>線の太さ:</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="147"/>
+       <source>Width of the cell border lines</source>
+-      <translation type="unfinished">Width of the cell border lines</translation>
++      <translation>セルの罫線の太さ</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="172"/>
+       <source>Claim spreadsheet as child</source>
+-      <translation type="unfinished">Claim spreadsheet as child</translation>
++      <translation>スプレッドシートを子にする</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.ui" line="175"/>
+       <source>If checked, this view will claim the associated spreadsheet as child in the tree.</source>
+-      <translation type="unfinished">If checked, this view will claim the associated spreadsheet as child in the tree.</translation>
++      <translation>チェックすると、このビューは関連するスプレッドシートを木の中で子として持ちます。</translation>
+     </message>
+   </context>
+   <context>
+@@ -10399,12 +10397,12 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../CommandDecorate.cpp" line="78"/>
+       <source>Toggle View Frames</source>
+-      <translation type="unfinished">Toggle View Frames</translation>
++      <translation>ビューの枠の表示を切り替え</translation>
+     </message>
+     <message>
+       <location filename="../../CommandDecorate.cpp" line="79"/>
+       <source>Toggles visibility of view frames and vertices</source>
+-      <translation type="unfinished">Toggles visibility of view frames and vertices</translation>
++      <translation>ビューの枠と頂点の表示を切り替えます</translation>
+     </message>
+   </context>
+   <context>
+@@ -10422,7 +10420,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../CommandDecorate.cpp" line="142"/>
+       <source>Toggles the grid on the active page</source>
+-      <translation type="unfinished">Toggles the grid on the active page</translation>
++      <translation>いまのページの格子の表示を切り替えます</translation>
+     </message>
+   </context>
+   <context>
+@@ -10440,7 +10438,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../Command.cpp" line="1951"/>
+       <source>Exports the current page as a PDF</source>
+-      <translation type="unfinished">Exports the current page as a PDF</translation>
++      <translation>いまのページを PDF に書き出します</translation>
+     </message>
+   </context>
+   <context>
+@@ -10485,7 +10483,7 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../QGIViewSpreadsheet.cpp" line="430"/>
+       <source>Add row</source>
+-      <translation type="unfinished">Add row</translation>
++      <translation>行を追加</translation>
+     </message>
+     <message>
+       <location filename="../../QGIViewSpreadsheet.cpp" line="431"/>
+@@ -10498,12 +10496,12 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskSpreadsheetView.cpp" line="187"/>
+       <source>Invalid Range</source>
+-      <translation type="unfinished">Invalid Range</translation>
++      <translation>範囲が正しくありません</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.cpp" line="187"/>
+       <source>The specified cell range is invalid. Please correct it.</source>
+-      <translation type="unfinished">The specified cell range is invalid. Please correct it.</translation>
++      <translation>指定したセルの範囲が正しくありません。直してください。</translation>
+     </message>
+   </context>
+   <context>
+@@ -10511,12 +10509,12 @@ there is an open task dialog.</source>
+     <message>
+       <location filename="../../TaskSpreadsheetView.cpp" line="727"/>
+       <source>Create Spreadsheet View</source>
+-      <translation type="unfinished">Create Spreadsheet View</translation>
++      <translation>スプレッドシートのビューを作成</translation>
+     </message>
+     <message>
+       <location filename="../../TaskSpreadsheetView.cpp" line="728"/>
+       <source>Edit Spreadsheet View</source>
+-      <translation type="unfinished">Edit Spreadsheet View</translation>
++      <translation>スプレッドシートのビューを編集</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/Test/Gui/Resources/translations/Test_ja.ts b/src/Mod/Test/Gui/Resources/translations/Test_ja.ts
+index fc5a2f5a7..29295110c 100644
+--- a/src/Mod/Test/Gui/Resources/translations/Test_ja.ts
++++ b/src/Mod/Test/Gui/Resources/translations/Test_ja.ts
+@@ -36,7 +36,7 @@
+     <message>
+       <location filename="../../UnitTest.ui" line="131"/>
+       <source>Ctrl+C</source>
+-      <translation type="unfinished">Ctrl+C</translation>
++      <translation>Ctrl+C</translation>
+     </message>
+     <message>
+       <location filename="../../UnitTest.ui" line="141"/>
+@@ -141,7 +141,7 @@ FreeCAD UnitTest is part of FreeCAD and supports writing Unit Tests for ones own
+     <message>
+       <location filename="../../UnitTestImp.cpp" line="206"/>
+       <source>Errors copied to clipboard</source>
+-      <translation type="unfinished">Errors copied to clipboard</translation>
++      <translation>エラーをクリップボードにコピーしました</translation>
+     </message>
+   </context>
+ </TS>
+diff --git a/src/Mod/Tux/Resources/translations/Tux_ja.ts b/src/Mod/Tux/Resources/translations/Tux_ja.ts
+index d801664c1..47241a95d 100644
+--- a/src/Mod/Tux/Resources/translations/Tux_ja.ts
++++ b/src/Mod/Tux/Resources/translations/Tux_ja.ts
+@@ -112,7 +112,7 @@
+       <location filename="../../NavigationIndicatorGui.py" line="675"/>
+       <source>Navigation Styles</source>
+       <comment>A context menu action used to show or hide the &apos;Navigation indicator&apos; toolbar widget</comment>
+-      <translation type="unfinished">Navigation Styles</translation>
++      <translation>操作のスタイル</translation>
+     </message>
+   </context>
+ </TS>
+-- 
+2.43.0
+

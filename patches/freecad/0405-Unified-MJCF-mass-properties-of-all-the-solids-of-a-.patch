@@ -1,7 +1,7 @@
 From 6121fa64378e9a4f2e5a957fe1b82d785c69c796 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 02:13:43 +0900
-Subject: [PATCH 405/407] Unified: MJCF mass properties of all the solids of a
+Subject: [PATCH 405/410] Unified: MJCF mass properties of all the solids of a
  part; densities and masses by name
 
 A Compound has no MatrixOfInertia: 300 of a model's 365 parts got a
