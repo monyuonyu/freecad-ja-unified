@@ -1,7 +1,7 @@
 From 5e78c6e547721e79b0308d9b06e08e7f17b0d0f7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 17:36:13 +0900
-Subject: [PATCH 249/398] Start: do not crash when the menu bar has no Help
+Subject: [PATCH 249/399] Start: do not crash when the menu bar has no Help
  menu at the top
 
 The Start module's manipulator looked up "&Help" in the menu bar and used

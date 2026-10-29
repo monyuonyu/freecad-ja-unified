@@ -1,0 +1,276 @@
+From 26d65c68d636aff94d508ac81d3b491e7afbc4f5 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 13:10:59 +0900
+Subject: [PATCH 399/399] Part: --export-web leaves out or simplifies parts,
+ and warns of a page over 30 MB
+
+A page of 54 MB (a third of it bolts) was stopped by a company PC's
+antivirus. --web-exclude "pattern,..." leaves parts out (labels or
+names of parts or of their groups); --web-simplify fasteners (or
+patterns) draws bolts, nuts, washers and screws as cylinders along their
+largest round face (shank and head) or boxes, coarse and without edges
+(threaded bolts: about 1/100). Over 30 MB the export says so, with the
+heaviest groups.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                 |   4 +
+ src/Mod/Part/PartViews.py               |   4 +-
+ src/Mod/Part/PartWebView.py             | 106 +++++++++++++++++++++++-
+ src/Mod/Part/parttests/TestPartViews.py |  46 ++++++++++
+ 4 files changed, 155 insertions(+), 5 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 996ed9f1c..87036ccd6 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2503,6 +2503,8 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("export-svg", boost::program_options::value<std::string>(), "Write an SVG of the view with hidden lines removed (filled visible faces and visible edges)")
+     ("export-polygons", boost::program_options::value<std::string>(), "Write the visible face polygons and edges of the view as JSON (hidden parts removed, sorted far to near)")
+     ("export-web", boost::program_options::value<std::string>(), "Write a 3D view to turn in a browser as one HTML file (WebGL, no libraries, works offline and on phones); --deflection sets the triangles' error in mm")
++    ("web-exclude", boost::program_options::value<std::string>(), "With --export-web: leave out these parts (labels or names of parts or of their groups, comma separated; * and ?)")
++    ("web-simplify", boost::program_options::value<std::string>(), "With --export-web: draw these parts as cylinders or boxes, without edges (patterns as --web-exclude; fasteners: bolts, nuts, washers, screws). A page over 30 MB is warned of (some antivirus programs stop it)")
+     ("export-pptx", boost::program_options::value<std::string>(), "Write a PowerPoint file with one slide: the visible faces of the view as freeform shapes and the visible edges as lines")
+     ("export-edges", boost::program_options::value<std::string>(), "Edges for --export-svg/--export-polygons/--export-pptx: none, outline (each face region's outline as its own line; PPTX default), all (separate lines; SVG and JSON default)")
+     ("interference", "Report overlapping solids of the visible objects (bounding boxes, then boolean common on the candidate pairs)")
+@@ -2749,6 +2751,8 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"export-polygons", "ExportPolygons"},
+         {"export-pptx", "ExportPptx"},
+         {"export-web", "ExportWeb"},
++        {"web-exclude", "WebExclude"},
++        {"web-simplify", "WebSimplify"},
+         {"export-edges", "ExportEdges"},
+         {"interference-report", "InterferenceReport"},
+         {"export-drawings", "ExportDrawings"},
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index ccd3c302d..5c29662c3 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1314,7 +1314,9 @@ def cli_main():
+     if web:
+         import PartWebView
+ 
+-        PartWebView.export(doc, web, deflection=deflection)
++        split = lambda v: [x.strip() for x in (v or "").split(",") if x.strip()]  # noqa: E731
++        PartWebView.export(doc, web, deflection=deflection, exclude=split(_config("WebExclude")),
++                           simplify=split(_config("WebSimplify")))  # fmt: skip
+         print("Wrote %s" % web)
+     drawings = _config("ExportDrawings")
+     if drawings:
+diff --git a/src/Mod/Part/PartWebView.py b/src/Mod/Part/PartWebView.py
+index 60a6306db..bb1e0b73e 100644
+--- a/src/Mod/Part/PartWebView.py
++++ b/src/Mod/Part/PartWebView.py
+@@ -2,8 +2,15 @@
+ """A 3D view to turn in a browser, in one HTML file: WebGL without libraries (FreeCAD's WebGL
+ export loads three.js from the internet: not without the net, not always on a phone).
+ 
+-    FreeCADCmd model.FCStd --export-web model.html [--deflection 0.5]
+-    PartWebView.export(doc_or_objects, "model.html", title="", notes=[], walls={})
++    FreeCADCmd model.FCStd --export-web model.html [--deflection 0.5] [--web-exclude "ボルト_*"]
++                [--web-simplify fasteners]
++    PartWebView.export(doc_or_objects, "model.html", title="", notes=[], walls={}, exclude=[], simplify=[])
++
++exclude: parts left out (labels or names of the parts or of their groups, * and ?).
++simplify: parts drawn as cylinders (round ones: shank and head) or boxes, without edges;
++"fasteners" names the bolts, nuts, washers and screws (ボルト・ナット・座金・ワッシャ・ねじ・bolt…).
++A page over 30 MB is said: some antivirus programs stop big HTML files (a model of 1,000 parts,
++54 MB, of which a third were bolts, was blocked on a company PC).
+ 
+ The visible objects of the document with their colours (as PartViews draws them); curved faces
+ shaded smoothly (normals from the triangulation), edges drawn. In the page: turn, zoom, pan
+@@ -38,6 +45,80 @@ def _shape_data(shape, deflection, edges):
+     return pack(tri), pack(nrm), pack(seg)
+ 
+ 
++FASTENER_WORDS = ("ボルト", "ナット", "座金", "ワッシャ", "ねじ", "ネジ", "ビス", "スクリュー", "リベット",
++                  "bolt", "nut", "washer", "screw", "rivet")  # fmt: skip
++WARN_BYTES = 30 * 1024 * 1024
++
++
++def _names(e):
++    return [e.label, e.name] + [g[1] for g in e.group]
++
++
++def _matches(e, patterns):
++    import fnmatch
++
++    words = []
++    for p in patterns:
++        if p == "fasteners":
++            words += ["*%s*" % w for w in FASTENER_WORDS]
++        else:
++            words.append(p)
++    return any(fnmatch.fnmatch(n.lower(), w.lower()) for n in _names(e) if n for w in words)
++
++
++def _simple_solid(solid):
++    """A solid as one to three cylinders along its largest round face (a bolt: shank and head),
++    else its box"""
++    import Part
++
++    cyls = [f for f in solid.Faces if f.Surface.TypeId == "Part::GeomCylinder"]
++    if not cyls:
++        bb = solid.BoundBox
++        return Part.makeBox(max(bb.XLength, 1e-3), max(bb.YLength, 1e-3), max(bb.ZLength, 1e-3),
++                            App.Vector(bb.XMin, bb.YMin, bb.ZMin))  # fmt: skip
++    main = max(cyls, key=lambda f: f.Area)
++    axis, c = App.Vector(main.Surface.Axis).normalize(), main.Surface.Center
++    pts = [v.Point for v in solid.Vertexes] + [p for f in solid.Faces for p in (f.BoundBox.Center,)]
++
++    def t_r(p):
++        d = p - c
++        t = d.dot(axis)
++        return t, (d - axis * t).Length
++
++    tr = [t_r(p) for p in pts]
++    ts = [t for t, _ in tr]
++    lo, hi = min(ts), max(ts)
++    mt = [t_r(v.Point)[0] for v in main.Vertexes] or [lo, hi]
++    s0, s1 = max(min(mt), lo), min(max(mt), hi)
++    r = main.Surface.Radius
++    pieces = []
++
++    def cyl(a, b, radius):
++        if b - a > 1e-6 and radius > 1e-6:
++            pieces.append(Part.makeCylinder(radius, b - a, c + axis * a, axis))
++
++    cyl(s0, s1, r)
++    for a, b in ((lo, s0), (s1, hi)):
++        rad = max([rr for t, rr in tr if a - 1e-6 <= t <= b + 1e-6] or [r])
++        cyl(a, b, rad)
++    if not pieces:
++        cyl(lo, hi, r)
++    return Part.makeCompound(pieces)
++
++
++def _simple_data(shape, deflection):
++    """The triangles of the simplified solids, each coarse for its size (about 8 sides a circle)"""
++    tri, nrm = [], []
++    for x in shape.Solids or [shape]:
++        simple = _simple_solid(x)
++        size = max(min(simple.BoundBox.XLength, simple.BoundBox.YLength, simple.BoundBox.ZLength), 1e-3)
++        points, facets, normals = simple.tessellate(max(deflection, size * 0.04), normals=True)
++        tri += [c for t in facets for k in t for c in (points[k].x, points[k].y, points[k].z)]
++        nrm += [c for t in facets for k in t for c in (normals[k].x, normals[k].y, normals[k].z)]
++    pack = lambda xs: base64.b64encode(struct.pack("<%df" % len(xs), *xs)).decode()  # noqa: E731
++    return pack(tri), pack(nrm), ""
++
++
+ def _mesh_data(mesh):
+     pts, facets = mesh.Topology if hasattr(mesh, "Topology") else mesh
+     tri = [c for t in facets for k in t for c in (pts[k].x, pts[k].y, pts[k].z)]
+@@ -45,7 +126,7 @@ def _mesh_data(mesh):
+ 
+ 
+ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=None, deflection=0.0,
+-           edges=True):  # fmt: skip
++           edges=True, exclude=(), simplify=()):  # fmt: skip
+     """Write the 3D view of `source` (a document, objects or shapes; see PartViews.scene_entries)
+     to the HTML file `path`. walls: {label or name: (x, y, z)} the outward side of a wall,
+     hidden when looked at from that side; alpha: {label or name: 0..1}. deflection: the size of
+@@ -53,6 +134,8 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+     import PartViews
+ 
+     entries = PartViews.scene_entries(source, colors=None)
++    if exclude:
++        entries = [e for e in entries if not _matches(e, exclude)]
+     if not entries:
+         raise RuntimeError("Nothing visible to write")
+     if not deflection:
+@@ -74,7 +157,10 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+         if hasattr(e.item, "tessellate"):
+             if not e.item.Faces:
+                 continue
+-            tri, nrm, seg = _shape_data(e.item, deflection, edges)
++            if simplify and _matches(e, simplify):
++                tri, nrm, seg = _simple_data(e.item, deflection)
++            else:
++                tri, nrm, seg = _shape_data(e.item, deflection, edges)
+         else:
+             tri, nrm, seg = _mesh_data(e.item)
+         group = (e.label.split("_")[0] if "_" in e.label else e.label) if one_group else group_of(e)
+@@ -95,4 +181,16 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+     os.makedirs(folder, exist_ok=True)
+     with open(path, "w", encoding="utf-8") as f:
+         f.write(html)
++    size = os.path.getsize(path)
++    if size > WARN_BYTES:
++        heavy = sorted(((len(p["tri"]) + len(p["nrm"]) + len(p["seg"]), p["group"]) for p in parts), reverse=True)
++        by_group = {}
++        for n, g in heavy:
++            by_group[g] = by_group.get(g, 0) + n
++        top = sorted(by_group.items(), key=lambda kv: -kv[1])[:5]
++        App.Console.PrintWarning(
++            "%s is %.0f MB: some antivirus programs stop HTML files over about 30 MB (the page does not open). "
++            "Lighter: --web-simplify fasteners (bolts and nuts as cylinders), --web-exclude \"pattern\", a larger "
++            "--deflection. Heaviest groups: %s\n"
++            % (path, size / 1048576.0, ", ".join("%s %.1f MB" % (g, n / 1048576.0) for g, n in top)))
+     return path
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index f2c502331..20c83f5f0 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -3,6 +3,7 @@
+ """Tests of the headless views and checks of the Part module (PartViews)."""
+ 
+ import json
++import math
+ import os
+ import struct
+ import tempfile
+@@ -645,6 +646,51 @@ class TestPartViewOptions(unittest.TestCase):
+             self.assertEqual(len(base64.b64decode(part["nrm"])), len(tri))
+         self.assertEqual(data["parts"][1]["wall"], [1.0, 0.0, 0.0])
+ 
++    def testWebViewLighterBolts(self):
++        # a page of 54 MB (a third bolts) was stopped by a company PC's antivirus (reported on 0.8.4)
++        import base64
++        import PartWebView
++
++        doc = App.newDocument("WebBolts")
++        try:
++            plate = doc.addObject("Part::Box", "Plate")
++            plate.Length, plate.Width, plate.Height = 100, 60, 5
++            bolts = []
++            for k in range(6):
++                head = Part.makePolygon([App.Vector(5 * math.cos(math.radians(a)), 5 * math.sin(math.radians(a)), 0)
++                                         for a in range(0, 361, 60)])  # fmt: skip
++                # the shank with rings like a thread (many faces, as a real bolt's)
++                prof = [App.Vector(0, 0, -20)] + [App.Vector(3 if i % 2 else 2.6, 0, -20 + 0.5 * i) for i in range(41)]
++                prof += [App.Vector(0, 0, 0.5), App.Vector(0, 0, -20)]
++                shank = Part.Face(Part.makePolygon(prof)).revolve(App.Vector(), App.Vector(0, 0, 1), 360)
++                bolt = Part.Face(head).extrude(App.Vector(0, 0, 4)).fuse(Part.Solid(Part.Shell(shank.Faces)))
++                bolt.translate(App.Vector(15 + 14 * k, 30, 5))
++                bolts.append(bolt.removeSplitter())
++            feature = doc.addObject("Part::Feature", "Bolts")
++            feature.Shape = Part.makeCompound(bolts)
++            feature.Label = "ボルト_A"
++            doc.recompute()
++
++            def page(**kw):
++                path = os.path.join(self.dir, "b.html")
++                PartWebView.export(doc, path, **kw)
++                with open(path, encoding="utf-8") as f:
++                    html = f.read()
++                return os.path.getsize(path), json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0])
++
++            full, data = page()
++            self.assertEqual(sorted(p["name"] for p in data["parts"]), ["Plate", "ボルト_A"])
++            light, data = page(simplify=["fasteners"])
++            bolt = [p for p in data["parts"] if p["name"] == "ボルト_A"][0]
++            self.assertEqual(bolt["seg"], "")  # no edges
++            self.assertLess(len(base64.b64decode(bolt["tri"])), len(base64.b64decode(
++                [p for p in page()[1]["parts"] if p["name"] == "ボルト_A"][0]["tri"])))  # fmt: skip
++            self.assertLess(light, full)
++            _, data = page(exclude=["ボルト_*"])
++            self.assertEqual([p["name"] for p in data["parts"]], ["Plate"])
++        finally:
++            App.closeDocument(doc.Name)
++
+     def testSectionFillsCutFaces(self):
+         data = Part.projectVisible([self.holed, self.small], view="top",
+                                    section=(App.Vector(0, 0, 10), App.Vector(0, 0, 1)))  # fmt: skip
+-- 
+2.43.0
+

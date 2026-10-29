@@ -1,7 +1,7 @@
 From af598788e8533a0c121283401896349dc046c366 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 29 Sep 2026 20:08:48 +0900
-Subject: [PATCH 202/398] Unified AI chat: bundle the AI runtime in the release
+Subject: [PATCH 202/399] Unified AI chat: bundle the AI runtime in the release
  packages
 
 The release bundles (Windows 7z/installer, Linux AppImage) now carry the

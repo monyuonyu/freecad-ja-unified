@@ -48,7 +48,7 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 コマンドライン（画面なし）
 - `freecadcmd model.FCStd --render out.png --view iso`（`--section z=10 --section-color part` で断面）
 - `--export-svg` / `--export-pptx`（隠れ線を消した 2D）、`--export-drawings out.pdf`（図面の PDF。`--line-width 0.25` で線の太さ、`--check-layout` で枠・表題欄へのはみ出しを知らせる）
-- `--export-web model.html`（ブラウザで回して見る 3D。1 つの HTML で、ネットなし・スマホでも）
+- `--export-web model.html`（ブラウザで回して見る 3D。1 つの HTML で、ネットなし・スマホでも。`--web-simplify fasteners` でねじ類を軽く）
 - `--gui-script work.py -- 引数`（画面の機能が要るスクリプトを画面なしで。出力とエラーはそのまま）
 - `--interference`（干渉検査。300 部品で約 1 秒）、`--design-check`（設計の検査を JSON で。`--ignore-pairs` でわざと当てた組を外す、`--sweep` で動く部品を回しながら干渉を調べる）
 - DWG（AutoCAD）を R2018 まで読み書き、Jw_cad の図面（JWW）を開く
@@ -342,6 +342,10 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.8.6 の変更
+
+- **`--export-web` の HTML が大きすぎて、会社の PC のウイルス対策に止められた**（部品約 1,000 点で 54MB、うち 3 分の 1 がボルト）: `--web-simplify fasteners` でボルト・ナット・座金・ねじを円柱（軸と頭）か箱にして、線を付けずに粗く書く（ねじ山のあるボルトで約 100 分の 1）。`--web-exclude "ボルト_*,作業者_*"` で部品やグループを外す。30MB を超えたら、重いグループの名前と一緒に知らせる
 
 ## 0.8.5 の変更
 

@@ -1,7 +1,7 @@
 From 1b8aaf86f380028d04972b0dafe435fca2bda8ba Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:10:05 +0900
-Subject: [PATCH 277/398] Unified: drag parts in the 3D view with a magnet;
+Subject: [PATCH 277/399] Unified: drag parts in the 3D view with a magnet;
  line up several parts
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

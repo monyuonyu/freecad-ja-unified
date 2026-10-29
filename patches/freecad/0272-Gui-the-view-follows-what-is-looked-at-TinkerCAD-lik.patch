@@ -1,7 +1,7 @@
 From 89691701aa5417e092e17dd2d6f8c2a6353d2e97 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 01:41:22 +0900
-Subject: [PATCH 272/398] Gui: the view follows what is looked at
+Subject: [PATCH 272/399] Gui: the view follows what is looked at
  (TinkerCAD-like and touchpad navigation)
 
 The wheel moves the eye towards the point of the model under the cursor (else

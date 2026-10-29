@@ -1,7 +1,7 @@
 From f310fdfd507a5850ff03350dd0e59424b1d42cbf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:36:29 +0900
-Subject: [PATCH 320/398] TechDraw: a section view is made with the direction
+Subject: [PATCH 320/399] TechDraw: a section view is made with the direction
  the panel shows and the next free letter
 
 "Finish" without pressing a direction button said "nothing to apply, no

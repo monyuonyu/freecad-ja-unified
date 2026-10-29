@@ -40,7 +40,7 @@ Screen
 Command line (no screen)
 - `freecadcmd model.FCStd --render out.png --view iso` (`--section z=10 --section-color part` for a section)
 - `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF; `--line-width 0.25`, `--check-layout` for what is out of the frame or on the title block)
-- `--export-web model.html` (a 3D view to turn in a browser, one HTML, offline and on phones)
+- `--export-web model.html` (a 3D view to turn in a browser, one HTML, offline and on phones; `--web-simplify fasteners` for lighter bolts)
 - `--gui-script work.py -- args` (a script that needs the GUI, without a screen, with its output and errors)
 - `--interference` (about 1 s for 300 parts), `--design-check` (the design check as JSON; `--ignore-pairs` leaves out pairs that touch on purpose, `--sweep` checks parts turned through their motion)
 - DWG (AutoCAD) read and write up to R2018, Jw_cad drawings (JWW)
@@ -331,6 +331,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.8.6
+
+- **The `--export-web` page was too big and a company PC's antivirus stopped it** (some 1,000 parts, 54 MB, a third of it bolts): `--web-simplify fasteners` draws bolts, nuts, washers and screws as cylinders (shank and head) or boxes, coarse and without edges (threaded bolts: about 1/100); `--web-exclude "Bolt_*,Worker_*"` leaves parts or groups out. Over 30 MB the export says so, naming the heaviest groups
 
 ## Changes in 0.8.5
 

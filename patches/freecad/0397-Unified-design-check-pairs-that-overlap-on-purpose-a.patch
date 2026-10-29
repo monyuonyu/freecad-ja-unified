@@ -1,7 +1,7 @@
 From f33b4d97891f97e69fce5f74ec06a6c572ac96a6 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 11:42:18 +0900
-Subject: [PATCH 397/398] Unified: design check: pairs that overlap on purpose,
+Subject: [PATCH 397/399] Unified: design check: pairs that overlap on purpose,
  and parts turned through their motion
 
 --ignore-pairs pairs.txt (A, B a line; labels or names of parts or their

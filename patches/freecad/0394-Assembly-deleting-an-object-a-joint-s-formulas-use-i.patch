@@ -1,7 +1,7 @@
 From b4f6bbf66756a8fc539331c11863b25c0e469964 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 28 Oct 2026 12:36:08 +0900
-Subject: [PATCH 394/398] Assembly: deleting an object a joint's formulas use
+Subject: [PATCH 394/399] Assembly: deleting an object a joint's formulas use
  is asked first
 
 A joint let anything it points at be deleted without a question; the

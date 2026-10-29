@@ -1,7 +1,7 @@
 From f8bb0503b8da3be3110738eba9a2b001d455ad15 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:44:10 +0900
-Subject: [PATCH 367/398] Part views: iso- and the sides seen in any order
+Subject: [PATCH 367/399] Part views: iso- and the sides seen in any order
  (iso-rear-left, iso-front-right)
 
 iso-back-left was there but not in the list of views, and iso-rear-left

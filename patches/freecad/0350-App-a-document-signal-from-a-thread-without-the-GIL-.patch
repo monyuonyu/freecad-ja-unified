@@ -1,7 +1,7 @@
 From 6690ee2597b94874ad9f202aaef51fedccca19b5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 10:42:29 +0900
-Subject: [PATCH 350/398] App: a document signal from a thread without the GIL
+Subject: [PATCH 350/399] App: a document signal from a thread without the GIL
  does not release it
 
 PyEval_SaveThread without the GIL is undefined; a worker thread without
