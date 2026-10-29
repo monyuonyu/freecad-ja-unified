@@ -332,6 +332,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.0
+
+- **A rough MuJoCo model (MJCF)**: `--export-mjcf model.xml [--mjcf-mesh]` (from a script, `MjcfExport.export`). Each part with mass, centre of mass and inertia from its solids and density (the material's, else 7850 kg/m³; FreeCAD's "Default" material is a placeholder of 1 kg/m³, taken as none), a box for contacts with the surroundings (not with each other: an engine's boxes overlap and jammed the crank), a coarse STL for the looks. From the grounded parts and the assembly's origin the joints are followed as hinges, slides and balls; a joint closing a loop becomes `<equality connect>`; belts and gears a ratio of the two hinges (teeth, else radii; the sign from the axes). An engine is written in 12 s and turns in MuJoCo with the camshaft at half the crank
+
 ## Changes in 0.8.9
 
 - **Collisions through an assembly's motion, from the screen**: with a revolute joint picked, "Collisions" on the context bar turns it step by step, solves the assembly at each angle (valves and rockers moved by formulas too) and checks all the parts; a hit turns the joint to its angle and picks the two parts; pairs overlapping at every angle are listed apart and can be marked as overlapping on purpose (kept in the file); the angle is put back. An engine model, crank 0-720° by 30°: about 100 s (the piston was found in the head and the valves at top dead centre)

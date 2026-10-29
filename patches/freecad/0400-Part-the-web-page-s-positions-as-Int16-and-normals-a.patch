@@ -1,7 +1,7 @@
 From de670814e0ba4e99fff31611a9c5858e4a6fb785 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 29 Oct 2026 13:57:26 +0900
-Subject: [PATCH 400/403] Part: the web page's positions as Int16 and normals
+Subject: [PATCH 400/404] Part: the web page's positions as Int16 and normals
  as Int8; simplified parts as 8-sided prisms without normals
 
 Still over 30 MB with bolts simplified (400 plain bolts in one part are

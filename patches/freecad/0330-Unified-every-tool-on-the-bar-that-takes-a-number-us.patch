@@ -1,7 +1,7 @@
 From 7a14310ab79063d64254848dcc622a26d934e6a4 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:37:00 +0900
-Subject: [PATCH 330/403] Unified: every tool on the bar that takes a number
+Subject: [PATCH 330/404] Unified: every tool on the bar that takes a number
  uses the one typed there
 
 The bar has one number field, next to the first tool that takes a number

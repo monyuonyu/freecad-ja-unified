@@ -1,7 +1,7 @@
 From 01c5fe1448e3380c6d73b10377b2c748522813be Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 03:41:20 +0900
-Subject: [PATCH 347/403] Assembly: big steps of a driven angle are walked by
+Subject: [PATCH 347/404] Assembly: big steps of a driven angle are walked by
  value; any angle; reverse kept
 
 From the second whole-engine GUI test (0.7.8):
