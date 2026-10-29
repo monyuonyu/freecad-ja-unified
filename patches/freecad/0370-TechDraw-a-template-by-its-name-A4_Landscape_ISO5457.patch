@@ -1,7 +1,7 @@
 From 7cb918e5b8a7c10a60b5065f0314fb4d7b216db3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:14:40 +0900
-Subject: [PATCH 370/399] TechDraw: a template by its name
+Subject: [PATCH 370/400] TechDraw: a template by its name
  (A4_Landscape_ISO5457_minimal)
 
 A name without a folder is looked for in the templates that come with

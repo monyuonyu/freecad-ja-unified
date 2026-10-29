@@ -332,6 +332,11 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.8.7
+
+- **`--export-web` lighter still**: positions as Int16 in the box of all (error box/65534: 0.06 mm for 4 m) and normals as Int8, some 40% of the float32 page; parts of `--web-simplify` are 8-sided prisms or boxes without normals (shaded flat by the page). A model with 400 plain bolts in one part stayed over 30 MB even simplified
+- `--web-exclude` takes character sets such as `Unit[BCD]*` (it did before; now said)
+
 ## Changes in 0.8.6
 
 - **The `--export-web` page was too big and a company PC's antivirus stopped it** (some 1,000 parts, 54 MB, a third of it bolts): `--web-simplify fasteners` draws bolts, nuts, washers and screws as cylinders (shank and head) or boxes, coarse and without edges (threaded bolts: about 1/100); `--web-exclude "Bolt_*,Worker_*"` leaves parts or groups out. Over 30 MB the export says so, naming the heaviest groups

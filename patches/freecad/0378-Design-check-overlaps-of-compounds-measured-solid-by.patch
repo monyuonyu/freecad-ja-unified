@@ -1,7 +1,7 @@
 From 1d081f23c4aadeda1d84d8bc2b297088439aa8bf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 00:49:28 +0900
-Subject: [PATCH 378/399] Design check: overlaps of compounds measured solid by
+Subject: [PATCH 378/400] Design check: overlaps of compounds measured solid by
  solid, a failed boolean said, one item, more parts, --design-check
 
 From a room's model (reported on 0.7.9): the members of a frame were

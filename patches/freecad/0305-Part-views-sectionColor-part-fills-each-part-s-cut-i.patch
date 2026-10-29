@@ -1,7 +1,7 @@
 From 2c9724db6991f63f6ff7f28e14865cf40f12fdae Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:35:51 +0900
-Subject: [PATCH 305/399] Part views: sectionColor="part" fills each part's cut
+Subject: [PATCH 305/400] Part views: sectionColor="part" fills each part's cut
  in its own colour
 
 A section of an assembly filled every cut face with the same colour, so

@@ -1,7 +1,7 @@
 From 4acca70728ccdd9536f76f903eb75a22125a7cba Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:21:34 +0900
-Subject: [PATCH 310/399] Unified: closing the tool search goes back to the
+Subject: [PATCH 310/400] Unified: closing the tool search goes back to the
  document's window it was opened over
 
 In the engine field test 0.7.3 closing Ctrl+K (Esc or Enter) made another

@@ -1,7 +1,7 @@
 From 7b902a3b93d97c8483b047f9ef83d2a7fb0bb9b2 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 20:46:29 +0900
-Subject: [PATCH 336/399] TestMotionVideo: the release builds must bring ffmpeg
+Subject: [PATCH 336/400] TestMotionVideo: the release builds must bring ffmpeg
  (FREECAD_EXPECT_FFMPEG)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

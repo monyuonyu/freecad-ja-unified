@@ -1,7 +1,7 @@
 From 390774294e07ba42743d426ece2c0b4a17733247 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 23 Oct 2026 08:36:49 +0900
-Subject: [PATCH 293/399] Assembly: a big step of a driving value walks there
+Subject: [PATCH 293/400] Assembly: a big step of a driving value walks there
  instead of dropping the driver
 
 Driving a joint by a big step (a crank from 0 to 90 degrees) did not

@@ -1,0 +1,199 @@
+From de670814e0ba4e99fff31611a9c5858e4a6fb785 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 13:57:26 +0900
+Subject: [PATCH 400/400] Part: the web page's positions as Int16 and normals
+ as Int8; simplified parts as 8-sided prisms without normals
+
+Still over 30 MB with bolts simplified (400 plain bolts in one part are
+few triangles each but many). Positions are written in the box of all as
+Int16 (error box/65534, 0.06 mm for 4 m), normals as Int8: some 40% of
+the float32 page. Simplified parts are 8-sided prisms or boxes with no
+normals (the page shades them flat).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/PartWebView.py             | 53 ++++++++++++++++++-------
+ src/Mod/Part/PartWebViewer.html         | 17 ++++++--
+ src/Mod/Part/parttests/TestPartViews.py | 10 ++++-
+ 3 files changed, 59 insertions(+), 21 deletions(-)
+
+diff --git a/src/Mod/Part/PartWebView.py b/src/Mod/Part/PartWebView.py
+index bb1e0b73e..e06b76a7a 100644
+--- a/src/Mod/Part/PartWebView.py
++++ b/src/Mod/Part/PartWebView.py
+@@ -21,6 +21,7 @@ From fcx.web (cad-mcp-lab, the room models).
+ 
+ import base64
+ import json
++import math
+ import os
+ import struct
+ 
+@@ -41,8 +42,7 @@ def _shape_data(shape, deflection, edges):
+             q = [e.Vertexes[0].Point, e.Vertexes[-1].Point] if straight else e.discretize(Deflection=deflection)
+             for a, b in zip(q, q[1:]):
+                 seg += [a.x, a.y, a.z, b.x, b.y, b.z]
+-    pack = lambda xs: base64.b64encode(struct.pack("<%df" % len(xs), *xs)).decode()  # noqa: E731
+-    return pack(tri), pack(nrm), pack(seg)
++    return tri, nrm, seg
+ 
+ 
+ FASTENER_WORDS = ("ボルト", "ナット", "座金", "ワッシャ", "ねじ", "ネジ", "ビス", "スクリュー", "リベット",
+@@ -93,9 +93,15 @@ def _simple_solid(solid):
+     r = main.Surface.Radius
+     pieces = []
+ 
++    # 8 sides (a page of 400 bolts as round cylinders was still heavy; reported on 0.8.6)
++    u = axis.cross(App.Vector(1, 0, 0) if abs(axis.x) < 0.9 else App.Vector(0, 1, 0)).normalize()
++    w = axis.cross(u)
++
+     def cyl(a, b, radius):
+         if b - a > 1e-6 and radius > 1e-6:
+-            pieces.append(Part.makeCylinder(radius, b - a, c + axis * a, axis))
++            ring = [c + axis * a + (u * math.cos(k * math.pi / 4) + w * math.sin(k * math.pi / 4)) * radius
++                    for k in range(9)]  # fmt: skip
++            pieces.append(Part.Face(Part.makePolygon(ring)).extrude(axis * (b - a)))
+ 
+     cyl(s0, s1, r)
+     for a, b in ((lo, s0), (s1, hi)):
+@@ -107,22 +113,18 @@ def _simple_solid(solid):
+ 
+ 
+ def _simple_data(shape, deflection):
+-    """The triangles of the simplified solids, each coarse for its size (about 8 sides a circle)"""
+-    tri, nrm = [], []
++    """The triangles of the simplified solids (8-sided prisms or boxes; flat, no normals)"""
++    tri = []
+     for x in shape.Solids or [shape]:
+-        simple = _simple_solid(x)
+-        size = max(min(simple.BoundBox.XLength, simple.BoundBox.YLength, simple.BoundBox.ZLength), 1e-3)
+-        points, facets, normals = simple.tessellate(max(deflection, size * 0.04), normals=True)
++        points, facets = _simple_solid(x).tessellate(max(deflection, 0.01))
+         tri += [c for t in facets for k in t for c in (points[k].x, points[k].y, points[k].z)]
+-        nrm += [c for t in facets for k in t for c in (normals[k].x, normals[k].y, normals[k].z)]
+-    pack = lambda xs: base64.b64encode(struct.pack("<%df" % len(xs), *xs)).decode()  # noqa: E731
+-    return pack(tri), pack(nrm), ""
++    return tri, [], []   # no normals: flat, the page works them out
+ 
+ 
+ def _mesh_data(mesh):
+     pts, facets = mesh.Topology if hasattr(mesh, "Topology") else mesh
+     tri = [c for t in facets for k in t for c in (pts[k].x, pts[k].y, pts[k].z)]
+-    return base64.b64encode(struct.pack("<%df" % len(tri), *tri)).decode(), "", ""
++    return tri, [], []
+ 
+ 
+ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=None, deflection=0.0,
+@@ -152,7 +154,7 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+         return e.group[0][1] if e.group else (e.label.split("_")[0] if "_" in e.label else e.label)
+ 
+     one_group = len({group_of(e) for e in entries}) == 1 and len(entries) > 1
+-    parts = []
++    parts, raw = [], []
+     for e in entries:
+         if hasattr(e.item, "tessellate"):
+             if not e.item.Faces:
+@@ -163,19 +165,40 @@ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=
+                 tri, nrm, seg = _shape_data(e.item, deflection, edges)
+         else:
+             tri, nrm, seg = _mesh_data(e.item)
++        raw.append((tri, nrm, seg))
+         group = (e.label.split("_")[0] if "_" in e.label else e.label) if one_group else group_of(e)
+         color = e.color or (e.view_colors[0] if e.view_colors else (0.8, 0.8, 0.8))
+         wall = walls.get(e.label, walls.get(e.name))
+         parts.append({"name": e.label, "group": group, "color": [round(float(c), 3) for c in color[:3]],
+                       "alpha": float(alpha.get(e.label, alpha.get(e.name, 1.0))),
+                       "wall": [float(c) for c in wall] if wall is not None else None,
+-                      "tri": tri, "nrm": nrm, "seg": seg})  # fmt: skip
++                      })  # fmt: skip
++    # Positions as Int16 in the box of all, normals as Int8: half the size of float32 (a page of
++    # 1,000 parts over 30 MB; reported on 0.8.6). The error: the box / 65534 (4 m: 0.06 mm)
++    xs = [v for tri, _, seg in raw for v in tri[0::3] + seg[0::3]]
++    ys = [v for tri, _, seg in raw for v in tri[1::3] + seg[1::3]]
++    zs = [v for tri, _, seg in raw for v in tri[2::3] + seg[2::3]]
++    lo = [min(a) if a else 0.0 for a in (xs, ys, zs)]
++    span = [(max(a) - m) if a else 1.0 for a, m in zip((xs, ys, zs), lo)]
++    step = [max(d, 1e-9) / 65534.0 for d in span]
++
++    def q16(vals):
++        out = [int(round((v - lo[i % 3]) / step[i % 3])) - 32767 for i, v in enumerate(vals)]
++        return base64.b64encode(struct.pack("<%dh" % len(out), *out)).decode()
++
++    def q8(vals):
++        out = [max(-127, min(127, int(round(v * 127)))) for v in vals]
++        return base64.b64encode(struct.pack("<%db" % len(out), *out)).decode()
++
++    for part, (tri, nrm, seg) in zip(parts, raw):
++        part["tri"], part["nrm"], part["seg"] = q16(tri), q8(nrm) if nrm else "", q16(seg) if seg else ""
+     if not title and isinstance(source, App.Document):
+         title = source.Label
+     here = os.path.dirname(os.path.abspath(__file__))
+     with open(os.path.join(here, "PartWebViewer.html"), encoding="utf-8") as f:
+         html = f.read()
+-    data = json.dumps({"title": title, "notes": list(notes), "parts": parts}, ensure_ascii=False)
++    data = json.dumps({"title": title, "notes": list(notes), "parts": parts,
++                       "q": {"lo": lo, "step": step}}, ensure_ascii=False)  # fmt: skip
+     html = html.replace("/*__DATA__*/null", data).replace("__TITLE__", title or "3D")
+     folder = os.path.dirname(os.path.abspath(path))
+     os.makedirs(folder, exist_ok=True)
+diff --git a/src/Mod/Part/PartWebViewer.html b/src/Mod/Part/PartWebViewer.html
+index 1cfd78265..838078278 100644
+--- a/src/Mod/Part/PartWebViewer.html
++++ b/src/Mod/Part/PartWebViewer.html
+@@ -80,17 +80,26 @@ const P_LINE = prog(
+   "precision mediump float; uniform vec4 col; void main(){ gl_FragColor = col; }");
+ 
+ // ---------- 部品を GPU に載せる（三角形ごとの法線で角を立てる） ----------
+-function f32(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+-  return new Float32Array(u.buffer); }
++function bytes(b64) { const s = atob(b64 || ""), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
++  return u.buffer; }
++// positions: Int16 in the box of all (DATA.q), normals: Int8; older pages: Float32
++function pos(b64) { if (!DATA.q) return new Float32Array(bytes(b64));
++  const q = new Int16Array(bytes(b64)), f = new Float32Array(q.length), lo = DATA.q.lo, st = DATA.q.step;
++  for (let i = 0; i < q.length; i++) f[i] = lo[i % 3] + (q[i] + 32767) * st[i % 3];
++  return f; }
++function nrmOf(b64) { if (!DATA.q) return new Float32Array(bytes(b64));
++  const q = new Int8Array(bytes(b64)), f = new Float32Array(q.length);
++  for (let i = 0; i < q.length; i++) f[i] = q[i] / 127;
++  return f; }
+ let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+ const parts = DATA.parts.map(pt => {
+-  const t = f32(pt.tri), given = pt.nrm ? f32(pt.nrm) : null, nrm = given && given.length === t.length ? given : new Float32Array(t.length);
++  const t = pos(pt.tri), given = pt.nrm ? nrmOf(pt.nrm) : null, nrm = given && given.length === t.length ? given : new Float32Array(t.length);
+   for (let i = 0; i < t.length; i += 9) {
+     const a = [t[i], t[i+1], t[i+2]], b = [t[i+3], t[i+4], t[i+5]], c = [t[i+6], t[i+7], t[i+8]];
+     if (nrm !== given) { const n = norm(cross(sub(b, a), sub(c, a))); for (let k = 0; k < 3; k++) nrm.set(n, i + 3 * k); }
+     for (const v of [a, b, c]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
+   }
+-  const s = f32(pt.seg), bt = gl.createBuffer(), bn = gl.createBuffer(), bs = gl.createBuffer();
++  const s = pos(pt.seg), bt = gl.createBuffer(), bn = gl.createBuffer(), bs = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, bt); gl.bufferData(gl.ARRAY_BUFFER, t, gl.STATIC_DRAW);
+   gl.bindBuffer(gl.ARRAY_BUFFER, bn); gl.bufferData(gl.ARRAY_BUFFER, nrm, gl.STATIC_DRAW);
+   gl.bindBuffer(gl.ARRAY_BUFFER, bs); gl.bufferData(gl.ARRAY_BUFFER, s, gl.STATIC_DRAW);
+diff --git a/src/Mod/Part/parttests/TestPartViews.py b/src/Mod/Part/parttests/TestPartViews.py
+index 20c83f5f0..910db589c 100644
+--- a/src/Mod/Part/parttests/TestPartViews.py
++++ b/src/Mod/Part/parttests/TestPartViews.py
+@@ -640,10 +640,16 @@ class TestPartViewOptions(unittest.TestCase):
+         self.assertIn("<title>試し</title>", html)
+         data = json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0])
+         self.assertEqual(len(data["parts"]), 2)
++        lo, step = data["q"]["lo"], data["q"]["step"]
+         for part in data["parts"]:
+             tri = base64.b64decode(part["tri"])
+-            self.assertEqual(len(tri) % 36, 0)  # triangles of 3 points of 3 floats
+-            self.assertEqual(len(base64.b64decode(part["nrm"])), len(tri))
++            self.assertEqual(len(tri) % 18, 0)  # triangles of 3 points of 3 Int16 (in the box of all)
++            self.assertEqual(len(base64.b64decode(part["nrm"])), len(tri) // 2)  # Int8
++            q = struct.unpack("<%dh" % (len(tri) // 2), tri)
++            xs = [lo[0] + (v + 32767) * step[0] for v in q[0::3]]
++            box = (self.holed if part["name"] == "item0" else self.small).BoundBox
++            self.assertAlmostEqual(min(xs), box.XMin, delta=step[0] * 2 + 0.1)
++            self.assertAlmostEqual(max(xs), box.XMax, delta=step[0] * 2 + 0.1)
+         self.assertEqual(data["parts"][1]["wall"], [1.0, 0.0, 0.0])
+ 
+     def testWebViewLighterBolts(self):
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From ac2367f6f40e313b7fe4c46bfbe8b00872ccb82e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:21:46 +0900
-Subject: [PATCH 303/399] PartDesign: the Midplane deprecation warning once a
+Subject: [PATCH 303/400] PartDesign: the Midplane deprecation warning once a
  session
 
 A script that sets Midplane on many pads and revolutions printed the
