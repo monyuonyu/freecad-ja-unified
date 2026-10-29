@@ -1,7 +1,7 @@
 From e137764cf1cdb5e47133c8b8be05d1a23747b91b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 09:46:34 +0900
-Subject: [PATCH 213/397] Part: 2D export edge options (none, outline, all) for
+Subject: [PATCH 213/398] Part: 2D export edge options (none, outline, all) for
  PPTX, SVG and JSON
 
   FreeCADCmd model.FCStd --export-pptx v.pptx --export-edges none|outline|all

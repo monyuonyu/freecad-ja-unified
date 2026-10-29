@@ -1,7 +1,7 @@
 From 8baeb6e6d251f05304db5a9de9d86311ca1d73f1 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 02:04:19 +0900
-Subject: [PATCH 342/397] Unified: Motion to Video cuts the assembly itself,
+Subject: [PATCH 342/398] Unified: Motion to Video cuts the assembly itself,
  and takes the assembly's own view
 
 The clipping tool's section goes away when its panel closes, so before the

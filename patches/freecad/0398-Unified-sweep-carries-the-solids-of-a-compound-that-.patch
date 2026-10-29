@@ -1,0 +1,190 @@
+From b385627e01d650b92ff72bed62888af3846b6213 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 12:38:35 +0900
+Subject: [PATCH 398/398] Unified: sweep carries the solids of a compound that
+ sit in the moving parts
+
+All the bolts of a model in one compound: those of the hub stayed behind
+and were hit by the hub at each angle. carry={"from": [...], "inside":
+[...], "margin": mm} moves the solids of those parts whose centre is in
+the box of the moving parts; the others stay and are still checked.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp            |  2 +-
+ src/Mod/Unified/DesignCheck.py     | 67 +++++++++++++++++++++++++-----
+ src/Mod/Unified/TestDesignCheck.py | 24 +++++++++++
+ 3 files changed, 81 insertions(+), 12 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index e2201ed39..996ed9f1c 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2496,7 +2496,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
+     ("ignore-pairs", boost::program_options::value<std::string>(), "With --design-check: a text file of the pairs of parts that overlap on purpose, one pair a line: A, B (labels or names of parts or of their groups; * and ? match any characters; # a comment)")
+-    ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}")
++    ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}; \"carry\": {\"from\": [\"Bolts\"], \"margin\": 3} also turns the solids of those parts whose centre is in the moving parts' box")
+     ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
+     ("check-layout", "With --export-drawings: warn of views, texts and dimensions out of the sheet's frame or on its title block")
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index a33dfaab2..01de44046 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -1037,12 +1037,17 @@ def _pair_rule(doc, patterns=None):
+     return allowed
+ 
+ 
+-def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0, step=5.0, **options):
++def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0, step=5.0, carry=None,
++          **options):  # fmt: skip
+     """Turn the parts `moving` (labels or names, * and ?; a group or App::Part takes its parts)
+     about `axis` ((point), (direction)) from `start` to `end` degrees by `step`, and check at each
+     angle whether they overlap the other parts (a bar turning 0-80 deg; asked from a gate's
+-    project). ignore_pairs=[(a, b)] as in interferences. Returns {"angles": [...], "moving":
+-    [labels], "hits": [{"angle", "a", "b", "volume", "center"}], "first": angle or None}"""
++    project). ignore_pairs=[(a, b)] as in interferences.
++    carry={"from": [parts], "inside": [parts], "margin": mm}: the solids of the parts `from` (a
++    compound of all the bolts) whose centre is in the box of the parts `inside` (default: the
++    moving parts), grown by `margin`, move too (the bolts of the hub); the others stay.
++    Returns {"angles": [...], "moving": [labels], "carried": ["label[k]"], "hits": [{"angle",
++    "a", "b", "volume", "center"}], "first": angle or None}"""
+     import fnmatch
+ 
+     doc = doc or App.ActiveDocument
+@@ -1055,9 +1060,48 @@ def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0,
+         o = doc.getObject(n)
+         return {o.Name, o.Label} | {u.Label for u in o.InListRecursive} | {u.Name for u in o.InListRecursive}
+ 
+-    movers = sorted(n for n in shapes if any(fnmatch.fnmatchcase(x, p) for p in moving for x in names(n)))
++    def match(patterns):
++        return sorted(n for n in shapes if any(fnmatch.fnmatchcase(x, p) for p in patterns for x in names(n)))
++
++    movers = match(moving)
+     if not movers:
+         raise ValueError("sweep: no visible solid part matches %s" % ", ".join(moving))
++    carried = []
++    if carry:
++        # the solids of a compound that move with the moving parts: "name#k" items of their own
++        unknown = set(carry) - {"from", "inside", "margin"}
++        if unknown:
++            raise ValueError("sweep: carry has unknown keys %s (known: from, inside, margin)" % sorted(unknown))
++        inside = match(carry.get("inside") or []) if carry.get("inside") else list(movers)
++        boxes = []
++        for n in inside:
++            bb = App.BoundBox(shapes[n].BoundBox)
++            bb.enlarge(float(carry.get("margin", 0)))
++            boxes.append(bb)
++        sources = [n for n in match(carry.get("from") or []) if n not in movers]
++        if not sources:
++            raise ValueError("sweep: carry: no visible solid part matches %s" % ", ".join(carry.get("from") or []))
++        for n in sources:
++            stay = []
++            for k, solid in enumerate(shapes[n].Solids):
++                c = solid.BoundBox.Center
++                if any(bb.isInside(c) for bb in boxes):
++                    shapes["%s#%d" % (n, k)] = solid
++                    movers.append("%s#%d" % (n, k))
++                    carried.append("%s[%d]" % (doc.getObject(n).Label, k))
++                else:
++                    stay.append(solid)
++            if len(stay) != len(shapes[n].Solids):
++                if stay:
++                    shapes[n] = Part.makeCompound(stay)
++                else:
++                    del shapes[n]
++
++    def base(n):
++        return doc.getObject(n.split("#")[0])
++
++    def label(n):
++        return base(n).Label + ("[%s]" % n.split("#")[1] if "#" in n else "")
+     point, direction = App.Vector(*axis[0]), App.Vector(*axis[1])
+     if direction.Length < 1e-12:
+         raise ValueError("sweep: the axis has no direction")
+@@ -1070,9 +1114,10 @@ def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0,
+         a += step if end >= start else -step
+     angles.append(float(end))
+     allowed = _pair_rule(doc, opt.get("ignore_pairs"))
+-    one = {n: one_items(doc.getObject(n)) for n in shapes}
++    one = {n: one_items(base(n)) for n in shapes}
+     fixed = [n for n in shapes if n not in movers]
+-    wanted = {(m, f) for m in movers for f in fixed if not (one[m] & one[f]) and not allowed(m, f)}
++    wanted = {(m, f) for m in movers for f in fixed
++              if not (one[m] & one[f]) and not allowed(m.split("#")[0], f.split("#")[0])}  # fmt: skip
+     hits = []
+     for angle in angles:
+         turn = App.Placement(App.Vector(), App.Rotation(direction, angle), point)
+@@ -1090,11 +1135,11 @@ def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0,
+                 res = _common_volume(now[m], now[f])
+             volume, center = res
+             if volume is None or volume > opt["interference_mm3"]:
+-                hits.append({"angle": angle, "a": doc.getObject(m).Label, "b": doc.getObject(f).Label,
++                hits.append({"angle": angle, "a": label(m), "b": label(f),
+                              "names": [m, f], "volume": volume,
+                              "center": list(center) if center is not None else None})  # fmt: skip
+-    return {"angles": angles, "moving": [doc.getObject(m).Label for m in movers], "hits": hits,
+-            "first": hits[0]["angle"] if hits else None}  # fmt: skip
++    return {"angles": angles, "moving": [label(m) for m in movers if "#" not in m], "carried": carried,
++            "hits": hits, "first": hits[0]["angle"] if hits else None}  # fmt: skip
+ 
+ 
+ def interferences(doc=None, **options):
+@@ -1208,7 +1253,7 @@ def cli_main():
+             raise RuntimeError("--design-check sweep: give the motion with --sweep motion.json")
+         with open(spec_file, encoding="utf-8-sig") as f:
+             spec = json.load(f)
+-        known = {"moving", "axis", "from", "to", "step"}
++        known = {"moving", "axis", "from", "to", "step", "carry"}
+         if set(spec) - known:
+             raise RuntimeError("--sweep: unknown keys %s (known: %s)" % (sorted(set(spec) - known), sorted(known)))
+         moving = spec.get("moving") or []
+@@ -1218,7 +1263,7 @@ def cli_main():
+         if len(axis) != 6:
+             raise RuntimeError("--sweep: axis is [px, py, pz, dx, dy, dz] (a point and a direction)")
+         result = sweep(doc, moving, (axis[:3], axis[3:]), float(spec.get("from", 0)), float(spec.get("to", 90)),
+-                       float(spec.get("step", 5)), **options)  # fmt: skip
++                       float(spec.get("step", 5)), carry=spec.get("carry"), **options)  # fmt: skip
+         print(json.dumps({"sweep": result}, ensure_ascii=False, indent=1))
+         errors = bool(result["hits"])
+     elif what == "interference":
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index 90af500a2..eb83a3481 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -152,6 +152,30 @@ class DesignCheckSweepTest(unittest.TestCase):
+         finally:
+             App.closeDocument(doc.Name)
+ 
++    def test_solids_of_a_compound_carried(self):
++        # all the bolts in one compound: those of the hub turn with it, the others stay (a gate's
++        # bar, asked on 0.8.4)
++        doc = App.newDocument("carry")
++        try:
++            box(doc, "Bar", 0, -2, -2, l=100, w=4, h=4)
++            bolts = doc.addObject("Part::Feature", "Bolts")
++            bolts.Shape = Part.makeCompound([Part.makeCylinder(1, 10, App.Vector(20, 0, -5)),    # through the bar
++                                             Part.makeCylinder(1, 10, App.Vector(30, 40, -5))])  # on a post
++            box(doc, "Post", 25, 35, -5, l=10, w=10, h=3)  # the second bolt stands in it
++            doc.recompute()
++            plain = DesignCheck.sweep(doc, ["Bar"], ((0, 0, 0), (0, 0, 1)), 0, 30, 10)
++            self.assertIn(0.0, {h["angle"] for h in plain["hits"] if h["b"] == "Bolts"})  # left behind: hit
++            got = DesignCheck.sweep(doc, ["Bar"], ((0, 0, 0), (0, 0, 1)), 0, 30, 10,
++                                    carry={"from": ["Bolts"], "margin": 1})  # fmt: skip
++            self.assertEqual(got["carried"], ["Bolts[0]"])
++            self.assertEqual(got["hits"], [])
++            # the bar reaches the other bolt at about 53 deg: the bolt left behind is still checked
++            got = DesignCheck.sweep(doc, ["Bar"], ((0, 0, 0), (0, 0, 1)), 0, 90, 1, carry={"from": ["Bolts"]})
++            self.assertIn(("Bar", "Bolts"), {(h["a"], h["b"]) for h in got["hits"]})
++            self.assertTrue(all(48 <= h["angle"] <= 58 for h in got["hits"]), got["hits"])
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ class DesignCheckCommandLineTest(unittest.TestCase):
+     def test_design_check_interference(self):
+-- 
+2.43.0
+

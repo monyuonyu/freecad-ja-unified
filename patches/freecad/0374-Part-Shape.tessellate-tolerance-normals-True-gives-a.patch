@@ -1,7 +1,7 @@
 From 99a6623099d7b335e30a7bcdde8aef14af0e51b3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:45:56 +0900
-Subject: [PATCH 374/397] Part: Shape.tessellate(tolerance, normals=True) gives
+Subject: [PATCH 374/398] Part: Shape.tessellate(tolerance, normals=True) gives
  a normal for each point
 
 The normals out of the solid, from OCC's triangulation; the points are

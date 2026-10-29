@@ -332,6 +332,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.8.5
+
+- `--sweep` takes `"carry"`: `"carry": {"from": ["Bolts"], "inside": ["Hub"], "margin": 3}` turns the solids of those parts (all the bolts in one compound) whose centre is in the box of the moving parts, grown by margin; the others stay and are still checked (the hub's bolts used to stay behind and be hit at each angle). Without `inside`, the moving parts' box. `carried` in the result names them (`Bolts[3]`)
+
 ## Changes in 0.8.4
 
 From two days of the headless tool (freecadcmd-ja) on a project of some 1,000 parts.

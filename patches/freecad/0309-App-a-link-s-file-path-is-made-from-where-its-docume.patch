@@ -1,7 +1,7 @@
 From 80088b3fc8e84edc343f1f70c1bbd98e02e5b1cf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:18:00 +0900
-Subject: [PATCH 309/397] App: a link's file path is made from where its
+Subject: [PATCH 309/398] App: a link's file path is made from where its
  document is saved now
 
 An external link's relative path was made when the link was set. An

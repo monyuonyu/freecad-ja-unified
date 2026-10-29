@@ -325,6 +325,10 @@ AI 要执行的代码默认每次都会显示，只有点“実行する”（�
 此外还修复了装配求解器（OndselSolver）中，在 Linux 和 macOS 上导出装配（ASMT）时关节类型名损坏的问题
 （截取类型名时以 Windows 的格式为前提。是在上游测试 #32922 于 Linux 上失败时发现的）。
 
+## 0.8.5 的变更
+
+`--sweep` 新增 `"carry"`：把合并成一个零件的螺栓中，中心位于运动零件包围盒（加 margin）内的实体一起旋转，其余仍保持不动并继续检查；结果中的 `carried` 列出这些实体。
+
 ## 0.8.4 的变更
 
 来自约 1,000 个零件的项目中两天使用无界面工具（freecadcmd-ja）的报告：`--gui-script` 启动时的约 55 行警告不再输出（启动失败时才显示，`FREECAD_GUI_SCRIPT_VERBOSE=1` 全部显示），错误的最后一行给出脚本的文件和行号；设计检查可用 `--ignore-pairs pairs.txt` 排除有意接触的零件组合（`DesignCheck.allow_overlap` 可记录在文件中，面板中的“忽略”只忽略该组合）；`--sweep motion.json` 让零件绕轴逐步旋转并在每个角度检查干涉（`DesignCheck.sweep`）。

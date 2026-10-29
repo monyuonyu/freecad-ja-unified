@@ -1,7 +1,7 @@
 From 7bf5d13d74c65cb62f3aa207b9a70e3c157b02f7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:48:15 +0900
-Subject: [PATCH 333/397] Sketcher: a point of the sketch under the cursor wins
+Subject: [PATCH 333/398] Sketcher: a point of the sketch under the cursor wins
  over the line or axis it lies on
 
 A polyline started on the vertical axis and closed on its start point got

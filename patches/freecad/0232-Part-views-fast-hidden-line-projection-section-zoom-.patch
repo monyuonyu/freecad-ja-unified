@@ -1,7 +1,7 @@
 From c93237e4696767a7b919dcf92c094df4ea1cbf48 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 07:22:29 +0900
-Subject: [PATCH 232/397] Part views: fast hidden-line projection, section,
+Subject: [PATCH 232/398] Part views: fast hidden-line projection, section,
  zoom, up vector, time limit
 
 projectVisible clipped every face against every face whose box overlapped it, on

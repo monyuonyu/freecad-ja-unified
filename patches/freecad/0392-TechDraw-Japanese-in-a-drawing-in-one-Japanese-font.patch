@@ -1,7 +1,7 @@
 From 545664768d94128b66e5a0d66ff24f4590c38d58 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 28 Oct 2026 12:33:46 +0900
-Subject: [PATCH 392/397] TechDraw: Japanese in a drawing in one Japanese font
+Subject: [PATCH 392/398] TechDraw: Japanese in a drawing in one Japanese font
 
 osifont had 161 kanji and kana, Japanese and Chinese: in a word some were
 drawn by it and the others by a font the system picked (a Korean form in

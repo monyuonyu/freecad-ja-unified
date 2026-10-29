@@ -1,7 +1,7 @@
 From 863b92a17562f905a4447d3308fd69818696d0f0 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:26:37 +0900
-Subject: [PATCH 352/397] Assembly: a part fixed on a round or flat face keeps
+Subject: [PATCH 352/398] Assembly: a part fixed on a round or flat face keeps
  its turn about the axis
 
 A round face has no direction across its axis: a cylinder fixed on a
