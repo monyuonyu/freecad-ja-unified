@@ -1,7 +1,7 @@
 From d35d2a3652cd9c62be76b3de79daed764194aba7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 07:44:12 +0900
-Subject: [PATCH 234/395] Part: solidFromMesh and filletMeshSolid for solids
+Subject: [PATCH 234/397] Part: solidFromMesh and filletMeshSolid for solids
  made from STL
 
 Part.solidFromMesh(mesh, tolerance, refine=True, fillHoles=20, report=False) repairs

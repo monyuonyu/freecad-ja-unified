@@ -1,7 +1,7 @@
 From fa18a6b07640283de69e39b048056fcf9314941b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 10:42:29 +0900
-Subject: [PATCH 349/395] Gui: a message given while the notifications are
+Subject: [PATCH 349/397] Gui: a message given while the notifications are
  shown does not wait for itself
 
 Showing the notifications raises a widget; on the offscreen platform Qt

@@ -1,7 +1,7 @@
 From 0a5d2b9911314ab922ac09ce668b64d6bc3853df Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 02:08:26 +0900
-Subject: [PATCH 344/395] Assembly: a fixed joint turned half a turn about one
+Subject: [PATCH 344/397] Assembly: a fixed joint turned half a turn about one
  of its axes holds
 
 The solver's fixed joint holds the frames' axes square to each other, so a

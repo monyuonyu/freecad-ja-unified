@@ -1,7 +1,7 @@
 From 907baec8cec739c269e249460cb89fa2133fd031 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 15:14:09 +0900
-Subject: [PATCH 328/395] Unified: a click into a number field takes the whole
+Subject: [PATCH 328/397] Unified: a click into a number field takes the whole
  number
 
 The count of a pattern needed three clicks to be typed over (engine field

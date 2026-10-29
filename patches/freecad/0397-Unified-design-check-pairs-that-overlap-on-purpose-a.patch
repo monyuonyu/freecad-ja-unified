@@ -1,0 +1,397 @@
+From f33b4d97891f97e69fce5f74ec06a6c572ac96a6 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 11:42:18 +0900
+Subject: [PATCH 397/397] Unified: design check: pairs that overlap on purpose,
+ and parts turned through their motion
+
+--ignore-pairs pairs.txt (A, B a line; labels or names of parts or their
+groups, * and ?) and DesignCheck.allow_overlap(a, b), kept in the file;
+ignoring an overlap in the panel now ignores that pair only, not the
+rule for both parts. --sweep motion.json (DesignCheck.sweep): the parts
+named are turned about an axis by steps and checked against the others
+at each angle; exit code 1 on a hit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp            |   9 +-
+ src/Mod/Unified/DesignCheck.py     | 175 +++++++++++++++++++++++++++--
+ src/Mod/Unified/TestDesignCheck.py |  97 ++++++++++++++++
+ 3 files changed, 271 insertions(+), 10 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index dec3dfdeb..e2201ed39 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2494,7 +2494,9 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+     ("progress", "Progress of --render/--export-* on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+-    ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only")
++    ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
++    ("ignore-pairs", boost::program_options::value<std::string>(), "With --design-check: a text file of the pairs of parts that overlap on purpose, one pair a line: A, B (labels or names of parts or of their groups; * and ? match any characters; # a comment)")
++    ("sweep", boost::program_options::value<std::string>(), "Turn parts and check their overlaps at each step (implies --design-check sweep): a JSON file {\"moving\": [\"Bar*\"], \"axis\": [px, py, pz, dx, dy, dz], \"from\": 0, \"to\": 80, \"step\": 5}")
+     ("gui-script", boost::program_options::value<std::string>(), "Run a Python script that needs the GUI (e.g. TechDraw's view providers) without a screen: its output and errors as from any script, exit code 1 on an exception; arguments after --")
+     ("check-layout", "With --export-drawings: warn of views, texts and dimensions out of the sheet's frame or on its title block")
+     ("line-width", boost::program_options::value<std::string>(), "Visible lines of --export-drawings in mm (hidden lines and dimensions half of it; default: the views' own widths, or the line group of the preferences)")
+@@ -2753,12 +2755,17 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"line-width", "DrawingLineWidth"},
+         {"gui-script", "GuiScript"},
+         {"design-check", "DesignCheck"},
++        {"ignore-pairs", "DesignCheckIgnorePairs"},
++        {"sweep", "DesignCheckSweep"},
+     };
+     for (const auto& [option, key] : viewOptions) {
+         if (vm.contains(option)) {
+             mConfig[key] = vm[option].as<std::string>();
+         }
+     }
++    if (vm.contains("sweep") && !vm.contains("design-check")) {
++        mConfig["DesignCheck"] = "sweep";
++    }
+     if (vm.contains("check-layout")) {
+         mConfig["DrawingCheckLayout"] = "1";
+     }
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index b6830b0eb..a33dfaab2 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -660,10 +660,14 @@ def iter_interference(doc, issues, opt, shapes):
+             worker.join(0.05)
+         measured = box.get("r", {})
+     one = {n: one_items(doc.getObject(n)) for n in shapes}
++    allowed = _pair_rule(doc, opt.get("ignore_pairs"))
++    opt["allowed_pairs"] = 0
+     for k, ((na, a), (nb, b)) in enumerate(pairs):
+         yield Progress(k, len(pairs), message(k))
+-        if one[na] & one[nb]:
+-            # the parts of one item (a chair, a bed welded together): overlap on purpose
++        if one[na] & one[nb] or allowed(na, nb):
++            opt["allowed_pairs"] += 0 if one[na] & one[nb] else 1
++            # the parts of one item (a chair, a bed welded together), a pair said to overlap on
++            # purpose (a line through its eyebolt): not checked
+             touch[na] = touch[nb] = True
+             continue
+         # もう接していると分かっている部品どうしは、浮きのためには距離を測らない
+@@ -968,6 +972,131 @@ def set_one_item(container, on=True):
+     setattr(container, ONE_ITEM_PROP, bool(on))
+ 
+ 
++PAIRS_PROP = "DesignCheckOverlapOK"
++
++
++def load_pairs(path):
++    """The pairs allowed to overlap, from a text file: one pair a line, "A, B" (or a tab between
++    them); labels or names, * and ? match any characters; # begins a comment.
++    Returns [(pattern a, pattern b)]"""
++    pairs = []
++    with open(path, encoding="utf-8-sig") as f:
++        for n, line in enumerate(f, 1):
++            line = line.split("#", 1)[0].strip()
++            if not line:
++                continue
++            cut = line.split("\t") if "\t" in line else line.split(",")
++            cut = [c.strip() for c in cut if c.strip()]
++            if len(cut) != 2:
++                raise ValueError("%s line %d: two parts are needed, \"A, B\": %r" % (path, n, line))
++            pairs.append(tuple(cut))
++    return pairs
++
++
++def allow_overlap(a, b, on=True):
++    """Say that the parts a and b overlap on purpose (kept in the file): the pair is not checked"""
++    for x, y in ((a, b), (b, a)):
++        if PAIRS_PROP not in x.PropertiesList:
++            x.addProperty("App::PropertyStringList", PAIRS_PROP, "DesignCheck",
++                          QT_TRANSLATE_NOOP("App::Property", "Parts that may overlap this one on purpose "
++                                            "(names): the pair is not checked"))  # fmt: skip
++        names = [n for n in getattr(x, PAIRS_PROP) if n != y.Name]
++        setattr(x, PAIRS_PROP, names + [y.Name] if on else names)
++
++
++def _pair_rule(doc, patterns=None):
++    """A test (name a, name b) -> True for a pair allowed to overlap: by the parts' own list
++    (allow_overlap) or by `patterns` [(a, b)] matched to the labels or names of the parts or of
++    the groups and parts they are in"""
++    import fnmatch
++
++    patterns = list(patterns or [])
++    memo = {}
++
++    def names(n):
++        if n not in memo:
++            o = doc.getObject(n)
++            got = {o.Name, o.Label} if o is not None else {n}
++            for up in (o.InListRecursive if o is not None else []):
++                if up.isDerivedFrom("App::Part") or up.isDerivedFrom("App::DocumentObjectGroup") \
++                        or up.isDerivedFrom("PartDesign::Body"):
++                    got |= {up.Name, up.Label}
++            memo[n] = got
++        return memo[n]
++
++    def matches(n, pattern):
++        return any(fnmatch.fnmatchcase(x, pattern) for x in names(n))
++
++    def allowed(na, nb):
++        for x, y in ((na, nb), (nb, na)):
++            o = doc.getObject(x)
++            if o is not None and y in (getattr(o, PAIRS_PROP, None) or []):
++                return True
++        return any((matches(na, p) and matches(nb, q)) or (matches(na, q) and matches(nb, p)) for p, q in patterns)
++
++    return allowed
++
++
++def sweep(doc=None, moving=(), axis=((0, 0, 0), (0, 0, 1)), start=0.0, end=90.0, step=5.0, **options):
++    """Turn the parts `moving` (labels or names, * and ?; a group or App::Part takes its parts)
++    about `axis` ((point), (direction)) from `start` to `end` degrees by `step`, and check at each
++    angle whether they overlap the other parts (a bar turning 0-80 deg; asked from a gate's
++    project). ignore_pairs=[(a, b)] as in interferences. Returns {"angles": [...], "moving":
++    [labels], "hits": [{"angle", "a", "b", "volume", "center"}], "first": angle or None}"""
++    import fnmatch
++
++    doc = doc or App.ActiveDocument
++    opt = dict(DEFAULTS, floating=False, **options)
++    if not moving:
++        raise ValueError("sweep: name the parts that move")
++    shapes = {n: sh for n, sh in parts(doc).items() if sh.Solids}
++
++    def names(n):
++        o = doc.getObject(n)
++        return {o.Name, o.Label} | {u.Label for u in o.InListRecursive} | {u.Name for u in o.InListRecursive}
++
++    movers = sorted(n for n in shapes if any(fnmatch.fnmatchcase(x, p) for p in moving for x in names(n)))
++    if not movers:
++        raise ValueError("sweep: no visible solid part matches %s" % ", ".join(moving))
++    point, direction = App.Vector(*axis[0]), App.Vector(*axis[1])
++    if direction.Length < 1e-12:
++        raise ValueError("sweep: the axis has no direction")
++    if step <= 0:
++        raise ValueError("sweep: the step must be more than 0")
++    angles = []
++    a = float(start)
++    while (a < end - 1e-9) if end >= start else (a > end + 1e-9):
++        angles.append(round(a, 9))
++        a += step if end >= start else -step
++    angles.append(float(end))
++    allowed = _pair_rule(doc, opt.get("ignore_pairs"))
++    one = {n: one_items(doc.getObject(n)) for n in shapes}
++    fixed = [n for n in shapes if n not in movers]
++    wanted = {(m, f) for m in movers for f in fixed if not (one[m] & one[f]) and not allowed(m, f)}
++    hits = []
++    for angle in angles:
++        turn = App.Placement(App.Vector(), App.Rotation(direction, angle), point)
++        now = dict(shapes)
++        for m in movers:
++            moved = shapes[m].copy()
++            moved.Placement = turn.multiply(shapes[m].Placement)
++            now[m] = moved
++        near = {(m, f) for m, f in wanted if now[m].BoundBox.intersect(now[f].BoundBox)}
++        if not near:
++            continue
++        got = _measure_overlaps(list(now.items()), near, opt)
++        for (m, f), res in sorted(got.items()):
++            if res is None:
++                res = _common_volume(now[m], now[f])
++            volume, center = res
++            if volume is None or volume > opt["interference_mm3"]:
++                hits.append({"angle": angle, "a": doc.getObject(m).Label, "b": doc.getObject(f).Label,
++                             "names": [m, f], "volume": volume,
++                             "center": list(center) if center is not None else None})  # fmt: skip
++    return {"angles": angles, "moving": [doc.getObject(m).Label for m in movers], "hits": hits,
++            "first": hits[0]["angle"] if hits else None}  # fmt: skip
++
++
+ def interferences(doc=None, **options):
+     """Only the overlaps of the parts, as the design check finds them (the same measure from a
+     script): [{"a", "b" (labels), "names", "volume" (mm³; None: could not be checked),
+@@ -992,7 +1121,13 @@ def ignored_rules(obj):
+ 
+ 
+ def ignore(doc, issue):
+-    """この指摘を無視する: 関係する物それぞれに規則の名前を記録する（KiCad の「違反を除外」）"""
++    """この指摘を無視する: 関係する物それぞれに規則の名前を記録する（KiCad の「違反を除外」）。
++    重なりはその組だけ（規則ごと外すと、その部品と他の部品の重なりまで見なくなる）"""
++    if issue.rule == "interference" and len(issue.objects) == 2:
++        a, b = (doc.getObject(n) for n in issue.objects)
++        if a is not None and b is not None:
++            allow_overlap(a, b)
++            return
+     for n in issue.objects:
+         o = doc.getObject(n)
+         if o is None:
+@@ -1044,7 +1179,7 @@ def iter_run(doc=None, **options):
+     check_assemblies(doc, issues, opt)
+     yield from iter_interference(doc, issues, opt, shapes)
+     kept = Issues(i for i in issues if not _is_ignored(doc, i))
+-    kept.ignored = len(issues) - len(kept)
++    kept.ignored = len(issues) - len(kept) + opt.get("allowed_pairs", 0)
+     kept.sort(key=lambda i: ORDER[i.severity])
+     yield kept
+ 
+@@ -1054,8 +1189,9 @@ def summary(issues):
+ 
+ 
+ def cli_main():
+-    """FreeCADCmd model.FCStd --design-check [interference]: the open document checked, the
+-    issues as JSON on stdout, exit code 1 on an error"""
++    """FreeCADCmd model.FCStd --design-check [interference|sweep] [--ignore-pairs pairs.txt]
++    [--sweep motion.json]: the open document checked, the issues as JSON on stdout, exit code 1
++    on an error (sweep: on a hit at any angle)"""
+     import json
+     import sys
+ 
+@@ -1064,12 +1200,33 @@ def cli_main():
+         raise RuntimeError("--design-check: no document is open (give a .FCStd file)")
+     doc.recompute()
+     what = App.ConfigGet("DesignCheck") or "all"
+-    if what == "interference":
+-        found = interferences(doc)
++    pairs_file = App.ConfigGet("DesignCheckIgnorePairs")
++    options = {"ignore_pairs": load_pairs(pairs_file)} if pairs_file else {}
++    if what == "sweep":
++        spec_file = App.ConfigGet("DesignCheckSweep")
++        if not spec_file:
++            raise RuntimeError("--design-check sweep: give the motion with --sweep motion.json")
++        with open(spec_file, encoding="utf-8-sig") as f:
++            spec = json.load(f)
++        known = {"moving", "axis", "from", "to", "step"}
++        if set(spec) - known:
++            raise RuntimeError("--sweep: unknown keys %s (known: %s)" % (sorted(set(spec) - known), sorted(known)))
++        moving = spec.get("moving") or []
++        axis = spec.get("axis") or [0, 0, 0, 0, 0, 1]
++        if isinstance(moving, str):
++            moving = [moving]
++        if len(axis) != 6:
++            raise RuntimeError("--sweep: axis is [px, py, pz, dx, dy, dz] (a point and a direction)")
++        result = sweep(doc, moving, (axis[:3], axis[3:]), float(spec.get("from", 0)), float(spec.get("to", 90)),
++                       float(spec.get("step", 5)), **options)  # fmt: skip
++        print(json.dumps({"sweep": result}, ensure_ascii=False, indent=1))
++        errors = bool(result["hits"])
++    elif what == "interference":
++        found = interferences(doc, **options)
+         print(json.dumps({"interferences": found}, ensure_ascii=False, indent=1, default=lambda v: list(v)))
+         errors = any(f["volume"] is not None for f in found)
+     else:
+-        issues = run(doc)
++        issues = run(doc, **options)
+         print(json.dumps({"summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
+                          ensure_ascii=False, indent=1))  # fmt: skip
+         errors = bool(summary(issues)[ERROR])
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index bee7acf6f..90af500a2 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -75,6 +75,84 @@ class DesignCheckOverlapTest(unittest.TestCase):
+         self.assertEqual([i.severity for i in issues if i.rule == "interference_unchecked"], [DesignCheck.WARNING])
+ 
+ 
++class DesignCheckPairsTest(unittest.TestCase):
++    # a line through its eyebolt, a worker and a banner: overlaps on purpose, said every time
++    # (asked from a gate's project on 0.8.2)
++    def setUp(self):
++        DesignCheck._PAIR_CACHE.clear()
++        self.doc = App.newDocument("pairs")
++        self.line = box(self.doc, "Line", 0, 0, 0)
++        self.bolt = box(self.doc, "Bolt", 5, 5, 5)
++        self.wall = box(self.doc, "Wall", 8, 0, 0)
++        self.line.Label, self.bolt.Label = "テグス", "アイボルト"
++        self.doc.recompute()
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++
++    def names(self, **options):
++        return sorted(tuple(sorted(f["names"])) for f in DesignCheck.interferences(self.doc, **options))
++
++    def test_pairs_by_pattern(self):
++        self.assertIn(("Bolt", "Line"), self.names())
++        got = self.names(ignore_pairs=[("アイボルト", "テグス*")])
++        self.assertNotIn(("Bolt", "Line"), got)
++        self.assertIn(("Bolt", "Wall"), got)  # the bolt against the others: still checked
++        self.assertIn(("Line", "Wall"), got)
++
++    def test_a_pair_kept_in_the_file(self):
++        DesignCheck.allow_overlap(self.line, self.bolt)
++        self.assertNotIn(("Bolt", "Line"), self.names())
++        self.assertIn(("Bolt", "Wall"), self.names())
++
++    def test_ignoring_an_overlap_ignores_that_pair_only(self):
++        issue = [i for i in DesignCheck.run(self.doc) if i.rule == "interference"
++                 and sorted(i.objects) == ["Bolt", "Line"]][0]  # fmt: skip
++        DesignCheck.ignore(self.doc, issue)
++        issues = DesignCheck.run(self.doc)
++        pairs = [sorted(i.objects) for i in issues if i.rule == "interference"]
++        self.assertNotIn(["Bolt", "Line"], pairs)
++        self.assertIn(["Bolt", "Wall"], pairs)
++        self.assertGreaterEqual(issues.ignored, 1)
++
++    def test_load_pairs(self):
++        tmp = tempfile.mkdtemp()
++        try:
++            path = os.path.join(tmp, "pairs.txt")
++            with open(path, "w", encoding="utf-8") as f:
++                f.write("# on purpose\nテグス, アイボルト\nWorker*\tBanner  # the banner\n\n")
++            self.assertEqual(DesignCheck.load_pairs(path), [("テグス", "アイボルト"), ("Worker*", "Banner")])
++            with open(path, "w", encoding="utf-8") as f:
++                f.write("only one\n")
++            with self.assertRaises(ValueError):
++                DesignCheck.load_pairs(path)
++        finally:
++            shutil.rmtree(tmp)
++
++
++class DesignCheckSweepTest(unittest.TestCase):
++    def test_a_bar_turned_into_a_block(self):
++        doc = App.newDocument("sweep")
++        try:
++            gate = doc.addObject("App::Part", "Gate")
++            bar = box(doc, "Bar", 0, -2, -2, l=100, w=4, h=4)
++            gate.addObject(bar)
++            box(doc, "Post", 60, 60, -5)  # hit at about 45 deg
++            box(doc, "Base", -10, -10, -20, l=20, w=20, h=10)  # never hit
++            doc.recompute()
++            got = DesignCheck.sweep(doc, ["Gate"], ((0, 0, 0), (0, 0, 1)), 0, 80, 5)
++            self.assertEqual(got["moving"], ["Bar"])
++            self.assertEqual(got["angles"][0], 0)
++            self.assertEqual(got["angles"][-1], 80)
++            angles = sorted({h["angle"] for h in got["hits"]})
++            self.assertTrue(angles and 35 <= angles[0] <= 50 and angles[-1] <= 55, angles)
++            self.assertEqual({h["b"] for h in got["hits"]}, {"Post"})
++            got = DesignCheck.sweep(doc, ["Bar"], ((0, 0, 0), (0, 0, 1)), 0, 80, 5, ignore_pairs=[("Bar", "Post")])
++            self.assertEqual(got["hits"], [])
++        finally:
++            App.closeDocument(doc.Name)
++
++
+ class DesignCheckCommandLineTest(unittest.TestCase):
+     def test_design_check_interference(self):
+         import DrawingPdf
+@@ -95,6 +173,25 @@ class DesignCheckCommandLineTest(unittest.TestCase):
+             data = json.loads(out[out.index("{"):])
+             self.assertEqual([sorted((f["a"], f["b"])) for f in data["interferences"]], [["Post", "Shelf"]])
+             self.assertAlmostEqual(data["interferences"][0]["volume"], 3 * 3 * 2, places=3)
++            pairs = os.path.join(tmp, "pairs.txt")
++            with open(pairs, "w", encoding="utf-8") as f:
++                f.write("Post, Shelf\n")
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--design-check", "interference",
++                                   "--ignore-pairs", pairs], capture_output=True, timeout=300,
++                                  stdin=subprocess.DEVNULL)  # fmt: skip
++            out = proc.stdout.decode("utf-8", "replace")
++            self.assertEqual(proc.returncode, 0, out + proc.stderr.decode("utf-8", "replace"))
++            self.assertEqual(json.loads(out[out.index("{"):])["interferences"], [])
++            motion = os.path.join(tmp, "motion.json")
++            with open(motion, "w", encoding="utf-8") as f:
++                json.dump({"moving": ["Post"], "axis": [51.5, 11.5, 0, 0, 0, 1], "from": 0, "to": 90, "step": 30}, f)
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--sweep", motion], capture_output=True,
++                                  timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
++            out = proc.stdout.decode("utf-8", "replace")
++            self.assertEqual(proc.returncode, 1, out + proc.stderr.decode("utf-8", "replace"))
++            sweep = json.loads(out[out.index("{"):])["sweep"]
++            self.assertEqual(sweep["angles"], [0, 30, 60, 90])
++            self.assertEqual(sorted({h["angle"] for h in sweep["hits"]}), [0, 30, 60, 90])
+         finally:
+             shutil.rmtree(tmp)
+ 
+-- 
+2.43.0
+

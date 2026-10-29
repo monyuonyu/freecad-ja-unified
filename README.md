@@ -50,7 +50,7 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 - `--export-svg` / `--export-pptx`（隠れ線を消した 2D）、`--export-drawings out.pdf`（図面の PDF。`--line-width 0.25` で線の太さ、`--check-layout` で枠・表題欄へのはみ出しを知らせる）
 - `--export-web model.html`（ブラウザで回して見る 3D。1 つの HTML で、ネットなし・スマホでも）
 - `--gui-script work.py -- 引数`（画面の機能が要るスクリプトを画面なしで。出力とエラーはそのまま）
-- `--interference`（干渉検査。300 部品で約 1 秒）
+- `--interference`（干渉検査。300 部品で約 1 秒）、`--design-check`（設計の検査を JSON で。`--ignore-pairs` でわざと当てた組を外す、`--sweep` で動く部品を回しながら干渉を調べる）
 - DWG（AutoCAD）を R2018 まで読み書き、Jw_cad の図面（JWW）を開く
 
 ![面をクリックすると、その横に次の操作が出る](docs/images/08_face_actions.png)
@@ -342,6 +342,15 @@ AI が実行しようとするコードは、既定では毎回表示され、�
 
 あわせて、組立のソルバー（OndselSolver）で、Linux・macOS では組立の書き出し（ASMT）の関節の種類名が壊れる不具合を直した
 （型の名前を Windows の形を前提に切り出していた。本家の試験 #32922 が Linux で落ちて分かった）。
+
+## 0.8.4 の変更
+
+部品約 1,000 点の案件で、画面なしの道具（freecadcmd-ja）を 2 日使った報告から。
+
+- **`--gui-script` の起動時の警告（スタイルの名前・Fontconfig・OpenGL など約 55 行）が、スクリプトの出力やエラーを埋もれさせた**: 起動中の出力はファイルにためて、起動に失敗したときだけ出す（`FREECAD_GUI_SCRIPT_VERBOSE=1` で全部出す）
+- `--gui-script` のエラーで、最初に目に入るのが GuiScript.py の行だった: トレースバックはスクリプトの行から始め、最後の行に「work.py line 5: FreeCADError: …」とスクリプトの何行目かを出す
+- **わざと当てている組み合わせを設計の検査から外す**: `--ignore-pairs pairs.txt`（1 行に「A, B」。部品か、その入れ物の名前・ラベル。`*` `?` が使える。`#` から後はコメント）。`DesignCheck.allow_overlap(a, b)` でファイルに記録もできる。検査の窓で重なりを「無視」したときも、その組だけを外す（前は両方の部品の重なり全部を見なくなった）
+- **動く部品の干渉（スイープ）**: `--sweep motion.json`（`{"moving": ["バー*"], "axis": [点 x, y, z, 向き x, y, z], "from": 0, "to": 80, "step": 5}`）で、部品を軸の回りに少しずつ回し、角度ごとに他の部品との重なりを調べる。当たった角度と相手を JSON で出し、当たれば終了コード 1。スクリプトからは `DesignCheck.sweep(...)`
 
 ## 0.8.3 の変更
 

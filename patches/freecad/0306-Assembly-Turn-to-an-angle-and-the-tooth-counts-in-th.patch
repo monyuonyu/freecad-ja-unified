@@ -1,7 +1,7 @@
 From 1a2384f29b2768fa2942bdbabcd7424766fe1eaf Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:42:13 +0900
-Subject: [PATCH 306/395] Assembly: "Turn to an angle" and the tooth counts in
+Subject: [PATCH 306/397] Assembly: "Turn to an angle" and the tooth counts in
  the joint panel
 
 The revolute joint's panel gets a check box "Turn to an angle" with its

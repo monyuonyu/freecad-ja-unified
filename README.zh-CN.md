@@ -42,7 +42,7 @@
 - `--export-svg` / `--export-pptx`（消隐 2D）、`--export-drawings out.pdf`（图纸 PDF；`--line-width 0.25` 指定线宽，`--check-layout` 报告超出图框或压到标题栏）
 - `--export-web model.html`（在浏览器中旋转查看的 3D，单个 HTML，离线、手机均可）
 - `--gui-script work.py -- 参数`（无界面运行需要 GUI 的脚本，输出与错误照常显示）
-- `--interference`（300 个零件约 1 秒）
+- `--interference`（300 个零件约 1 秒）、`--design-check`（以 JSON 输出设计检查；`--ignore-pairs` 排除有意接触的组合，`--sweep` 旋转运动零件并检查干涉）
 - 读写 DWG（AutoCAD，最高 R2018），打开 Jw_cad 图纸（JWW）
 
 ![点击一个面，旁边就会出现下一步操作](docs/images/08_face_actions.png)
@@ -324,6 +324,10 @@ AI 要执行的代码默认每次都会显示，只有点“実行する”（�
 
 此外还修复了装配求解器（OndselSolver）中，在 Linux 和 macOS 上导出装配（ASMT）时关节类型名损坏的问题
 （截取类型名时以 Windows 的格式为前提。是在上游测试 #32922 于 Linux 上失败时发现的）。
+
+## 0.8.4 的变更
+
+来自约 1,000 个零件的项目中两天使用无界面工具（freecadcmd-ja）的报告：`--gui-script` 启动时的约 55 行警告不再输出（启动失败时才显示，`FREECAD_GUI_SCRIPT_VERBOSE=1` 全部显示），错误的最后一行给出脚本的文件和行号；设计检查可用 `--ignore-pairs pairs.txt` 排除有意接触的零件组合（`DesignCheck.allow_overlap` 可记录在文件中，面板中的“忽略”只忽略该组合）；`--sweep motion.json` 让零件绕轴逐步旋转并在每个角度检查干涉（`DesignCheck.sweep`）。
 
 ## 0.8.3 的变更
 

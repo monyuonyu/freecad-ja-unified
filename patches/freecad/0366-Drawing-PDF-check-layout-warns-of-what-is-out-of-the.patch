@@ -1,7 +1,7 @@
 From 62d7831a7869e650204b845ec22915c06179c659 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:41:54 +0900
-Subject: [PATCH 366/395] Drawing PDF: --check-layout warns of what is out of
+Subject: [PATCH 366/397] Drawing PDF: --check-layout warns of what is out of
  the frame or on the title block
 
 A note centred on its X ran out to the left of the frame and onto the

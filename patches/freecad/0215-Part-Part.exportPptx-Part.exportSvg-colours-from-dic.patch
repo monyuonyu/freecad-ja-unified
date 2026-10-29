@@ -1,7 +1,7 @@
 From 9c53bf5d163b2e8e812481c7e99e462c7966c1bc Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 09:57:18 +0900
-Subject: [PATCH 215/395] Part: Part.exportPptx / Part.exportSvg, colours from
+Subject: [PATCH 215/397] Part: Part.exportPptx / Part.exportSvg, colours from
  dicts and from the FCStd file
 
   Part.exportPptx(objects, "out.pptx", view="iso", edges="outline", group=True,

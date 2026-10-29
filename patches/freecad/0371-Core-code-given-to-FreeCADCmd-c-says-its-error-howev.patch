@@ -1,7 +1,7 @@
 From 70721cee52182a0dcf812161ff4a043191ee4326 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:14:40 +0900
-Subject: [PATCH 371/395] Core: code given to FreeCADCmd -c says its error,
+Subject: [PATCH 371/397] Core: code given to FreeCADCmd -c says its error,
  however long
 
 Code of more than 255 characters was asked for as a file name: "File

@@ -1,7 +1,7 @@
 From 7dbab39c376b4235c5e8e1259657569ad84fecae Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 23:36:10 +0900
-Subject: [PATCH 372/395] Core: --gui-script does not wait for a script on
+Subject: [PATCH 372/397] Core: --gui-script does not wait for a script on
  stdin; test of files opened and closed at once
 
 Without input files FreeCADCmd read its standard input as a script: run

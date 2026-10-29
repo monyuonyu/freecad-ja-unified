@@ -1,7 +1,7 @@
 From 083fecf7a887812c76e7a8f78334e2de4923458a Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:45:21 +0900
-Subject: [PATCH 368/395] Part views: --focus takes labels as written, loosely
+Subject: [PATCH 368/397] Part views: --focus takes labels as written, loosely
  or in part, and says the nearest
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

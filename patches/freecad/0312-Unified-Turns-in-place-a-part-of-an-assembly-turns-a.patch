@@ -1,7 +1,7 @@
 From 769e0a0e4c3c072beacbad7bec7c40cf5c346fb3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 11:26:35 +0900
-Subject: [PATCH 312/395] Unified: "Turns in place" - a part of an assembly
+Subject: [PATCH 312/397] Unified: "Turns in place" - a part of an assembly
  turns about a round face, held by the ground
 
 A joint needed two parts: a crank could not be made to turn on the ground,

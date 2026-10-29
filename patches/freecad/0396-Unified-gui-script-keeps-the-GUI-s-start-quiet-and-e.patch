@@ -1,0 +1,137 @@
+From 2d117688f32f25c37b03839b39acb794c37d2aeb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 29 Oct 2026 11:39:27 +0900
+Subject: [PATCH 396/397] Unified: --gui-script keeps the GUI's start quiet and
+ ends an error with the script's line
+
+Some 55 lines (style tokens, Fontconfig, OpenGL) came before the script's
+output; they go to a file shown only if the start fails
+(FREECAD_GUI_SCRIPT_VERBOSE=1 shows them). The traceback starts at the
+script's frame, and its last line names the script's file and line.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/GuiScript.py     | 56 ++++++++++++++++++++++++++++++--
+ src/Mod/Unified/TestGuiScript.py |  4 +++
+ 2 files changed, 57 insertions(+), 3 deletions(-)
+
+diff --git a/src/Mod/Unified/GuiScript.py b/src/Mod/Unified/GuiScript.py
+index 38c32ecb2..c2f46f076 100644
+--- a/src/Mod/Unified/GuiScript.py
++++ b/src/Mod/Unified/GuiScript.py
+@@ -11,6 +11,10 @@ report view otherwise), an exception ends it with its traceback and exit code 1,
+ App.openDocument opens files hidden (a document with a 3D view needs OpenGL, which offscreen
+ has not: endless GL errors and nothing done; company test 0.7.9). Message boxes are closed
+ and their text said. The GUI is not torn down at the end (that crashed in FreeCADCmd).
++
++What the GUI says while it starts (style tokens, Fontconfig, OpenGL: some 55 lines before the
++script's own output) is kept out, and shown only if the start fails; FREECAD_GUI_SCRIPT_VERBOSE=1
++shows it. An error ends with the script's file and line on the last line.
+ """
+ 
+ import json
+@@ -35,8 +39,9 @@ def run(path, args=(), seconds=None):
+         return 1
+     with tempfile.TemporaryDirectory() as tmp:
+         result = os.path.join(tmp, "result.json")
++        startup = os.path.join(tmp, "startup.log")
+         env = dict(os.environ)
+-        env[JOB_ENV] = json.dumps({"path": path, "args": list(args), "result": result})
++        env[JOB_ENV] = json.dumps({"path": path, "args": list(args), "result": result, "startup": startup})
+         env["QT_QPA_PLATFORM"] = "offscreen"
+         env.setdefault("PYTHONIOENCODING", "utf-8")
+         sys.stdout.flush()
+@@ -51,6 +56,13 @@ def run(path, args=(), seconds=None):
+             with open(result, encoding="utf-8") as f:
+                 done = json.load(f)
+         except (OSError, ValueError):
++            try:
++                with open(startup, encoding="utf-8", errors="replace") as f:
++                    said = f.read()
++            except OSError:
++                said = ""
++            if said:  # the start failed: what the GUI said is the reason
++                sys.stderr.write(said if said.endswith("\n") else said + "\n")
+             App.Console.PrintError("--gui-script: %s stopped (exit code %s) before its end\n"
+                                    % (path, proc.returncode))  # fmt: skip
+             return 1
+@@ -68,12 +80,37 @@ def _child():
+         err.flush()
+         os._exit(code)
+ 
++    quiet = os.environ.get("FREECAD_GUI_SCRIPT_VERBOSE", "") in ("", "0")
++    saved = None
++    if quiet:  # what the GUI says while it starts: into a file (the parent shows it on a failure)
++        out.flush()
++        err.flush()
++        saved = os.dup(1), os.dup(2)
++        log = os.open(job["startup"], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
++        os.dup2(log, 1)
++        os.dup2(log, 2)
++        os.close(log)
++
+     try:
+         import FreeCADGui as Gui
+ 
+         Gui.showMainWindow()
+         from PySide import QtCore, QtWidgets
+ 
++        QtWidgets.QApplication.processEvents()
++        if saved:
++            out.flush()
++            err.flush()
++            os.dup2(saved[0], 1)
++            os.dup2(saved[1], 2)
++            noise = ("propagateSizeHints", "QOpenGLWidget", "QOpenGLContext", "Fontconfig")
++
++            def qt_message(kind, context, text):
++                if not any(n in text for n in noise):
++                    err.write(text + "\n")
++
++            QtCore.qInstallMessageHandler(qt_message)
++
+         # the GUI takes print into its report view: back to the standard output
+         sys.stdout, sys.stderr = out, err
+ 
+@@ -105,8 +142,21 @@ def _child():
+         finish(0)
+     except SystemExit as e:
+         finish(e.code if isinstance(e.code, int) else (0 if e.code is None else 1))
+-    except BaseException:  # the script's error, with its lines, then the end
++    except BaseException as e:  # the script's error, with its lines, then the end
+         import traceback
+ 
+-        err.write(traceback.format_exc())
++        if saved:
++            os.dup2(saved[0], 1)
++            os.dup2(saved[1], 2)
++        out.flush()
++        frames = traceback.extract_tb(e.__traceback__)
++        # from the script's own frame on: GuiScript's exec() first misled (a report on 0.8.2)
++        mine = [i for i, f in enumerate(frames) if os.path.abspath(f.filename) == job["path"]]
++        err.write("Traceback (most recent call last):\n")
++        err.write("".join(traceback.format_list(frames[mine[0]:] if mine else frames)))
++        err.write("".join(traceback.format_exception_only(type(e), e)))
++        if mine:
++            line = frames[mine[-1]]
++            err.write("--gui-script: %s line %d: %s: %s\n"
++                      % (os.path.basename(job["path"]), line.lineno, type(e).__name__, e))
+         finish(1)
+diff --git a/src/Mod/Unified/TestGuiScript.py b/src/Mod/Unified/TestGuiScript.py
+index 3d85bab29..0ecbf86a9 100644
+--- a/src/Mod/Unified/TestGuiScript.py
++++ b/src/Mod/Unified/TestGuiScript.py
+@@ -44,6 +44,10 @@ class GuiScriptTest(unittest.TestCase):
+         self.assertIn("before", out)
+         self.assertIn("ValueError: no such rivet", err)
+         self.assertIn("line 3", err)
++        # the script's line on the last line, nothing of the GUI's start before it (report on 0.8.2)
++        self.assertIn("work.py line 3: ValueError: no such rivet", err.strip().splitlines()[-1])
++        self.assertNotIn("GuiScript.py", err)
++        self.assertNotIn("style parameter", err + out)
+ 
+     def test_a_file_opens_hidden_with_its_view_providers(self):
+         tmp = tempfile.mkdtemp()
+-- 
+2.43.0
+

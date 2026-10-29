@@ -1,7 +1,7 @@
 From bfae23bdd2f7d25d37a3ffbac2abb22dd27f44de Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 10:32:14 +0900
-Subject: [PATCH 304/395] CLI: --export-drawings writes the drawing pages as
+Subject: [PATCH 304/397] CLI: --export-drawings writes the drawing pages as
  PDF without the screen
 
 A PDF of a TechDraw page needed the GUI (TechDrawGui.exportPageAsPdf): the

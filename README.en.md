@@ -42,7 +42,7 @@ Command line (no screen)
 - `--export-svg` / `--export-pptx` (2D with hidden lines removed), `--export-drawings out.pdf` (drawing pages as PDF; `--line-width 0.25`, `--check-layout` for what is out of the frame or on the title block)
 - `--export-web model.html` (a 3D view to turn in a browser, one HTML, offline and on phones)
 - `--gui-script work.py -- args` (a script that needs the GUI, without a screen, with its output and errors)
-- `--interference` (about 1 s for 300 parts)
+- `--interference` (about 1 s for 300 parts), `--design-check` (the design check as JSON; `--ignore-pairs` leaves out pairs that touch on purpose, `--sweep` checks parts turned through their motion)
 - DWG (AutoCAD) read and write up to R2018, Jw_cad drawings (JWW)
 
 ![Click a face and the next actions appear next to it](docs/images/08_face_actions.png)
@@ -331,6 +331,15 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
+
+## Changes in 0.8.4
+
+From two days of the headless tool (freecadcmd-ja) on a project of some 1,000 parts.
+
+- **`--gui-script`: some 55 lines of the GUI's start (style tokens, Fontconfig, OpenGL) buried the script's output and errors**: they go to a file shown only if the start fails (`FREECAD_GUI_SCRIPT_VERBOSE=1` shows them)
+- `--gui-script`: the first line of an error's traceback was GuiScript.py's; it now starts at the script's frame and ends with "work.py line 5: FreeCADError: ..."
+- **Pairs that overlap on purpose, left out of the design check**: `--ignore-pairs pairs.txt` ("A, B" a line; names or labels of parts or of their groups, `*` and `?`, `#` comments); `DesignCheck.allow_overlap(a, b)` keeps a pair in the file. Ignoring an overlap in the check's panel ignores that pair only (it used to stop checking both parts against anything)
+- **Moving parts (sweep)**: `--sweep motion.json` (`{"moving": ["Bar*"], "axis": [px, py, pz, dx, dy, dz], "from": 0, "to": 80, "step": 5}`) turns the parts about the axis by steps and checks them against the others at each angle: the angles and parts hit as JSON, exit code 1 on a hit. From a script: `DesignCheck.sweep(...)`
 
 ## Changes in 0.8.3
 
