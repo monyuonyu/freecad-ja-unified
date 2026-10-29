@@ -1,7 +1,7 @@
 From 3103c3431b3690d140a0ec6a500954d4e39e1f36 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 00:26:25 +0900
-Subject: [PATCH 403/405] Unified: collisions through an assembly's motion,
+Subject: [PATCH 403/406] Unified: collisions through an assembly's motion,
  from the screen and the command line
 
 The sweep turned named parts rigidly. DesignCheck.sweep_joint turns an

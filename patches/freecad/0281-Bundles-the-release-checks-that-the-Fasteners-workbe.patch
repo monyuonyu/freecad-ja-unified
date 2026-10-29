@@ -1,7 +1,7 @@
 From d57502f3eb60f6de0ca40ffb8730e1c2b7104987 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 21 Oct 2026 10:20:59 +0900
-Subject: [PATCH 281/405] Bundles: the release checks that the Fasteners
+Subject: [PATCH 281/406] Bundles: the release checks that the Fasteners
  workbench is in it and the shelf works
 
 Linux and Windows: before packing, Mod/Fasteners (and its LICENSE) must be there and

@@ -1,7 +1,7 @@
 From 21b403b6cdbde26ff900eb1db894834a132d904c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 15 Oct 2026 22:09:27 +0900
-Subject: [PATCH 221/405] Part: Tools::getPointNormals no longer throws for
+Subject: [PATCH 221/406] Part: Tools::getPointNormals no longer throws for
  points without a normal
 
 A point used by no triangle, or only by degenerate ones, has a zero normal sum

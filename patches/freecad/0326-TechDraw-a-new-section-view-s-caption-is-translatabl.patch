@@ -1,7 +1,7 @@
 From 3486ceb775d5c4ce7620a4e9754e90f1a0e9031e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 24 Oct 2026 12:27:34 +0900
-Subject: [PATCH 326/405] =?UTF-8?q?TechDraw:=20a=20new=20section=20view's?=
+Subject: [PATCH 326/406] =?UTF-8?q?TechDraw:=20a=20new=20section=20view's?=
  =?UTF-8?q?=20caption=20is=20translatable=20(=E6=96=AD=E9=9D=A2=20A-A=20in?=
  =?UTF-8?q?=20Japanese)?=
 MIME-Version: 1.0

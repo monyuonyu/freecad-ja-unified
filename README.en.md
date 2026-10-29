@@ -332,6 +332,10 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.2
+
+- **A normal close now and then crashed (exit code 1)**: found by a night of GUI runs in random orders under ASan. After the documents and the window were closed, a design check running in the background still measured overlaps and touched the torn-down OCC. On quitting the measures are stopped and waited for (`Part.cancelInterferences()`). Likely the field test's unexplained exit code 1
+
 ## Changes in 0.9.1
 
 - **MuJoCo export: the centre of mass and inertia of Compound parts were wrong** (300 of 365 parts got a placeholder inertia and their box's centre, up to 362 mm off): the part's solids are measured one by one and added with the parallel axis theorem

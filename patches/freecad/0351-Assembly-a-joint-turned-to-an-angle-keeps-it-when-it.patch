@@ -1,7 +1,7 @@
 From 836f925b9419f3ed4922ac2cc0ffc2c7c07e265b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:23:46 +0900
-Subject: [PATCH 351/405] Assembly: a joint turned to an angle keeps it when
+Subject: [PATCH 351/406] Assembly: a joint turned to an angle keeps it when
  its panel closes
 
 The panel sets every property again when it closes; setting an offset

@@ -1,7 +1,7 @@
 From 284594fe580ffc908b44a26c1d4eab847d20feed Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 17:00:07 +0900
-Subject: [PATCH 362/405] Unified: a document made and closed at once does not
+Subject: [PATCH 362/406] Unified: a document made and closed at once does not
  leave a ReferenceError
 
 The opening's check read the document's name from a timer; a script that

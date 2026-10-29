@@ -1,0 +1,195 @@
+From 1c1db603b50c7739b48c37f6b69ddd9a874c5893 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 30 Oct 2026 02:42:35 +0900
+Subject: [PATCH 406/406] Part, Unified: the overlaps measured in the
+ background stop when the application quits
+
+A night of GUI runs under ASan: after the documents were closed and the
+window too, a design check still measuring overlaps in its threads ran
+on into the torn-down OCC (SEGV in a boolean, exit code 1 after a normal
+close; the field test's unexplained exit code 1). Part.cancelInterferences
+stops the runs at their next pair; on aboutToQuit the design check stops
+its threads and waits for them.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/App/ViewTools.cpp     | 17 +++++++++++++++++
+ src/Mod/Part/App/ViewTools.h       |  4 ++++
+ src/Mod/Part/App/ViewToolsPy.cpp   | 12 ++++++++++++
+ src/Mod/Unified/DesignCheck.py     | 19 +++++++++++++++++++
+ src/Mod/Unified/DesignCheckGui.py  |  3 +++
+ src/Mod/Unified/TestDesignCheck.py | 20 ++++++++++++++++++++
+ 6 files changed, 75 insertions(+)
+
+diff --git a/src/Mod/Part/App/ViewTools.cpp b/src/Mod/Part/App/ViewTools.cpp
+index 3ff83a4ea..c1bc769b4 100644
+--- a/src/Mod/Part/App/ViewTools.cpp
++++ b/src/Mod/Part/App/ViewTools.cpp
+@@ -2159,6 +2159,19 @@ Projection Part::ViewTools::projectVisible(
+ 
+ // ------------------------------------------------------------------ interference
+ 
++namespace
++{
++// bumped by cancelInterferences: a run seeing it change stops (the application quit while a
++// design check computed in the background; its threads ran on into the torn-down OCC: SEGV,
++// exit code 1 after a normal close)
++std::atomic<unsigned> interferenceGeneration {0};
++}  // namespace
++
++void Part::ViewTools::cancelInterferences()
++{
++    ++interferenceGeneration;
++}
++
+ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+     const std::vector<TopoDS_Shape>& shapes,
+     double tolerance,
+@@ -2233,6 +2246,7 @@ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+     int nthreads = threads > 0 ? threads : (int)std::max(1U, std::thread::hardware_concurrency());
+     nthreads = std::min<int>(nthreads, std::max<int>(1, (int)candidates.size()));
+     std::atomic<size_t> next {0};
++    const unsigned generation = interferenceGeneration.load();
+     std::mutex errorMutex;
+     std::string firstError;
+     auto worker = [&]() {
+@@ -2250,6 +2264,9 @@ std::vector<InterferencePair> Part::ViewTools::findInterferences(
+             return it->second;
+         };
+         for (size_t k = next++; k < candidates.size(); k = next++) {
++            if (interferenceGeneration.load() != generation) {
++                break;  // cancelled: the pairs not done stay at 0
++            }
+             try {
+                 BRepAlgoAPI_Common op(get(candidates[k].first), get(candidates[k].second));
+                 if (tol > 0) {
+diff --git a/src/Mod/Part/App/ViewTools.h b/src/Mod/Part/App/ViewTools.h
+index eb18207c2..2f609daf8 100644
+--- a/src/Mod/Part/App/ViewTools.h
++++ b/src/Mod/Part/App/ViewTools.h
+@@ -190,6 +190,10 @@ struct InterferenceStats
+ /// spread over \a threads threads (0: all cores).  With \a moving (one flag per shape),
+ /// only pairs with at least one moving shape are tested (a mechanism in many poses: the
+ /// still parts do not change against each other).
++/** Stop the findInterferences running now (their unchecked pairs are left out): the
++ * application quits, a document closes. Each call returns at its next pair. */
++PartExport void cancelInterferences();
++
+ PartExport std::vector<InterferencePair> findInterferences(
+     const std::vector<TopoDS_Shape>& shapes,
+     double tolerance,
+diff --git a/src/Mod/Part/App/ViewToolsPy.cpp b/src/Mod/Part/App/ViewToolsPy.cpp
+index e15ab5f59..3437e4a4e 100644
+--- a/src/Mod/Part/App/ViewToolsPy.cpp
++++ b/src/Mod/Part/App/ViewToolsPy.cpp
+@@ -556,6 +556,12 @@ PyObject* projectVisible(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+     }
+ }
+ 
++PyObject* cancelInterferencesPy(PyObject* /*self*/, PyObject* /*args*/)
++{
++    cancelInterferences();
++    Py_RETURN_NONE;
++}
++
+ PyObject* findInterferencesPy(PyObject* /*self*/, PyObject* args, PyObject* kwds)
+ {
+     static const char* kwlist[] = {"shapes", "tolerance", "minVolume", "threads", "stats", "moving", nullptr};
+@@ -775,6 +781,12 @@ PyMethodDef methods[] = {
+      "Write an SVG with the visible faces filled and hidden parts removed; groups become\n"
+      "nested <g> with inkscape:label.  Arguments as for exportPptx; lineWidth in pixels of\n"
+      "the width.  Returns {'faces', 'edges', 'groups'}."},
++    {"cancelInterferences",
++     reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(cancelInterferencesPy)),
++     METH_NOARGS,
++     "cancelInterferences()\n"
++     "Stop the findInterferences running now (in other threads): each returns at its next pair, "
++     "the pairs not checked left out. For an application that quits or a document that closes."},
+     {"findInterferences",
+      reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(findInterferencesPy)),
+      METH_VARARGS | METH_KEYWORDS,
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index f3337173b..1b5aeb699 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -609,6 +609,24 @@ def check_interference(doc, issues, opt, shapes):
+         pass
+ 
+ 
++_WORKERS = set()  # the threads measuring overlaps now (a check left running in the background)
++
++
++def stop_background(seconds=10.0):
++    """Stop the overlap measures running in other threads and wait for them: the application
++    quits. Left running, they went on into the torn-down OCC (a crash, exit code 1 after a
++    normal close; found by a night of runs under ASan)"""
++    import Part
++
++    alive = [t for t in _WORKERS if t.is_alive()]
++    if alive:
++        Part.cancelInterferences()
++        for t in alive:
++            t.join(seconds)
++    _WORKERS.clear()
++    return len(alive)
++
++
+ class Progress:
+     """検査の途中経過（iter_run が yield する）: done / total 組目、いま何をしているか。
+     waiting が真なら、別のプロセスの計算を待っているだけ（呼ぶ側は少し間を空けてよい）"""
+@@ -651,6 +669,7 @@ def iter_interference(doc, issues, opt, shapes):
+         # in a thread: C++ lets go of the GIL, the screen stays alive while it runs
+         box = {}
+         worker = threading.Thread(target=lambda: box.update(r=_measure_overlaps(items, todo, opt)), daemon=True)
++        _WORKERS.add(worker)
+         worker.start()
+         while worker.is_alive():
+             p = Progress(0, len(pairs), translate("DesignCheck", "Checking whether {0} pairs of parts overlap").format(
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index 0d9695cfd..2fbd86285 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -435,6 +435,9 @@ class Indicator:
+         self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
+         mw.statusBar().addPermanentWidget(self.button)
+         self.button.hide()
++        # quitting: the overlaps measured in the background are stopped and waited for (their
++        # threads ran on into the torn-down OCC: a crash after a normal close)
++        QtWidgets.QApplication.instance().aboutToQuit.connect(DesignCheck.stop_background)
+         # 走っている間だけ出る中止ボタン
+         self.cancel_button = QtWidgets.QToolButton()
+         self.cancel_button.setAutoRaise(True)
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index eb83a3481..3ac003e13 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -177,6 +177,26 @@ class DesignCheckSweepTest(unittest.TestCase):
+             App.closeDocument(doc.Name)
+ 
+ 
++class StopBackgroundTest(unittest.TestCase):
++    def test_overlaps_measured_in_a_thread_stop_at_once(self):
++        # quitting while a background check measured: its threads ran on into the torn-down OCC
++        # (a crash and exit code 1 after a normal close; a night of runs under ASan)
++        import threading
++        import time
++
++        solids = [Part.makeSphere(5, App.Vector(i * 3, 0, 0)) for i in range(160)]
++        done = {}
++        t = threading.Thread(target=lambda: done.update(r=Part.findInterferences(solids, threads=2)), daemon=True)
++        DesignCheck._WORKERS.add(t)
++        start = time.time()
++        t.start()
++        time.sleep(0.2)
++        self.assertEqual(DesignCheck.stop_background(), 1)
++        self.assertFalse(t.is_alive())
++        self.assertLess(time.time() - start, 5)
++        self.assertIn("r", done)  # returned, the pairs not done left out
++
++
+ class DesignCheckCommandLineTest(unittest.TestCase):
+     def test_design_check_interference(self):
+         import DrawingPdf
+-- 
+2.43.0
+

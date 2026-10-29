@@ -1,7 +1,7 @@
 From c16dbb36c4df1483c7eaabfe2ab7d880b33a706c Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 13:54:24 +0900
-Subject: [PATCH 357/405] Unified: FreeCAD's Ctrl shortcuts work while the
+Subject: [PATCH 357/406] Unified: FreeCAD's Ctrl shortcuts work while the
  bar's number field has the keyboard
 
 After a part is put the bar's field has the keyboard, and Ctrl+B (box

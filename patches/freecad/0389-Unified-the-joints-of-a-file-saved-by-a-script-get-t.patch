@@ -1,7 +1,7 @@
 From e977dd065fe7e0822320910c69694f9e440c9cfc Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 20:22:39 +0900
-Subject: [PATCH 389/405] Unified: the joints of a file saved by a script get
+Subject: [PATCH 389/406] Unified: the joints of a file saved by a script get
  their view when it opens
 
 A file saved without the screen has no views of its own: the joints'

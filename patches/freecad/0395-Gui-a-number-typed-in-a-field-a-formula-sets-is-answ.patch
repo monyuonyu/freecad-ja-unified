@@ -1,7 +1,7 @@
 From 100f4b4763d55d0f05a7e02d4a52de16c764b0c9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Wed, 28 Oct 2026 13:00:44 +0900
-Subject: [PATCH 395/405] Gui: a number typed in a field a formula sets is
+Subject: [PATCH 395/406] Gui: a number typed in a field a formula sets is
  answered with a hint
 
 The field is read-only then: the key was dropped without a word, and a

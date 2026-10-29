@@ -1,7 +1,7 @@
 From 0bc79cd8fe1641f4a80e8e9afc73a1f87eb8258e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 16 Oct 2026 07:38:36 +0900
-Subject: [PATCH 226/405] Import: a DXF SOLID whose corners cross becomes two
+Subject: [PATCH 226/406] Import: a DXF SOLID whose corners cross becomes two
  triangles, not one invalid face
 
 DXF SOLID corners are drawn 1-2-4-3. Files that store them in polygon

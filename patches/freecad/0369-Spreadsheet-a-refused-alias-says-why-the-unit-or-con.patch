@@ -1,7 +1,7 @@
 From 9e160f43bc8fdf2aa0369e4a826fcea05e1c441b Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:47:10 +0900
-Subject: [PATCH 369/405] Spreadsheet: a refused alias says why (the unit or
+Subject: [PATCH 369/406] Spreadsheet: a refused alias says why (the unit or
  constant it is, a cell, used)
 
 L, D, H, T were refused as "conflicts with a reserved unit token"
