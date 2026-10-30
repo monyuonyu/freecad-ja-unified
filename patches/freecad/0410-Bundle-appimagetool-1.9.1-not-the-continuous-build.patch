@@ -1,7 +1,7 @@
 From 6ba5c8433e1bbf80dc611be8990138e29aaedf42 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 08:24:50 +0900
-Subject: [PATCH 410/410] Bundle: appimagetool 1.9.1, not the continuous build
+Subject: [PATCH 410/417] Bundle: appimagetool 1.9.1, not the continuous build
 
 The continuous build of 2026-10-29 refuses an AppDir without .DirIcon:
 the Linux release of 0.9.3 stopped there.

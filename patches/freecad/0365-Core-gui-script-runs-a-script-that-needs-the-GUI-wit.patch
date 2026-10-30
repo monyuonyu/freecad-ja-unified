@@ -1,7 +1,7 @@
 From dd670c7ed247c64733a010f6fd322e3e5cdd38e5 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 25 Oct 2026 22:35:50 +0900
-Subject: [PATCH 365/410] Core: --gui-script runs a script that needs the GUI
+Subject: [PATCH 365/417] Core: --gui-script runs a script that needs the GUI
  without a screen
 
 FreeCADCmd --gui-script work.py -- args: a child starts the GUI

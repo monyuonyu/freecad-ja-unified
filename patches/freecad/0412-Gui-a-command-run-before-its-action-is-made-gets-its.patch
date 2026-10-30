@@ -1,0 +1,36 @@
+From 24e56bcc6637950a14e55ef3a6b804a7894980b9 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 31 Oct 2026 04:18:11 +0900
+Subject: [PATCH 412/417] Gui: a command run before its action is made gets its
+ action first
+
+Running a group command from Python or the command search while its
+toolbar is not shown (the unified window shows its own bar) crashed:
+PartDesign_CompPrimitiveAdditive read its action group, which was not
+made yet (SIGSEGV in ActionGroup::actions; found by a sweep running
+every command). Command::_invoke makes the action first; some 59 group
+commands read their action the same way.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Command.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/Gui/Command.cpp b/src/Gui/Command.cpp
+index aec29a167..2c02071ab 100644
+--- a/src/Gui/Command.cpp
++++ b/src/Gui/Command.cpp
+@@ -477,6 +477,10 @@ void Command::invoke(int i, TriggerSource trigger)
+ 
+ void Command::_invoke(int id, bool disablelog)
+ {
++    // a command run before its action was made (from Python or the command search, its
++    // toolbar not shown yet): group commands read their action and crashed (a GUI sweep of
++    // every command: PartDesign_CompPrimitiveAdditive)
++    initAction();
+     try {
+         // set the application module type for the macro
+         getGuiApplication()->macroManager()->setModule(sAppModule);
+-- 
+2.43.0
+

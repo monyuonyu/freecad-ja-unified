@@ -1,0 +1,46 @@
+From 656450ac94b477a2412b84de2bd373faf7388e0e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 31 Oct 2026 08:52:26 +0900
+Subject: [PATCH 415/417] Gui: a command's action no longer made from inside
+ its own making
+
+A command run before its action was made gets one first (24e56bcc6), but
+FEM_PostApplyChanges sets its check mark in createAction(), which runs the
+command, which came back to make the action again until the stack ran out.
+Found by a sweep of the FEM result commands; not in any release.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Gui/Command.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Command.cpp b/src/Gui/Command.cpp
+index 2c02071ab..4cc28db03 100644
+--- a/src/Gui/Command.cpp
++++ b/src/Gui/Command.cpp
+@@ -26,6 +26,7 @@
+ #include <xercesc/util/XMLException.hpp>
+ #include <xercesc/util/XMLString.hpp>
+ #include <sstream>
++#include <utility>
+ #include <QApplication>
+ #include <QByteArray>
+ #include <QDir>
+@@ -312,8 +313,13 @@ bool Command::isViewOfType(Base::Type t) const
+ 
+ void Command::initAction()
+ {
+-    if (!_pcAction) {
++    // A command's createAction() may set its check mark, which runs the command, which comes back
++    // here before _pcAction is set (FEM_PostApplyChanges). That run goes without the action.
++    static const Command* being_made = nullptr;
++    if (!_pcAction && being_made != this) {
++        const Command* outer = std::exchange(being_made, this);
+         _pcAction = createAction();
++        being_made = outer;
+ #ifdef FC_DEBUG
+         // Accelerator conflict can now be dynamically resolved in ShortcutManager
+         //
+-- 
+2.43.0
+

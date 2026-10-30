@@ -1,0 +1,56 @@
+From a836fc42d4d7265be2076803fcb5ac7e867f2788 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 31 Oct 2026 04:22:04 +0900
+Subject: [PATCH 413/417] Part: the attachment panel does not read a gone or
+ unattachable object on a language change
+
+A sweep running every command crashed in TaskAttacher::makeRefStrings
+from changeEvent (a language change: the command search loads a
+workbench and retranslates): the panel read its object's attachment
+without checking that the object was still there and attachable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Part/Gui/TaskAttacher.cpp | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Part/Gui/TaskAttacher.cpp b/src/Mod/Part/Gui/TaskAttacher.cpp
+index dba9cd205..aad369181 100644
+--- a/src/Mod/Part/Gui/TaskAttacher.cpp
++++ b/src/Mod/Part/Gui/TaskAttacher.cpp
+@@ -99,8 +99,16 @@ const QString makeRefString(const App::DocumentObject* obj, const std::string& s
+ 
+ void TaskAttacher::makeRefStrings(std::vector<QString>& refstrings, std::vector<std::string>& refnames)
+ {
+-    Part::AttachExtension* pcAttach
+-        = ViewProvider->getObject()->getExtensionByType<Part::AttachExtension>();
++    Part::AttachExtension* pcAttach = ViewProvider && ViewProvider->getObject()
++        ? ViewProvider->getObject()->getExtensionByType<Part::AttachExtension>(true)
++        : nullptr;
++    if (!pcAttach) {  // its object gone or not attachable now: no references to show
++        for (size_t r = 0; r < 4; r++) {
++            refstrings.push_back(QObject::tr("No reference selected"));
++            refnames.emplace_back("");
++        }
++        return;
++    }
+     std::vector<App::DocumentObject*> refs = pcAttach->AttachmentSupport.getValues();
+     refnames = pcAttach->AttachmentSupport.getSubValues();
+ 
+@@ -1308,6 +1316,13 @@ bool TaskAttacher::getFlip() const
+ void TaskAttacher::changeEvent(QEvent* e)
+ {
+     TaskBox::changeEvent(e);
++    // its object deleted (an undo, a document closed), the panel can still get a language
++    // change (the command search loads a workbench and retranslates): it read the deleted
++    // object (SIGSEGV in makeRefStrings; a sweep running every command)
++    if (e->type() == QEvent::LanguageChange && !ViewProvider) {
++        ui->retranslateUi(proxy);
++        return;
++    }
+     if (e->type() == QEvent::LanguageChange) {
+         ui->checkBoxFlip->blockSignals(true);
+         ui->buttonRef1->blockSignals(true);
+-- 
+2.43.0
+

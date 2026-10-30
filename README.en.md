@@ -332,6 +332,17 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.5
+
+- **The Japanese translation, finished**: the commands of the main workbenches were run on a Japanese screen and the English left in the panels collected and removed. No unfinished entry is left in any translation file.
+  - Strings that had a translation but stayed English (Python panels often ask under a context name the file does not use) are found by their source text, in a fallback table.
+  - FEM choices (boundary kinds, sections, rigid body modes, result display) and CAM tool fields, materials, spindle direction, tool types and list summaries are shown in Japanese. **What is stored stays the original English word**, so existing files and scripts work as before.
+  - About 150 strings no translation file carried, and labels wrongly marked untranslatable in .ui files, are translated.
+  - What stays English: names in data (the bundled tools, result fields), function names in formulas, proper names such as Gmsh, and add-ons (Addon Manager and the like).
+- **FEM line plots, histograms and tables were missing, fixed**: with VTK 9.7 the compatibility check's re-import stopped the FEM workbench's initialization, losing these commands and the Netgen preference page.
+- Crashes fixed: group commands run before their toolbar exists; the attachment panel on a language change.
+- CAM tool summaries say "?" for an unset number of flutes, not "None-flute".
+
 ## Changes in 0.9.4
 
 - **Japanese translations filled in**: the 297 strings left in the common workbenches (TechDraw, Part, Draft, Sketcher, Spreadsheet, PartDesign, the main window and more). Some 2,900 remain in BIM, CAM and FEM

@@ -1,0 +1,35 @@
+From e792651f4071559c9299e43e7aff60b0422dd80e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Sat, 31 Oct 2026 08:52:26 +0900
+Subject: [PATCH 416/417] FEM: keep the VTK module once it is found compatible
+
+The check imported vtkmodules and removed it from sys.modules again. VTK
+9.7 cannot be imported twice in a process (its array classes are not
+registered again: KeyError float32), so the workbench's Initialize stopped
+there: the line plot, histogram and table commands and the Netgen
+preference page were missing, and so was everything using VTK from Python.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Fem/femguiutils/vtk_module_handling.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Fem/femguiutils/vtk_module_handling.py b/src/Mod/Fem/femguiutils/vtk_module_handling.py
+index c43f05fa3..d4d43cdfb 100644
+--- a/src/Mod/Fem/femguiutils/vtk_module_handling.py
++++ b/src/Mod/Fem/femguiutils/vtk_module_handling.py
+@@ -74,8 +74,9 @@ def vtk_module_compatible():
+     # check binary compatibility
+     result = Fem.isVtkCompatible(vtkBitArray())
+ 
+-    if unload:
+-        # cleanup our own import
++    if unload and not result:
++        # cleanup our own import, so another module can be tried. One that fits stays: VTK 9.7
++        # cannot be imported twice in a process (its array classes are not registered again)
+         _unload_vtk_modules()
+ 
+     return result
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From f93271e6af64650a214d7d8f6ae276da3bde06db Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 18:19:00 +0900
-Subject: [PATCH 380/410] Unified: a hole on a cylinder follows the cylinder's
+Subject: [PATCH 380/417] Unified: a hole on a cylinder follows the cylinder's
  diameter
 
 The sketch of a hole on a cylindrical face was put there unattached: a

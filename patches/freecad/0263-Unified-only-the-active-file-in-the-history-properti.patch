@@ -1,7 +1,7 @@
 From a3f6994f14ec69e5337bc66b71f7c5cb8fb55ecc Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:38:06 +0900
-Subject: [PATCH 263/410] Unified: only the active file in the history,
+Subject: [PATCH 263/417] Unified: only the active file in the history,
  properties folded away
 
 The tree shows the history of the active file only (the others are in the

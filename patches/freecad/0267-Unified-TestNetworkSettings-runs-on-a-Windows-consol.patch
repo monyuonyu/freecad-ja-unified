@@ -1,7 +1,7 @@
 From eb7240e9eb2687ab45aba4d47c044e368f096a75 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Tue, 20 Oct 2026 18:55:19 +0900
-Subject: [PATCH 267/410] Unified: TestNetworkSettings runs on a Windows
+Subject: [PATCH 267/417] Unified: TestNetworkSettings runs on a Windows
  console
 
 unittest prints the first line of a test's docstring; the Japanese ones

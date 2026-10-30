@@ -1,7 +1,7 @@
 From 1c1db603b50c7739b48c37f6b69ddd9a874c5893 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 02:42:35 +0900
-Subject: [PATCH 406/410] Part, Unified: the overlaps measured in the
+Subject: [PATCH 406/417] Part, Unified: the overlaps measured in the
  background stop when the application quits
 
 A night of GUI runs under ASan: after the documents were closed and the

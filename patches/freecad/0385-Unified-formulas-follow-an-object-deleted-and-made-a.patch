@@ -1,7 +1,7 @@
 From 4681e66b29f6e9b543a1b1f3485a8f13e78b53c9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 26 Oct 2026 20:01:37 +0900
-Subject: [PATCH 385/410] Unified: formulas follow an object deleted and made
+Subject: [PATCH 385/417] Unified: formulas follow an object deleted and made
  again under the same name
 
 FreeCAD kept the formula's text but not its link: the formulas that used

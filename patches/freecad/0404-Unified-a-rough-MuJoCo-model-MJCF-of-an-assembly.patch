@@ -1,7 +1,7 @@
 From fc9bb4d82401410b50d63799f425474be75506d7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 01:37:41 +0900
-Subject: [PATCH 404/410] Unified: a rough MuJoCo model (MJCF) of an assembly
+Subject: [PATCH 404/417] Unified: a rough MuJoCo model (MJCF) of an assembly
 
 --export-mjcf model.xml [--mjcf-mesh] (MjcfExport.export): the parts as
 bodies with mass, centre of mass and inertia from the solids (material

@@ -1,7 +1,7 @@
 From c0cfc7eb3dca576d3b747456fe6bd6fe30a8db9d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 30 Oct 2026 08:24:07 +0900
-Subject: [PATCH 409/410] Translations (ja): the Draft tray's title; Draft's
+Subject: [PATCH 409/417] Translations (ja): the Draft tray's title; Draft's
  and Tux's compiled translations
 
 A sweep of every menu, toolbar and preference text in Japanese found one
