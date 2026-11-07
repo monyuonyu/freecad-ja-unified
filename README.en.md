@@ -332,6 +332,13 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.6
+
+- **The design check (`--design-check`) did not finish on models of many solids, fixed**: a cart of 496 solids ran for more than 23 minutes. The distances for floating parts are now measured solid by solid, only between solids whose boxes come close (a similar model: 222 s to 16 s). The distance between whole compounds was also wrong: nuts sitting on washers were reported as touching nothing.
+- **Screws in threaded holes are told by their shape**: a round shank in a hole on the same axis, smaller by at most a thread's depth, overlapping by no more than that ring, is not counted as an overlap; each pair of parts gets an info line "N screws in threaded holes" (no names or lists involved).
+- `--design-check --progress` writes the steps to stderr; the JSON goes to stdout (now in the help).
+- `--render` with `--view` given more than once wrote no picture; it now writes one per view.
+
 ## Changes in 0.9.5
 
 - **The Japanese translation, finished**: the commands of the main workbenches were run on a Japanese screen and the English left in the panels collected and removed. No unfinished entry is left in any translation file.

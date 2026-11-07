@@ -1,0 +1,386 @@
+From 31c53b78a132c7ca18fd6d6af407aa46fe4c59eb Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Fri, 6 Nov 2026 22:02:41 +0900
+Subject: [PATCH 418/418] Design check: a shape of hundreds of solids checked
+ in seconds, screws in threaded holes
+
+Whether two parts touch (for the floating parts) was distToShape between
+the whole shapes: two compounds of hundreds of solids took 100 s a pair,
+and a cart of 496 solids ran for more than 23 minutes. Now solid by solid,
+only those whose boxes come within the distance, stopping at the first
+(a similar model: 222 s to 16 s). The whole-shape distance was also wrong:
+nuts on their washers were said to touch nothing. The pin-in-hole test
+compares only round faces near each other.
+
+A drawn screw in a threaded hole (a round shank in a hole on the same axis,
+smaller by at most a thread's depth, overlapping by no more than that ring)
+is told by the shapes and not counted as an overlap; each pair of parts
+gets an info line with the number of screws.
+
+--progress shows the design check's steps on stderr; --view given more than
+once writes a picture each (no picture was written); the help says the
+JSON goes to standard output.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp                       |  15 ++-
+ src/Mod/Part/PartViews.py                     |   2 +
+ src/Mod/Unified/DesignCheck.py                | 109 +++++++++++++++++-
+ .../Gui/Resources/translations/Unified_ja.ts  |  12 ++
+ src/Mod/Unified/TestDesignCheck.py            |  47 ++++++++
+ 5 files changed, 178 insertions(+), 7 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 68935f8f8..579ca41ce 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2482,7 +2482,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("output,o", boost::program_options::value<std::string>(), "Export the active document to this file after processing the input files (format from the extension, e.g. --output part.stl)")
+     ("hidden", "GUI only: do not show the main window and exit after processing the input files; for running scripts that need the GUI (e.g. saving images)")
+     ("render", boost::program_options::value<std::string>(), "Write a PNG picture of the visible objects after processing the input files; needs no display or OpenGL (e.g. --render out.png)")
+-    ("view", boost::program_options::value<std::string>(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-{front,back}-{left,right} (also rear, and -bottom- from below, in any order), iso-low, dimetric, trimetric, dx,dy,dz (direction from the eye into the model); several names separated by commas write one picture each")
++    ("view", boost::program_options::value<std::vector<std::string>>()->composing(), "View for --render/--export-svg/--export-polygons: iso (default), front, back, right, left, top, bottom, iso-{front,back}-{left,right} (also rear, and -bottom- from below, in any order), iso-low, dimetric, trimetric, dx,dy,dz (direction from the eye into the model); several names separated by commas, or --view given more than once, write one picture each")
+     ("size", boost::program_options::value<std::string>(), "Picture size for --render, WxH or W (default 1200x900)")
+     ("render-style", boost::program_options::value<std::string>(), "Style for --render: shaded (default), shaded-only, hidden-lines, lines")
+     ("up", boost::program_options::value<std::string>(), "Direction that is up in the picture for --render/--export-*, x,y,z (default 0,0,1)")
+@@ -2492,9 +2492,9 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("section-color", boost::program_options::value<std::string>(), "Colour of the cut faces of --section: part (a darker shade of each part's colour) or r,g,b (0-1)")
+     ("deflection", boost::program_options::value<std::string>(), "Tessellation tolerance for --render/--export-* in model units (larger is coarser and faster; default from the size of the model)")
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
+-    ("progress", "Progress of --render/--export-* on stderr")
++    ("progress", "Progress of --render/--export-*/--design-check on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+-    ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON, exit code 1 on an error; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
++    ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON on standard output (no file name: > report.json), exit code 1 on an error; with --progress the step on stderr; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
+     ("export-mjcf", boost::program_options::value<std::string>(), "Write a rough MuJoCo model (MJCF): the parts as bodies with mass, centre of mass and inertia (material density, else 7850 kg/m3), a box each for contacts, the assembly's joints as hinges and slides (loops as equality constraints)")
+     ("mjcf-density", boost::program_options::value<std::string>(), "With --export-mjcf: a JSON file of densities and masses by part name: {\"density\": {\"Floor_*\": 2700}, \"mass\": {\"PSU_*\": 0.3}}")
+     ("mjcf-mesh", "With --export-mjcf: also each part's mesh (STL next to the file) for the looks")
+@@ -2740,7 +2740,6 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+     // headless views and checks, run by the Python module PartViews after the input files
+     static const std::pair<const char*, const char*> viewOptions[] = {
+         {"render", "RenderFile"},
+-        {"view", "RenderView"},
+         {"size", "RenderSize"},
+         {"render-style", "RenderStyle"},
+         {"up", "RenderUp"},
+@@ -2772,6 +2771,14 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+             mConfig[key] = vm[option].as<std::string>();
+         }
+     }
++    if (vm.contains("view")) {
++        // --view a --view b: one picture each (a single value may itself be "a,b" or a direction)
++        std::string views;
++        for (const auto& v : vm["view"].as<std::vector<std::string>>()) {
++            views += (views.empty() ? "" : ";") + v;
++        }
++        mConfig["RenderView"] = views;
++    }
+     if (vm.contains("sweep") && !vm.contains("design-check")) {
+         mConfig["DesignCheck"] = "sweep";
+     }
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 5c29662c3..472d0950a 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -586,6 +586,8 @@ def _split_views(view):
+     """'iso,front' -> ['iso', 'front'];  '-1,1,-1' stays one view."""
+     if isinstance(view, (list, tuple)) and view and isinstance(view[0], str):
+         return list(view)
++    if isinstance(view, str) and ";" in view:
++        return [v.strip() for v in view.split(";") if v.strip()]  # --view given more than once
+     if isinstance(view, str) and "," in view:
+         names = [v.strip() for v in view.split(",")]
+         if all(is_view_name(n) for n in names):
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 1b5aeb699..b5851cac7 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -75,6 +75,7 @@ RULES = {
+     "tiny_edge": QT_TRANSLATE_NOOP("DesignCheck", "Very short edges"),
+     "sketch_free": QT_TRANSLATE_NOOP("DesignCheck", "Sketch not fully constrained"),
+     "floating": QT_TRANSLATE_NOOP("DesignCheck", "Part touches no other part"),
++    "thread_fit": QT_TRANSLATE_NOOP("DesignCheck", "Screws in threaded holes"),
+     "drawing_dim": QT_TRANSLATE_NOOP("DesignCheck", "Drawing dimension lost its geometry"),
+     "drawing_view": QT_TRANSLATE_NOOP("DesignCheck", "Drawing view shows nothing"),
+     "empty_body": QT_TRANSLATE_NOOP("DesignCheck", "Part has no shape"),
+@@ -198,6 +199,28 @@ def _dist(a, b):
+         return float("inf")
+ 
+ 
++def _touches(a, b, tol):
++    """Whether shapes a and b come within tol of each other. Solid by solid, only the solids whose
++    boxes come that close, stopping at the first: distToShape between two shapes of hundreds of
++    solids took 100 s a pair (a cart of 496 solids ran for more than 23 minutes)"""
++    sa = a.Solids or [a]
++    sb = b.Solids or [b]
++    if len(sa) == 1 and len(sb) == 1:
++        return _dist(a, b) <= tol
++    near = []
++    for x in sa:
++        grown = _grown(x.BoundBox, tol)
++        near += [(x, y) for y in sb if grown.intersect(y.BoundBox)]
++    # the pairs whose boxes overlap most are the likeliest to touch
++    near.sort(key=lambda p: -_box_overlap(p[0].BoundBox, p[1].BoundBox, tol))
++    return any(_dist(x, y) <= tol for x, y in near)
++
++
++def _box_overlap(p, q, tol):
++    box = _grown(p, tol).intersected(q)
++    return box.XLength * box.YLength * box.ZLength if box.isValid() else 0.0
++
++
+ def _touching(solids, tol):
+     n = len(solids)
+     seen = {0}
+@@ -329,6 +352,11 @@ def check_shapes(doc, issues, opt, shapes):
+ _PAIR_CACHE = {}
+ 
+ 
++# {pair key: number of screws in threaded holes}, beside _PAIR_CACHE (a pair measured again is not
++# measured: its count is kept here)
++_FIT_CACHE = {}
++
++
+ def _fingerprint(s):
+     # the vertices, counts and box: the volume and area (computed each time) took most of it
+     bb = s.BoundBox
+@@ -375,7 +403,10 @@ def _fitted(a, b, clearance=0.5):
+         return False
+     ca, cb = _cylinders(a), _cylinders(b)
+     for fa, sa in ca:
++        near = _grown(fa.BoundBox, clearance + 1e-6)
+         for fb, sb in cb:
++            if not near.intersect(fb.BoundBox):
++                continue  # two shapes of many screws: thousands of round faces, nearly all far apart
+             if abs(abs(sa.Axis.dot(sb.Axis)) - 1) > 1e-6:
+                 continue
+             d = (sb.Center - sa.Center)
+@@ -414,6 +445,50 @@ def _thread_in_hole(oa, ob, volume):
+     return False
+ 
+ 
++def _round_faces(solid):
++    """The round faces of a solid: [(face, cylinder, shaft)]; shaft is true for a face around
++    material (a screw's shank), false for a hole"""
++    out = []
++    for f, surf in _cylinders(solid):
++        lo, hi = f.ParameterRange[2:]
++        mid = surf.Center + surf.Axis * ((lo + hi) / 2)
++        try:
++            shaft = solid.isInside(mid, 1e-6, True)
++        except Exception:
++            continue
++        out.append((f, surf, shaft))
++    return out
++
++
++def _thread_fit(x, y, volume, faces):
++    """Solids x and y overlap as a drawn screw in a threaded hole: a round shank of x in a round
++    hole of y on the same axis, smaller by at most a thread's depth (a fifth of the radius: M6 drawn
++    at 6 mm in a 5 mm tap drill), and no more overlap than that ring along the length they share.
++    Told by the shapes, not by names or a list. faces: a cache {id(solid): _round_faces}"""
++    import math
++
++    for screw, nut in ((x, y), (y, x)):
++        shanks = [(f, s) for f, s, shaft in faces.setdefault(id(screw), _round_faces(screw)) if shaft]
++        holes = [(f, s) for f, s, shaft in faces.setdefault(id(nut), _round_faces(nut)) if not shaft]
++        ring = 0.0
++        for fa, sa in shanks:
++            for fb, sb in holes:
++                big, small = sa.Radius, sb.Radius
++                if not 0 < big - small <= 0.2 * big or abs(abs(sa.Axis.dot(sb.Axis)) - 1) > 1e-6:
++                    continue
++                d = sb.Center - sa.Center
++                if (d - sa.Axis * d.dot(sa.Axis)).Length > 1e-3:
++                    continue
++                ta = sorted(sa.Axis.dot(v.Point) for v in fa.Vertexes) or [0]
++                tb = sorted(sa.Axis.dot(v.Point) for v in fb.Vertexes) or [0]
++                length = min(ta[-1], tb[-1]) - max(ta[0], tb[0])
++                if length > 1e-6:
++                    ring += math.pi * (big * big - small * small) * length
++        if ring > 0 and volume <= ring * 1.05 + 1e-3:
++            return True
++    return False
++
++
+ def _common_volume(a, b):
+     """(重なりの体積, 重なりの中心)。立体が何個もまとまった形（ブラケット 68 個の部品）どうしの common は
+     失敗したり 0 を返したりする: 立体の組ごとに外形の箱で絞って測り、足す。測れなければ (None, None)
+@@ -460,7 +535,7 @@ def _pair_compute(a, b, need_touch, opt):
+     elif v > opt["interference_mm3"]:
+         touch = True
+     elif need_touch:
+-        touch = _dist(a, b) <= opt["touch_mm"]
++        touch = _touches(a, b, opt["touch_mm"])
+     return (v, center, touch)
+ 
+ 
+@@ -583,6 +658,7 @@ def _measure_overlaps(items, wanted, opt):
+             owner.append(n)
+     found = Part.findInterferences(solids, minVolume=opt["interference_mm3"])
+     out = {pair: [0.0, None, False] for pair in wanted}
++    fits, faces = opt.setdefault("thread_fits", {}), {}
+     for i, j, volume in found:
+         a, b = owner[i], owner[j]
+         pair = (a, b) if (a, b) in out else (b, a)
+@@ -591,6 +667,9 @@ def _measure_overlaps(items, wanted, opt):
+         if volume < 0:
+             out[pair][2] = True  # this pair of solids could not be measured
+             continue
++        if _thread_fit(solids[i], solids[j], volume, faces):
++            fits[pair] = fits.get(pair, 0) + 1  # a screw in its threaded hole: not an overlap
++            continue
+         out[pair][0] += volume
+         box = solids[i].BoundBox.intersected(solids[j].BoundBox)
+         out[pair][1] = box.Center if box.isValid() else solids[i].BoundBox.Center
+@@ -706,7 +785,7 @@ def iter_interference(doc, issues, opt, shapes):
+             elif v > opt["interference_mm3"]:
+                 t = True
+             elif pair_touch:
+-                t = _dist(a, b) <= opt["touch_mm"]
++                t = _touches(a, b, opt["touch_mm"])
+             _remember(k_ab, (v, center, t))
+         if v is None:
+             issues.append(Issue(WARNING, "interference_unchecked",
+@@ -727,6 +806,18 @@ def iter_interference(doc, issues, opt, shapes):
+                           fix="separate" if (_movable(doc.getObject(na)) or _movable(doc.getObject(nb))) else None)
+             issue.volume = v
+             issues.append(issue)
++        fitted = opt.get("thread_fits", {}).get((na, nb)) or opt.get("thread_fits", {}).get((nb, na))
++        if fitted:
++            _FIT_CACHE[k_ab] = fitted
++        else:
++            fitted = _FIT_CACHE.get(k_ab)  # measured in an earlier check of the same shapes
++        if fitted:
++            t = True
++            issues.append(Issue(INFO, "thread_fit",
++                                translate("DesignCheck", "{0} and {1}: {2} screws in threaded holes; the thread's "
++                                          "overlap was not counted").format(
++                                    doc.getObject(na).Label, doc.getObject(nb).Label, fitted),
++                                [na, nb], center))  # fmt: skip
+         if t:
+             touch[na] = touch[nb] = True
+     if need_touch:
+@@ -1318,10 +1409,12 @@ def cli_main():
+     on an error (sweep: on a hit at any angle)"""
+     import json
+     import sys
++    import time
+ 
+     doc = App.ActiveDocument
+     if doc is None:
+         raise RuntimeError("--design-check: no document is open (give a .FCStd file)")
++    progress = App.ConfigGet("RenderProgress") == "1"
+     doc.recompute()
+     what = App.ConfigGet("DesignCheck") or "all"
+     pairs_file = App.ConfigGet("DesignCheckIgnorePairs")
+@@ -1363,7 +1456,17 @@ def cli_main():
+         print(json.dumps({"interferences": found}, ensure_ascii=False, indent=1, default=lambda v: list(v)))
+         errors = any(f["volume"] is not None for f in found)
+     else:
+-        issues = run(doc, **options)
++        issues = Issues()
++        shown, last = None, 0.0
++        for r in iter_run(doc, **options):
++            if isinstance(r, Issues):
++                issues = r
++            elif progress and r.message != shown and time.monotonic() - last >= 1.0:
++                # the step on stderr, once a second at most: stdout is the JSON
++                step = "%d/%d " % (r.done + 1, r.total) if r.total else ""
++                sys.stderr.write("design-check: %s%s\n" % (step, r.message))
++                sys.stderr.flush()
++                shown, last = r.message, time.monotonic()
+         print(json.dumps({"summary": summary(issues), "issues": [i.as_dict(doc) for i in issues]},
+                          ensure_ascii=False, indent=1))  # fmt: skip
+         errors = bool(summary(issues)[ERROR])
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 4a7ae2e4f..54b462292 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -800,6 +800,18 @@
+         <source>Stopping after the current pair…</source>
+         <translation>いま調べている組が終わったら止めます…</translation>
+     </message>
++    <message>
++        <source>Checking whether {0} pairs of parts overlap</source>
++        <translation>部品 {0} 組の重なりを調べています</translation>
++    </message>
++    <message>
++        <source>Screws in threaded holes</source>
++        <translation>ねじ穴に入ったねじ</translation>
++    </message>
++    <message>
++        <source>{0} and {1}: {2} screws in threaded holes; the thread's overlap was not counted</source>
++        <translation>{0} と {1}: ねじ穴に入ったねじが {2} 本。ねじ山の重なりは数えていない</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_DesignCheck</name>
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index 3ac003e13..0d9dde87a 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -42,6 +42,42 @@ class DesignCheckOverlapTest(unittest.TestCase):
+         self.assertEqual(len(found), 1)
+         self.assertAlmostEqual(found[0]["volume"], 3 * 2 * 2 * 4, places=3)
+ 
++    def test_screws_in_threaded_holes(self):
++        # drawn M6 screws (6 mm) through nuts with 5 mm holes: the thread's ring, not an overlap;
++        # a 6 mm pin in a 4 mm hole (deeper than a thread) still is one
++        screws = [Part.makeCylinder(3, 30, App.Vector(20 * i, 0, 0)) for i in range(3)]
++        nuts = [Part.makeCylinder(5, 5, App.Vector(20 * i, 0, 10)).cut(Part.makeCylinder(2.5, 7, App.Vector(20 * i, 0, 9)))
++                for i in range(3)]  # fmt: skip
++        for name, shapes in (("Screws", screws), ("Nuts", nuts)):
++            self.doc.addObject("Part::Feature", name).Shape = Part.makeCompound(shapes)
++        pin = self.doc.addObject("Part::Feature", "Pin")
++        pin.Shape = Part.makeCylinder(3, 30, App.Vector(100, 0, 0))
++        hub = self.doc.addObject("Part::Feature", "Hub")
++        hub.Shape = Part.makeCylinder(6, 5, App.Vector(100, 0, 10)).cut(Part.makeCylinder(2, 7, App.Vector(100, 0, 9)))
++        self.doc.recompute()
++        issues = DesignCheck.run(self.doc)
++        overlaps = sorted(tuple(sorted(i.objects)) for i in issues if i.rule == "interference")
++        self.assertEqual(overlaps, [("Hub", "Pin")])
++        fits = [i for i in issues if i.rule == "thread_fit"]
++        self.assertEqual([sorted(i.objects) for i in fits], [["Nuts", "Screws"]])
++        self.assertIn("3", fits[0].message)
++        self.assertNotIn("Nuts", [i.objects[0] for i in issues if i.rule == "floating"])
++
++    def test_touching_among_many_solids_is_quick(self):
++        # two shapes of 60 cubes each, one cube of one on one of the other: touching, found
++        # without the distance between the whole shapes (100 s a pair on a cart of 496 solids)
++        import time
++
++        a = [Part.makeBox(2, 2, 2, App.Vector(5 * i, 0, 0)) for i in range(60)]
++        b = [Part.makeBox(2, 2, 2, App.Vector(5 * i, 50, 0)) for i in range(59)] + [Part.makeBox(2, 2, 2, App.Vector(0, 0, 2))]
++        for name, shapes in (("A", a), ("B", b)):
++            self.doc.addObject("Part::Feature", name).Shape = Part.makeCompound(shapes)
++        self.doc.recompute()
++        start = time.time()
++        issues = DesignCheck.run(self.doc)
++        self.assertLess(time.time() - start, 20)
++        self.assertEqual([i.objects for i in issues if i.rule == "floating"], [])
++
+     def test_one_item_is_not_checked_inside(self):
+         item = self.doc.addObject("App::Part", "Chair")
+         a = box(self.doc, "Seat", 0, 0, 0)
+@@ -236,6 +272,17 @@ class DesignCheckCommandLineTest(unittest.TestCase):
+             sweep = json.loads(out[out.index("{"):])["sweep"]
+             self.assertEqual(sweep["angles"], [0, 30, 60, 90])
+             self.assertEqual(sorted({h["angle"] for h in sweep["hits"]}), [0, 30, 60, 90])
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--design-check", "--progress"],
++                                  capture_output=True, timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
++            err = proc.stderr.decode("utf-8", "replace")
++            self.assertIn("design-check: ", err)  # the steps on stderr, the JSON alone on stdout
++            out = proc.stdout.decode("utf-8", "replace")
++            self.assertIn("summary", json.loads(out[out.index("{"):]))
++            png = os.path.join(tmp, "v.png")
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--render", png, "--view", "front", "--view", "top"],
++                                  capture_output=True, timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
++            self.assertEqual(sorted(f for f in os.listdir(tmp) if f.endswith(".png")), ["v_front.png", "v_top.png"],
++                             proc.stderr.decode("utf-8", "replace"))  # fmt: skip
+         finally:
+             shutil.rmtree(tmp)
+ 
+-- 
+2.43.0
+
