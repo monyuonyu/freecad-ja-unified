@@ -1,7 +1,7 @@
 From e792651f4071559c9299e43e7aff60b0422dd80e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 31 Oct 2026 08:52:26 +0900
-Subject: [PATCH 416/423] FEM: keep the VTK module once it is found compatible
+Subject: [PATCH 416/426] FEM: keep the VTK module once it is found compatible
 
 The check imported vtkmodules and removed it from sys.modules again. VTK
 9.7 cannot be imported twice in a process (its array classes are not

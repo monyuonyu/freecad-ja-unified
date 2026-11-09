@@ -1,0 +1,208 @@
+From 5b89d878c591945c502599ea756f2361b3fa23e7 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 19:50:41 +0900
+Subject: [PATCH 425/426] DWG export: R2000 by default, texts in a codepage
+ that holds them, DXF kept on request
+
+An AutoCAD did not open a DWG written as R2018 (company, 0.9.6); LibreDWG's
+R2018 had been checked against ACadSharp only. R2000 is written by default
+again (preference Mod/Draft/DWGExportVersion, or version= of export()).
+Before R2007 a DWG's texts are in its codepage, but the DXF writer said
+ANSI_1252 and wrote UTF-8: Japanese came out as mojibake. The DXF is
+written again in the first codepage that holds all its characters
+(Shift_JIS for Japanese) and says so, \U+XXXX for what none holds; not for
+R2007+, which dxf2dwg reads as UTF-8. keep_dxf= (preference
+DWGExportKeepDXF) keeps the DXF beside the DWG. A failed conversion raises
+instead of returning the name of a file not written.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Draft/importDWG.py          | 87 +++++++++++++++++++++++++++--
+ src/Mod/Unified/TestUnifiedFiles.py | 26 +++++----
+ 2 files changed, 97 insertions(+), 16 deletions(-)
+
+diff --git a/src/Mod/Draft/importDWG.py b/src/Mod/Draft/importDWG.py
+index 5c5ca1135..455e78731 100644
+--- a/src/Mod/Draft/importDWG.py
++++ b/src/Mod/Draft/importDWG.py
+@@ -106,12 +106,17 @@ def insert(filename, docname):
+     return
+ 
+ 
+-def export(objectslist, filename):
++def export(objectslist, filename, version=None, keep_dxf=None):
+     """Export the DWG file with a given list of objects.
+ 
+     The objects are exported with importDXF.export().
+     Then the result is converted to DWG.
+ 
++    version: the DWG version LibreDWG writes ("r2000" by default, preference
++    Mod/Draft/DWGExportVersion; "r2018" too, but AutoCAD's reading of it is not
++    confirmed). keep_dxf: also keep the DXF beside the DWG (preference
++    Mod/Draft/DWGExportKeepDXF). A failed conversion raises RuntimeError.
++
+     Parameters
+     ----------
+     exportList : list
+@@ -126,16 +131,78 @@ def export(objectslist, filename):
+     """
+     import importDXF
+     import os
++    import re
+     import tempfile
+ 
+     outdir = tempfile.mkdtemp()
+     _basename = os.path.splitext(os.path.basename(filename))[0]
+     dxf = outdir + os.sep + _basename + ".dxf"
+     importDXF.export(objectslist, dxf)
+-    convertToDwg(dxf, filename)
++    version = version or FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetString(
++        "DWGExportVersion", "r2000"
++    )
++    m = re.match(r"r(\d+)", version.lower())
++    if int(m.group(1)) < 2007 if m else True:  # r12, r14, r2000, r2004
++        # before R2007 a DWG's texts are in its codepage; from R2007 they are Unicode, and
++        # dxf2dwg reads the UTF-8 of the DXF as it is (re-encoded, Japanese was lost)
++        _match_codepage(dxf)
++    if keep_dxf is None:
++        keep_dxf = params_bool("DWGExportKeepDXF")
++    if keep_dxf:
++        import shutil
++
++        shutil.copy(dxf, os.path.splitext(filename)[0] + ".dxf")
++    convertToDwg(dxf, filename, version)
+     return filename
+ 
+ 
++# The codepages a DXF before R2007 can say, tried in this order: the first that holds every
++# character of the file is used
++_CODEPAGES = (("cp1252", "ANSI_1252"), ("cp932", "ANSI_932"), ("cp936", "ANSI_936"), ("cp949", "ANSI_949"),
++              ("cp950", "ANSI_950"), ("cp1251", "ANSI_1251"), ("cp1250", "ANSI_1250"))  # fmt: skip
++
++
++def _match_codepage(dxf):
++    """The DXF writer says $DWGCODEPAGE ANSI_1252 and writes the texts in UTF-8: in a DWG before
++    R2007 (R2000, the default) Japanese came out as mojibake, read back here and in AutoCAD. The
++    file is written again in the first codepage that holds all its characters (Shift_JIS for
++    Japanese) and says so; a character no codepage holds becomes \\U+XXXX, as AutoCAD writes it"""
++    import builtins
++    import re
++
++    with builtins.open(dxf, "rb") as f:
++        raw = f.read()
++    try:
++        text = raw.decode("utf-8")
++    except UnicodeDecodeError:
++        return  # not UTF-8: left as it is
++    if text.isascii():
++        return
++    m = re.search(r"\$DWGCODEPAGE\s*\r?\n\s*3\s*\r?\n([^\r\n]*)", text)
++    if not m:
++        return
++    for codec, name in _CODEPAGES:
++        try:
++            data = text.encode(codec)
++            break
++        except UnicodeEncodeError:
++            continue
++    else:
++        codec, name = "cp932", "ANSI_932"
++        data = text.encode(codec, errors="backslashreplace")
++        data = re.sub(rb"\\u([0-9a-fA-F]{4})", lambda g: b"\\U+" + g.group(1).upper(), data)
++        data = re.sub(rb"\\U([0-9a-fA-F]{8})", lambda g: b"\\U+" + g.group(1)[-4:].upper(), data)
++    start, end = m.span(1)
++    head = text[:start].encode(codec)
++    data = head + name.encode("ascii") + data[len(head) + len(m.group(1).encode(codec)):]
++    with builtins.open(dxf, "wb") as f:
++        f.write(data)
++
++
++def params_bool(name, default=False):
++    return FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetBool(name, default)
++
++
+ def get_libredwg_converter(typ):
+     """Find the LibreDWG converter.
+ 
+@@ -364,7 +431,7 @@ https://wiki.freecad.org/Import_Export_Preferences""",
+     return None
+ 
+ 
+-def convertToDwg(dxffilename, dwgfilename):
++def convertToDwg(dxffilename, dwgfilename, version=None):
+     """Convert a DXF file to a DWG file.
+ 
+     If the converter is found it is used, otherwise the conversion fails.
+@@ -391,14 +458,22 @@ def convertToDwg(dxffilename, dwgfilename):
+     if conv in [0, 1]:  # LibreDWG
+         libredwg = get_libredwg_converter("dxf2dwg")
+         if libredwg is not None:
+-            # The version to write (dxf2dwg wrote the DXF's own, R14; company test 0.7.6)
+-            version = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetString(
+-                "DWGExportVersion", "r2018"
++            # The version to write (dxf2dwg wrote the DXF's own, R14; company test 0.7.6).
++            # R2000 by default: LibreDWG has written it for years; its R2018 is read by
++            # ACadSharp, but an AutoCAD did not open one (company, 0.9.6)
++            version = version or FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetString(
++                "DWGExportVersion", "r2000"
+             )
+             cmdline = [libredwg, dxffilename, "-y", "--as", version, "-o", dwgfilename]
+             FCC.PrintMessage(translate("draft", "Converting:") + " " + str(cmdline) + "\n")
++            if os.path.exists(dwgfilename):
++                os.remove(dwgfilename)  # an old file left there is not a converted one
+             proc = subprocess.Popen(cmdline)
+             proc.communicate()
++            if proc.returncode != 0 or not os.path.exists(dwgfilename):
++                raise RuntimeError(
++                    "dxf2dwg failed (exit code %s) writing %s as %s" % (proc.returncode, dwgfilename, version)
++                )
+             return dwgfilename
+         elif conv != 0:
+             FCC.PrintError(translate("draft", "LibreDWG converter not found") + "\n")
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index b2d227b00..1aafccef0 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -121,8 +121,8 @@ class TestLinkPathAfterSaveAs(unittest.TestCase):
+ 
+ 
+ class TestDwgText(unittest.TestCase):
+-    """A DWG written from a drawing keeps its texts, in R2018, and they are read back (company
+-    test 0.7.6: R14, every text lost, none read)"""
++    """A DWG written from a drawing keeps its texts, in R2000 (and R2018 when asked), and they
++    are read back (company test 0.7.6: R14, every text lost, none read)"""
+ 
+     def test_round_trip(self):
+         import os
+@@ -141,14 +141,20 @@ class TestDwgText(unittest.TestCase):
+             Draft.make_text(["日本語テスト φ60", "ASCII"], App.Placement(App.Vector(10, 10, 0), App.Rotation()))
+             Draft.make_line(App.Vector(0, 0, 0), App.Vector(100, 0, 0))
+             doc.recompute()
+-            path = os.path.join(tmp, "t.dwg")
+-            importDWG.export(doc.Objects, path)
+-            with open(path, "rb") as f:
+-                self.assertEqual(f.read(6), b"AC1032")
+-            back = App.newDocument("dwgback")
+-            importDWG.insert(path, back.Name)
+-            texts = sorted(t for o in back.Objects for t in (getattr(o, "Text", None) or []))
+-            self.assertEqual(texts, ["ASCII", "日本語テスト φ60"])
++            for version, magic in ((None, b"AC1015"), ("r2018", b"AC1032")):
++                path = os.path.join(tmp, "t_%s.dwg" % version)
++                importDWG.export(doc.Objects, path, version=version, keep_dxf=version is None)
++                with open(path, "rb") as f:
++                    self.assertEqual(f.read(6), magic)
++                back = App.newDocument("dwgback")
++                importDWG.insert(path, back.Name)
++                texts = sorted(t for o in back.Objects for t in (getattr(o, "Text", None) or []))
++                self.assertEqual(texts, ["ASCII", "日本語テスト φ60"], version)
++                App.closeDocument(back.Name)
++                back = None
++            self.assertTrue(os.path.exists(os.path.join(tmp, "t_None.dxf")))  # kept beside the DWG
++            with self.assertRaises(RuntimeError):
++                importDWG.export(doc.Objects, os.path.join(tmp, "x.dwg"), version="r9999")
+         finally:
+             App.closeDocument(doc.Name)
+             if back is not None:
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
 From a836fc42d4d7265be2076803fcb5ac7e867f2788 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 31 Oct 2026 04:22:04 +0900
-Subject: [PATCH 413/423] Part: the attachment panel does not read a gone or
+Subject: [PATCH 413/426] Part: the attachment panel does not read a gone or
  unattachable object on a language change
 
 A sweep running every command crashed in TaskAttacher::makeRefStrings

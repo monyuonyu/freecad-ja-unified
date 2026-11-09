@@ -1,0 +1,116 @@
+From a214dd90af3ac560aa2154230ad24a9c8e0e6f56 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 22:40:20 +0900
+Subject: [PATCH 124/124] R2004+ DWG: the LZ77 stream ends 0x11 0 0; R2007+
+ line types without texts have no strings area
+
+AutoCAD opened none of the R2004-R2018 DWG written here (accoreconsole of
+DWG TrueView 2027: ErrorStatus 434, then 53). Two causes, found by writing
+AutoCAD's own sections through our container and swapping single pages:
+- AutoCAD reads a Two Byte Offset after the 0x11 that ends a compressed
+  stream, and the stream must end there, at the data size of the page. We
+  wrote 0x11 alone; now 0x11 0 0, as AutoCAD.
+- Up from R13-R2004 (any DXF before AC1021, an R2000 DWG), every line type
+  that had the 256 bytes of strings got the 512 of R2007+. R2007+ has them
+  only when a dash has a text, and AutoCAD reads them only then: the object
+  was 512 bytes too long.
+LIBREDWG_R2004_OVERRIDE=dir (debugging) writes dir/<section>.bin as that
+section's data.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/encode.c | 55 ++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 53 insertions(+), 2 deletions(-)
+
+diff --git a/src/encode.c b/src/encode.c
+index 5fba85b..b3448eb 100644
+--- a/src/encode.c
++++ b/src/encode.c
+@@ -1576,7 +1576,7 @@ r2004_hash (const BITCODE_RC *p)
+ /* Compress size (>= 4) bytes of src into dst, of at least
+    r2004_compress_bound (size). Returns the compressed size, or 0 when out of
+    memory. Every stream starts with a Literal Length of at least 4 (the first
+-   form of AutoCAD, the only one our decoder reads), and ends with 0x11. */
++   form of AutoCAD, the only one our decoder reads), and ends with 0x11 0 0. */
+ static uint32_t
+ r2004_compress (const BITCODE_RC *src, const uint32_t size, BITCODE_RC *dst)
+ {
+@@ -1656,7 +1656,13 @@ r2004_compress (const BITCODE_RC *src, const uint32_t size, BITCODE_RC *dst)
+       out = r2004_put_trailing_literals (out, &src[lit_start],
+                                          size - lit_start);
+     }
++  // The end: 0x11 and a Two Byte Offset of 0, as AutoCAD writes it. AutoCAD
++  // reads the offset after 0x11, and the stream must end there, at the data
++  // size of the page: with 0x11 alone, it read past the data and no R2004+
++  // DWG of ours opened (accoreconsole, ErrorStatus 53 and 434).
+   *out++ = 0x11;
++  *out++ = 0;
++  *out++ = 0;
+   free (head);
+   free (prev);
+   assert ((uint32_t)(out - dst) <= r2004_compress_bound (size));
+@@ -1839,6 +1845,41 @@ encode_r2004_container (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+ 
+   r2004_magic (magic, sizeof (magic));
+   memset (secs, 0, sizeof (secs));
++  // For finding what AutoCAD refuses: LIBREDWG_R2004_OVERRIDE=dir writes
++  // dir/<section name, : as _>.bin instead of the data of that section
++  // (~/dwg-oracle/r2018 has the tools that dump them)
++  if (getenv ("LIBREDWG_R2004_OVERRIDE"))
++    for (i = 0; i < ARRAY_SIZE (r2004_map_order); i++)
++      {
++        const Dwg_Section_Type type = r2004_map_order[i];
++        const char *nm = dwg_section_name (dwg, type);
++        char path[1024], fn[128];
++        FILE *fp;
++        size_t k;
++        if (!nm || !sec_dat[type].byte)
++          continue;
++        for (k = 0; nm[k] && k < sizeof (fn) - 1; k++)
++          fn[k] = nm[k] == ':' ? '_' : nm[k];
++        fn[k] = 0;
++        snprintf (path, sizeof (path), "%s/%s.bin",
++                  getenv ("LIBREDWG_R2004_OVERRIDE"), fn);
++        if ((fp = fopen (path, "rb")))
++          {
++            long len;
++            fseek (fp, 0, SEEK_END);
++            len = ftell (fp);
++            fseek (fp, 0, SEEK_SET);
++            free (sec_dat[type].chain);
++            sec_dat[type].chain = (BITCODE_RC *)calloc (len + 8, 1);
++            if (fread (sec_dat[type].chain, 1, len, fp) != (size_t)len)
++              len = 0;
++            fclose (fp);
++            sec_dat[type].byte = len;
++            sec_dat[type].bit = 0;
++            sec_dat[type].size = len + 8;
++            fprintf (stderr, "override %s: %ld bytes\n", nm, len);
++          }
++      }
+   for (i = 0; i < ARRAY_SIZE (r2004_map_order); i++)
+     if (sec_dat[r2004_map_order[i]].byte)
+       num_desc++;
+@@ -10084,8 +10125,18 @@ dwg_convert_LTYPE_strings_area (const Dwg_Data *restrict dwg,
+     {
+       // upconvert to 512
+       BITCODE_TF old = _obj->strings_area;
+-      if (!old)
++      bool has_text = false;
++      // R2007+ has the area only when a dash has a text (shape_flag 2),
++      // and AutoCAD reads it only then: written for every line type that
++      // had the 256 bytes of R13-R2004, the object was 512 bytes too long
++      // and AutoCAD refused the drawing (accoreconsole, ErrorStatus 53)
++      for (BITCODE_BS i = 0; _obj->dashes && i < _obj->numdashes; i++)
++        if (_obj->dashes[i].shape_flag & 2)
++          has_text = true;
++      if (!old || !has_text)
+         {
++          free (old);
++          _obj->strings_area = NULL;
+           _obj->has_strings_area = 0;
+           return;
+         }
+-- 
+2.43.0
+

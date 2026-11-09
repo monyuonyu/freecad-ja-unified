@@ -1,7 +1,7 @@
 From 656450ac94b477a2412b84de2bd373faf7388e0e Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 31 Oct 2026 08:52:26 +0900
-Subject: [PATCH 415/423] Gui: a command's action no longer made from inside
+Subject: [PATCH 415/426] Gui: a command's action no longer made from inside
  its own making
 
 A command run before its action was made gets one first (24e56bcc6), but

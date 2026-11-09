@@ -1,7 +1,7 @@
 From b90be33533aa4e46c66547ca0502b114e8fb12d3 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sun, 8 Nov 2026 15:03:12 +0900
-Subject: [PATCH 419/423] Design check: whether parts touch, face by face; pins
+Subject: [PATCH 419/426] Design check: whether parts touch, face by face; pins
  in holes by a sweep along x
 
 A cart of STEP casters and hundreds of screws spent 98 s in distToShape

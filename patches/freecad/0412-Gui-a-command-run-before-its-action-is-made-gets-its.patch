@@ -1,7 +1,7 @@
 From 24e56bcc6637950a14e55ef3a6b804a7894980b9 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 31 Oct 2026 04:18:11 +0900
-Subject: [PATCH 412/423] Gui: a command run before its action is made gets its
+Subject: [PATCH 412/426] Gui: a command run before its action is made gets its
  action first
 
 Running a group command from Python or the command search while its

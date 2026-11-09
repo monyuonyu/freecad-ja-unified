@@ -1,0 +1,44 @@
+From 4f8fd0e23c3874b8f5cd866f9e4c24b42e82b646 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 21:17:47 +0900
+Subject: [PATCH 123/124] in_dxf: a UCS without axes gets X (1,0,0) and Y
+ (0,1,0)
+
+FreeCAD's DXF has no $UCSXDIR/$UCSYDIR; the DWG had zero axes and AutoCAD
+said "inconsistent UCS Y axis; normalizing" at every open (accoreconsole,
+DWG TrueView 2024).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/in_dxf.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/in_dxf.c b/src/in_dxf.c
+index 805a280..e1c1c84 100644
+--- a/src/in_dxf.c
++++ b/src/in_dxf.c
+@@ -1863,6 +1863,21 @@ dxf_fixup_header (Bit_Chain *dat, Dwg_Data *dwg)
+ #  undef DXF_ONE_IF_ZERO
+     DXF_DEFAULT_IF_ZERO (DIMALTF, 25.4, 0.03937007874016)
+ #  undef DXF_DEFAULT_IF_ZERO
++    // a UCS with no axes (a DXF without $UCSXDIR/$UCSYDIR, as FreeCAD's):
++    // AutoCAD says "inconsistent UCS Y axis; normalizing" at every open
++#  define DXF_AXIS_IF_ZERO(var, X, Y, Z)                                      \
++    if (vars->var.x == 0.0 && vars->var.y == 0.0 && vars->var.z == 0.0)       \
++      {                                                                       \
++        vars->var.x = X;                                                      \
++        vars->var.y = Y;                                                      \
++        vars->var.z = Z;                                                      \
++        LOG_TRACE ("HEADER.%s => (%g, %g, %g) (default)\n", #var, X, Y, Z);   \
++      }
++    DXF_AXIS_IF_ZERO (UCSXDIR, 1.0, 0.0, 0.0)
++    DXF_AXIS_IF_ZERO (UCSYDIR, 0.0, 1.0, 0.0)
++    DXF_AXIS_IF_ZERO (PUCSXDIR, 1.0, 0.0, 0.0)
++    DXF_AXIS_IF_ZERO (PUCSYDIR, 0.0, 1.0, 0.0)
++#  undef DXF_AXIS_IF_ZERO
+   }
+ 
+   if (_verp)
+-- 
+2.43.0
+

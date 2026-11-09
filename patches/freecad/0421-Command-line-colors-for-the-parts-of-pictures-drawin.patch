@@ -1,7 +1,7 @@
 From 0a070ef29928fbc285073efb3af29dc1c3c85745 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 13:40:49 +0900
-Subject: [PATCH 421/423] Command line: --colors for the parts of pictures,
+Subject: [PATCH 421/426] Command line: --colors for the parts of pictures,
  drawings and the web view
 
 --colors 'Frame*=#808080;Screw*=200,40,40' or a JSON file {pattern: colour}

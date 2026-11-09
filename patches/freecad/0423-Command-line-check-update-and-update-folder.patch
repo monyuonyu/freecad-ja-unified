@@ -1,7 +1,7 @@
 From c6c01ea61289a436638c643bcf5472cd60c84c26 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 13:46:28 +0900
-Subject: [PATCH 423/423] Command line: --check-update and --update <folder>
+Subject: [PATCH 423/426] Command line: --check-update and --update <folder>
 
 --check-update asks GitHub for the newest freecad-ja-unified release and
 says it beside the one running, with its file for this system, address and

@@ -1,7 +1,7 @@
 From 849492f83d94bfb6b5be6ea7483d798dd574a488 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Sat, 31 Oct 2026 07:34:04 +0900
-Subject: [PATCH 414/423] Translations (ja): a fallback by source text, and the
+Subject: [PATCH 414/426] Translations (ja): a fallback by source text, and the
  words a sweep of every panel found
 
 Dialogs and tool panels stayed in English though the .ts held their

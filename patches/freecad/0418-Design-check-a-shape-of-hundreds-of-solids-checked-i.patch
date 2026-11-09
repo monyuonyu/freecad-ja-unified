@@ -1,7 +1,7 @@
 From 31c53b78a132c7ca18fd6d6af407aa46fe4c59eb Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Fri, 6 Nov 2026 22:02:41 +0900
-Subject: [PATCH 418/423] Design check: a shape of hundreds of solids checked
+Subject: [PATCH 418/426] Design check: a shape of hundreds of solids checked
  in seconds, screws in threaded holes
 
 Whether two parts touch (for the floating parts) was distToShape between

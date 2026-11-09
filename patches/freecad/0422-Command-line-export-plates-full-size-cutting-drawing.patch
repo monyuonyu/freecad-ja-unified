@@ -1,7 +1,7 @@
 From 716d0d5f5f56bae1da0e6c8cf5c0ff62d92e489d Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 13:43:45 +0900
-Subject: [PATCH 422/423] Command line: --export-plates, full-size cutting
+Subject: [PATCH 422/426] Command line: --export-plates, full-size cutting
  drawings of the flat plates
 
 A plate is a solid with two large flat faces facing away from each other,

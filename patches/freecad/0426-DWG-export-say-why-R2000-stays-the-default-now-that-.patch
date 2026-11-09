@@ -1,0 +1,42 @@
+From 07cb92b4b915157c0e692966cfc11316d65ddded Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 22:41:00 +0900
+Subject: [PATCH 426/426] DWG export: say why R2000 stays the default, now that
+ R2004-R2018 open in AutoCAD too
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Draft/importDWG.py | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Draft/importDWG.py b/src/Mod/Draft/importDWG.py
+index 455e78731..fa11babb4 100644
+--- a/src/Mod/Draft/importDWG.py
++++ b/src/Mod/Draft/importDWG.py
+@@ -113,8 +113,9 @@ def export(objectslist, filename, version=None, keep_dxf=None):
+     Then the result is converted to DWG.
+ 
+     version: the DWG version LibreDWG writes ("r2000" by default, preference
+-    Mod/Draft/DWGExportVersion; "r2018" too, but AutoCAD's reading of it is not
+-    confirmed). keep_dxf: also keep the DXF beside the DWG (preference
++    Mod/Draft/DWGExportVersion: opened by every AutoCAD since 2000; "r2004" to
++    "r2018" are checked with AutoCAD's own reader too). keep_dxf: also keep
++    the DXF beside the DWG (preference
+     Mod/Draft/DWGExportKeepDXF). A failed conversion raises RuntimeError.
+ 
+     Parameters
+@@ -459,8 +460,9 @@ def convertToDwg(dxffilename, dwgfilename, version=None):
+         libredwg = get_libredwg_converter("dxf2dwg")
+         if libredwg is not None:
+             # The version to write (dxf2dwg wrote the DXF's own, R14; company test 0.7.6).
+-            # R2000 by default: LibreDWG has written it for years; its R2018 is read by
+-            # ACadSharp, but an AutoCAD did not open one (company, 0.9.6)
++            # R2000 by default, which every AutoCAD since 2000 opens. Before 0.9.8 no
++            # AutoCAD opened our R2004-R2018 (the end of the LZ77 stream and the line
++            # types' strings area of LibreDWG); now checked with accoreconsole.
+             version = version or FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Mod/Draft").GetString(
+                 "DWGExportVersion", "r2000"
+             )
+-- 
+2.43.0
+

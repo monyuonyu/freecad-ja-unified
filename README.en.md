@@ -332,6 +332,17 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.8
+
+- **DWG files written here did not open in AutoCAD, fixed**: AutoCAD (checked with DWG TrueView's accoreconsole) opened none of the R2004-R2018 DWG files written here. Two LibreDWG bugs, found by moving AutoCAD's own sections into our container and swapping single pages:
+  - A compressed stream ended with `11` alone; AutoCAD reads `11 00 00` and wants the data to end exactly there.
+  - Going up from versions before R2007 (any older DXF or DWG), line types without texts got the 512-byte strings area of R2007+.
+  - Lines, circles, splines, texts and Japanese now open in AutoCAD as R2000, R2004, R2010, R2013 and R2018 (a three-view drawing with 357 splines too).
+- **Japanese texts in R2000 came out garbled, fixed**: the DXF said a Western codepage but held UTF-8. It is written again in a codepage that holds all its characters (Shift_JIS for Japanese).
+- **"Inconsistent UCS Y axis" at every open, fixed**: FreeCAD's DXF has no UCS axes, so the DWG got (0,0,0).
+- DWG export writes R2000 by default (every AutoCAD opens it). R2018 and the others: preference Mod/Draft/DWGExportVersion or `importDWG.export(objs, path, version="r2018")`; `keep_dxf=True` keeps the DXF beside it; a failed conversion raises (it looked like a success before).
+- `--check-update` failed on GitHub's download server answering 504 now and then; it asks again.
+
 ## Changes in 0.9.7
 
 - **The design check, faster again**: whether parts touch is measured only between faces whose boxes come close (the distance between whole solids took a quarter of a second each with many-faced STEP parts, 98 s on a cart model). Pins in holes compare only round faces near each other, found by sorting along x (it made 4 million comparisons). Two groups of 400 screws: 3.8 s to 0.09 s. The issues found are the same.
