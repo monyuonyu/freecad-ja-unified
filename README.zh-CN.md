@@ -52,7 +52,7 @@
 
 ## 下载
 
-[Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) 中提供已构建好的版本。
+**最新版：[Releases 的 Latest](https://github.com/monyuonyu/freecad-ja-unified/releases/latest)**（已构建好的版本；以前的版本见 [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) 列表）。
 
 - Linux：`FreeCAD_<版本>-Linux-x86_64.AppImage`（加上执行权限后直接运行）
 - Windows：`FreeCAD_<版本>-Windows-x86_64-installer.exe`（安装程序）或 `.7z`（解压后运行 `bin/FreeCAD.exe`）

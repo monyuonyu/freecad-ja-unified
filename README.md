@@ -60,7 +60,7 @@ command line and from scripts. Kept as patches on top of FreeCAD; not submitted 
 
 ## ダウンロード
 
-[Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) にビルド済みのものを置いている。
+**最新版: [Releases の Latest](https://github.com/monyuonyu/freecad-ja-unified/releases/latest)**（ビルド済み。前の版は [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases) の一覧に）
 
 - Linux: `FreeCAD_<版>-Linux-x86_64.AppImage`（実行権限を付けてそのまま起動）
 - Windows: `FreeCAD_<版>-Windows-x86_64-installer.exe`（インストーラー）または `.7z`（展開して `bin/FreeCAD.exe`）

@@ -52,7 +52,7 @@ Command line (no screen)
 
 ## Download
 
-Prebuilt packages are on [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases).
+**Latest version: [Releases, Latest](https://github.com/monyuonyu/freecad-ja-unified/releases/latest)** (prebuilt; earlier versions are listed on [Releases](https://github.com/monyuonyu/freecad-ja-unified/releases)).
 
 - Linux: `FreeCAD_<version>-Linux-x86_64.AppImage` (make it executable and run it)
 - Windows: `FreeCAD_<version>-Windows-x86_64-installer.exe` (installer) or `.7z` (extract and run `bin/FreeCAD.exe`)
