@@ -1,0 +1,416 @@
+From 716d0d5f5f56bae1da0e6c8cf5c0ff62d92e489d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 13:43:45 +0900
+Subject: [PATCH 422/423] Command line: --export-plates, full-size cutting
+ drawings of the flat plates
+
+A plate is a solid with two large flat faces facing away from each other,
+as far apart as it is thick and thin beside its other sizes. Its larger
+face is laid flat (the longest straight edge along x) and written as DXF
+(lines, arcs, circles in mm) and as SVG at 1:1 with its name, thickness
+and size, and plates.json lists them all.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp         |  15 ++
+ src/Mod/Unified/CMakeLists.txt  |   2 +
+ src/Mod/Unified/PlateCut.py     | 237 ++++++++++++++++++++++++++++++++
+ src/Mod/Unified/TestPlateCut.py |  82 +++++++++++
+ 4 files changed, 336 insertions(+)
+ create mode 100644 src/Mod/Unified/PlateCut.py
+ create mode 100644 src/Mod/Unified/TestPlateCut.py
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 9c120fb39..51e358414 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2496,6 +2496,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("progress", "Progress of --render/--export-*/--design-check on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON on standard output (no file name: > report.json), exit code 1 on an error; with --progress the step on stderr; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
++    ("export-plates", boost::program_options::value<std::string>(), "Write full-size cutting drawings of the flat plates (a solid with two large flat faces as far apart as it is thick, thin beside its other sizes) into this folder: <name>.dxf (mm) and <name>.svg (1:1, to print at 100 %) of each, and plates.json (thickness, size, holes)")
+     ("export-mjcf", boost::program_options::value<std::string>(), "Write a rough MuJoCo model (MJCF): the parts as bodies with mass, centre of mass and inertia (material density, else 7850 kg/m3), a box each for contacts, the assembly's joints as hinges and slides (loops as equality constraints)")
+     ("mjcf-density", boost::program_options::value<std::string>(), "With --export-mjcf: a JSON file of densities and masses by part name: {\"density\": {\"Floor_*\": 2700}, \"mass\": {\"PSU_*\": 0.3}}")
+     ("mjcf-mesh", "With --export-mjcf: also each part's mesh (STL next to the file) for the looks")
+@@ -2764,6 +2765,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"gui-script", "GuiScript"},
+         {"design-check", "DesignCheck"},
+         {"export-mjcf", "ExportMjcf"},
++        {"export-plates", "ExportPlates"},
+         {"mjcf-density", "MjcfDensity"},
+         {"ignore-pairs", "DesignCheckIgnorePairs"},
+         {"sweep", "DesignCheckSweep"},
+@@ -3550,6 +3552,19 @@ void Application::processCmdLineFiles()
+         }
+     }
+ 
++    if (cfg.contains("ExportPlates")) {
++        try {
++            Base::Interpreter().runString("import PlateCut\nPlateCut.cli_main()\n");
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("PlateCut", e);
++            failed.emplace_back("--export-plates");
++        }
++        catch (const Base::Exception&) {
++            failed.emplace_back("--export-plates");
++        }
++    }
++
+     if (cfg.contains("ExportMjcf")) {
+         try {
+             Base::Interpreter().runString("import MjcfExport\nMjcfExport.cli_main()\n");
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 5ebb31f76..9c7a71a54 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -9,6 +9,7 @@ set(Unified_Scripts
+     Init.py
+     DesignCheck.py
+     MjcfExport.py
++    PlateCut.py
+     AITools.py
+     AIAgentBridge.py
+     NetworkSettings.py
+@@ -23,6 +24,7 @@ set(Unified_Scripts
+     ExpressionRelink.py
+     TestDesignCheck.py
+     TestMjcfExport.py
++    TestPlateCut.py
+     TestGuiScript.py
+     MotionVideo.py
+     TestMotionVideo.py
+diff --git a/src/Mod/Unified/PlateCut.py b/src/Mod/Unified/PlateCut.py
+new file mode 100644
+index 000000000..d290009c3
+--- /dev/null
++++ b/src/Mod/Unified/PlateCut.py
+@@ -0,0 +1,237 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Full-size cutting drawings of the flat plates of a model (板の原寸切断図).
++
++    FreeCADCmd model.FCStd --export-plates out_dir
++
++A plate is a solid with two large flat faces facing away from each other, as far apart as it is
++thick, and thin beside its other two sizes (at most a fifth of the smaller). For each, the
++outline of its larger flat face is laid flat, the longest straight edge along x, and written to
++out_dir as
++
++- <name>.dxf: lines, arcs and circles in mm (other curves as short lines), for a laser or a
++  router, or to paste on the sheet;
++- <name>.svg: the same at 1:1 (width and height in mm), with the name, the thickness and the
++  outer size, to print at 100 %;
++
++and plates.json lists them all: name, thickness, outer size, area, holes, files. Holes are
++those that go through the face drawn (pockets and blind holes from the other side do not show).
++
++From a script: PlateCut.plates(doc) -> [Plate]; PlateCut.export(doc, out_dir) -> plates.json's list.
++"""
++
++import json
++import math
++import os
++import re
++
++import FreeCAD as App
++import Part
++
++V = App.Vector
++
++
++class Plate:
++    def __init__(self, name, label, solid, face, thickness):
++        self.name = name
++        self.label = label
++        self.solid = solid
++        self.face = face
++        self.thickness = thickness
++        self.flat = _lay_flat(face)
++
++    def summary(self):
++        bb = self.flat.BoundBox
++        return {"name": self.name, "label": self.label, "thickness": round(self.thickness, 3),
++                "size": [round(bb.XLength, 2), round(bb.YLength, 2)], "area": round(self.flat.Area, 1),
++                "holes": len(self.flat.Wires) - 1}  # fmt: skip
++
++
++def _planar(f):
++    try:
++        return type(f.Surface).__name__ == "Plane"
++    except Exception:
++        return False
++
++
++def _normal(f):
++    n = f.normalAt(*_mid(f))
++    return n
++
++
++def _mid(f):
++    u0, u1, v0, v1 = f.ParameterRange
++    return (u0 + u1) / 2, (v0 + v1) / 2
++
++
++def plate_of(solid, thin=0.2):
++    """(face drawn, thickness) if the solid is a plate, else None"""
++    flats = sorted((f for f in solid.Faces if _planar(f)), key=lambda f: -f.Area)
++    if len(flats) < 2:
++        return None
++    top = flats[0]
++    n = _normal(top)
++    p = top.Surface.Position if hasattr(top.Surface, "Position") else top.Vertexes[0].Point
++    for other in flats[1:4]:
++        m = _normal(other)
++        if n.dot(m) > -0.9999:  # not facing the other way
++            continue
++        if other.Area < 0.5 * top.Area:
++            break
++        q = other.Vertexes[0].Point
++        t = abs((q - p).dot(n))
++        if t < 1e-6:
++            continue
++        flat = _lay_flat(top)
++        bb = flat.BoundBox
++        if t <= thin * min(bb.XLength, bb.YLength):
++            return top, t
++    return None
++
++
++def _lay_flat(face):
++    """The face moved onto the XY plane, its longest straight edge along +x, its box at the origin"""
++    n = _normal(face)
++    lines = [e for e in face.OuterWire.Edges if type(e.Curve).__name__ in ("Line", "LineSegment")]
++    if lines:
++        e = max(lines, key=lambda e: e.Length)
++        x = e.Vertexes[-1].Point - e.Vertexes[0].Point
++    else:
++        x = V(1, 0, 0) if abs(n.x) < 0.9 else V(0, 1, 0)
++        x = x - n * x.dot(n)
++    x.normalize()
++    y = n.cross(x)
++    m = App.Matrix(x.x, x.y, x.z, 0, y.x, y.y, y.z, 0, n.x, n.y, n.z, 0, 0, 0, 0, 1)  # rows: into the face's frame
++    flat = face.copy()
++    flat.transformShape(m)
++    bb = flat.BoundBox
++    flat.translate(V(-bb.XMin, -bb.YMin, -bb.ZMin))
++    return flat
++
++
++def _leaves(doc):
++    try:
++        import DesignCheck
++
++        return DesignCheck.parts(doc)
++    except Exception:
++        return {o.Name: o.Shape for o in doc.Objects if o.isDerivedFrom("Part::Feature") and o.Visibility}
++
++
++def plates(doc=None, thin=0.2):
++    """The plates of the visible parts: [Plate]. A part of several solids gives one per solid"""
++    doc = doc or App.ActiveDocument
++    out = []
++    for n, shape in _leaves(doc).items():
++        o = doc.getObject(n)
++        solids = shape.Solids
++        for k, s in enumerate(solids):
++            got = plate_of(s, thin)
++            if got:
++                name = n if len(solids) == 1 else "%s_%d" % (n, k + 1)
++                label = o.Label if len(solids) == 1 else "%s_%d" % (o.Label, k + 1)
++                out.append(Plate(name, label, s, got[0], got[1]))
++    return out
++
++
++# ------------------------------------------------------------------ DXF (R12: LINE, ARC, CIRCLE)
++def _dxf_entities(face, chord=0.05):
++    out = []
++    for e in face.Edges:
++        c = e.Curve
++        kind = type(c).__name__
++        a, b = e.Vertexes[0].Point, e.Vertexes[-1].Point
++        if kind in ("Line", "LineSegment"):
++            out.append(("LINE", (a.x, a.y, b.x, b.y)))
++        elif kind == "Circle" and abs(c.Axis.z) > 0.9999:
++            if e.isClosed():
++                out.append(("CIRCLE", (c.Center.x, c.Center.y, c.Radius)))
++            else:
++                # DXF arcs run counterclockwise seen from +z
++                p0, p1 = e.FirstParameter, e.LastParameter
++                s, t = (e.valueAt(p0), e.valueAt(p1))
++                ang = lambda p: math.degrees(math.atan2(p.y - c.Center.y, p.x - c.Center.x)) % 360  # noqa: E731
++                mid = e.valueAt((p0 + p1) / 2)
++                a0, a1, am = ang(s), ang(t), ang(mid)
++                ccw = (am - a0) % 360 < (a1 - a0) % 360
++                out.append(("ARC", (c.Center.x, c.Center.y, c.Radius, a0, a1) if ccw else
++                            (c.Center.x, c.Center.y, c.Radius, a1, a0)))
++        else:
++            pts = e.discretize(Deflection=chord)
++            out += [("LINE", (p.x, p.y, q.x, q.y)) for p, q in zip(pts, pts[1:])]
++    return out
++
++
++def write_dxf(face, path):
++    rows = ["0", "SECTION", "2", "HEADER", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
++            "0", "SECTION", "2", "ENTITIES"]  # fmt: skip
++    for kind, v in _dxf_entities(face):
++        rows += ["0", kind, "8", "CUT"]
++        if kind == "LINE":
++            rows += ["10", "%.6f" % v[0], "20", "%.6f" % v[1], "11", "%.6f" % v[2], "21", "%.6f" % v[3]]
++        elif kind == "CIRCLE":
++            rows += ["10", "%.6f" % v[0], "20", "%.6f" % v[1], "40", "%.6f" % v[2]]
++        else:
++            rows += ["10", "%.6f" % v[0], "20", "%.6f" % v[1], "40", "%.6f" % v[2], "50", "%.6f" % v[3],
++                     "51", "%.6f" % v[4]]  # fmt: skip
++    rows += ["0", "ENDSEC", "0", "EOF"]
++    with open(path, "w", encoding="ascii", newline="\r\n") as f:
++        f.write("\n".join(rows) + "\n")
++
++
++# ------------------------------------------------------------------ SVG at 1:1
++def write_svg(plate, path, margin=10.0):
++    face = plate.flat
++    bb = face.BoundBox
++    w, h = bb.XLength + 2 * margin, bb.YLength + 2 * margin + 8
++    parts = []
++    for e in face.Edges:
++        pts = e.discretize(Deflection=0.02)
++        # SVG's y runs down: flip, so the drawing reads as seen from the face's side
++        d = "M " + " L ".join("%.3f %.3f" % (p.x + margin, h - margin - p.y) for p in pts)
++        parts.append('<path d="%s"/>' % d)
++    note = "%s  t=%g mm  %.1f x %.1f mm  (1:1)" % (plate.label, round(plate.thickness, 2), bb.XLength, bb.YLength)
++    note = note.replace("&", "&amp;").replace("<", "&lt;")
++    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="%.3fmm" height="%.3fmm" viewBox="0 0 %.3f %.3f">\n'
++           '<g fill="none" stroke="#000" stroke-width="0.2">\n%s\n</g>\n'
++           '<text x="%.3f" y="%.3f" font-size="4" font-family="sans-serif">%s</text>\n</svg>\n'
++           % (w, h, w, h, "\n".join(parts), margin, h - 3, note))  # fmt: skip
++    with open(path, "w", encoding="utf-8") as f:
++        f.write(svg)
++
++
++def _file_name(label):
++    s = re.sub(r'[\\/:*?"<>|\s]+', "_", label).strip("_")
++    return s or "plate"
++
++
++def export(doc=None, out_dir="plates", thin=0.2):
++    """Write <name>.dxf and <name>.svg of each plate and plates.json into out_dir; returns the list"""
++    doc = doc or App.ActiveDocument
++    os.makedirs(out_dir, exist_ok=True)
++    found, used = [], set()
++    for p in plates(doc, thin):
++        base = _file_name(p.label)
++        k, name = 2, base
++        while name in used:
++            name = "%s_%d" % (base, k)
++            k += 1
++        used.add(name)
++        write_dxf(p.flat, os.path.join(out_dir, name + ".dxf"))
++        write_svg(p, os.path.join(out_dir, name + ".svg"))
++        found.append(dict(p.summary(), files=[name + ".dxf", name + ".svg"]))
++    with open(os.path.join(out_dir, "plates.json"), "w", encoding="utf-8") as f:
++        json.dump({"plates": found}, f, ensure_ascii=False, indent=1)
++    return found
++
++
++def cli_main():
++    doc = App.ActiveDocument
++    if doc is None:
++        raise RuntimeError("--export-plates: no document is open (give a .FCStd or .step file)")
++    doc.recompute()
++    out_dir = App.ConfigGet("ExportPlates")
++    found = export(doc, out_dir)
++    for p in found:
++        print("%s: t=%g, %g x %g mm, %d holes -> %s" % (p["label"], p["thickness"], p["size"][0], p["size"][1],
++                                                        p["holes"], ", ".join(p["files"])))  # fmt: skip
++    print("Wrote %d plates to %s (plates.json)" % (len(found), out_dir))
+diff --git a/src/Mod/Unified/TestPlateCut.py b/src/Mod/Unified/TestPlateCut.py
+new file mode 100644
+index 000000000..8f5b6208d
+--- /dev/null
++++ b/src/Mod/Unified/TestPlateCut.py
+@@ -0,0 +1,82 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# Full-size cutting drawings of the flat plates:
++#   FreeCADCmd -t TestPlateCut
++
++import json
++import os
++import shutil
++import subprocess
++import tempfile
++import unittest
++
++import FreeCAD as App
++import Part
++
++import PlateCut
++
++V = App.Vector
++
++
++def tilted_plate():
++    """A 200 x 120 x 6 plate with a hole of 10 mm, a slot with round ends and a rounded corner,
++    turned and lifted: it must come out flat and the same size"""
++    s = Part.makeBox(200, 120, 6)
++    s = s.cut(Part.makeCylinder(5, 10, V(30, 30, -2)))
++    slot = Part.makeBox(40, 8, 10, V(100, 56, -2)).fuse([Part.makeCylinder(4, 10, V(100, 60, -2)),
++                                                          Part.makeCylinder(4, 10, V(140, 60, -2))]).removeSplitter()
++    s = s.cut(slot)
++    corner = [e for e in s.Edges if all(abs(v.Point.x - 200) < 1e-6 and abs(v.Point.y - 120) < 1e-6 for v in e.Vertexes)]
++    s = s.makeFillet(10, corner)
++    s.rotate(V(0, 0, 0), V(1, 1, 0), 35)
++    s.translate(V(500, 200, 300))
++    return s
++
++
++class PlateCutTest(unittest.TestCase):
++    def setUp(self):
++        self.doc = App.newDocument("platecut")
++        self.tmp = tempfile.mkdtemp()
++
++    def tearDown(self):
++        App.closeDocument(self.doc.Name)
++        shutil.rmtree(self.tmp)
++
++    def test_plates_found_and_laid_flat(self):
++        self.doc.addObject("Part::Feature", "Plate").Shape = tilted_plate()
++        self.doc.addObject("Part::Feature", "Block").Shape = Part.makeBox(50, 50, 50, V(0, 0, 400))  # not thin
++        self.doc.addObject("Part::Feature", "Rod").Shape = Part.makeCylinder(5, 100, V(0, 300, 0))  # no flat pair
++        self.doc.recompute()
++        found = PlateCut.plates(self.doc)
++        self.assertEqual([p.name for p in found], ["Plate"])
++        p = found[0]
++        self.assertAlmostEqual(p.thickness, 6, places=6)
++        bb = p.flat.BoundBox
++        self.assertAlmostEqual(bb.ZLength, 0, places=6)
++        self.assertEqual(sorted((round(bb.XLength, 3), round(bb.YLength, 3))), [120, 200])
++        self.assertEqual(p.summary()["holes"], 2)
++
++    def test_files_written(self):
++        self.doc.addObject("Part::Feature", "Plate").Shape = tilted_plate()
++        self.doc.recompute()
++        found = PlateCut.export(self.doc, self.tmp)
++        self.assertEqual(found[0]["files"], ["Plate.dxf", "Plate.svg"])
++        dxf = open(os.path.join(self.tmp, "Plate.dxf"), encoding="ascii").read().split()
++        self.assertEqual(dxf.count("CIRCLE"), 1)  # the hole
++        self.assertGreaterEqual(dxf.count("ARC"), 3)  # the slot's ends and the corner
++        svg = open(os.path.join(self.tmp, "Plate.svg"), encoding="utf-8").read()
++        self.assertIn('width="220.000mm"', svg.replace('"140.000mm"', ""))  # 1:1 with a 10 mm margin
++        data = json.load(open(os.path.join(self.tmp, "plates.json"), encoding="utf-8"))
++        self.assertEqual(data["plates"][0]["thickness"], 6)
++
++    def test_command_line(self):
++        import DrawingPdf
++
++        self.doc.addObject("Part::Feature", "Plate").Shape = tilted_plate()
++        self.doc.recompute()
++        path = os.path.join(self.tmp, "m.FCStd")
++        self.doc.saveAs(path)
++        out = os.path.join(self.tmp, "cut")
++        proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--export-plates", out], capture_output=True,
++                              timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
++        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
++        self.assertEqual(sorted(os.listdir(out)), ["Plate.dxf", "Plate.svg", "plates.json"])
+-- 
+2.43.0
+

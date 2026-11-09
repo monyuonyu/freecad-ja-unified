@@ -332,6 +332,16 @@ Found by running the upstream tests under a memory-error detecting build (Addres
 Also fixed a bug in the assembly solver (OndselSolver) where joint type names in assembly export (ASMT) were corrupted on Linux and macOS
 (type names were cut out assuming the Windows format; found when upstream test #32922 failed on Linux).
 
+## Changes in 0.9.7
+
+- **The design check, faster again**: whether parts touch is measured only between faces whose boxes come close (the distance between whole solids took a quarter of a second each with many-faced STEP parts, 98 s on a cart model). Pins in holes compare only round faces near each other, found by sorting along x (it made 4 million comparisons). Two groups of 400 screws: 3.8 s to 0.09 s. The issues found are the same.
+- **Pairs ignored are not measured**: the pairs of `--ignore-pairs` and the parts of one item are left out of the overlap measuring too (they were measured, then dropped).
+- **Thread engagement**: a screw in a threaded hole is checked for its length in the hole: at least 0.8 x its diameter (a nut's height), or all of a shorter hole; a warning otherwise.
+- **Tiny edges of imported shapes are not counted**: shapes without a history (a STEP) have nothing to fix (it came up with manufacturers' casters and T-nuts).
+- **`--colors`**: colours of parts for `--render`, `--export-svg`, `--export-pptx`, `--export-web` and the like: `--colors "Frame*=#808080;Screw*=200,40,40"` or a JSON file (labels or names, * and ?).
+- **`--export-plates <folder>` (full-size cutting drawings)**: each flat plate's larger face laid flat, written as DXF (mm: lines, arcs, circles) and as SVG at 1:1 with its name, thickness and size; plates.json lists them (thickness, size, holes).
+- **`--check-update` and `--update <folder>`**: whether a newer release is out (exit code 10 then), with its file, address and SHA256; `--update` downloads it and checks the SHA256 (the one running is left as it is).
+
 ## Changes in 0.9.6
 
 - **The design check (`--design-check`) did not finish on models of many solids, fixed**: a cart of 496 solids ran for more than 23 minutes. The distances for floating parts are now measured solid by solid, only between solids whose boxes come close (a similar model: 222 s to 16 s). The distance between whole compounds was also wrong: nuts sitting on washers were reported as touching nothing.

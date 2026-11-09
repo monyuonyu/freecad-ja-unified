@@ -1,0 +1,171 @@
+From 0a070ef29928fbc285073efb3af29dc1c3c85745 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 13:40:49 +0900
+Subject: [PATCH 421/423] Command line: --colors for the parts of pictures,
+ drawings and the web view
+
+--colors 'Frame*=#808080;Screw*=200,40,40' or a JSON file {pattern: colour}
+colours the parts whose label or name matches (* and ?; a later pattern
+wins) in --render, --export-svg, --export-polygons, --export-pptx and
+--export-web. Colours as #rrggbb or r,g,b (0..1, or 0..255).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp            |  2 ++
+ src/Mod/Part/PartViews.py          | 47 ++++++++++++++++++++++++++++--
+ src/Mod/Part/PartWebView.py        |  4 +--
+ src/Mod/Unified/TestDesignCheck.py | 14 +++++++++
+ 4 files changed, 62 insertions(+), 5 deletions(-)
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 579ca41ce..9c120fb39 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2492,6 +2492,7 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("section-color", boost::program_options::value<std::string>(), "Colour of the cut faces of --section: part (a darker shade of each part's colour) or r,g,b (0-1)")
+     ("deflection", boost::program_options::value<std::string>(), "Tessellation tolerance for --render/--export-* in model units (larger is coarser and faster; default from the size of the model)")
+     ("max-seconds", boost::program_options::value<std::string>(), "Stop --export-svg/--export-polygons/--export-pptx after this many seconds and write what is done (the nearest faces) with a warning")
++    ("colors", boost::program_options::value<std::string>(), "Colours of parts for --render/--export-svg/--export-polygons/--export-pptx/--export-web: 'Frame*=#808080;Screw*=200,40,40' or a JSON file {\"pattern\": \"#rrggbb\"} (labels or names; * and ? match any characters; a later pattern wins)")
+     ("progress", "Progress of --render/--export-*/--design-check on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON on standard output (no file name: > report.json), exit code 1 on an error; with --progress the step on stderr; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
+@@ -2747,6 +2748,7 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+         {"focus", "RenderFocus"},
+         {"section", "RenderSection"},
+         {"section-color", "RenderSectionColor"},
++        {"colors", "RenderColors"},
+         {"deflection", "RenderDeflection"},
+         {"max-seconds", "RenderMaxSeconds"},
+         {"export-svg", "ExportSvg"},
+diff --git a/src/Mod/Part/PartViews.py b/src/Mod/Part/PartViews.py
+index 472d0950a..b2586b36b 100644
+--- a/src/Mod/Part/PartViews.py
++++ b/src/Mod/Part/PartViews.py
+@@ -1270,6 +1270,46 @@ def _view_arg(view):
+     return view
+ 
+ 
++def parse_color(text):
++    """'#rrggbb', 'r,g,b' (0..1, or 0..255 when any is above 1) -> (r, g, b) in 0..1"""
++    text = str(text).strip()
++    if text.startswith("#") and len(text) == 7:
++        return tuple(int(text[k:k + 2], 16) / 255.0 for k in (1, 3, 5))
++    rgb = _numbers(text, 3, "color")
++    return tuple(c / 255.0 for c in rgb) if any(c > 1 for c in rgb) else tuple(rgb)
++
++
++def cli_colors(doc, spec):
++    """--colors: a JSON file {pattern: colour} or 'Frame*=#808080;Screw*=200,40,40'. A pattern
++    (* and ? match any characters) is matched to the labels and names of the document's objects;
++    a later pattern wins over an earlier one. -> {object name: (r, g, b)}"""
++    import fnmatch
++    import json
++
++    if not spec:
++        return None
++    if os.path.isfile(spec):
++        with open(spec, encoding="utf-8-sig") as f:
++            pairs = list(json.load(f).items())
++    else:
++        pairs = []
++        for item in spec.split(";"):
++            if item.strip():
++                if "=" not in item:
++                    raise ValueError("--colors: write pattern=colour (e.g. Frame*=#808080): %r" % item)
++                pattern, color = item.rsplit("=", 1)
++                pairs.append((pattern.strip(), color))
++    out = {}
++    for pattern, color in pairs:
++        rgb = parse_color(color)
++        hit = [o for o in doc.Objects if fnmatch.fnmatchcase(o.Label, pattern) or fnmatch.fnmatchcase(o.Name, pattern)]
++        if not hit:
++            App.Console.PrintWarning("--colors: nothing matches %s\n" % pattern)
++        for o in hit:
++            out[o.Name] = rgb
++    return out
++
++
+ def cli_main():
+     """Run the command line options of this module (see the module docstring)."""
+     doc = App.ActiveDocument
+@@ -1281,11 +1321,12 @@ def cli_main():
+     style = _config("RenderStyle") or "shaded"
+     deflection = float(_config("RenderDeflection") or 0)
+     view_kw = cli_view_options(doc)
++    colors = cli_colors(doc, _config("RenderColors"))
+     png = _config("RenderFile")
+     if png:
+         views = [_view_arg(v) for v in _split_views(view)]
+         for out in render(doc, png, view=views if len(views) > 1 else views[0], size=size, style=style,
+-                          deflection=deflection, **view_kw):  # fmt: skip
++                          deflection=deflection, colors=colors, **view_kw):  # fmt: skip
+             print("Wrote %s" % out)
+     svg = _config("ExportSvg")
+     poly = _config("ExportPolygons")
+@@ -1296,7 +1337,7 @@ def cli_main():
+                  "pptx": _edge_mode(edges, "outline")}  # fmt: skip
+         need_edges = any(modes[k] == "all" for k, out in (("svg", svg), ("poly", poly), ("pptx", pptx)) if out)
+         data = project(doc, view=_view_arg(_split_views(view)[0]), edges=need_edges, deflection=deflection,
+-                       **view_kw)  # fmt: skip
++                       colors=colors, **view_kw)  # fmt: skip
+         if not data.get("complete", True):
+             App.Console.PrintWarning("Warning: %s\n" % data.get("warning", "incomplete"))
+ 
+@@ -1318,7 +1359,7 @@ def cli_main():
+ 
+         split = lambda v: [x.strip() for x in (v or "").split(",") if x.strip()]  # noqa: E731
+         PartWebView.export(doc, web, deflection=deflection, exclude=split(_config("WebExclude")),
+-                           simplify=split(_config("WebSimplify")))  # fmt: skip
++                           simplify=split(_config("WebSimplify")), colors=colors)  # fmt: skip
+         print("Wrote %s" % web)
+     drawings = _config("ExportDrawings")
+     if drawings:
+diff --git a/src/Mod/Part/PartWebView.py b/src/Mod/Part/PartWebView.py
+index 4ba230f49..830d2cde1 100644
+--- a/src/Mod/Part/PartWebView.py
++++ b/src/Mod/Part/PartWebView.py
+@@ -158,14 +158,14 @@ def _mesh_data(mesh):
+ 
+ 
+ def export(source=None, path="view.html", title="", notes=(), walls=None, alpha=None, deflection=0.0,
+-           edges=True, exclude=(), simplify=()):  # fmt: skip
++           edges=True, exclude=(), simplify=(), colors=None):  # fmt: skip
+     """Write the 3D view of `source` (a document, objects or shapes; see PartViews.scene_entries)
+     to the HTML file `path`. walls: {label or name: (x, y, z)} the outward side of a wall,
+     hidden when looked at from that side; alpha: {label or name: 0..1}. deflection: the size of
+     the triangles' error in mm (0: from the size of the model). Returns the path."""
+     import PartViews
+ 
+-    entries = PartViews.scene_entries(source, colors=None)
++    entries = PartViews.scene_entries(source, colors=colors)
+     if exclude:
+         entries = [e for e in entries if not _matches(e, exclude)]
+     clouds = _clouds(source, exclude)
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index 881a53ca9..bdefcb67b 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -323,6 +323,20 @@ class DesignCheckCommandLineTest(unittest.TestCase):
+                                   capture_output=True, timeout=300, stdin=subprocess.DEVNULL)  # fmt: skip
+             self.assertEqual(sorted(f for f in os.listdir(tmp) if f.endswith(".png")), ["v_front.png", "v_top.png"],
+                              proc.stderr.decode("utf-8", "replace"))  # fmt: skip
++            # --colors: the post red by its label, the shelf blue by a pattern
++            png = os.path.join(tmp, "c.png")
++            proc = subprocess.run([DrawingPdf._freecadcmd(), path, "--render", png, "--view", "front", "--size", "200",
++                                   "--colors", "Post=#ff0000;Sh*=0,0,255"], capture_output=True, timeout=300,
++                                  stdin=subprocess.DEVNULL)  # fmt: skip
++            from PySide import QtGui
++
++            img = QtGui.QImage(png)
++            self.assertFalse(img.isNull(), proc.stderr.decode("utf-8", "replace"))
++            seen = {(QtGui.QColor(img.pixel(x, y)).red() > 150 and QtGui.QColor(img.pixel(x, y)).blue() < 90,
++                     QtGui.QColor(img.pixel(x, y)).blue() > 150 and QtGui.QColor(img.pixel(x, y)).red() < 90)
++                    for x in range(0, img.width(), 2) for y in range(0, img.height(), 2)}  # fmt: skip
++            self.assertIn((True, False), seen)  # red pixels
++            self.assertIn((False, True), seen)  # blue pixels
+         finally:
+             shutil.rmtree(tmp)
+ 
+-- 
+2.43.0
+

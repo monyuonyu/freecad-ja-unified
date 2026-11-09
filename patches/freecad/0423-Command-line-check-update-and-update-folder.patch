@@ -1,0 +1,333 @@
+From c6c01ea61289a436638c643bcf5472cd60c84c26 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 13:46:28 +0900
+Subject: [PATCH 423/423] Command line: --check-update and --update <folder>
+
+--check-update asks GitHub for the newest freecad-ja-unified release and
+says it beside the one running, with its file for this system, address and
+SHA256 (exit code 10 when newer). --update downloads that file into the
+folder and checks its SHA256 (a mismatch is removed); the one running is
+left as it is. The release running is read from release.txt, which the
+release build writes (dev otherwise).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/App/Application.cpp        |  26 ++++++
+ src/Mod/Unified/CMakeLists.txt |   3 +
+ src/Mod/Unified/TestUpdate.py  |  57 ++++++++++++
+ src/Mod/Unified/Update.py      | 158 +++++++++++++++++++++++++++++++++
+ src/Mod/Unified/release.txt    |   1 +
+ 5 files changed, 245 insertions(+)
+ create mode 100644 src/Mod/Unified/TestUpdate.py
+ create mode 100644 src/Mod/Unified/Update.py
+ create mode 100644 src/Mod/Unified/release.txt
+
+diff --git a/src/App/Application.cpp b/src/App/Application.cpp
+index 51e358414..a9de83c3f 100644
+--- a/src/App/Application.cpp
++++ b/src/App/Application.cpp
+@@ -2496,6 +2496,8 @@ void parseProgramOptions(int ac, char ** av, const std::string& exe, boost::prog
+     ("progress", "Progress of --render/--export-*/--design-check on stderr")
+     ("export-drawings", boost::program_options::value<std::string>(), "Write the drawing pages (TechDraw) as PDF: one page to this file, more to <name>_<page>.pdf")
+     ("design-check", boost::program_options::value<std::string>()->implicit_value("all"), "Check the design of the file (overlapping parts, broken shapes, joints that do not hold...): the issues as JSON on standard output (no file name: > report.json), exit code 1 on an error; with --progress the step on stderr; --design-check interference for the overlaps only, --design-check sweep for parts turned (--sweep)")
++    ("check-update", "Say whether a newer release of freecad-ja-unified is out: the newest, its file for this system, the address and the SHA256 (exit code 10 when newer)")
++    ("update", boost::program_options::value<std::string>(), "Download the newest release's file for this system into this folder and check its SHA256 (the one running is left as it is)")
+     ("export-plates", boost::program_options::value<std::string>(), "Write full-size cutting drawings of the flat plates (a solid with two large flat faces as far apart as it is thick, thin beside its other sizes) into this folder: <name>.dxf (mm) and <name>.svg (1:1, to print at 100 %) of each, and plates.json (thickness, size, holes)")
+     ("export-mjcf", boost::program_options::value<std::string>(), "Write a rough MuJoCo model (MJCF): the parts as bodies with mass, centre of mass and inertia (material density, else 7850 kg/m3), a box each for contacts, the assembly's joints as hinges and slides (loops as equality constraints)")
+     ("mjcf-density", boost::program_options::value<std::string>(), "With --export-mjcf: a JSON file of densities and masses by part name: {\"density\": {\"Floor_*\": 2700}, \"mass\": {\"PSU_*\": 0.3}}")
+@@ -2795,6 +2797,12 @@ void processProgramOptions(const boost::program_options::variables_map& vm, std:
+     if (vm.contains("progress")) {
+         mConfig["RenderProgress"] = "1";
+     }
++    if (vm.contains("check-update")) {
++        mConfig["CheckUpdate"] = "1";
++    }
++    if (vm.contains("update")) {
++        mConfig["UpdateDir"] = vm["update"].as<std::string>();
++    }
+     if (vm.contains("interference") && !vm.contains("interference-report")) {
+         mConfig["InterferenceReport"] = "-";
+     }
+@@ -3400,6 +3408,24 @@ void Application::processCmdLineFiles()
+     const std::list<std::string> files = getCmdLineFiles();
+     std::list<std::string> failed;
+ 
++    // --check-update / --update: asked alone, before any file
++    if (mConfig.contains("CheckUpdate") || mConfig.contains("UpdateDir")) {
++        mConfig["RunMode"] = "Exit";
++        try {
++            Base::Interpreter().runString("import Update\nUpdate.cli_main()\n");
++        }
++        catch (const Base::SystemExitException&) {
++            throw;
++        }
++        catch (const Base::PyException& e) {
++            reportScriptError("Update", e);
++            Base::PyGILStateLocker lock;
++            PyErr_SetObject(PyExc_SystemExit, Py::Long(1).ptr());
++            throw Base::SystemExitException();
++        }
++        return;
++    }
++
+     if (files.size() == 1 && mConfig["RunMode"] == "Cmd" && !Base::FileInfo(files.front()).exists()) {
+         // In case we are in console mode and the argument is not a file but Python code
+         // then execute it. This is to behave like the standard Python executable.
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 9c7a71a54..62c04c244 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -10,6 +10,8 @@ set(Unified_Scripts
+     DesignCheck.py
+     MjcfExport.py
+     PlateCut.py
++    Update.py
++    release.txt
+     AITools.py
+     AIAgentBridge.py
+     NetworkSettings.py
+@@ -25,6 +27,7 @@ set(Unified_Scripts
+     TestDesignCheck.py
+     TestMjcfExport.py
+     TestPlateCut.py
++    TestUpdate.py
+     TestGuiScript.py
+     MotionVideo.py
+     TestMotionVideo.py
+diff --git a/src/Mod/Unified/TestUpdate.py b/src/Mod/Unified/TestUpdate.py
+new file mode 100644
+index 000000000..fc30ae848
+--- /dev/null
++++ b/src/Mod/Unified/TestUpdate.py
+@@ -0,0 +1,57 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++# The update check, without the network (the download from a local file):
++#   FreeCADCmd -t TestUpdate
++
++import hashlib
++import os
++import platform
++import shutil
++import tempfile
++import unittest
++
++import Update
++
++
++class UpdateTest(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.mkdtemp()
++
++    def tearDown(self):
++        shutil.rmtree(self.tmp)
++
++    def test_versions(self):
++        self.assertEqual(Update.version_of("ja-unified-0.9.7"), (0, 9, 7))
++        self.assertGreater(Update.version_of("ja-unified-0.10.0"), Update.version_of("ja-unified-0.9.12"))
++        self.assertIsNone(Update.version_of("dev"))
++        self.assertTrue(Update.running())
++
++    def test_the_file_for_this_system(self):
++        names = ["FreeCAD_x_ja-unified-0.9.7-Linux-x86_64.AppImage", "FreeCAD_x_ja-unified-0.9.7-Linux-x86_64.AppImage.zsync",
++                 "FreeCAD_x_ja-unified-0.9.7-Windows-x86_64-installer.exe", "FreeCAD_x_ja-unified-0.9.7-Windows-x86_64.7z"]
++        got = Update.asset_for_this_system({n: "" for n in names})
++        want = {"Linux": names[0], "Windows": names[2]}.get(platform.system())
++        self.assertEqual(got, want)
++
++    def _source(self, data):
++        src = os.path.join(self.tmp, "src", "FreeCAD_x-Linux-x86_64.AppImage")
++        os.makedirs(os.path.dirname(src))
++        with open(src, "wb") as f:
++            f.write(data)
++        return src
++
++    def test_download_checks_the_sha256(self):
++        data = b"x" * 3000000
++        src = self._source(data)
++        info = {"file": os.path.basename(src), "address": "file://" + src, "sha256": hashlib.sha256(data).hexdigest()}
++        path = Update.download(os.path.join(self.tmp, "new"), info)
++        self.assertEqual(open(path, "rb").read(), data)
++        self.assertTrue(os.access(path, os.X_OK) or platform.system() == "Windows")
++        bad = dict(info, sha256="0" * 64)
++        with self.assertRaises(RuntimeError):
++            Update.download(os.path.join(self.tmp, "bad"), bad)
++        self.assertEqual(os.listdir(os.path.join(self.tmp, "bad")), [])  # nothing left behind
++
++    def test_no_sha256_no_download(self):
++        src = self._source(b"abc")
++        with self.assertRaises(RuntimeError):
++            Update.download(self.tmp, {"file": "f", "address": "file://" + src, "sha256": None})
+diff --git a/src/Mod/Unified/Update.py b/src/Mod/Unified/Update.py
+new file mode 100644
+index 000000000..8fa0f09d7
+--- /dev/null
++++ b/src/Mod/Unified/Update.py
+@@ -0,0 +1,158 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""Whether a newer release of freecad-ja-unified is out, and fetching it.
++
++    FreeCADCmd --check-update          the release running, the newest one, its file for this
++                                       system, the address and the SHA256
++    FreeCADCmd --update <folder>       download that file into the folder and check its SHA256
++                                       (the running one is left as it is: point your launcher at
++                                       the new file, or extract it, when you like)
++
++The release running is in release.txt beside this module (written by the release build; "dev"
++for a build of one's own). Exit code: 0 up to date or downloaded, 10 a newer release is out
++(--check-update), 1 an error.
++"""
++
++import hashlib
++import json
++import os
++import platform
++import re
++import sys
++import urllib.request
++
++REPO = "monyuonyu/freecad-ja-unified"
++API = "https://api.github.com/repos/%s/releases?per_page=30" % REPO  # marked pre-release: not under /latest
++AGENT = "freecad-ja-unified-update"
++
++
++def running():
++    """The release tag this build came from ("ja-unified-0.9.7"), or "dev" """
++    try:
++        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "release.txt"), encoding="utf-8") as f:
++            return f.read().strip() or "dev"
++    except OSError:
++        return "dev"
++
++
++def version_of(tag):
++    """(0, 9, 7) of "ja-unified-0.9.7"; None if it has no number"""
++    m = re.search(r"(\d+)\.(\d+)\.(\d+)", tag or "")
++    return tuple(int(x) for x in m.groups()) if m else None
++
++
++def _get(url, timeout=30):
++    req = urllib.request.Request(url, headers={"User-Agent": AGENT, "Accept": "application/vnd.github+json"})
++    with urllib.request.urlopen(req, timeout=timeout) as r:
++        return r.read()
++
++
++def latest():
++    """{"tag", "url" (the release page), "assets": {name: download address}}"""
++    found = [r for r in json.loads(_get(API).decode("utf-8"))
++             if not r.get("draft") and version_of(r.get("tag_name")) and r["tag_name"].startswith("ja-unified-")]
++    if not found:
++        raise RuntimeError("no release of %s found" % REPO)
++    data = max(found, key=lambda r: version_of(r["tag_name"]))
++    return {"tag": data["tag_name"], "url": data.get("html_url", ""),
++            "assets": {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}}  # fmt: skip
++
++
++def asset_for_this_system(assets):
++    """The name of the file to install here: the AppImage on Linux, the installer on Windows"""
++    system = platform.system()
++    want = {"Linux": "-Linux-x86_64.AppImage", "Windows": "-Windows-x86_64-installer.exe"}.get(system)
++    if want is None:
++        return None
++    return next((n for n in assets if n.endswith(want)), None)
++
++
++def sha256_of(assets, name):
++    """The SHA256 published beside the file (its -SHA256.txt)"""
++    url = assets.get(name + "-SHA256.txt")
++    if not url:
++        return None
++    return _get(url).decode("utf-8", "replace").split()[0].lower()
++
++
++def check():
++    """{"running", "latest", "newer" (bool or None for a build of one's own), "file", "address", "sha256", "page"}"""
++    new = latest()
++    name = asset_for_this_system(new["assets"])
++    here, there = version_of(running()), version_of(new["tag"])
++    return {"running": running(), "latest": new["tag"], "newer": (there > here) if here and there else None,
++            "file": name, "address": new["assets"].get(name) if name else None,
++            "sha256": sha256_of(new["assets"], name) if name else None, "page": new["url"]}  # fmt: skip
++
++
++def download(folder, info=None, progress=None):
++    """Download the newest file for this system into folder and check its SHA256; returns its path.
++    A file whose SHA256 does not match is removed and an error raised"""
++    info = info or check()
++    if not info["file"] or not info["address"]:
++        raise RuntimeError("no release file for this system (%s)" % platform.system())
++    if not info["sha256"]:
++        raise RuntimeError("the release has no SHA256 for %s: not downloaded" % info["file"])
++    os.makedirs(folder, exist_ok=True)
++    path = os.path.join(folder, info["file"])
++    part = path + ".part"
++    h = hashlib.sha256()
++    req = urllib.request.Request(info["address"], headers={"User-Agent": AGENT})
++    with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
++        total = int(r.headers.get("Content-Length") or 0)
++        done = 0
++        while True:
++            block = r.read(1 << 20)
++            if not block:
++                break
++            f.write(block)
++            h.update(block)
++            done += len(block)
++            if progress:
++                progress(done, total)
++    if h.hexdigest().lower() != info["sha256"]:
++        os.remove(part)
++        raise RuntimeError("SHA256 does not match (%s, published %s): the file was removed"
++                           % (h.hexdigest(), info["sha256"]))  # fmt: skip
++    os.replace(part, path)
++    if path.endswith(".AppImage"):
++        os.chmod(path, 0o755)
++    return path
++
++
++def cli_main():
++    import FreeCAD as App
++
++    folder = App.ConfigGet("UpdateDir")
++    try:
++        info = check()
++    except Exception as e:  # no network, GitHub refusing: said in one line
++        sys.stderr.write("update: could not ask GitHub (%s)\n" % e)
++        sys.exit(1)
++    print("running: %s" % info["running"])
++    print("latest:  %s %s" % (info["latest"], info["page"]))
++    if info["newer"] is None:
++        print("(a build of one's own: not compared)")
++    elif not info["newer"]:
++        print("up to date")
++    if info["file"]:
++        print("file:    %s\naddress: %s\nsha256:  %s" % (info["file"], info["address"], info["sha256"]))
++    if folder:
++        last = [-1]
++
++        def progress(done, total):
++            pct = int(done * 100 / total) if total else 0
++            if pct // 10 != last[0]:
++                last[0] = pct // 10
++                sys.stderr.write("update: %d%%\n" % pct)
++                sys.stderr.flush()
++
++        if info["newer"] is False:
++            print("nothing to download")
++            return
++        path = download(folder, info, progress)
++        print("downloaded and checked: %s" % path)
++        if path.endswith(".AppImage"):
++            print("to use it: point your launcher at it, or run it with --appimage-extract in a new folder")
++        return
++    if info["newer"]:
++        sys.exit(10)
+diff --git a/src/Mod/Unified/release.txt b/src/Mod/Unified/release.txt
+new file mode 100644
+index 000000000..38f8e886e
+--- /dev/null
++++ b/src/Mod/Unified/release.txt
+@@ -0,0 +1 @@
++dev
+-- 
+2.43.0
+

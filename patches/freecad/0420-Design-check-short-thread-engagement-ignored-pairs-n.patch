@@ -1,0 +1,228 @@
+From f3af8edc21dac8a1fd97380930970773ab523336 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Mon, 9 Nov 2026 13:39:18 +0900
+Subject: [PATCH 420/423] Design check: short thread engagement, ignored pairs
+ not measured, tiny edges of imported shapes
+
+A screw in a threaded hole is now also checked for its length in the hole:
+at least 0.8 x its diameter (a nut's height) or all of a shorter hole; a
+warning per pair of parts with the number of screws and the shortest.
+The pairs given to ignore and the parts of one item are left out of the
+measuring as well, not only of the report. Shapes without a history (an
+imported STEP, a shape set by a script) are not checked for tiny edges:
+there is nothing to fix in them (tiny_edge_imported=True checks them).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/Mod/Unified/DesignCheck.py                | 63 ++++++++++++++-----
+ .../Gui/Resources/translations/Unified_ja.ts  |  8 +++
+ src/Mod/Unified/TestDesignCheck.py            | 40 ++++++++++++
+ 3 files changed, 97 insertions(+), 14 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheck.py b/src/Mod/Unified/DesignCheck.py
+index 851dc87ed..0a61e06fd 100644
+--- a/src/Mod/Unified/DesignCheck.py
++++ b/src/Mod/Unified/DesignCheck.py
+@@ -76,6 +76,7 @@ RULES = {
+     "sketch_free": QT_TRANSLATE_NOOP("DesignCheck", "Sketch not fully constrained"),
+     "floating": QT_TRANSLATE_NOOP("DesignCheck", "Part touches no other part"),
+     "thread_fit": QT_TRANSLATE_NOOP("DesignCheck", "Screws in threaded holes"),
++    "thread_short": QT_TRANSLATE_NOOP("DesignCheck", "Thread engagement too short"),
+     "drawing_dim": QT_TRANSLATE_NOOP("DesignCheck", "Drawing dimension lost its geometry"),
+     "drawing_view": QT_TRANSLATE_NOOP("DesignCheck", "Drawing view shows nothing"),
+     "empty_body": QT_TRANSLATE_NOOP("DesignCheck", "Part has no shape"),
+@@ -389,8 +390,12 @@ def check_shapes(doc, issues, opt, shapes):
+         if (s.Shells and not closed) or not sol:
+             issues.append(Issue(WARNING, "not_solid",
+                                 translate("DesignCheck", "{0} has open surfaces (not a closed solid)").format(o.Label), [n]))
+-        # 球や楕円体の極にできる長さ 0 の辺（Degenerated）は作図のミスではないので除く
+-        tiny = [e for e in s.Edges if e.Length < opt["tiny_edge_mm"] and not getattr(e, "Degenerated", False)]
++        # 球や楕円体の極にできる長さ 0 の辺（Degenerated）は作図のミスではないので除く。
++        # 履歴の無い形（読み込んだ STEP、置いただけの形）は直しようが無いので数えない（メーカーの STEP のキャスターや
++        # T ナットで出ていた。opt["tiny_edge_imported"] で数える）
++        imported = o.TypeId == "Part::Feature" and not getattr(o, "Proxy", None)
++        tiny = [] if imported and not opt.get("tiny_edge_imported") else \
++            [e for e in s.Edges if e.Length < opt["tiny_edge_mm"] and not getattr(e, "Degenerated", False)]
+         if tiny:
+             issues.append(Issue(WARNING, "tiny_edge",
+                                 translate("DesignCheck", "{0} has {1} edges shorter than {2} mm").format(
+@@ -529,17 +534,26 @@ def _round_faces(solid):
+     return out
+ 
+ 
++def _round_faces_cached(solid, faces):
++    if id(solid) not in faces:
++        faces[id(solid)] = _round_faces(solid)
++    return faces[id(solid)]
++
++
+ def _thread_fit(x, y, volume, faces):
+     """Solids x and y overlap as a drawn screw in a threaded hole: a round shank of x in a round
+     hole of y on the same axis, smaller by at most a thread's depth (a fifth of the radius: M6 drawn
+     at 6 mm in a 5 mm tap drill), and no more overlap than that ring along the length they share.
+-    Told by the shapes, not by names or a list. faces: a cache {id(solid): _round_faces}"""
++    Told by the shapes, not by names or a list. faces: a cache {id(solid): _round_faces}.
++    Returns None, or {"d": the screw's diameter, "engaged": the length in the hole, "hole": the
++    hole's length}"""
+     import math
+ 
+     for screw, nut in ((x, y), (y, x)):
+-        shanks = [(f, s) for f, s, shaft in faces.setdefault(id(screw), _round_faces(screw)) if shaft]
+-        holes = [(f, s) for f, s, shaft in faces.setdefault(id(nut), _round_faces(nut)) if not shaft]
++        shanks = [(f, s) for f, s, shaft in _round_faces_cached(screw, faces) if shaft]
++        holes = [(f, s) for f, s, shaft in _round_faces_cached(nut, faces) if not shaft]
+         ring = 0.0
++        info = None
+         for fa, sa in shanks:
+             for fb, sb in holes:
+                 big, small = sa.Radius, sb.Radius
+@@ -553,9 +567,12 @@ def _thread_fit(x, y, volume, faces):
+                 length = min(ta[-1], tb[-1]) - max(ta[0], tb[0])
+                 if length > 1e-6:
+                     ring += math.pi * (big * big - small * small) * length
++                    hole = tb[-1] - tb[0]
++                    if info is None or length > info["engaged"]:
++                        info = {"d": 2 * big, "engaged": length, "hole": hole}
+         if ring > 0 and volume <= ring * 1.05 + 1e-3:
+-            return True
+-    return False
++            return info
++    return None
+ 
+ 
+ def _common_volume(a, b):
+@@ -736,8 +753,15 @@ def _measure_overlaps(items, wanted, opt):
+         if volume < 0:
+             out[pair][2] = True  # this pair of solids could not be measured
+             continue
+-        if _thread_fit(solids[i], solids[j], volume, faces):
++        fit = _thread_fit(solids[i], solids[j], volume, faces)
++        if fit:
+             fits[pair] = fits.get(pair, 0) + 1  # a screw in its threaded hole: not an overlap
++            # the thread holds by its length in the hole: at least engagement_d × the diameter
++            # (a nut's height), or all of a shorter hole
++            need = min(opt.get("engagement_d", 0.8) * fit["d"], fit["hole"])
++            if fit["engaged"] < need - 0.05:
++                opt.setdefault("thread_short", {}).setdefault(pair, []).append(
++                    (fit["d"], fit["engaged"], need, solids[i].BoundBox.intersected(solids[j].BoundBox).Center))
+             continue
+         out[pair][0] += volume
+         box = solids[i].BoundBox.intersected(solids[j].BoundBox)
+@@ -816,7 +840,11 @@ def iter_interference(doc, issues, opt, shapes):
+         fa, fb = fp[na], fp[nb]
+         return ((fa, fb) if fa <= fb else (fb, fa)) + tol
+ 
+-    todo = {(na, nb) for (na, _), (nb, _) in pairs if _PAIR_CACHE.get(key(na, nb)) is None}
++    one = {n: one_items(doc.getObject(n)) for n in shapes}
++    allowed = _pair_rule(doc, opt.get("ignore_pairs"))
++    # the pairs said to overlap on purpose, and the parts of one item, are not measured at all
++    todo = {(na, nb) for (na, _), (nb, _) in pairs
++            if _PAIR_CACHE.get(key(na, nb)) is None and not (one[na] & one[nb] or allowed(na, nb))}
+     measured = {}
+     if todo:
+         import threading
+@@ -833,8 +861,6 @@ def iter_interference(doc, issues, opt, shapes):
+             yield p
+             worker.join(0.05)
+         measured = box.get("r", {})
+-    one = {n: one_items(doc.getObject(n)) for n in shapes}
+-    allowed = _pair_rule(doc, opt.get("ignore_pairs"))
+     opt["allowed_pairs"] = 0
+     for k, ((na, a), (nb, b)) in enumerate(pairs):
+         yield Progress(k, len(pairs), message(k))
+@@ -883,10 +909,19 @@ def iter_interference(doc, issues, opt, shapes):
+             issue.volume = v
+             issues.append(issue)
+         fitted = opt.get("thread_fits", {}).get((na, nb)) or opt.get("thread_fits", {}).get((nb, na))
++        short = opt.get("thread_short", {}).get((na, nb)) or opt.get("thread_short", {}).get((nb, na))
+         if fitted:
+-            _FIT_CACHE[k_ab] = fitted
+-        else:
+-            fitted = _FIT_CACHE.get(k_ab)  # measured in an earlier check of the same shapes
++            _FIT_CACHE[k_ab] = (fitted, short)
++        elif k_ab in _FIT_CACHE:
++            fitted, short = _FIT_CACHE[k_ab]  # measured in an earlier check of the same shapes
++        if short:
++            d, engaged, need, where = min(short, key=lambda s: s[1] - s[2])
++            issues.append(Issue(WARNING, "thread_short",
++                                translate("DesignCheck", "{0} and {1}: {2} screws hold by too short a thread (M{3:g}: "
++                                          "{4:.1f} mm in the hole, {5:.1f} mm wanted)").format(
++                                    doc.getObject(na).Label, doc.getObject(nb).Label, len(short), round(d, 1),
++                                    engaged, need),
++                                [na, nb], where))  # fmt: skip
+         if fitted:
+             t = True
+             issues.append(Issue(INFO, "thread_fit",
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 54b462292..ceced60e9 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -812,6 +812,14 @@
+         <source>{0} and {1}: {2} screws in threaded holes; the thread's overlap was not counted</source>
+         <translation>{0} と {1}: ねじ穴に入ったねじが {2} 本。ねじ山の重なりは数えていない</translation>
+     </message>
++    <message>
++        <source>Thread engagement too short</source>
++        <translation>ねじのかかりが短い</translation>
++    </message>
++    <message>
++        <source>{0} and {1}: {2} screws hold by too short a thread (M{3:g}: {4:.1f} mm in the hole, {5:.1f} mm wanted)</source>
++        <translation>{0} と {1}: ねじ {2} 本のかかりが短い（M{3:g}: 穴に入っているのは {4:.1f} mm、{5:.1f} mm は欲しい）</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_DesignCheck</name>
+diff --git a/src/Mod/Unified/TestDesignCheck.py b/src/Mod/Unified/TestDesignCheck.py
+index 0d9dde87a..881a53ca9 100644
+--- a/src/Mod/Unified/TestDesignCheck.py
++++ b/src/Mod/Unified/TestDesignCheck.py
+@@ -63,6 +63,46 @@ class DesignCheckOverlapTest(unittest.TestCase):
+         self.assertIn("3", fits[0].message)
+         self.assertNotIn("Nuts", [i.objects[0] for i in issues if i.rule == "floating"])
+ 
++    def test_a_short_thread_engagement(self):
++        # M6 drawn at 6 mm in nuts 5 mm high with 5 mm holes: through the nut it holds; ending 2 mm
++        # into it, it does not (4.8 mm wanted: 0.8 x the diameter)
++        through = Part.makeCylinder(3, 30, App.Vector(0, 0, 0))
++        short = Part.makeCylinder(3, 12, App.Vector(30, 0, 0))
++        nuts = [Part.makeCylinder(5, 5, App.Vector(x, 0, 10)).cut(Part.makeCylinder(2.5, 7, App.Vector(x, 0, 9)))
++                for x in (0, 30)]  # fmt: skip
++        for name, shape in (("Long", through), ("Short", short), ("NutA", nuts[0]), ("NutB", nuts[1])):
++            self.doc.addObject("Part::Feature", name).Shape = shape
++        self.doc.recompute()
++        issues = DesignCheck.run(self.doc)
++        shorts = [sorted(i.objects) for i in issues if i.rule == "thread_short"]
++        self.assertEqual(shorts, [["NutB", "Short"]])
++        self.assertEqual(sorted(sorted(i.objects) for i in issues if i.rule == "thread_fit"),
++                         [["Long", "NutA"], ["NutB", "Short"]])  # fmt: skip
++
++    def test_tiny_edges_of_imported_shapes_are_not_counted(self):
++        s = Part.makeBox(10, 10, 10).fuse(Part.makeBox(5, 5, 5, App.Vector(10, 0.005, 0)))
++        self.assertTrue([e for e in s.Edges if e.Length < 0.01])
++        self.doc.addObject("Part::Feature", "Step").Shape = s
++        self.doc.recompute()
++        self.assertFalse([i for i in DesignCheck.run(self.doc) if i.rule == "tiny_edge"])
++        self.assertTrue([i for i in DesignCheck.run(self.doc, tiny_edge_imported=True) if i.rule == "tiny_edge"])
++
++    def test_pairs_ignored_are_not_measured(self):
++        box(self.doc, "A", 0, 0, 0)
++        box(self.doc, "B", 5, 5, 5)
++        box(self.doc, "C", 8, 0, 0)
++        self.doc.recompute()
++        seen = []
++        real = DesignCheck._measure_overlaps
++        DesignCheck._measure_overlaps = lambda items, wanted, opt: seen.extend(sorted(tuple(sorted(p)) for p in wanted)) \
++            or real(items, wanted, opt)  # fmt: skip
++        try:
++            DesignCheck.run(self.doc, ignore_pairs=[("A", "B")])
++        finally:
++            DesignCheck._measure_overlaps = real
++        self.assertNotIn(("A", "B"), seen)
++        self.assertIn(("A", "C"), seen)
++
+     def test_touching_among_many_solids_is_quick(self):
+         # two shapes of 60 cubes each, one cube of one on one of the other: touching, found
+         # without the distance between the whole shapes (100 s a pair on a cart of 496 solids)
+-- 
+2.43.0
+

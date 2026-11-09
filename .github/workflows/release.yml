@@ -108,6 +108,8 @@ jobs:
           # 1 本ずつつないで流す: ファイル名を並べると Windows のコマンドの長さの上限を超える（375 本で止まった）
           for p in ../patches/patches/freecad/*.patch; do cat "$p"; done | git am -q --keep-cr
           git -C src/3rdParty/OndselSolver am -q --keep-cr "$PWD/../patches/patches/ondselsolver/"*.patch
+          # --check-update が今の版と比べるため
+          echo "$BUILD_TAG" > src/Mod/Unified/release.txt
           git log --oneline -3
 
       - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
