@@ -1,7 +1,7 @@
 From 0ff9531d37e52da8495add8d2002dfe02a4f3a06 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 14:43:09 +0900
-Subject: [PATCH 424/426] Update: ask GitHub again on a 5xx (its download
+Subject: [PATCH 424/427] Update: ask GitHub again on a 5xx (its download
  server answered 504 for a while)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

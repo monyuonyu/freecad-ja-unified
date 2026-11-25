@@ -1,0 +1,123 @@
+From e94ceb9fd70160757a13986bdad96c9c91386a0f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 01:57:44 +0900
+Subject: [PATCH 427/427] Transform: start at the centre of mass when the
+ object's origin is off the part
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The dragger starts at the object's origin (its Placement). Parts built by scripts or imported
+from STEP often keep their Placement at the document origin with the geometry elsewhere, so the
+X/Y/Z arrows appeared far from the part (reported on fcad-made furniture: 90 of 104 parts).
+If the origin is outside the part's bounding box (enlarged by 1 %), the dialog now starts in
+"Center of mass / centroid" mode; parts whose origin is on or in them keep "Object origin".
+Preference User parameter:BaseApp/History/Dragger/CentroidWhenOriginOutside (default true) turns it off.
+
+Japanese: "Center of mass / centroid" is 重心 (was the repeated 質量の中心 / 質量中心); the
+edit banner reads 「…」を編集しています (it said 作っています also when moving a part).
+---
+ src/Gui/Language/FreeCAD_ja.ts                |  2 +-
+ src/Gui/TaskTransform.cpp                     | 32 +++++++++++++++++++
+ src/Gui/TaskTransform.h                       |  1 +
+ .../translations/UnifiedWording_ja.ts         |  2 +-
+ 4 files changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index bee223431..ad5d46ac6 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -12577,7 +12577,7 @@ the region are non-opaque.</source>
+     <message>
+       <location filename="../TaskTransform.cpp" line="202"/>
+       <source>Center of mass / centroid</source>
+-      <translation>質量の中心 / 質量中心</translation>
++      <translation>重心</translation>
+     </message>
+     <message>
+       <location filename="../TaskTransform.cpp" line="208"/>
+diff --git a/src/Gui/TaskTransform.cpp b/src/Gui/TaskTransform.cpp
+index b7d951c59..7de95a2e9 100644
+--- a/src/Gui/TaskTransform.cpp
++++ b/src/Gui/TaskTransform.cpp
+@@ -20,6 +20,7 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <algorithm>
+ #include <cassert>
+ #include <limits>
+ #include <QApplication>
+@@ -326,6 +327,7 @@ void TaskTransform::setupGui()
+     );
+ 
+     loadPreferences();
++    chooseInitialPlacementMode();
+ 
+     updateInputLabels();
+     updateDraggerLabels();
+@@ -333,6 +335,36 @@ void TaskTransform::setupGui()
+     updatePositionAndRotationUi();
+ }
+ 
++// The dragger starts at the object's origin (its Placement). For a shape whose geometry was built
++// away from its Placement (Placement left at the origin, as script- and STEP-made parts often are)
++// that is somewhere off in space, often the document origin, and not on the part. Then start at
++// the centre of mass instead; parts whose origin is on or in them (a box at its corner) keep the
++// object origin. Preference CentroidWhenOriginOutside (default on) turns this off.
++void TaskTransform::chooseInitialPlacementMode() const
++{
++    if (!hGrp->GetBool("CentroidWhenOriginOutside", true)) {
++        return;
++    }
++    auto obj = vp->getObject();
++    if (!obj || !centerOfMassProvider || !centerOfMassProvider->supports(obj)) {
++        return;
++    }
++    const int index = ui->placementComboBox->findData(QVariant::fromValue(PlacementMode::Centroid));
++    if (index < 0) {
++        return;
++    }
++    Base::BoundBox3d box = vp->getBoundingBox();
++    if (!box.IsValid()) {
++        return;
++    }
++    const Base::Vector3d origin = App::GeoFeature::getGlobalPlacement(obj).getPosition();
++    box.Enlarge(std::max(1e-6, 0.01 * box.CalcDiagonalLength()));
++    if (box.IsInBox(origin)) {
++        return;
++    }
++    ui->placementComboBox->setCurrentIndex(index);
++}
++
+ void TaskTransform::loadPreferences()
+ {
+     double lastTranslationIncrement = hGrp->GetFloat("LastTranslationIncrement", 1.0);
+diff --git a/src/Gui/TaskTransform.h b/src/Gui/TaskTransform.h
+index b9df26367..4cc3ce275 100644
+--- a/src/Gui/TaskTransform.h
++++ b/src/Gui/TaskTransform.h
+@@ -149,6 +149,7 @@ private:
+     void setupGui();
+ 
+     void loadPreferences();
++    void chooseInitialPlacementMode() const;
+     void savePreferences();
+ 
+     void loadPositionModeItems() const;
+diff --git a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+index a9f80e41a..11554b733 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/UnifiedWording_ja.ts
+@@ -10169,7 +10169,7 @@ Note: Currently this selects only unconnected parts, not constrained parts that
+     </message>
+     <message>
+         <source>Working on “{}”</source>
+-        <translation>「{}」を作っています</translation>
++        <translation>「{}」を編集しています</translation>
+     </message>
+     <message>
+         <source>A tool is open</source>
+-- 
+2.43.0
+
