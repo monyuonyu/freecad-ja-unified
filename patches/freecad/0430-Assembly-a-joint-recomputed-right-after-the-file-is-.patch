@@ -1,0 +1,48 @@
+From 00c428dd3f27abedc00f32e1089091617b060978 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 08:49:45 +0900
+Subject: [PATCH 430/431] Assembly: a joint recomputed right after the file is
+ opened does not fail on its view provider
+
+Before the GUI has processed its events after opening a file, the joints' view provider proxies
+are not restored yet (an int). The joint's recompute called redrawJointPlacements on it, failed,
+and left the joint invalid: a driving value changed then (crank 0 -> 90 from a spreadsheet) did
+not move the parts and solve() said 0. Drawing is only for the screen; it is skipped until the
+view provider is there. Test: TestAssemblySolve failed in the GUI (0.9.8 too), passes now.
+---
+ src/Mod/Assembly/JointObject.py | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Assembly/JointObject.py b/src/Mod/Assembly/JointObject.py
+index 1605d631a..3aafb4a89 100644
+--- a/src/Mod/Assembly/JointObject.py
++++ b/src/Mod/Assembly/JointObject.py
+@@ -1007,9 +1007,13 @@ class Joint:
+         self.redrawJointPlacements(joint)
+ 
+     def redrawJointPlacements(self, joint):
++        # Right after a file is opened in the GUI, before the events are processed, the view
++        # provider's proxy is not restored yet (an int): the recompute failed on it and the joint
++        # was left invalid, so a driving value changed then did not move the parts. Drawing is
++        # only for the screen; it is done when the view provider is there.
+         if joint.ViewObject:
+-            proxy = joint.ViewObject.Proxy
+-            if proxy:
++            proxy = getattr(joint.ViewObject, "Proxy", None)
++            if hasattr(proxy, "redrawJointPlacements"):
+                 proxy.redrawJointPlacements(joint)
+ 
+     """
+@@ -1121,8 +1125,7 @@ class Joint:
+                     part.Placement = plc
+             self.partsMovedByPresolved = {}
+ 
+-            if joint.ViewObject:
+-                joint.ViewObject.Proxy.redrawJointPlacements(joint)
++            self.redrawJointPlacements(joint)
+ 
+     def preventParallel(self, joint):
+         # Angle and perpendicular joints in the solver cannot handle the situation where both JCS are Parallel
+-- 
+2.43.0
+

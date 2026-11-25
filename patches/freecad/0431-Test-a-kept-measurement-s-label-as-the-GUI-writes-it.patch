@@ -1,0 +1,38 @@
+From aa785cef5a5a033ff72ca6e00a93aa06d42eb63f Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 08:49:45 +0900
+Subject: [PATCH 431/431] Test: a kept measurement's label as the GUI writes it
+ ("Gap: 20.00 mm") is right too
+
+With the GUI the Measure view provider rewrites the label with the result as it shows it; the test
+expected the headless "Gap: 20 mm" only.
+---
+ src/Mod/Unified/TestMeasureMath.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/Unified/TestMeasureMath.py b/src/Mod/Unified/TestMeasureMath.py
+index c23dffd2c..203bfc13b 100644
+--- a/src/Mod/Unified/TestMeasureMath.py
++++ b/src/Mod/Unified/TestMeasureMath.py
+@@ -243,7 +243,8 @@ class TestMeasureMath(unittest.TestCase):
+         obj = M.keep(M.measure_picks(picks), picks)
+         self.assertTrue(obj.isDerivedFrom("Measure::MeasureDistanceDetached"))
+         self.assertAlmostEqual(obj.Distance.Value, 20)
+-        self.assertEqual(obj.Label, "Gap: 20 mm")
++        # with the GUI the Measure view provider writes the result as it shows it ("20.00 mm")
++        self.assertRegex(obj.Label, r"^Gap: 20(\.0+)? mm$")
+         a = vertex_at(self.plate.Shape, V(0, 0, 0))
+         b = vertex_at(self.plate.Shape, V(80, 50, 5))
+         picks = [(self.plate, a), (self.plate, b)]
+@@ -253,7 +254,7 @@ class TestMeasureMath(unittest.TestCase):
+         hole = cylinder_faces(self.plate.Shape)[0]
+         obj = M.keep(M.measure_picks([(self.plate, hole)]), [(self.plate, hole)])
+         self.assertAlmostEqual(obj.Diameter.Value, 6)
+-        self.assertEqual(obj.Label, "Diameter: 6 mm")
++        self.assertRegex(obj.Label, r"^Diameter: 6(\.0+)? mm$")
+         self.assertIn(obj, doc.getObject("Measurements").Group)
+         self.assertEqual(len(doc.Objects), before + 4)  # 3 measures + the group
+ 
+-- 
+2.43.0
+

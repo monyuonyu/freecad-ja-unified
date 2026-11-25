@@ -1,0 +1,97 @@
+From 23c9ba775e8593567a2ce447522738c1f76a82ef Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 08:33:06 +0900
+Subject: [PATCH 429/431] Drawing: the automatic sizes are taken from the lines
+ of the view as it is now
+
+With the GUI the views compute their lines in a thread, and a view does not start again while it
+is computing. A view changed meanwhile (the group's scale set just after the views were made) kept
+the lines of before: on the sample plate the top and right views were half size, its depth was
+measured 2.5 for 5 and the sizes were placed for views half as big. The value came right later,
+when the views were recomputed, but not the places. complete() now waits, recomputes every view
+once more and waits again. DrawViewPart.isComputing() tells whether a view is still computing.
+Test: TestDrawingAuto passed headless only; now in the GUI too (3 runs).
+---
+ src/Mod/TechDraw/App/DrawViewPart.pyi      |  8 ++++++++
+ src/Mod/TechDraw/App/DrawViewPartPyImp.cpp |  8 ++++++++
+ src/Mod/Unified/DrawingAuto.py             | 16 ++++++++++++++--
+ 3 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/src/Mod/TechDraw/App/DrawViewPart.pyi b/src/Mod/TechDraw/App/DrawViewPart.pyi
+index 0f2e20085..7cf289998 100644
+--- a/src/Mod/TechDraw/App/DrawViewPart.pyi
++++ b/src/Mod/TechDraw/App/DrawViewPart.pyi
+@@ -26,6 +26,14 @@ class DrawViewPart(DrawView):
+     License: LGPL-2.1-or-later
+     """
+ 
++    def isComputing(self) -> bool:
++        """
++        isComputing() - True while the view's lines or faces are still being computed in the
++        background (in the GUI they are computed in a thread; the lines until then are those of
++        the view before it changed, e.g. at its old scale).
++        """
++        ...
++
+     def getVisibleEdges(self, conventional_coords: bool = False, /) -> Any:
+         """
+         getVisibleEdges([conventionalCoords]) - get the visible edges in the View as Part::TopoShapeEdges. Edges are returned
+diff --git a/src/Mod/TechDraw/App/DrawViewPartPyImp.cpp b/src/Mod/TechDraw/App/DrawViewPartPyImp.cpp
+index 59db35a3f..564ce8a7f 100644
+--- a/src/Mod/TechDraw/App/DrawViewPartPyImp.cpp
++++ b/src/Mod/TechDraw/App/DrawViewPartPyImp.cpp
+@@ -60,6 +60,14 @@ std::string DrawViewPartPy::representation() const
+ }
+ //TODO: gets & sets for geometry
+ 
++PyObject* DrawViewPartPy::isComputing(PyObject *args)
++{
++    if (!PyArg_ParseTuple(args, "")) {
++        return nullptr;
++    }
++    return Py::new_reference_to(Py::Boolean(getDrawViewPartPtr()->waitingForResult()));
++}
++
+ PyObject* DrawViewPartPy::getVisibleEdges(PyObject *args)
+ {
+     //NOLINTNEXTLINE
+diff --git a/src/Mod/Unified/DrawingAuto.py b/src/Mod/Unified/DrawingAuto.py
+index df954186c..78b992b0f 100644
+--- a/src/Mod/Unified/DrawingAuto.py
++++ b/src/Mod/Unified/DrawingAuto.py
+@@ -18,11 +18,14 @@ THIN = 0.18
+ 
+ 
+ def wait_for_geometry(view, seconds=20.0):
+-    """The views compute their lines in a thread: wait until they have them"""
++    """The views compute their lines in a thread: wait until they have them, and until they are
++    done (the lines of a view whose scale was just changed are those of the old scale until then:
++    the depth of a plate was measured 2.5 for 5 and the sizes were placed for a view half as big)"""
+     end = time.time() + seconds
+     while time.time() < end:
+         try:
+-            if view.getVisibleEdges():
++            computing = view.isComputing() if hasattr(view, "isComputing") else False
++            if view.getVisibleEdges() and not computing:
+                 return True
+         except Exception:
+             pass
+@@ -384,6 +387,15 @@ def complete(page, group, name=None):
+     added = {"center_lines": 0, "dimensions": 0}
+     if front is None:
+         return added
++    for v in views:
++        wait_for_geometry(v)
++    # Once more, now that no view is computing: a view does not start again while it is
++    # computing, so one changed meanwhile (the group's scale set just after it was made) kept the
++    # lines of before (the top and right views of a plate at half size, its depth measured 2.5 for
++    # 5; only with the GUI, where the lines are computed in a thread)
++    for v in views:
++        v.touch()
++    doc.recompute()
+     for v in views:
+         wait_for_geometry(v)
+     place_clear_of_title_block(page, group)
+-- 
+2.43.0
+

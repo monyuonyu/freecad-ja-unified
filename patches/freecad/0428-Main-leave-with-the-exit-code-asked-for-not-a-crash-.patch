@@ -1,0 +1,80 @@
+From 5eea26358cb9c0278c15c5ac439d99bc9eca66ef Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 07:51:49 +0900
+Subject: [PATCH 428/431] Main: leave with the exit code asked for, not a
+ crash, after sys.exit() in the GUI
+
+sys.exit(3) in a script run by the GUI, an error during the run, and every -t test run ended
+in SIGSEGV (exit code 139; the 0.9.8 release too): exit() ran the static destructors while Python and the
+Qt objects were alive, and Shiboken's BindingManager crashed in them. The normal tear-down is not
+run on this path anyway, so flush the Python and C++ streams and _Exit with the code.
+Checked: sys.exit(3) -> 3, -t TestWording -> 0, closing the window -> 0; CLI tests 30/30.
+---
+ src/Main/MainGui.cpp | 25 ++++++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/src/Main/MainGui.cpp b/src/Main/MainGui.cpp
+index 9595390a8..742f446ae 100644
+--- a/src/Main/MainGui.cpp
++++ b/src/Main/MainGui.cpp
+@@ -35,6 +35,8 @@
+ #include <Base/Version.h>
+ 
+ #include <cstdio>
++#include <cstdlib>
++#include <iostream>
+ #include <format>
+ #include <map>
+ #include <stdexcept>
+@@ -111,6 +113,20 @@ static void flushPythonStreams()
+     PyErr_Clear();
+ }
+ 
++// Leave from the run phase without the normal tear-down (sys.exit() in a script, -t, an error).
++// exit() ran the static destructors while Python and the Qt objects were still alive, and
++// Shiboken's BindingManager crashed in them (SIGSEGV, exit code 139 instead of the one asked
++// for). The normal tear-down (App::Application::destruct) is not run on this path either way,
++// so flush what is buffered and end the process with the exit code.
++[[noreturn]] static void leaveNow(int code)
++{
++    flushPythonStreams();
++    std::cout.flush();
++    std::cerr.flush();
++    std::fflush(nullptr);
++    std::_Exit(code);
++}
++
+ static bool inGuiMode()
+ {
+     // if console option is set then run in cmd mode
+@@ -375,23 +391,22 @@ int main(int argc, char** argv)
+         }
+     }
+     catch (const Base::SystemExitException& e) {
+-        flushPythonStreams();
+-        exit(e.getExitCode());
++        leaveNow(e.getExitCode());
+     }
+     catch (const Base::Exception& e) {
+         flushPythonStreams();
+         e.reportException();
+-        exit(1);
++        leaveNow(1);
+     }
+     catch (const std::exception& e) {
+         flushPythonStreams();
+         Base::Console().error("Application unexpectedly terminated: {}\n", e.what());
+-        exit(1);
++        leaveNow(1);
+     }
+     catch (...) {
+         flushPythonStreams();
+         Base::Console().error("Application unexpectedly terminated\n");
+-        exit(1);
++        leaveNow(1);
+     }
+ 
+     std::cout.rdbuf(oldcout);
+-- 
+2.43.0
+
