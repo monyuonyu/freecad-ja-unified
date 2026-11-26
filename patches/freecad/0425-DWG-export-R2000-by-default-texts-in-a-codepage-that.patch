@@ -1,7 +1,7 @@
 From 5b89d878c591945c502599ea756f2361b3fa23e7 Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 19:50:41 +0900
-Subject: [PATCH 425/431] DWG export: R2000 by default, texts in a codepage
+Subject: [PATCH 425/437] DWG export: R2000 by default, texts in a codepage
  that holds them, DXF kept on request
 
 An AutoCAD did not open a DWG written as R2018 (company, 0.9.6); LibreDWG's

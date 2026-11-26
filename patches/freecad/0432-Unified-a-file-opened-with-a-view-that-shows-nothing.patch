@@ -1,0 +1,230 @@
+From bf13c89fed54cbc891e1bff0731f8cfccfda507e Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 10:03:24 +0900
+Subject: [PATCH 432/437] Unified: a file opened with a view that shows nothing
+ of the model starts at the home view
+
+Files written by other programs often save no camera (<Camera settings=""/>): the view kept the
+default camera a few millimetres across. A point-cloud export of a 20 m room opened as one flat
+colour, and the floor's highlight under the mouse turned the whole view blue (status bar
+"1.93 mm x 1.01 mm"). Once per document, when its view is first shown after opening: if the model
+is a speck or magnified more than 20 times or off screen, ViewHome. A saved camera that shows the
+model is kept; a view zoomed in later by the user is not touched. Preference
+Mod/Unified/HomeViewWhenModelNotInSight.
+---
+ src/Mod/Unified/CMakeLists.txt |   2 +-
+ src/Mod/Unified/InitGui.py     |   2 +
+ src/Mod/Unified/ViewOnOpen.py  | 175 +++++++++++++++++++++++++++++++++
+ 3 files changed, 178 insertions(+), 1 deletion(-)
+ create mode 100644 src/Mod/Unified/ViewOnOpen.py
+
+diff --git a/src/Mod/Unified/CMakeLists.txt b/src/Mod/Unified/CMakeLists.txt
+index 62c04c244..539bdbcf8 100644
+--- a/src/Mod/Unified/CMakeLists.txt
++++ b/src/Mod/Unified/CMakeLists.txt
+@@ -39,7 +39,7 @@ set(Unified_Scripts
+ )
+ 
+ if(BUILD_GUI)
+-    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
++    list(APPEND Unified_Scripts InitGui.py UnifiedCommands.py DesignCheckGui.py ViewOnOpen.py AIChatGui.py UnifiedPreferences.py AIChat.svg LooseOutline.py
+         CommandAliases.py CommandSearchGui.py CommandCatalogGen.py
+         UnifiedChrome.py OtherTools.svg UnifiedSettings.py Search.svg)
+ endif(BUILD_GUI)
+diff --git a/src/Mod/Unified/InitGui.py b/src/Mod/Unified/InitGui.py
+index 069d101b7..9f60dd944 100644
+--- a/src/Mod/Unified/InitGui.py
++++ b/src/Mod/Unified/InitGui.py
+@@ -103,6 +103,8 @@ class UnifiedWorkbench(Workbench):
+ 
+         # 設計の検査の結果をステータスバーに常に出す（計算し直すたびに更新）
+         DesignCheckGui.indicator.install()
++        import ViewOnOpen
++        ViewOnOpen.install()
+ 
+         # Load the translations of the modules imported above (e.g. Assembly's command names)
+         Gui.updateLocale()
+diff --git a/src/Mod/Unified/ViewOnOpen.py b/src/Mod/Unified/ViewOnOpen.py
+new file mode 100644
+index 000000000..ddb6d51be
+--- /dev/null
++++ b/src/Mod/Unified/ViewOnOpen.py
+@@ -0,0 +1,175 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++"""A file opened with a view that shows nothing of the model starts at the home view.
++
++Files written by other programs (a point-cloud-to-CAD export, scripts) often save no camera
++(GuiDocument.xml: <Camera settings=""/>) or one that does not fit the model. The view then kept
++FreeCAD's default camera, a few millimetres across: a room of 20 m opened as one flat colour, and
++the floor's highlight under the mouse covered the whole view (reported 2026-11-26, "1.93 mm x
++1.01 mm" in the status bar). Once the file is open, if the model is not reasonably in sight the
++home view (Std_ViewHome: the home orientation, everything fitted) is set. A saved camera that
++shows the model is kept.
++
++Preference BaseApp/Preferences/Mod/Unified/HomeViewWhenModelNotInSight (default true).
++"""
++
++import FreeCAD as App
++
++PARAM = "User parameter:BaseApp/Preferences/Mod/Unified"
++
++
++def model_box(doc):
++    """The bounding box of what is shown (shapes, meshes, points), or None"""
++    box = App.BoundBox()
++    for o in doc.Objects:
++        vo = getattr(o, "ViewObject", None)
++        if vo is None or not getattr(vo, "Visibility", False):
++            continue
++        for name in ("Shape", "Mesh", "Points"):
++            data = getattr(o, name, None)
++            bb = getattr(data, "BoundBox", None)
++            if bb is not None and bb.isValid():
++                try:
++                    pl = o.getGlobalPlacement() if name != "Shape" else None
++                except Exception:
++                    pl = None
++                if pl is not None and name != "Shape":
++                    bb = bb.transformed(pl.toMatrix())
++                box.add(bb)
++                break
++    return box if box.isValid() else None
++
++
++def visible_height(view):
++    """The height of the scene the view shows at its focal plane (model units), or None"""
++    try:
++        cam = view.getCameraNode()
++    except Exception:
++        return None
++    try:
++        t = str(cam.getTypeId().getName()).lower()  # an SbName
++    except Exception:
++        return None
++    try:
++        if "orthographic" in t:
++            return float(cam.height.getValue())
++        if "perspective" in t:
++            import math
++
++            return 2.0 * float(cam.focalDistance.getValue()) * math.tan(float(cam.heightAngle.getValue()) / 2.0)
++    except Exception:
++        return None
++    return None
++
++
++def model_in_sight(view, box):
++    """True if the model fills a reasonable part of the view: neither a speck nor magnified
++    thousands of times, and its centre on the screen"""
++    size = max(box.XLength, box.YLength, box.ZLength)
++    if size <= 0:
++        return True
++    h = visible_height(view)
++    if h is None:
++        return True
++    # the view shows from 1/20 of the model (a close look) to 50 times it (a small part)
++    if h < size / 20.0 or h > size * 50.0:
++        return False
++    try:
++        x, y = view.getPointOnViewport(box.Center)
++        w, hgt = view.getSize()
++        if not (-0.5 * w <= x <= 1.5 * w and -0.5 * hgt <= y <= 1.5 * hgt):
++            return False
++    except Exception:
++        pass
++    return True
++
++
++def settle(doc_name):
++    """Set the home view on the document's 3D views that show nothing of the model"""
++    import FreeCADGui as Gui
++
++    if not App.ParamGet(PARAM).GetBool("HomeViewWhenModelNotInSight", True):
++        return []
++    doc = App.listDocuments().get(doc_name)
++    gdoc = Gui.getDocument(doc_name) if doc else None
++    if gdoc is None:
++        return []
++    box = model_box(doc)
++    if box is None:
++        return []
++    done = []
++    try:
++        views = [v for v in gdoc.mdiViewsOfType("Gui::View3DInventor")]
++    except Exception:
++        views = [gdoc.ActiveView] if gdoc.ActiveView else []
++    for view in views:
++        if model_in_sight(view, box):
++            continue
++        try:
++            view.sendMessage("ViewHome")  # the home orientation and fit all, as Std_ViewHome does
++            if not model_in_sight(view, box):
++                view.viewIsometric()
++                view.fitAll()
++        except Exception:
++            pass
++        done.append(view)
++    return done
++
++
++_pending = set()  # documents opened or made and not yet looked at once
++
++
++def _settle_quietly(name):
++    """Look once at a document's views; again later if it has no 3D view yet"""
++    import os
++
++    dbg = os.environ.get("VIEWONOPEN_DEBUG")
++    if name not in _pending:
++        return  # already looked at (a file given on the command line is seen twice)
++    try:
++        import FreeCADGui as Gui
++
++        g = Gui.getDocument(name) if name in App.listDocuments() else None
++        if g is None or not g.mdiViewsOfType("Gui::View3DInventor"):
++            return  # stays pending: looked at when its view is shown
++        _pending.discard(name)
++        r = settle(name)
++        if dbg:
++            open(dbg, "a").write("settle %s -> %d views\n" % (name, len(r)))
++    except Exception as e:  # a view that could not be measured is left as it is
++        App.Console.PrintLog("ViewOnOpen: {}\n".format(e))
++
++
++class _Observer:
++    """Only once per document, right after it was opened: a camera the user zoomed in to look at
++    a detail is not taken away later"""
++
++    def slotCreatedDocument(self, doc):  # App: a document made or opened (before its contents)
++        _pending.add(doc.Name)
++
++    def slotDeletedDocument(self, doc):
++        _pending.discard(doc.Name)
++
++    def slotActivateDocument(self, doc):  # Gui: its view shown (after the contents and the view)
++        from PySide import QtCore
++
++        name = doc.Document.Name if hasattr(doc, "Document") else doc.Name
++        if name in _pending:
++            QtCore.QTimer.singleShot(300, lambda: _settle_quietly(name))
++
++
++_observer = None
++
++
++def install():
++    global _observer
++    if _observer is None:
++        import FreeCADGui as Gui
++        from PySide import QtCore
++
++        _observer = _Observer()
++        App.addDocumentObserver(_observer)
++        Gui.addDocumentObserver(_observer)
++        # A file given on the command line may be opened before the workbench (and this) is set up
++        for name in list(App.listDocuments()):
++            _pending.add(name)
++            QtCore.QTimer.singleShot(300, lambda n=name: _settle_quietly(n))
+-- 
+2.43.0
+

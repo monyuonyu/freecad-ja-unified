@@ -1,0 +1,79 @@
+From 21da041ec42c8d991b299b5bebe4fea1a59532b1 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 10:04:37 +0900
+Subject: [PATCH 433/437] Unified: no "What you can do with this drawing" band
+ on a FreeCAD document
+
+The band is for a DXF/DWG/STL just opened. A point-cloud export saved as .FCStd (a path line,
+walls as faces, meshes, points) was taken for a 2D drawing because it had loose lines and no
+solid. Not for documents opened from .FCStd, nor with points or a mix of lines and meshes.
+---
+ src/Mod/Unified/TestUnifiedFiles.py | 24 ++++++++++++++++++++++++
+ src/Mod/Unified/UnifiedFiles.py     | 12 ++++++++----
+ 2 files changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/src/Mod/Unified/TestUnifiedFiles.py b/src/Mod/Unified/TestUnifiedFiles.py
+index 1aafccef0..05f819834 100644
+--- a/src/Mod/Unified/TestUnifiedFiles.py
++++ b/src/Mod/Unified/TestUnifiedFiles.py
+@@ -55,6 +55,30 @@ class TestUnifiedFiles(unittest.TestCase):
+         self.doc.recompute()
+         self.assertIsNone(F.kind_of_document(self.doc))
+ 
++    def test_not_a_drawing_or_mesh(self):
++        # a point-cloud export (a path line, meshes, points) or any saved FreeCAD document gets no
++        # "What you can do with this drawing" band
++        import os
++        import tempfile
++
++        import Points
++
++        doc = App.newDocument("UnifiedFilesMap")
++        try:
++            line = doc.addObject("Part::Feature", "Path"); line.Shape = Part.makeLine(App.Vector(), App.Vector(1, 0, 0))
++            mesh = doc.addObject("Mesh::Feature", "Thing"); mesh.Mesh = Mesh.createBox(1, 1, 1)
++            self.assertIsNone(F.kind_of_document(doc))
++            doc.removeObject("Thing")
++            pts = doc.addObject("Points::Feature", "Cloud"); pts.Points = Points.Points([App.Vector(0, 0, 0)])
++            self.assertIsNone(F.kind_of_document(doc))
++            doc.removeObject("Cloud")
++            self.assertEqual(F.kind_of_document(doc), "2d")
++            path = os.path.join(tempfile.mkdtemp(), "lines.FCStd")
++            doc.saveAs(path)
++            self.assertIsNone(F.kind_of_document(doc))
++        finally:
++            App.closeDocument(doc.Name)
++
+ 
+ 
+ class TestRootObjects(unittest.TestCase):
+diff --git a/src/Mod/Unified/UnifiedFiles.py b/src/Mod/Unified/UnifiedFiles.py
+index 853b99609..e96f3639e 100644
+--- a/src/Mod/Unified/UnifiedFiles.py
++++ b/src/Mod/Unified/UnifiedFiles.py
+@@ -131,14 +131,18 @@ def kind_of_document(doc):
+         return None
+     import ContextRules
+ 
++    # A FreeCAD document (opened from .FCStd) is not "an opened drawing or mesh": a point-cloud
++    # export with a path line, walls as faces and meshes showed "What you can do with this drawing"
++    if (getattr(doc, "FileName", "") or "").lower().endswith(".fcstd"):
++        return None
+     shapes = [o for o in doc.Objects if o.isDerivedFrom("Part::Feature") or o.isDerivedFrom("Mesh::Feature")]
+-    if not shapes:
++    if not shapes or any(o.isDerivedFrom("Points::Feature") for o in doc.Objects):
+         return None
+     if all(o.isDerivedFrom("Mesh::Feature") for o in shapes):
+         return "mesh"
+-    if any(ContextRules.is_loose_2d(o) for o in shapes) and not any(
+-        o.isDerivedFrom("Part::Feature") and o.Shape.Solids for o in shapes
+-    ):
++    if all(not o.isDerivedFrom("Mesh::Feature") for o in shapes) and any(
++        ContextRules.is_loose_2d(o) for o in shapes
++    ) and not any(o.Shape.Solids for o in shapes):
+         return "2d"
+     return None
+ 
+-- 
+2.43.0
+

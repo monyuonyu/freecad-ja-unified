@@ -1,7 +1,7 @@
 From aa785cef5a5a033ff72ca6e00a93aa06d42eb63f Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 26 Nov 2026 08:49:45 +0900
-Subject: [PATCH 431/431] Test: a kept measurement's label as the GUI writes it
+Subject: [PATCH 431/437] Test: a kept measurement's label as the GUI writes it
  ("Gap: 20.00 mm") is right too
 
 With the GUI the Measure view provider rewrites the label with the result as it shows it; the test

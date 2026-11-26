@@ -1,7 +1,7 @@
 From 5eea26358cb9c0278c15c5ac439d99bc9eca66ef Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 26 Nov 2026 07:51:49 +0900
-Subject: [PATCH 428/431] Main: leave with the exit code asked for, not a
+Subject: [PATCH 428/437] Main: leave with the exit code asked for, not a
  crash, after sys.exit() in the GUI
 
 sys.exit(3) in a script run by the GUI, an error during the run, and every -t test run ended

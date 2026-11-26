@@ -1,7 +1,7 @@
 From 23c9ba775e8593567a2ce447522738c1f76a82ef Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Thu, 26 Nov 2026 08:33:06 +0900
-Subject: [PATCH 429/431] Drawing: the automatic sizes are taken from the lines
+Subject: [PATCH 429/437] Drawing: the automatic sizes are taken from the lines
  of the view as it is now
 
 With the GUI the views compute their lines in a thread, and a view does not start again while it

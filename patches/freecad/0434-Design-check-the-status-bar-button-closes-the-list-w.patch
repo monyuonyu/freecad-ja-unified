@@ -1,0 +1,92 @@
+From 47a073a1cae520e58a3e25bb62d22d328eac715d Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 10:08:46 +0900
+Subject: [PATCH 434/437] Design check: the status bar button closes the list
+ when it is open
+
+Clicked a second time it did nothing (the command is inactive while a task dialog is open); it now
+closes the list it opened, the way the Close button does.
+---
+ src/Mod/Unified/DesignCheckGui.py             | 22 ++++++++++++++++---
+ .../Gui/Resources/translations/Unified_ja.ts  |  4 ++--
+ 2 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/src/Mod/Unified/DesignCheckGui.py b/src/Mod/Unified/DesignCheckGui.py
+index 2fbd86285..b393c481a 100644
+--- a/src/Mod/Unified/DesignCheckGui.py
++++ b/src/Mod/Unified/DesignCheckGui.py
+@@ -99,10 +99,23 @@ def show_issue(doc, issue):
+         marker.show(view, issue.location, size)
+ 
+ 
++_open_panel = None  # 開いている一覧（右下のボタンで閉じるため）
++
++
++def toggle_panel():
++    """右下の「検査」ボタン: 一覧が開いていれば閉じ、無ければ開く（2 回目に押しても閉じなかった）"""
++    if _open_panel is not None and Gui.Control.activeDialog():
++        _open_panel.reject()
++    else:
++        Gui.runCommand("Unified_DesignCheck")
++
++
+ class Panel:
+     """検査の結果の一覧（作業パネル）"""
+ 
+     def __init__(self):
++        global _open_panel
++        _open_panel = self
+         self.doc = App.ActiveDocument
+         self.form = QtWidgets.QWidget()
+         self.form.setWindowTitle(translate("DesignCheck", "Design check"))
+@@ -378,9 +391,12 @@ class Panel:
+             # まとめて直している最中: 閉じずに止める（閉じると、直している途中の画面が消えて例外になる）
+             self._cancelled = True
+             return False
++        global _open_panel
+         self._close_steps()
+         self._cancelled = True
+         marker.clear()
++        if _open_panel is self:
++            _open_panel = None
+         Gui.Control.closeDialog()
+         return True
+ 
+@@ -431,8 +447,8 @@ class Indicator:
+         self.button = QtWidgets.QToolButton()
+         self.button.setAutoRaise(True)
+         self.button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+-        self.button.clicked.connect(lambda: Gui.runCommand("Unified_DesignCheck"))
+-        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
++        self.button.clicked.connect(toggle_panel)
++        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list, again to close it."))
+         mw.statusBar().addPermanentWidget(self.button)
+         self.button.hide()
+         # quitting: the overlaps measured in the background are stopped and waited for (their
+@@ -559,7 +575,7 @@ class Indicator:
+         doc = App.ActiveDocument
+         if doc is not None:
+             self.results[doc.Name] = sm
+-        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list."))
++        self.button.setToolTip(translate("DesignCheck", "Result of the design check. Click to see the list, again to close it."))
+         worst = DesignCheck.ERROR if sm[DesignCheck.ERROR] else DesignCheck.WARNING if sm[DesignCheck.WARNING] else None
+         self.button.setIcon(_dot(_COLORS[worst]) if worst else _dot("#5cb85c"))
+         if not sm[DesignCheck.ERROR] and not sm[DesignCheck.WARNING]:
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index ceced60e9..72821b4fe 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -613,8 +613,8 @@
+         <translation>問題は見つかりませんでした。</translation>
+     </message>
+     <message>
+-        <source>Result of the design check. Click to see the list.</source>
+-        <translation>設計の検査の結果。押すと一覧を開きます。</translation>
++        <source>Result of the design check. Click to see the list, again to close it.</source>
++        <translation>設計の検査の結果。押すと一覧を開き、もう一度押すと閉じます。</translation>
+     </message>
+     <message>
+         <source>Check: OK</source>
+-- 
+2.43.0
+

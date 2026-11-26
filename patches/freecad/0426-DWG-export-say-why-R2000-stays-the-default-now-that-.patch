@@ -1,7 +1,7 @@
 From 07cb92b4b915157c0e692966cfc11316d65ddded Mon Sep 17 00:00:00 2001
 From: shota <monyuonyu@gmail.com>
 Date: Mon, 9 Nov 2026 22:41:00 +0900
-Subject: [PATCH 426/431] DWG export: say why R2000 stays the default, now that
+Subject: [PATCH 426/437] DWG export: say why R2000 stays the default, now that
  R2004-R2018 open in AutoCAD too
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

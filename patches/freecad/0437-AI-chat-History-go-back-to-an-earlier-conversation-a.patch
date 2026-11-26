@@ -1,0 +1,340 @@
+From a26019b5e837123c72f63567b10155509674d0b8 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 10:23:29 +0900
+Subject: [PATCH 437/437] AI chat: History: go back to an earlier conversation
+ and go on with it
+
+"New conversation" pressed by mistake threw the conversation away (feedback 2026-11-26). The
+bridge now reports each conversation's session id and can resume one; the panel keeps the last 30
+conversations (title = the first request, time, what was shown) in <user data>/ai/chats, saved
+after every answer and on quit. History lists them; picking one shows it again and the AI goes on
+from it (Claude keeps the conversation itself). Checked with the AI: a password told in one
+conversation was unknown in a new one and remembered again after going back through History.
+---
+ src/Mod/Unified/AIAgentBridge.py              |  17 +-
+ src/Mod/Unified/AIChatGui.py                  | 151 +++++++++++++++++-
+ .../Gui/Resources/translations/Unified_ja.ts  |  32 ++++
+ 3 files changed, 194 insertions(+), 6 deletions(-)
+
+diff --git a/src/Mod/Unified/AIAgentBridge.py b/src/Mod/Unified/AIAgentBridge.py
+index 822a3abde..207a2c0c3 100644
+--- a/src/Mod/Unified/AIAgentBridge.py
++++ b/src/Mod/Unified/AIAgentBridge.py
+@@ -3,8 +3,9 @@
+ 
+ FreeCAD（AIChatGui）とは標準入出力の JSON 行でやり取りする。
+   FreeCAD → ここ: {"type": "user", "text"} / {"type": "result", "id", "content", "is_error"} /
+-                  {"type": "interrupt"} / {"type": "reset"}
++                  {"type": "interrupt"} / {"type": "reset"} / {"type": "resume", "id"}（前の会話の続きから）
+   ここ → FreeCAD: {"type": "ready"} / {"type": "text", "text"} / {"type": "call", "id", "tool", "args"} /
++                  {"type": "session", "id"}（この会話の識別子。履歴から戻るときに使う） /
+                   {"type": "done", "error"} / {"type": "fatal", "text"}
+ AI の道具（FreeCAD を見る・動かす）は、呼ばれるたびに FreeCAD へ頼んで結果を待つ。
+ """
+@@ -234,7 +235,8 @@ class Bridge:
+             model=self.args.model, system_prompt=SYSTEM,
+             cli_path=self.args.claude or None,
+             tools=[], allowed_tools=["mcp__freecad__*"], mcp_servers={"freecad": self.make_server()},
+-            strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=MAX_TURNS, env=env)
++            strict_mcp_config=True, setting_sources=[], cwd=self.args.workdir, max_turns=MAX_TURNS, env=env,
++            resume=getattr(self, "resume_id", None) or None)
+ 
+     def _stdin_thread(self, loop):
+         # Windows でも動くように、標準入力はスレッドで読む（asyncio のパイプは Windows で使えない）
+@@ -270,7 +272,7 @@ class Bridge:
+                     await self.client.interrupt()
+                 except Exception:
+                     pass
+-        elif msg.get("type") == "reset":
++        elif msg.get("type") in ("reset", "resume"):
+             # 走っている回を止めてから始め直す（待っている道具の呼び出しも終わらせる）
+             await self.shutdown_pending("会話を始め直した")
+             await self.inbox.put(msg)
+@@ -294,7 +296,10 @@ class Bridge:
+                         if isinstance(b, TextBlock) and b.text.strip():
+                             said.append(b.text)
+                             self.send(type="text", text=b.text)
+-                elif isinstance(m, ResultMessage) and m.subtype == "error_max_turns":
++                if isinstance(m, ResultMessage) and getattr(m, "session_id", None):
++                    # この会話の識別子: 「新しい会話」のあと履歴から戻るときに resume で続ける
++                    self.send(type="session", id=m.session_id)
++                if isinstance(m, ResultMessage) and m.subtype == "error_max_turns":
+                     # やり取りの回数の上限。黙って止まったように見えないように知らせる
+                     error = ("やり取りの回数の上限（%d 回）に達したので、途中で止めた。続けるには「続けて」と送る"
+                              % MAX_TURNS)
+@@ -360,6 +365,10 @@ class Bridge:
+                     await self.client.disconnect()
+                     return
+                 if msg.get("type") == "reset":
++                    self.resume_id = None
++                    reset = True
++                elif msg.get("type") == "resume":
++                    self.resume_id = msg.get("id") or None
+                     reset = True
+                 elif msg.get("type") == "user":
+                     await self.turn(msg["text"])
+diff --git a/src/Mod/Unified/AIChatGui.py b/src/Mod/Unified/AIChatGui.py
+index 87cae42a5..a585e58ce 100644
+--- a/src/Mod/Unified/AIChatGui.py
++++ b/src/Mod/Unified/AIChatGui.py
+@@ -206,6 +206,80 @@ def _selection_note():
+     return "\n\n［今の選択: " + "; ".join(parts) + "］"
+ 
+ 
++class _History:
++    """Earlier conversations: <user data>/ai/chats/index.json (id, title, when) and <id>.html (what was
++    shown). The conversation itself is kept by Claude (resumed by its session id)"""
++
++    KEEP = 30
++
++    def _dir(self):
++        d = os.path.join(_datadir(), "chats")
++        os.makedirs(d, exist_ok=True)
++        return d
++
++    def _index(self):
++        try:
++            with open(os.path.join(self._dir(), "index.json"), encoding="utf-8") as f:
++                return json.load(f)
++        except (OSError, ValueError):
++            return []
++
++    def _write(self, items):
++        path = os.path.join(self._dir(), "index.json")
++        with open(path + ".tmp", "w", encoding="utf-8") as f:
++            json.dump(items, f, ensure_ascii=False, indent=1)
++        os.replace(path + ".tmp", path)
++
++    def items(self):
++        return self._index()
++
++    def title(self, sid):
++        return next((it.get("title") for it in self._index() if it["id"] == sid), None)
++
++    def html(self, sid):
++        try:
++            with open(os.path.join(self._dir(), _safe_name(sid) + ".html"), encoding="utf-8") as f:
++                return f.read()
++        except OSError:
++            return ""
++
++    def save(self, sid, title, html):
++        import time
++
++        with open(os.path.join(self._dir(), _safe_name(sid) + ".html"), "w", encoding="utf-8") as f:
++            f.write(html)
++        items = [it for it in self._index() if it["id"] != sid]
++        items.insert(0, {"id": sid, "title": title, "when": time.strftime("%Y-%m-%d %H:%M")})
++        for old in items[self.KEEP:]:
++            try:
++                os.remove(os.path.join(self._dir(), _safe_name(old["id"]) + ".html"))
++            except OSError:
++                pass
++        self._write(items[: self.KEEP])
++
++    def rename(self, old, new):
++        """The session id can change when a conversation is resumed: keep one entry"""
++        if not old or old == new:
++            return
++        items = self._index()
++        for it in items:
++            if it["id"] == old:
++                it["id"] = new
++                try:
++                    os.replace(os.path.join(self._dir(), _safe_name(old) + ".html"),
++                               os.path.join(self._dir(), _safe_name(new) + ".html"))
++                except OSError:
++                    pass
++        self._write(items)
++
++
++def _safe_name(sid):
++    return "".join(c for c in str(sid) if c.isalnum() or c in "-_")[:80] or "chat"
++
++
++history = _History()
++
++
+ class ChatPanel(QtWidgets.QWidget):
+     def __init__(self, parent=None):
+         super().__init__(parent)
+@@ -219,6 +293,8 @@ class ChatPanel(QtWidgets.QWidget):
+         self.in_call = False
+         self.resetting = False  # 「新しい会話」の後、仲介役の ready まで前の回の残りを捨てる
+         self.later = []        # 道具を実行している間に届いたもの（入れ子にしない）
++        self.session_id = None  # 今の会話の識別子（仲介役の session）。履歴に残し、戻るときに resume で続ける
++        self.title = None       # 今の会話の題（最初に頼んだ文）
+         lay = QtWidgets.QVBoxLayout(self)
+         lay.setContentsMargins(4, 4, 4, 4)
+         self.view = QtWidgets.QTextBrowser()
+@@ -252,8 +328,18 @@ class ChatPanel(QtWidgets.QWidget):
+         self.stop_btn.clicked.connect(self.on_stop)
+         row.addWidget(self.stop_btn)
+         new = QtWidgets.QPushButton(translate("AIChat", "New conversation"))
++        new.setToolTip(translate("AIChat", "Start over. This conversation stays in History, where it can be picked up again."))
+         new.clicked.connect(self.on_new)
+         row.addWidget(new)
++        # 前の会話に戻る（間違えて「新しい会話」を押しても戻れる。FreeCAD を開き直しても残る）
++        self.history_btn = QtWidgets.QToolButton()
++        self.history_btn.setText(translate("AIChat", "History"))
++        self.history_btn.setToolTip(translate("AIChat", "Go back to an earlier conversation and go on with it"))
++        self.history_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
++        self.history_menu = QtWidgets.QMenu(self.history_btn)
++        self.history_menu.aboutToShow.connect(self._fill_history)
++        self.history_btn.setMenu(self.history_menu)
++        row.addWidget(self.history_btn)
+         lay.addLayout(row)
+         # 自動で実行（承認を省く）。保存しない: FreeCAD を開き直すと、毎回たずねる形に戻る
+         self.auto_box = QtWidgets.QCheckBox(translate("AIChat", "Run the AI's code without asking (until FreeCAD closes)"))
+@@ -468,6 +554,11 @@ class ChatPanel(QtWidgets.QWidget):
+                 self.send_json(type="result", id=msg.get("id"), is_error=True,
+                                content=[{"type": "text", "text": "会話を始め直した"}])
+             return
++        if t == "ready" and getattr(self, "pending_resume", None):
++            sid, self.pending_resume = self.pending_resume, None
++            self.resetting = True
++            self.send_json(type="resume", id=sid)
++            return
+         if t == "ready":
+             self.resetting = False
+             self.ready = True
+@@ -492,8 +583,13 @@ class ChatPanel(QtWidgets.QWidget):
+             finally:
+                 self.in_call = False
+             self.send_json(type="result", id=msg.get("id"), **res)
++        elif t == "session":
++            if msg.get("id") and msg["id"] != self.session_id:
++                old_id, self.session_id = self.session_id, msg["id"]
++                history.rename(old_id, self.session_id)
+         elif t == "done":
+             self._set_busy(False)
++            self._save()
+             if msg.get("error"):
+                 self._note(translate("AIChat", "Stopped with an error: {0}").format(msg["error"]))
+             if self.queue:
+@@ -533,6 +629,8 @@ class ChatPanel(QtWidgets.QWidget):
+         if not text:
+             return
+         self.input.clear()
++        if self.title is None:
++            self.title = " ".join(text.split())[:60]
+         self._user(text)
+         full = text + _selection_note()
+         if not self.ensure_started():
+@@ -550,19 +648,68 @@ class ChatPanel(QtWidgets.QWidget):
+         self.send_json(type="interrupt")
+ 
+     def on_new(self):
++        self._save()
++        self._switch(None, "")
++        self._note(translate("AIChat", "New conversation. The previous one is in History."))
++
++    def _switch(self, session_id, html):
++        """Show another conversation (html) and have the AI go on with it (None: a new one)"""
+         self.queue.clear()
+         self.codes.clear()
+         self.view.clear()
+         AITools.reset()
++        self.session_id = session_id
++        self.title = history.title(session_id) if session_id else None
++        if html:
++            self.view.setHtml(html)
++            self.view.moveCursor(QtGui.QTextCursor.End)
+         if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
+             self.ready = False
+             self.resetting = True
+             self.later.clear()
+             self._set_busy(False)
+-            self.send_json(type="reset")   # 仲介役が走っている回を止めてから始め直す
+-        self._note(translate("AIChat", "New conversation."))
++            # 仲介役が走っている回を止めてから始め直す（resume: その会話の続きから）
++            if session_id:
++                self.send_json(type="resume", id=session_id)
++            else:
++                self.send_json(type="reset")
++        elif session_id:
++            self.pending_resume = session_id  # 仲介役を始めたら最初に頼む
++
++    def _save(self):
++        if self.session_id:
++            history.save(self.session_id, self.title or "", self.view.toHtml())
++
++    def _fill_history(self):
++        self.history_menu.clear()
++        items = history.items()
++        if not items:
++            a = self.history_menu.addAction(translate("AIChat", "No earlier conversations yet"))
++            a.setEnabled(False)
++            return
++        for it in items:
++            text = "%s  —  %s" % (it.get("when", ""), it.get("title") or translate("AIChat", "(untitled)"))
++            a = self.history_menu.addAction(text)
++            if it["id"] == self.session_id:
++                a.setCheckable(True)
++                a.setChecked(True)
++                a.setEnabled(False)
++            else:
++                a.triggered.connect(lambda _=False, sid=it["id"]: self.on_history(sid))
++
++    def on_history(self, session_id):
++        if self.busy:
++            self._note(translate("AIChat", "Stop the AI first, then go back to an earlier conversation."))
++            return
++        self._save()
++        self._switch(session_id, history.html(session_id))
++        self._note(translate("AIChat", "Going on with this conversation."))
+ 
+     def shutdown(self):
++        try:
++            self._save()
++        except Exception:
++            pass
+         if self.proc is not None and self.proc.state() != QtCore.QProcess.NotRunning:
+             self.proc.closeWriteChannel()
+             if not self.proc.waitForFinished(3000):
+diff --git a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+index 72821b4fe..097ee5ae9 100644
+--- a/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
++++ b/src/Mod/Unified/Gui/Resources/translations/Unified_ja.ts
+@@ -1058,6 +1058,38 @@ FreeCAD を閉じるまで続きます。有効にしますか？</translation>
+         <source>Could not check the stored key.</source>
+         <translation>しまってあるキーを確かめられませんでした。</translation>
+     </message>
++    <message>
++        <source>Start over. This conversation stays in History, where it can be picked up again.</source>
++        <translation>最初からやり直す。今の会話は「履歴」に残り、あとから続きができます。</translation>
++    </message>
++    <message>
++        <source>History</source>
++        <translation>履歴</translation>
++    </message>
++    <message>
++        <source>Go back to an earlier conversation and go on with it</source>
++        <translation>前の会話に戻って、続きから話す</translation>
++    </message>
++    <message>
++        <source>New conversation. The previous one is in History.</source>
++        <translation>新しい会話。前の会話は「履歴」から戻れます。</translation>
++    </message>
++    <message>
++        <source>No earlier conversations yet</source>
++        <translation>まだ前の会話はありません</translation>
++    </message>
++    <message>
++        <source>(untitled)</source>
++        <translation>（題なし）</translation>
++    </message>
++    <message>
++        <source>Stop the AI first, then go back to an earlier conversation.</source>
++        <translation>AI を止めてから、前の会話に戻ってください。</translation>
++    </message>
++    <message>
++        <source>Going on with this conversation.</source>
++        <translation>この会話の続きから話します。</translation>
++    </message>
+ </context>
+ <context>
+     <name>Unified_AIChat</name>
+-- 
+2.43.0
+

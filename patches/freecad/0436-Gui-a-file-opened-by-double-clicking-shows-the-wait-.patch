@@ -1,0 +1,75 @@
+From 30fa4796db5b7a530c2b2fb22318c0dc04de4127 Mon Sep 17 00:00:00 2001
+From: shota <monyuonyu@gmail.com>
+Date: Thu, 26 Nov 2026 10:18:33 +0900
+Subject: [PATCH 436/437] =?UTF-8?q?Gui:=20a=20file=20opened=20by=20double-?=
+ =?UTF-8?q?clicking=20shows=20the=20wait=20cursor=20and=20"Opening=20?=
+ =?UTF-8?q?=E2=80=A6"=20while=20it=20loads?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Files given on the command line (double-click, "open with") were loaded in delayedStartup without
+the wait cursor the menu's Open has: a big point-cloud export took seconds with nothing to show it
+was loading (feedback 2026-11-26).
+---
+ src/Gui/Language/FreeCAD_ja.ts |  6 +++++-
+ src/Gui/MainWindow.cpp         | 18 ++++++++++++++++++
+ 2 files changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/src/Gui/Language/FreeCAD_ja.ts b/src/Gui/Language/FreeCAD_ja.ts
+index ad5d46ac6..9d638604b 100644
+--- a/src/Gui/Language/FreeCAD_ja.ts
++++ b/src/Gui/Language/FreeCAD_ja.ts
+@@ -6211,7 +6211,11 @@ Save the document now?</source>
+       <source>Safe Mode</source>
+       <translation>セーフモード</translation>
+     </message>
+-  </context>
++      <message>
++        <source>Opening %1…</source>
++        <translation>%1 を開いています…</translation>
++    </message>
++</context>
+   <context>
+     <name>Gui::ManualAlignment</name>
+     <message>
+diff --git a/src/Gui/MainWindow.cpp b/src/Gui/MainWindow.cpp
+index 67f57e655..8577c445a 100644
+--- a/src/Gui/MainWindow.cpp
++++ b/src/Gui/MainWindow.cpp
+@@ -111,6 +111,7 @@
+ #include "Utilities.h"
+ #include "Tree.h"
+ #include "WaitCursor.h"
++#include <memory>
+ #include "WorkbenchManager.h"
+ #include "Workbench.h"
+ 
+@@ -1889,7 +1890,24 @@ void MainWindow::delayedStartup()
+     bool allFilesProcessed = true;
+     try {
+         const std::list<std::string> files = App::Application::getCmdLineFiles();
++        // A file opened by double-clicking it comes here: the wait cursor and its name in the
++        // status bar while it loads, as when it is opened from the menu (a big point-cloud export
++        // took seconds with nothing to show that it was loading; feedback 2026-11-26)
++        std::unique_ptr<WaitCursor> wc;
++        if (!files.empty() && !Application::hiddenMainWindow()) {
++            wc = std::make_unique<WaitCursor>();
++            QStringList names;
++            for (const auto& f : files) {
++                names << QFileInfo(QString::fromUtf8(f.c_str())).fileName();
++            }
++            showMessage(tr("Opening %1…").arg(names.join(QStringLiteral(", "))));
++            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
++        }
+         const std::list<std::string> processed = App::Application::processFiles(files);
++        wc.reset();
++        if (!files.empty() && !Application::hiddenMainWindow()) {
++            showMessage(QString());
++        }
+         allFilesProcessed = processed.size() == files.size();
+         // Scripts run with a hidden main window are not "recently used files" of the
+         // interactive user, and must not change the file dialog's working directory
+-- 
+2.43.0
+
